@@ -2,6 +2,7 @@
 name = "lodestone-core"
 version = "0.0.1-alpha"
 edition = "2024"
+authors = ["Drew Chase"]
 
 [dependencies]
 piston-mc = { version = "0.0.1-alpha", features = ["log", "assets", "java", "downloads"] }
@@ -10,3 +11,8 @@ anyhow = { version = "1.0.100" }
 thiserror = { version = "2.0.17" }
 tokio = { version = "1.48.0", features = ["rt-multi-thread", "fs", "sync"] }
 tokio-interactive = { version = "0.2.0" }
+regex = {version = "1.12.2", features = ["logging"]}
+
+
+[dev-dependencies]
+tokio = {version = "1.48.0", features = ["macros"]}
