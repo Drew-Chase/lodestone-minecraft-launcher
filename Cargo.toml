@@ -3,5 +3,5 @@ resolver = "3"
 members = [
     "crates/lodestone-core",
     "crates/lodestone-cli",
-    "crates/lodestone-gui/src-tauri",
+    "crates/lodestone-gui/src-tauri", "crates/minecraft-loaders",
 ]
