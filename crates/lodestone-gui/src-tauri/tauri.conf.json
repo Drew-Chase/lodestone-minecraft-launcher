@@ -17,6 +17,8 @@
         "title": "Lodestone Minecraft Launcher",
         "width": 1280,
         "height": 720,
+        "minHeight": 550,
+        "minWidth": 1024,
         "decorations": false
         
       }
