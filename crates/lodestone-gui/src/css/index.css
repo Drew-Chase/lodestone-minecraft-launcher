@@ -1,0 +1,238 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+:root {
+  --mc-green: #22ff84;
+  --mc-green-dim: #18c968;
+  --mc-green-deep: #0a5c33;
+  --mc-green-glow: rgba(34, 255, 132, 0.35);
+  --violet: #9747ff;
+  --amber: #ffb545;
+  --cyan: #47d9ff;
+  --pink: #ff5ec8;
+
+  --bg-0: #08090a;
+  --bg-1: #0e1012;
+  --bg-2: #15181c;
+  --bg-3: #1d2127;
+  --bg-4: #272c34;
+  --line: rgba(255,255,255,0.07);
+  --line-strong: rgba(255,255,255,0.12);
+
+  --ink-0: #ffffff;
+  --ink-1: rgba(255,255,255,0.92);
+  --ink-2: rgba(255,255,255,0.68);
+  --ink-3: rgba(255,255,255,0.45);
+  --ink-4: rgba(255,255,255,0.28);
+
+  --scrollbar-background-color: transparent;
+  --scrollbar-thumb-color: var(--mc-green);
+  --scrollbar-thumb-hover-color: var(--mc-green);
+  overflow: auto;
+  scrollbar-color: var(--scrollbar-thumb-color) var(--scrollbar-background-color);
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  background: var(--bg-0);
+  color: var(--ink-1);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'ss01', 'cv11';
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-background-color);
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb-color);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover-color);
+}
+
+::selection {
+  background-color: var(--mc-green);
+  color: var(--bg-0);
+}
+
+/* ---- Animated aurora background (login + accents) ---- */
+.aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.aurora::before,
+.aurora::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.55;
+  animation: aurora-float 18s ease-in-out infinite;
+}
+.aurora::before {
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, var(--mc-green) 0%, transparent 65%);
+  top: -200px;
+  left: -100px;
+}
+.aurora::after {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, var(--violet) 0%, transparent 65%);
+  bottom: -150px;
+  right: -100px;
+  animation-delay: -9s;
+}
+@keyframes aurora-float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(60px, -40px) scale(1.1); }
+  66%      { transform: translate(-40px, 50px) scale(0.95); }
+}
+
+/* ---- Pulsing dot (online indicator, "now playing" chip) ---- */
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mc-green);
+  position: relative;
+  box-shadow: 0 0 8px var(--mc-green-glow);
+  display: inline-block;
+  flex-shrink: 0;
+}
+.pulse-dot::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1.5px solid var(--mc-green);
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+@keyframes pulse-ring {
+  0%   { transform: scale(0.8); opacity: 0.9; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* ---- Shimmer (progress bars, loading skeletons) ---- */
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  animation: shimmer 2s infinite;
+}
+
+/* ---- Blinking caret (log tail) ---- */
+@keyframes blink-cursor {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.caret {
+  display: inline-block;
+  width: 8px;
+  height: 14px;
+  background: var(--mc-green);
+  vertical-align: middle;
+  animation: blink-cursor 1s steps(1) infinite;
+}
+
+/* ---- Particle drift (login banner) ---- */
+@keyframes drift {
+  0%   { transform: translateY(0) translateX(0);    opacity: 0; }
+  10%  {                                             opacity: 0.7; }
+  90%  {                                             opacity: 0.7; }
+  100% { transform: translateY(-110vh) translateX(30px); opacity: 0; }
+}
+
+/* ---- Biome backgrounds (Scene component) ---- */
+.biome-forest {
+  background: radial-gradient(ellipse at 50% 100%, #2d8a3f 0%, #1f5c2c 40%, #0f3017 100%);
+}
+.biome-nether {
+  background: radial-gradient(ellipse at 40% 30%, #ff6b3d 0%, #a81f0c 40%, #3d0a08 100%);
+}
+.biome-end {
+  background: radial-gradient(ellipse at 60% 40%, #d9c4f5 0%, #5a3a8a 40%, #1a0f2e 100%);
+}
+.biome-ocean {
+  background: radial-gradient(ellipse at 40% 30%, #5fb4ff 0%, #1e5aa8 40%, #0a1e3a 100%);
+}
+.biome-desert {
+  background: radial-gradient(ellipse at 50% 30%, #ffd88c 0%, #c48b3a 40%, #5a3e1a 100%);
+}
+.biome-snow {
+  background: radial-gradient(ellipse at 40% 30%, #ffffff 0%, #a8c8e8 40%, #3a5a82 100%);
+}
+.biome-cherry {
+  background: radial-gradient(ellipse at 50% 30%, #ffc4e1 0%, #d86bac 40%, #5a1e48 100%);
+}
+.biome-mushroom {
+  background: radial-gradient(ellipse at 40% 30%, #e8b8d8 0%, #7c4b82 40%, #2e1a3a 100%);
+}
+
+/* ---- Sidebar nav-item active indicator ---- */
+.nav-item {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-3);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+}
+.nav-item:hover {
+  color: var(--ink-1);
+  background: rgba(255,255,255,0.04);
+}
+.nav-item.active {
+  color: var(--mc-green);
+  background: rgba(34,255,132,0.08);
+}
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 22px;
+  border-radius: 2px;
+  background: var(--mc-green);
+  box-shadow: 0 0 12px var(--mc-green-glow);
+}
+
+/* ---- Divider helper ---- */
+.div-line {
+  height: 1px;
+  background: var(--line);
+}
