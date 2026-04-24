@@ -104,6 +104,55 @@ type Tab = (typeof tabs)[number];
 
 type ViewMode = "grid" | "compact" | "table";
 
+// Lookup table used to tint quick-action tiles without assembling color-mix()
+// strings inline for every render. Keyed by the design's semantic color token.
+const quickActionTints: Record<
+    "green" | "cyan" | "amber" | "violet",
+    {icon: string; bg: string; border: string}
+> = {
+    green: {
+        icon: "text-mc-green",
+        bg: "bg-[color-mix(in_oklab,var(--mc-green)_18%,transparent)]",
+        border: "border-[color-mix(in_oklab,var(--mc-green)_30%,transparent)]",
+    },
+    cyan: {
+        icon: "text-accent-cyan",
+        bg: "bg-[color-mix(in_oklab,var(--cyan)_18%,transparent)]",
+        border: "border-[color-mix(in_oklab,var(--cyan)_30%,transparent)]",
+    },
+    amber: {
+        icon: "text-accent-amber",
+        bg: "bg-[color-mix(in_oklab,var(--amber)_18%,transparent)]",
+        border: "border-[color-mix(in_oklab,var(--amber)_30%,transparent)]",
+    },
+    violet: {
+        icon: "text-[#b689ff]",
+        bg: "bg-[color-mix(in_oklab,var(--violet)_18%,transparent)]",
+        border: "border-[color-mix(in_oklab,var(--violet)_30%,transparent)]",
+    },
+};
+
+type QuickAction = {
+    icon: (p: {size?: number}) => React.ReactElement;
+    label: string;
+    sub: string;
+    tint: keyof typeof quickActionTints;
+};
+
+const quickActions: QuickAction[] = [
+    {icon: I.plus, label: "New Instance", sub: "From modpack, CurseForge, or scratch", tint: "green"},
+    {icon: I.download, label: "Import", sub: ".zip, .mrpack, CurseForge", tint: "cyan"},
+    {icon: I.server, label: "Join Server", sub: "Realms · hosted · friends", tint: "amber"},
+    {icon: I.users, label: "Co-op Sync", sub: "3 friends online now", tint: "violet"},
+];
+
+// Shared "glassy card" surface gradient — layered linear-gradient w/ rgba stops
+// doesn't cleanly reduce to a single Tailwind utility, so it stays inline.
+const cardSurfaceStyle: React.CSSProperties = {
+    background:
+        "linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.015) 100%)",
+};
+
 export default function Home() {
     const [viewMode, setViewMode] = useState<ViewMode>("grid");
     const [activeTab, setActiveTab] = useState<Tab>("Recent");
@@ -111,7 +160,7 @@ export default function Home() {
     const featured = instances[0];
 
     return (
-        <div className="flex flex-col flex-1 min-w-0 min-h-0" style={{background: "var(--bg-0)"}}>
+        <div className="flex flex-col flex-1 min-w-0 min-h-0 bg-bg-0">
             <TitleBar title="Library" subtitle="6 instances · 300h total playtime">
                 <Input
                     placeholder="Search instances…"
@@ -131,84 +180,51 @@ export default function Home() {
                 <Button
                     color="success"
                     size="sm"
+                    className="font-bold"
                     startContent={<I.plus size={14}/>}
-                    style={{fontWeight: 700}}
                 >
                     New Instance
                 </Button>
             </TitleBar>
 
-            <div
-                style={{
-                    flex: 1,
-                    overflowY: "auto",
-                    padding: "24px 28px 40px",
-                }}
-            >
+            <div className="flex-1 overflow-y-auto px-7 pt-6 pb-10">
                 {/* Hero — currently playing */}
                 <div
-                    style={{
-                        position: "relative",
-                        height: 260,
-                        borderRadius: 20,
-                        overflow: "hidden",
-                        marginBottom: 28,
-                        boxShadow: "0 20px 40px -20px rgba(0,0,0,0.8)",
-                    }}
+                    className="relative h-[260px] rounded-[20px] overflow-hidden mb-7 shadow-[0_20px_40px_-20px_rgba(0,0,0,0.8)]"
                 >
                     <Scene biome={featured.biome} seed={featured.seed}/>
                     <Particles count={12}/>
                     <div
+                        className="absolute inset-0 flex items-end p-8"
                         style={{
-                            position: "absolute",
-                            inset: 0,
+                            // Horizontal fade uses three rgba stops — keep inline.
                             background:
                                 "linear-gradient(90deg, rgba(8,9,10,0.92) 0%, rgba(8,9,10,0.6) 45%, transparent 80%)",
-                            display: "flex",
-                            alignItems: "flex-end",
-                            padding: 32,
                         }}
                     >
-                        <div style={{maxWidth: 500}}>
-                            <div style={{display: "flex", alignItems: "center", gap: 8, marginBottom: 12}}>
+                        <div className="max-w-[500px]">
+                            <div className="flex items-center gap-2 mb-3">
                                 <Chip variant="green">
                                     <span className="pulse-dot" style={{width: 6, height: 6}}/> NOW PLAYING
                                 </Chip>
                                 <Chip variant="violet">FABRIC 0.14.21</Chip>
                                 <Chip>MC 1.20.1</Chip>
                             </div>
-                            <div
-                                style={{
-                                    fontSize: 40,
-                                    fontWeight: 800,
-                                    letterSpacing: -1,
-                                    lineHeight: 1,
-                                    marginBottom: 8,
-                                }}
-                            >
+                            <div className="text-[40px] font-extrabold -tracking-[1px] leading-none mb-2">
                                 {featured.name}
                             </div>
-                            <div
-                                style={{
-                                    fontSize: 13,
-                                    color: "var(--ink-2)",
-                                    marginBottom: 20,
-                                    lineHeight: 1.5,
-                                }}
-                            >
+                            <div className="text-[13px] text-ink-2 mb-5 leading-relaxed">
                                 Climb the floating islands, battle Slider bosses, uncover a continent hanging in the
                                 void.
-                                <span style={{color: "var(--mc-green)", marginLeft: 6}}>
-                  {featured.mods} mods
-                </span>{" "}
+                                <span className="text-mc-green ml-1.5">{featured.mods} mods</span>{" "}
                                 · last played {featured.lastPlayed}
                             </div>
-                            <div style={{display: "flex", gap: 10}}>
+                            <div className="flex gap-2.5">
                                 <Button
                                     color="success"
                                     size="lg"
+                                    className="font-bold px-6"
                                     startContent={<I.play size={14}/>}
-                                    style={{fontWeight: 700, padding: "0 24px"}}
                                 >
                                     Resume Session
                                 </Button>
@@ -216,7 +232,7 @@ export default function Home() {
                                     isIconOnly
                                     variant="bordered"
                                     aria-label="Open Folder"
-                                    style={{width: 42, height: 42}}
+                                    className="w-[42px] h-[42px]"
                                 >
                                     <I.folder size={16}/>
                                 </Button>
@@ -224,87 +240,47 @@ export default function Home() {
                                     isIconOnly
                                     variant="bordered"
                                     aria-label="Configure"
-                                    style={{width: 42, height: 42}}
+                                    className="w-[42px] h-[42px]"
                                 >
                                     <I.settings size={16}/>
                                 </Button>
-                                <Button isIconOnly variant="bordered" aria-label="More"
-                                        style={{width: 42, height: 42}}>
+                                <Button
+                                    isIconOnly
+                                    variant="bordered"
+                                    aria-label="More"
+                                    className="w-[42px] h-[42px]"
+                                >
                                     <I.more size={16}/>
                                 </Button>
                             </div>
                         </div>
                     </div>
                     {/* Stats pill */}
-                    <div
-                        className="font-mono"
-                        style={{
-                            position: "absolute",
-                            top: 24,
-                            right: 24,
-                            fontSize: 11,
-                            color: "var(--ink-2)",
-                            padding: "6px 10px",
-                            background: "rgba(0,0,0,0.55)",
-                            backdropFilter: "blur(12px)",
-                            borderRadius: 6,
-                            border: "1px solid rgba(255,255,255,0.08)",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                        }}
-                    >
+                    <div className="font-mono absolute top-6 right-6 text-[11px] text-ink-2 px-2.5 py-1.5 rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.55)] backdrop-blur-md flex items-center gap-1.5">
                         <I.cpu size={12}/> 2.1 GB / 6 GB · 58 FPS
                     </div>
                 </div>
 
                 {/* Quick actions */}
-                <div
-                    style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(4, 1fr)",
-                        gap: 12,
-                        marginBottom: 32,
-                    }}
-                >
+                <div className="grid grid-cols-4 gap-3 mb-8">
                     {quickActions.map((a, i) => {
                         const IconC = a.icon;
+                        const tint = quickActionTints[a.tint];
                         return (
                             <Card
                                 key={i}
                                 isPressable
-                                style={{
-                                    padding: "16px 18px",
-                                    display: "flex",
-                                    flexDirection: "row",
-                                    gap: 14,
-                                    alignItems: "center",
-                                    background:
-                                        "linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.015) 100%)",
-                                    border: "1px solid var(--line)",
-                                }}
+                                className="flex-row items-center gap-3.5 px-[18px] py-4 border border-line"
+                                style={cardSurfaceStyle}
                             >
                                 <div
-                                    style={{
-                                        width: 40,
-                                        height: 40,
-                                        borderRadius: 10,
-                                        flexShrink: 0,
-                                        background: `color-mix(in oklab, ${a.color} 18%, transparent)`,
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        color: a.color,
-                                        border: `1px solid color-mix(in oklab, ${a.color} 30%, transparent)`,
-                                    }}
+                                    className={`flex-shrink-0 w-10 h-10 rounded-[10px] flex items-center justify-center border ${tint.bg} ${tint.border} ${tint.icon}`}
                                 >
                                     <IconC size={18}/>
                                 </div>
-                                <div style={{minWidth: 0, textAlign: "left"}}>
-                                    <div style={{fontSize: 13, fontWeight: 600}}>{a.label}</div>
-                                    <div style={{fontSize: 11, color: "var(--ink-3)", marginTop: 2}}>
-                                        {a.sub}
-                                    </div>
+                                <div className="min-w-0 text-left">
+                                    <div className="text-[13px] font-semibold">{a.label}</div>
+                                    <div className="text-[11px] text-ink-3 mt-0.5">{a.sub}</div>
                                 </div>
                             </Card>
                         );
@@ -312,10 +288,10 @@ export default function Home() {
                 </div>
 
                 {/* Section header */}
-                <div style={{display: "flex", alignItems: "center", marginBottom: 14, gap: 12}}>
-                    <div style={{fontSize: 16, fontWeight: 700, letterSpacing: -0.3}}>Your Instances</div>
-                    <div style={{flex: 1}}/>
-                    <div style={{display: "flex", gap: 6}}>
+                <div className="flex items-center mb-3.5 gap-3">
+                    <div className="text-base font-bold tracking-tight">Your Instances</div>
+                    <div className="flex-1"/>
+                    <div className="flex gap-1.5">
                         {tabs.map((t) => (
                             <TabPill key={t} active={activeTab === t} onClick={() => setActiveTab(t)}>
                                 {t}
@@ -334,18 +310,6 @@ export default function Home() {
     );
 }
 
-const quickActions = [
-    {
-        icon: I.plus,
-        label: "New Instance",
-        sub: "From modpack, CurseForge, or scratch",
-        color: "var(--mc-green)",
-    },
-    {icon: I.download, label: "Import", sub: ".zip, .mrpack, CurseForge", color: "var(--cyan)"},
-    {icon: I.server, label: "Join Server", sub: "Realms · hosted · friends", color: "var(--amber)"},
-    {icon: I.users, label: "Co-op Sync", sub: "3 friends online now", color: "var(--violet)"},
-] as const;
-
 function TabPill({
                      active,
                      children,
@@ -358,21 +322,12 @@ function TabPill({
     return (
         <button
             onClick={onClick}
-            className="font-sans"
-            style={{
-                padding: "6px 12px",
-                fontSize: 12,
-                fontWeight: 500,
-                color: active ? "var(--bg-0)" : "var(--ink-2)",
-                borderRadius: 12,
-                cursor: "pointer",
-                background: active ? "var(--mc-green)" : "transparent",
-                border: "none",
-                boxShadow: active
-                    ? "0 0 0 1px rgba(34,255,132,0.6), 0 8px 20px -8px var(--mc-green-glow)"
-                    : "none",
-                transition: "all 0.12s",
-            }}
+            className={[
+                "font-sans px-3 py-1.5 text-xs font-medium rounded-md border-none cursor-pointer transition-colors",
+                active
+                    ? "text-bg-0 bg-mc-green shadow-[0_0_0_1px_rgba(34,255,132,0.6),0_8px_20px_-8px_rgba(34,255,132,0.35)]"
+                    : "text-ink-2 bg-transparent",
+            ].join(" ")}
         >
             {children}
         </button>
@@ -392,16 +347,7 @@ function ViewModeToggle({
         {id: "table", icon: I.table, label: "Table"},
     ];
     return (
-        <div
-            style={{
-                display: "flex",
-                padding: 3,
-                gap: 2,
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid var(--line)",
-                borderRadius: 10,
-            }}
-        >
+        <div className="flex p-[3px] gap-0.5 bg-[rgba(255,255,255,0.04)] border border-line rounded-[10px]">
             {opts.map((o) => {
                 const IconC = o.icon;
                 const active = mode === o.id;
@@ -410,25 +356,12 @@ function ViewModeToggle({
                         key={o.id}
                         onClick={() => onChange(o.id)}
                         title={`${o.label} view`}
-                        className="font-sans"
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                            padding: "6px 10px",
-                            fontSize: 11,
-                            fontWeight: 600,
-                            border: "none",
-                            borderRadius: 7,
-                            cursor: "pointer",
-                            background: active
-                                ? "color-mix(in oklab, var(--mc-green) 18%, transparent)"
-                                : "transparent",
-                            color: active ? "var(--mc-green)" : "var(--ink-2)",
-                            boxShadow: active
-                                ? "inset 0 0 0 1px color-mix(in oklab, var(--mc-green) 40%, transparent)"
-                                : "none",
-                        }}
+                        className={[
+                            "font-sans flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-[7px] border-none cursor-pointer",
+                            active
+                                ? "bg-[color-mix(in_oklab,var(--mc-green)_18%,transparent)] text-mc-green shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--mc-green)_40%,transparent)]"
+                                : "bg-transparent text-ink-2",
+                        ].join(" ")}
                     >
                         <IconC size={13}/>
                         <span>{o.label}</span>
@@ -441,106 +374,67 @@ function ViewModeToggle({
 
 function InstanceGrid({list}: {list: Instance[]}) {
     return (
-        <div style={{display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16}}>
+        <div className="grid grid-cols-3 gap-4">
             {list.map((inst, i) => (
                 <Card
                     key={i}
                     isPressable
-                    style={{
-                        cursor: "pointer",
-                        background:
-                            "linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.015) 100%)",
-                        border: "1px solid var(--line)",
-                        overflow: "hidden",
-                        padding: 0,
-                    }}
+                    className="cursor-pointer overflow-hidden p-0 border border-line w-full"
+                    style={cardSurfaceStyle}
                 >
-                    <div style={{position: "relative", height: 140, width: "100%"}}>
+                    <div className="relative h-[140px] w-full">
                         <Scene biome={inst.biome} seed={inst.seed}/>
                         {inst.playing && (
-                            <div style={{position: "absolute", top: 10, left: 10, zIndex: 2}}>
-                                <Chip variant="green" style={{fontSize: 9, padding: "2px 6px"}}>
+                            <div className="absolute top-2.5 left-2.5 z-[2]">
+                                <Chip variant="green" className="text-[9px] px-1.5 py-0.5">
                                     <span className="pulse-dot" style={{width: 5, height: 5}}/>
                                     PLAYING
                                 </Chip>
                             </div>
                         )}
-                        <div style={{position: "absolute", top: 10, right: 10, zIndex: 2}}>
+                        <div className="absolute top-2.5 right-2.5 z-[2]">
                             <Button
                                 isIconOnly
                                 size="sm"
                                 variant="flat"
                                 aria-label="More"
-                                style={{
-                                    width: 28,
-                                    height: 28,
-                                    minWidth: 0,
-                                    background: "rgba(0,0,0,0.5)",
-                                    backdropFilter: "blur(8px)",
-                                }}
+                                className="w-7 h-7 min-w-0 bg-[rgba(0,0,0,0.5)] backdrop-blur-sm"
                             >
                                 <I.more size={14}/>
                             </Button>
                         </div>
                         <div
+                            className="absolute inset-0"
                             style={{
-                                position: "absolute",
-                                inset: 0,
                                 background:
                                     "linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.7) 100%)",
                             }}
                         />
-                        <div
-                            style={{
-                                position: "absolute",
-                                bottom: 10,
-                                left: 12,
-                                right: 12,
-                                display: "flex",
-                                alignItems: "flex-end",
-                                zIndex: 2,
-                            }}
-                        >
-                            <div style={{minWidth: 0, flex: 1}}>
-                                <div style={{fontSize: 14, fontWeight: 700, marginBottom: 2}}>
-                                    {inst.name}
-                                </div>
-                                <div
-                                    className="font-mono"
-                                    style={{fontSize: 10, color: "var(--ink-2)"}}
-                                >
-                                    {inst.version}
-                                </div>
+                        <div className="absolute bottom-2.5 left-3 right-3 flex items-end z-[2]">
+                            <div className="min-w-0 flex-1">
+                                <div className="text-sm font-bold mb-0.5">{inst.name}</div>
+                                <div className="font-mono text-[10px] text-ink-2">{inst.version}</div>
                             </div>
                             <Button
                                 color="success"
                                 size="sm"
+                                className="font-bold"
                                 startContent={<I.play size={11}/>}
-                                style={{fontWeight: 700}}
                             >
                                 Play
                             </Button>
                         </div>
                     </div>
-                    <div
-                        style={{
-                            padding: "12px 14px",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            fontSize: 11,
-                            color: "var(--ink-3)",
-                        }}
-                    >
-            <span style={{display: "flex", alignItems: "center", gap: 4}}>
+                    <div className="px-3.5 py-3 flex items-center gap-2.5 text-[11px] text-ink-3">
+            <span className="flex items-center gap-1">
               <I.clock size={11}/> {inst.playtime}
             </span>
                         <span>·</span>
-                        <span style={{display: "flex", alignItems: "center", gap: 4}}>
+                        <span className="flex items-center gap-1">
               <I.box size={11}/> {inst.mods} mods
             </span>
-                        <div style={{flex: 1}}/>
-                        <Chip variant={inst.color} style={{fontSize: 9, padding: "2px 6px"}}>
+                        <div className="flex-1"/>
+                        <Chip variant={inst.color} className="text-[9px] px-1.5 py-0.5">
                             {inst.loader}
                         </Chip>
                     </div>
@@ -552,79 +446,48 @@ function InstanceGrid({list}: {list: Instance[]}) {
 
 function InstanceCompact({list}: {list: Instance[]}) {
     return (
-        <div style={{display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8}}>
+        <div className="grid grid-cols-4 gap-2">
             {list.map((inst, i) => (
                 <Card
                     key={i}
                     isPressable
-                    style={{
-                        padding: "12px 14px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 8,
-                        cursor: "pointer",
-                        background:
-                            "linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.015) 100%)",
-                        border: "1px solid var(--line)",
-                    }}
+                    className="px-3.5 py-3 flex flex-col gap-2 cursor-pointer border border-line"
+                    style={cardSurfaceStyle}
                 >
                     {/* Row 1 */}
-                    <div style={{display: "flex", alignItems: "center", gap: 6, minWidth: 0}}>
-                        <div
-                            style={{
-                                fontSize: 12,
-                                fontWeight: 700,
-                                letterSpacing: -0.2,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                flex: 1,
-                                textAlign: "left",
-                            }}
-                        >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="text-xs font-bold tracking-tight overflow-hidden text-ellipsis whitespace-nowrap flex-1 text-left">
                             {inst.name}
                         </div>
                         {inst.playing && (
-                            <span className="pulse-dot" style={{width: 6, height: 6, flexShrink: 0}}/>
+                            <span
+                                className="pulse-dot flex-shrink-0"
+                                style={{width: 6, height: 6}}
+                            />
                         )}
                         <Button
                             isIconOnly
                             variant="flat"
                             size="sm"
                             aria-label="More"
-                            style={{width: 22, height: 22, minWidth: 0, flexShrink: 0}}
+                            className="w-[22px] h-[22px] min-w-0 flex-shrink-0"
                         >
                             <I.more size={12}/>
                         </Button>
                     </div>
                     {/* Row 2 */}
-                    <div
-                        className="font-mono"
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                            fontSize: 10,
-                            color: "var(--ink-3)",
-                        }}
-                    >
+                    <div className="font-mono flex items-center gap-1.5 text-[10px] text-ink-3">
                         <span>{inst.mc}</span>
-                        <span style={{opacity: 0.5}}>·</span>
-                        <Chip variant={inst.color} style={{fontSize: 9, padding: "1px 6px"}}>
+                        <span className="opacity-50">·</span>
+                        <Chip variant={inst.color} className="text-[9px] px-1.5 py-px">
                             {inst.loader}
                         </Chip>
-                        <div style={{flex: 1}}/>
+                        <div className="flex-1"/>
                         <Button
                             color="success"
                             size="sm"
+                            className="font-bold min-w-0 h-auto px-2 py-1 text-[10px]"
                             startContent={<I.play size={9}/>}
-                            style={{
-                                fontWeight: 700,
-                                minWidth: 0,
-                                height: "auto",
-                                padding: "4px 8px",
-                                fontSize: 10,
-                            }}
                         >
                             Play
                         </Button>
@@ -636,120 +499,67 @@ function InstanceCompact({list}: {list: Instance[]}) {
 }
 
 function InstanceTable({list}: {list: Instance[]}) {
-    const th: React.CSSProperties = {
-        textAlign: "left",
-        padding: "10px 14px",
-        fontSize: 10,
-        fontWeight: 600,
-        letterSpacing: "0.06em",
-        textTransform: "uppercase",
-        color: "var(--ink-3)",
-        borderBottom: "1px solid var(--line)",
-    };
-    const td: React.CSSProperties = {
-        padding: "12px 14px",
-        fontSize: 12,
-        color: "var(--ink-1)",
-        borderBottom: "1px solid color-mix(in oklab, var(--line) 60%, transparent)",
-        verticalAlign: "middle",
-    };
+    const thClass =
+        "text-left px-3.5 py-2.5 text-[10px] font-semibold tracking-[0.06em] uppercase text-ink-3 border-b border-line";
+    const tdClass =
+        "px-3.5 py-3 text-xs text-ink-1 align-middle border-b border-[color-mix(in_oklab,var(--line)_60%,transparent)]";
     return (
         <Card
-            style={{
-                padding: 0,
-                overflow: "hidden",
-                background:
-                    "linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.015) 100%)",
-                border: "1px solid var(--line)",
-            }}
+            className="p-0 overflow-hidden border border-line"
+            style={cardSurfaceStyle}
         >
-            <table style={{width: "100%", borderCollapse: "collapse"}}>
+            <table className="w-full border-collapse">
                 <thead>
                 <tr>
-                    <th style={{...th, width: 36}}></th>
-                    <th style={th}>Instance</th>
-                    <th style={th}>Loader</th>
-                    <th style={th}>MC Version</th>
-                    <th style={{...th, textAlign: "right"}}>Mods</th>
-                    <th style={{...th, textAlign: "right"}}>Playtime</th>
-                    <th style={th}>Last Played</th>
-                    <th style={{...th, width: 120}}></th>
+                    <th className={`${thClass} w-9`}></th>
+                    <th className={thClass}>Instance</th>
+                    <th className={thClass}>Loader</th>
+                    <th className={thClass}>MC Version</th>
+                    <th className={`${thClass} text-right`}>Mods</th>
+                    <th className={`${thClass} text-right`}>Playtime</th>
+                    <th className={thClass}>Last Played</th>
+                    <th className={`${thClass} w-[120px]`}></th>
                 </tr>
                 </thead>
                 <tbody>
                 {list.map((inst, i) => (
-                    <tr key={i} style={{cursor: "pointer"}}>
-                        <td style={{...td, paddingRight: 0}}>
-                            <div
-                                style={{
-                                    width: 24,
-                                    height: 24,
-                                    borderRadius: 6,
-                                    overflow: "hidden",
-                                    position: "relative",
-                                    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)",
-                                }}
-                            >
+                    <tr key={i} className="cursor-pointer">
+                        <td className={`${tdClass} pr-0`}>
+                            <div className="w-6 h-6 rounded-md overflow-hidden relative shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                                 <Scene biome={inst.biome} seed={inst.seed}/>
                             </div>
                         </td>
-                        <td style={td}>
-                            <div style={{display: "flex", alignItems: "center", gap: 8}}>
-                                <span style={{fontWeight: 600}}>{inst.name}</span>
+                        <td className={tdClass}>
+                            <div className="flex items-center gap-2">
+                                <span className="font-semibold">{inst.name}</span>
                                 {inst.playing && (
-                                    <Chip variant="green" style={{fontSize: 9, padding: "1px 6px"}}>
+                                    <Chip variant="green" className="text-[9px] px-1.5 py-px">
                                         <span className="pulse-dot" style={{width: 4, height: 4}}/>
                                         playing
                                     </Chip>
                                 )}
                             </div>
                         </td>
-                        <td style={td}>
-                            <Chip variant={inst.color} style={{fontSize: 9, padding: "2px 7px"}}>
+                        <td className={tdClass}>
+                            <Chip variant={inst.color} className="text-[9px] px-[7px] py-0.5">
                                 {inst.loader}
                             </Chip>
                         </td>
+                        <td className={`${tdClass} font-mono text-ink-2 text-[11px]`}>{inst.mc}</td>
                         <td
-                            style={{
-                                ...td,
-                                fontFamily: "'JetBrains Mono', monospace",
-                                color: "var(--ink-2)",
-                                fontSize: 11,
-                            }}
-                        >
-                            {inst.mc}
-                        </td>
-                        <td
-                            style={{
-                                ...td,
-                                textAlign: "right",
-                                fontFamily: "'JetBrains Mono', monospace",
-                                fontSize: 11,
-                                color: inst.mods ? "var(--ink-1)" : "var(--ink-3)",
-                            }}
+                            className={`${tdClass} text-right font-mono text-[11px] ${inst.mods ? "text-ink-1" : "text-ink-3"}`}
                         >
                             {inst.mods || "—"}
                         </td>
-                        <td
-                            style={{
-                                ...td,
-                                textAlign: "right",
-                                fontFamily: "'JetBrains Mono', monospace",
-                                fontSize: 11,
-                            }}
-                        >
-                            {inst.playtime}
-                        </td>
-                        <td style={{...td, color: "var(--ink-3)", fontSize: 11}}>
-                            {inst.lastPlayed}
-                        </td>
-                        <td style={{...td, textAlign: "right"}}>
-                            <div style={{display: "inline-flex", gap: 4}}>
+                        <td className={`${tdClass} text-right font-mono text-[11px]`}>{inst.playtime}</td>
+                        <td className={`${tdClass} text-ink-3 text-[11px]`}>{inst.lastPlayed}</td>
+                        <td className={`${tdClass} text-right`}>
+                            <div className="inline-flex gap-1">
                                 <Button
                                     color="success"
                                     size="sm"
+                                    className="font-bold text-[11px]"
                                     startContent={<I.play size={10}/>}
-                                    style={{fontWeight: 700, fontSize: 11}}
                                 >
                                     Play
                                 </Button>
@@ -758,7 +568,7 @@ function InstanceTable({list}: {list: Instance[]}) {
                                     variant="bordered"
                                     size="sm"
                                     aria-label="More"
-                                    style={{width: 26, height: 26, minWidth: 0}}
+                                    className="w-[26px] h-[26px] min-w-0"
                                 >
                                     <I.more size={12}/>
                                 </Button>
