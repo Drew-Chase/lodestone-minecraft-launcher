@@ -15,7 +15,8 @@ type Props = {
 
 // "Your Instances" section — section header, filter tabs, view-mode toggle,
 // and the currently-selected view (grid/compact/table).
-export default function InstanceList({instances}: Props) {
+export default function InstanceList({instances}: Props)
+{
     const [viewMode, setViewMode] = useState<ViewMode>("grid");
     const [activeTab, setActiveTab] = useState<FilterTab>("Recent");
 
@@ -41,7 +42,7 @@ export default function InstanceList({instances}: Props) {
                             "bg-mc-green shadow-[0_0_0_1px_rgba(34,255,132,0.6),0_8px_20px_-8px_rgba(34,255,132,0.35)]",
                         tab: "h-7 px-3",
                         tabContent:
-                            "text-xs font-medium text-ink-2 group-data-[selected=true]:text-bg-0",
+                            "text-xs font-medium text-ink-2 group-data-[selected=true]:text-bg-0"
                     }}
                 >
                     {filterTabs.map((t) => (
@@ -58,12 +59,12 @@ export default function InstanceList({instances}: Props) {
                     size="md"
                     classNames={{
                         tabList:
-                            "bg-[rgba(255,255,255,0.04)] border border-line p-1 rounded-xl gap-0",
+                            "bg-[rgba(255,255,255,0.04)] border border-line p-1 rounded-md gap-0",
                         cursor:
-                            "!bg-[rgba(34,255,132,0.18)] !shadow-[inset_0_0_0_1px_rgba(34,255,132,0.4)] !rounded-lg",
-                        tab: "h-10 px-4 data-[hover=true]:opacity-100",
+                            "!bg-[rgba(34,255,132,0.18)] !shadow-[inset_0_0_0_1px_rgba(34,255,132,0.4)] !rounded-md",
+                        tab: "h-8 px-3 data-[hover=true]:opacity-100",
                         tabContent:
-                            "text-sm font-semibold text-ink-2 group-data-[selected=true]:text-mc-green",
+                            "text-tiny font-semibold text-ink-2 group-data-[selected=true]:text-mc-green"
                     }}
                 >
                     <Tab
