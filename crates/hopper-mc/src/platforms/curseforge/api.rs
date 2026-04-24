@@ -26,15 +26,15 @@ const MAX_PAGE_SIZE: u32 = 50;
 const PAGINATION_HARD_CAP: u32 = 10_000;
 
 fn require_key(api_key: Option<&str>) -> Result<&str> {
-    api_key
-        .filter(|k| !k.is_empty())
-        .ok_or_else(|| {
-            ContentError::BadRequest(
-                "CurseForge requires an API key. Set CURSEFORGE_API_KEY or use \
-                 CurseForgeProvider::with_user_agent_and_key(.., Some(key))."
-                    .to_string(),
-            )
-        })
+    api_key.filter(|k| !k.is_empty()).ok_or_else(|| {
+        ContentError::BadRequest(
+            "CurseForge requires an API key. Construct the provider via \
+             CurseForgeProvider::new_with_secret_key(Some(key)); see \
+             examples/curseforge_with_keyring.rs for a secure flow that \
+             loads the key from the OS credential store."
+                .to_string(),
+        )
+    })
 }
 
 /// Run a `/mods/search` query for the given content type.

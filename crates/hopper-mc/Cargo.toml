@@ -12,6 +12,18 @@ categories = ["api-bindings", "games"]
 repository = "https://github.com/drew-chase/hopper-mc"
 homepage = "https://github.com/drew-chase/hopper-mc"
 documentation = "https://docs.rs/hopper-mc"
+build = "build.rs"
+
+[features]
+default = []
+
+# Enables build.rs to read `CURSEFORGE_API_KEY` from the environment and
+# bake an XOR-obfuscated copy into the `curseforge_with_embedded_key`
+# example. Meant to be used from CI with a repository secret — see the
+# example file for the full flow and threat model. Library users who do
+# not ship an embedded key should leave this off; doing so means build.rs
+# never reads the env var and never generates anything beyond a stub.
+embedded-key = []
 
 [dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
@@ -22,9 +34,12 @@ tokio = { version = "1.48", features = ["sync"] }
 chrono = { version = "0.4", features = ["serde"] }
 url = "2"
 log = "0.4"
+secrecy = "0.10"
 
 [dev-dependencies]
 tokio = { version = "1.48", features = ["macros", "rt-multi-thread"] }
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+rpassword = "7"
 
 [[example]]
 name = "find_mods"
@@ -41,3 +56,12 @@ path = "examples/browse_content_types.rs"
 [[example]]
 name = "custom_provider_trait"
 path = "examples/custom_provider_trait.rs"
+
+[[example]]
+name = "curseforge_with_keyring"
+path = "examples/curseforge_with_keyring.rs"
+
+[[example]]
+name = "curseforge_with_embedded_key"
+path = "examples/curseforge_with_embedded_key.rs"
+required-features = ["embedded-key"]

@@ -1,25 +1,55 @@
 //! CurseForge provider — full implementation against the Core API v1
 //! (<https://api.curseforge.com/v1>).
 //!
+//! # API keys
+//!
 //! CurseForge requires an `x-api-key` on every request; there is no
-//! anonymous mode. Supply the key in one of three ways:
+//! anonymous mode. Keys are developer secrets issued by
+//! <https://console.curseforge.com/> that ship inside client applications.
 //!
-//! 1. Set the `CURSEFORGE_API_KEY` environment variable before
-//!    [`CurseForgeProvider::shared`] / [`CurseForgeProvider::new`] is first
-//!    called.
-//! 2. Pass it explicitly via [`CurseForgeProvider::new_with_key`] or
-//!    [`CurseForgeProvider::with_user_agent_and_key`].
-//! 3. Build your own `reqwest::Client` with the header pre-set and hand it
-//!    in via [`CurseForgeProvider::with_client_and_key`].
+//! ## Handling the key securely
 //!
-//! Calls made without a key fail with [`ContentError::BadRequest`] before
-//! any network request is issued.
+//! The preferred construction path takes a [`SecretString`] rather than a
+//! plain `String`. [`SecretString`] zeros its backing allocation on drop
+//! and refuses to appear in `Debug`/`Display` output, so the key does not
+//! linger in memory after the provider is destroyed and cannot be
+//! accidentally logged.
+//!
+//! ```no_run
+//! use hopper_mc::{CurseForgeProvider, ModProvider, Sort};
+//! use secrecy::SecretString;
+//!
+//! # async fn example(key: SecretString) -> Result<(), hopper_mc::ContentError> {
+//! let cf = CurseForgeProvider::new_with_secret_key(Some(key));
+//! let _ = cf.find_mods(Some("sodium"), Sort::Relevance, 0, 5).await?;
+//! # Ok(()) }
+//! ```
+//!
+//! See `examples/curseforge_with_keyring.rs` for an end-to-end flow that
+//! loads the key from the OS credential store (Windows Credential Manager
+//! / macOS Keychain / Linux Secret Service) on first run and caches it
+//! there for every subsequent run — without the key ever touching an
+//! environment variable, a config file, or the process's command line.
+//!
+//! ## Plain-`String` constructors
+//!
+//! `new_with_key` / `with_user_agent_and_key` / `with_client_and_key`
+//! accept `Option<String>` for ergonomics. They immediately wrap the key
+//! into a [`SecretString`] so the provider's internal storage is always
+//! zero-on-drop. The caller's own `String`, however, is not — prefer the
+//! `_secret_key` variants when you already have a [`SecretString`] in
+//! hand.
+//!
+//! Calls made without a key fail with [`crate::ContentError::BadRequest`]
+//! before any network request is issued.
 
 mod api;
 mod dto;
 mod mapping;
 
 use std::sync::OnceLock;
+
+use secrecy::{ExposeSecret, SecretString};
 
 use crate::error::Result;
 use crate::model::{
@@ -31,63 +61,108 @@ use crate::provider::{
     ShaderPackProvider, WorldProvider,
 };
 
-const API_KEY_ENV: &str = "CURSEFORGE_API_KEY";
-
+/// CurseForge HTTP provider.
+///
+/// Because [`SecretString`] refuses to expose its contents through
+/// `Debug`, this `Debug` impl is safe to log — the key will print as
+/// `SecretBox<str>([REDACTED])`.
 #[derive(Debug)]
 pub struct CurseForgeProvider {
     client: reqwest::Client,
-    api_key: Option<String>,
+    api_key: Option<SecretString>,
 }
 
 impl CurseForgeProvider {
-    /// Build a provider reading the API key from `CURSEFORGE_API_KEY` if set,
-    /// with the crate's default User-Agent.
+    /// Build a provider with the crate's default User-Agent and no API
+    /// key. Every call will fail with [`crate::ContentError::BadRequest`]
+    /// until a key is supplied — prefer [`Self::new_with_secret_key`] or
+    /// [`Self::new_with_key`].
     pub fn new() -> Self {
-        Self::new_with_key(std::env::var(API_KEY_ENV).ok())
+        Self::new_with_secret_key(None)
     }
 
-    /// Build a provider with an explicitly-supplied key (or `None`).
+    /// Build a provider with an explicitly-supplied key as a
+    /// [`SecretString`]. This is the preferred keyed constructor — the
+    /// key is zeroed from memory when the provider is dropped.
+    pub fn new_with_secret_key(api_key: Option<SecretString>) -> Self {
+        Self::with_user_agent_and_secret_key(super::user_agent::DEFAULT_USER_AGENT, api_key)
+    }
+
+    /// Build a provider with an explicitly-supplied key. The `String` is
+    /// immediately wrapped in a [`SecretString`] so the provider's
+    /// internal copy is zeroed on drop; however the caller's original
+    /// `String` (if any) is not managed by this crate.
     pub fn new_with_key(api_key: Option<String>) -> Self {
-        Self::with_user_agent_and_key(super::user_agent::DEFAULT_USER_AGENT, api_key)
+        Self::new_with_secret_key(api_key.map(SecretString::from))
     }
 
-    /// Build a provider with a caller-supplied User-Agent; reads the API key
-    /// from `CURSEFORGE_API_KEY` if set.
+    /// Build a provider with a caller-supplied User-Agent and no API key.
     pub fn with_user_agent(user_agent: &str) -> Self {
-        Self::with_user_agent_and_key(user_agent, std::env::var(API_KEY_ENV).ok())
+        Self::with_user_agent_and_secret_key(user_agent, None)
     }
 
-    /// Full-control constructor.
-    pub fn with_user_agent_and_key(user_agent: &str, api_key: Option<String>) -> Self {
+    /// Full-control constructor accepting a [`SecretString`] key.
+    pub fn with_user_agent_and_secret_key(
+        user_agent: &str,
+        api_key: Option<SecretString>,
+    ) -> Self {
         Self {
             client: super::user_agent::client_with_ua(user_agent),
             api_key,
         }
     }
 
-    /// Use a caller-supplied `reqwest::Client` alongside a key. The caller
-    /// owns the client's configuration (User-Agent, connection pool, proxy).
-    /// The `x-api-key` header is still attached per-request rather than
-    /// globally so the client can be reused across platforms.
-    pub fn with_client_and_key(client: reqwest::Client, api_key: Option<String>) -> Self {
+    /// Full-control constructor accepting a plain `String` key; the key
+    /// is wrapped in a [`SecretString`] before storage.
+    pub fn with_user_agent_and_key(user_agent: &str, api_key: Option<String>) -> Self {
+        Self::with_user_agent_and_secret_key(user_agent, api_key.map(SecretString::from))
+    }
+
+    /// Use a caller-supplied `reqwest::Client` alongside a
+    /// [`SecretString`] key. The caller owns the client's configuration
+    /// (User-Agent, connection pool, proxy). The `x-api-key` header is
+    /// still attached per-request rather than globally so the same client
+    /// can be reused across platforms.
+    pub fn with_client_and_secret_key(
+        client: reqwest::Client,
+        api_key: Option<SecretString>,
+    ) -> Self {
         Self { client, api_key }
     }
 
-    /// Process-wide shared instance. Constructed on first use; reads the
-    /// API key from `CURSEFORGE_API_KEY` at that moment.
+    /// `String`-key variant of [`Self::with_client_and_secret_key`];
+    /// wraps the key in a [`SecretString`] before storage.
+    pub fn with_client_and_key(client: reqwest::Client, api_key: Option<String>) -> Self {
+        Self::with_client_and_secret_key(client, api_key.map(SecretString::from))
+    }
+
+    /// Process-wide shared instance, constructed with no API key.
+    ///
+    /// This exists for parity with the other platform providers and for
+    /// the top-level `find_*`/`get_*` dispatch functions, but it is only
+    /// useful if CurseForge is reachable without a key (no endpoints
+    /// currently are). Keyed access should construct a provider directly
+    /// via [`Self::new_with_secret_key`] and call trait methods on it.
     pub fn shared() -> &'static Self {
         static INSTANCE: OnceLock<CurseForgeProvider> = OnceLock::new();
         INSTANCE.get_or_init(Self::new)
     }
 
-    /// Does this provider have an API key configured? Useful for surfacing
-    /// actionable UI before making a failing call.
+    /// Does this provider have a non-empty API key configured? Useful
+    /// for surfacing actionable UI *before* making a call that would
+    /// fail.
     pub fn has_api_key(&self) -> bool {
-        self.api_key.as_deref().is_some_and(|k| !k.is_empty())
+        self.api_key
+            .as_ref()
+            .is_some_and(|s| !s.expose_secret().is_empty())
     }
 
-    fn key(&self) -> Option<&str> {
-        self.api_key.as_deref()
+    /// Expose the key as a short-lived `&str` for attaching to a single
+    /// outbound request. The returned reference must not be stored; the
+    /// `SecretString` owns the backing allocation and will zero it on
+    /// drop.
+    fn exposed_key(&self) -> Option<&str> {
+        self.api_key.as_ref().map(|s| s.expose_secret())
     }
 }
 
@@ -117,7 +192,7 @@ impl ModProvider for CurseForgeProvider {
     ) -> Result<Vec<ModItem>> {
         let hits = api::search(
             &self.client,
-            self.key(),
+            self.exposed_key(),
             query,
             sort,
             ContentType::Mod,
@@ -129,7 +204,7 @@ impl ModProvider for CurseForgeProvider {
     }
 
     async fn get_mod(&self, id: &str) -> Result<Option<ModItem>> {
-        let m = api::get_by_id_or_slug(&self.client, self.key(), id, mapping::CLASS_MODS).await?;
+        let m = api::get_by_id_or_slug(&self.client, self.exposed_key(), id, mapping::CLASS_MODS).await?;
         Ok(m.map(mapping::mod_from))
     }
 }
@@ -148,7 +223,7 @@ impl PackProvider for CurseForgeProvider {
     ) -> Result<Vec<PackItem>> {
         let hits = api::search(
             &self.client,
-            self.key(),
+            self.exposed_key(),
             query,
             sort,
             ContentType::Modpack,
@@ -161,7 +236,7 @@ impl PackProvider for CurseForgeProvider {
 
     async fn get_pack(&self, id: &str) -> Result<Option<PackItem>> {
         let m =
-            api::get_by_id_or_slug(&self.client, self.key(), id, mapping::CLASS_MODPACKS).await?;
+            api::get_by_id_or_slug(&self.client, self.exposed_key(), id, mapping::CLASS_MODPACKS).await?;
         Ok(m.map(mapping::pack_from))
     }
 }
@@ -180,7 +255,7 @@ impl DatapackProvider for CurseForgeProvider {
     ) -> Result<Vec<DatapackItem>> {
         let hits = api::search(
             &self.client,
-            self.key(),
+            self.exposed_key(),
             query,
             sort,
             ContentType::Datapack,
@@ -193,7 +268,7 @@ impl DatapackProvider for CurseForgeProvider {
 
     async fn get_datapack(&self, id: &str) -> Result<Option<DatapackItem>> {
         let m =
-            api::get_by_id_or_slug(&self.client, self.key(), id, mapping::CLASS_DATAPACKS).await?;
+            api::get_by_id_or_slug(&self.client, self.exposed_key(), id, mapping::CLASS_DATAPACKS).await?;
         Ok(m.map(mapping::datapack_from))
     }
 }
@@ -212,7 +287,7 @@ impl ResourcePackProvider for CurseForgeProvider {
     ) -> Result<Vec<ResourcePackItem>> {
         let hits = api::search(
             &self.client,
-            self.key(),
+            self.exposed_key(),
             query,
             sort,
             ContentType::ResourcePack,
@@ -226,7 +301,7 @@ impl ResourcePackProvider for CurseForgeProvider {
     async fn get_resourcepack(&self, id: &str) -> Result<Option<ResourcePackItem>> {
         let m = api::get_by_id_or_slug(
             &self.client,
-            self.key(),
+            self.exposed_key(),
             id,
             mapping::CLASS_RESOURCEPACKS,
         )
@@ -249,7 +324,7 @@ impl ShaderPackProvider for CurseForgeProvider {
     ) -> Result<Vec<ShaderPackItem>> {
         let hits = api::search(
             &self.client,
-            self.key(),
+            self.exposed_key(),
             query,
             sort,
             ContentType::ShaderPack,
@@ -262,7 +337,7 @@ impl ShaderPackProvider for CurseForgeProvider {
 
     async fn get_shaderpack(&self, id: &str) -> Result<Option<ShaderPackItem>> {
         let m =
-            api::get_by_id_or_slug(&self.client, self.key(), id, mapping::CLASS_SHADERS).await?;
+            api::get_by_id_or_slug(&self.client, self.exposed_key(), id, mapping::CLASS_SHADERS).await?;
         Ok(m.map(mapping::shaderpack_from))
     }
 }
@@ -281,7 +356,7 @@ impl WorldProvider for CurseForgeProvider {
     ) -> Result<Vec<WorldItem>> {
         let hits = api::search(
             &self.client,
-            self.key(),
+            self.exposed_key(),
             query,
             sort,
             ContentType::World,
@@ -294,7 +369,7 @@ impl WorldProvider for CurseForgeProvider {
 
     async fn get_world(&self, id: &str) -> Result<Option<WorldItem>> {
         let m =
-            api::get_by_id_or_slug(&self.client, self.key(), id, mapping::CLASS_WORLDS).await?;
+            api::get_by_id_or_slug(&self.client, self.exposed_key(), id, mapping::CLASS_WORLDS).await?;
         Ok(m.map(mapping::world_from))
     }
 }
