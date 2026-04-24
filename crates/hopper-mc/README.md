@@ -13,7 +13,7 @@ Search once, get the same struct back regardless of which platform served it.
 | Platform     | Mods | Modpacks | Datapacks | Resource Packs | Shaders | Worlds | Status |
 |--------------|:---:|:---:|:---:|:---:|:---:|:---:|---|
 | Modrinth     | ✅  | ✅  | ✅  | ✅  | ✅  | —   | **implemented** |
-| CurseForge   | 🚧  | 🚧  | 🚧  | 🚧  | 🚧  | 🚧  | skeleton |
+| CurseForge   | ✅  | ✅  | ✅  | ✅  | ✅  | ✅  | **implemented** (API key required) |
 | AT Launcher  | —   | 🚧  | —   | —   | —   | —   | skeleton |
 | TechnicPack  | —   | 🚧  | —   | —   | —   | —   | skeleton |
 | FTB          | —   | 🚧  | —   | —   | —   | —   | skeleton |
@@ -41,6 +41,7 @@ Swap `Platform::Modrinth` for `Platform::CurseForge` and the return type doesn't
 - **Fully async.** Built on `tokio` + `reqwest` with pooled connections per platform (`rustls`, gzip). One `reqwest::Client` per platform via `OnceLock`.
 - **Expansible.** Adding a platform is a new struct + a few trait impls + a match arm. Adding a content kind is a new trait + struct + dispatch fns. No sweeping API churn.
 - **Polite by default.** Every provider sends a descriptive `User-Agent`; use `Provider::with_user_agent("my-app/1.0")` to brand your own (Modrinth's ToS asks for this).
+- **Secret-aware credentials.** CurseForge keys are stored as `secrecy::SecretString` — zeroed on drop, redacted in `Debug`. The ready-made [`curseforge_with_keyring`](./examples/curseforge_with_keyring.rs) example shows a full OS-credential-store flow so your app never touches env vars or config files.
 
 ## Installation
 
@@ -147,17 +148,119 @@ async fn first_hit<P: ModProvider>(p: &P, q: &str) -> Result<Option<ModItem>, Co
 }
 ```
 
+## CurseForge API keys
+
+CurseForge has no anonymous mode — every request needs an `x-api-key` header. Keys are issued to developers at <https://console.curseforge.com/> and are intended to ship inside your application.
+
+`hopper-mc` treats the key as a credential, not a config value:
+
+- The provider stores it as [`secrecy::SecretString`], which **zeros the backing allocation on drop** and refuses to appear in `Debug` / `Display` output. A `println!("{:?}", provider)` prints `api_key: Some(SecretBox<str>([REDACTED]))`.
+- The plaintext is exposed for exactly one line of code — the moment each outbound `reqwest` request is built. No long-lived `&str` copy is kept anywhere.
+- **The library deliberately does not read `CURSEFORGE_API_KEY` from the environment.** Env vars are readable by any process running under the same user ID, so a compromised unrelated process could harvest the key without any prompt or escalation. If you want env-var behaviour in your own app, wire it yourself.
+
+There are two supported patterns for getting a `SecretString` into the provider. Pick based on who is running your app:
+
+- **OS credential store** — when each end-user supplies their own key (shared tool, admin utility, power-user setup). See below.
+- **Build-time embedded key** — when you are shipping a packaged app under *your own* CurseForge developer key and do not want users to deal with keys at all. See the [embedded-key section](#flow-2-build-time-embedded-key-for-packaged-apps) further down.
+
+### Flow 1: OS credential store (per-user keys)
+
+Store the key in Windows Credential Manager / macOS Keychain / Linux Secret Service so it is encrypted at rest and scoped to the logged-in user. On first run, prompt with a hidden terminal field and persist. On every subsequent run, fetch silently.
+
+```rust
+use hopper_mc::{CurseForgeProvider, ModProvider, Sort};
+use keyring::Entry;
+use secrecy::SecretString;
+
+let entry = Entry::new("hopper-mc", "curseforge-api-key")?;
+let key: SecretString = match entry.get_password() {
+    Ok(existing) => existing.into(),
+    Err(keyring::Error::NoEntry) => {
+        let entered = rpassword::prompt_password("CurseForge API key: ")?;
+        entry.set_password(entered.trim())?;
+        entered.into()
+    }
+    Err(e) => return Err(e.into()),
+};
+
+let cf = CurseForgeProvider::new_with_secret_key(Some(key));
+let mods = cf.find_mods(Some("sodium"), Sort::Relevance, 0, 5).await?;
+```
+
+The runnable version is in [`examples/curseforge_with_keyring.rs`](./examples/curseforge_with_keyring.rs); it includes a threat-model comment explaining what this pattern does and does not defend against.
+
+### Flow 2: build-time embedded key (for packaged apps)
+
+If you are shipping a packaged application under your own CurseForge developer key — a launcher, a companion app, a server tool — bake the key into the binary at CI-build time so end-users never see or handle it.
+
+Enable the `embedded-key` feature and set `CURSEFORGE_API_KEY` in the build environment. `build.rs` will XOR-obfuscate the key against a per-build pseudorandom mask and emit the bytes into a generated module; the [`curseforge_with_embedded_key`](./examples/curseforge_with_embedded_key.rs) example shows the runtime decoder.
+
+```sh
+CURSEFORGE_API_KEY=cf_live_xxxxx \
+    cargo build --release --features embedded-key \
+    --example curseforge_with_embedded_key
+```
+
+GitHub Actions snippet:
+
+```yaml
+# .github/workflows/release.yml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build release with embedded CurseForge key
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: |
+          cargo build --release --features embedded-key \
+            --example curseforge_with_embedded_key
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-binary
+          path: target/release/examples/curseforge_with_embedded_key*
+```
+
+GitHub Actions masks `${{ secrets.* }}` automatically, so the key never appears in build logs. `build.rs` reads the env var only during compilation.
+
+**What this defends against:** `strings <binary>` does not reveal the key, casual hex-editor inspection fails, and `Debug`/logging cannot leak the plaintext (`SecretString` handles that).
+
+**What this does NOT defend against:** a debugger breakpoint on `SecretString::expose_secret`, or patient reverse-engineering of the binary. This is **obfuscation, not encryption** — a determined attacker with the binary will recover the key in a motivated afternoon. The practical model: CurseForge developer keys are issued expecting this kind of embedding; if yours leaks, rotate it in the console and ship a new build. For secrets that must *not* leak under any circumstances, proxy them through a server you control.
+
+**Pitfall if you copy this pattern into your own code:** the XOR-decode must use `core::ptr::read_volatile` for the reads. Naïve iterator code like `OBF.iter().zip(MASK).map(|(b,m)| b^m)` compiles into a compile-time constant-fold in release mode, which bakes the plaintext into `.rdata` as a second static array — defeating the whole exercise. `strings` will find the key immediately. The example's `decode_embedded_key` function documents this in detail.
+
+### Other constructors
+
+If you already hold a `SecretString` (perhaps loaded from your app's own secret store):
+
+```rust
+CurseForgeProvider::new_with_secret_key(Some(key))
+CurseForgeProvider::with_user_agent_and_secret_key("my-app/1.0", Some(key))
+CurseForgeProvider::with_client_and_secret_key(my_client, Some(key))
+```
+
+If you only have a plain `String` (e.g. from a launcher config you control), `String` variants exist and wrap the value into a `SecretString` before storage. The provider's internal copy is zero-on-drop; the caller's `String` is not managed by this crate.
+
+```rust
+CurseForgeProvider::new_with_key(Some("sk_...".to_string()))
+```
+
 ## Examples
 
 The [`examples/`](./examples) directory is runnable:
 
 ```sh
-cargo run --example find_mods                      # browse top mods
-cargo run --example find_mods -- "fabric api"      # search by query
-cargo run --example get_mod                        # defaults to fabric-api
-cargo run --example get_mod -- sodium              # by slug
-cargo run --example browse_content_types           # every content kind
+cargo run --example find_mods                      # browse top mods (Modrinth)
+cargo run --example find_mods -- "fabric api"      # search by query (Modrinth)
+cargo run --example get_mod                        # defaults to fabric-api (Modrinth)
+cargo run --example get_mod -- sodium              # by slug (Modrinth)
+cargo run --example browse_content_types           # every content kind (Modrinth)
 cargo run --example custom_provider_trait          # generic over provider
+cargo run --example curseforge_with_keyring        # CurseForge + OS credential store
+cargo run --features embedded-key \
+    --example curseforge_with_embedded_key          # CurseForge + build-time embedded key
 ```
 
 ## Extending: add a new hopper input
@@ -172,7 +275,7 @@ cargo run --example custom_provider_trait          # generic over provider
 
 3. Re-export it from `src/platforms/mod.rs` and add match arms to the relevant `find_*`/`get_*` functions in `src/lib.rs`. Platforms that don't serve a given kind hit the `UnsupportedContentType` branch automatically.
 
-Skeleton platforms in this crate (CurseForge, AT Launcher, TechnicPack, FTB) are concrete working examples — browse their source for the pattern.
+Modrinth and CurseForge are concrete, full-featured references for implementing a provider that serves every content kind. AT Launcher, TechnicPack, and FTB are live skeletons showing the packs-only pattern — signatures are final, fleshing them out is body-only.
 
 ## Design notes
 
