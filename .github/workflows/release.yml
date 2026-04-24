@@ -158,6 +158,33 @@ jobs:
           workspaces: ". -> target"
           key: ${{ matrix.platform }}-release
 
+      # ---- Git auth for private-repo cargo dependencies ------------------
+      # `lodestone-core` depends on `minecraft_modloaders` from a private
+      # GitHub repo. Runners have no GitHub credentials by default, so
+      # cargo's HTTPS clone fails with `failed to authenticate when
+      # downloading repository`. Two fixes applied together:
+      #
+      # 1. `url.insteadOf` rewrites every `https://github.com/` URL cargo
+      #    asks for into `https://x-access-token:<PAT>@github.com/`, which
+      #    the PAT authenticates against.
+      # 2. `CARGO_NET_GIT_FETCH_WITH_CLI=true` makes cargo delegate to the
+      #    system `git` CLI instead of its bundled libgit2, which has
+      #    known auth-path quirks that bypass the `insteadOf` rewrite.
+      #
+      # `shell: bash` normalizes syntax for the Windows runner (Git Bash).
+      # The PAT is never written to a file on disk; `git config` stores
+      # it in the user's `.gitconfig` on the ephemeral runner, which is
+      # discarded at job end.
+      - name: Authenticate git for private-repo cargo deps
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          git config --global \
+            url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf \
+            "https://github.com/"
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
+
       # ---- Frontend install ----------------------------------------------
       # tauri-action can install frontend deps itself, but running it
       # explicitly here means the cache above keys on pnpm-lock.yaml
