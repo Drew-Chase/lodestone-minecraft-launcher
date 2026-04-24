@@ -49,36 +49,38 @@ export default {
         },
     },
     darkMode: "class",
-    plugins: [heroui({
-        themes: {
-            light: {
-                colors: {
-                    primary: {
-                        DEFAULT: "#22ff84",
-                        foreground: "#062814",
-                    },
-                    secondary: "#2b2b2b",
-                    background: "#e3e3ea",
-                }
-            },
-            dark: {
-                colors: {
-                    primary: {
-                        DEFAULT: "#22ff84",
-                        foreground: "#062814",
-                    },
-                    secondary: "#eaeaea",
-                    background: "#08090a",
-                    content1: "#0e1012",
-                    content2: "#15181c",
-                    content3: "#1d2127",
-                    content4: "#272c34",
-                    success: {
-                        DEFAULT: "#22ff84",
-                        foreground: "#062814",
-                    },
-                }
-            },
-        }
-    })]
+    plugins: [
+        heroui({
+            themes: {
+                light: {
+                    colors: {
+                        primary: {
+                            DEFAULT: "#22ff84",
+                            foreground: "#062814",
+                        },
+                        secondary: "#2b2b2b",
+                        background: "#e3e3ea",
+                    }
+                },
+                dark: {
+                    colors: {
+                        primary: {
+                            DEFAULT: "#22ff84",
+                            foreground: "#062814",
+                        },
+                        secondary: "#eaeaea",
+                        background: "#08090a",
+                        content1: "#0e1012",
+                        content2: "#15181c",
+                        content3: "#1d2127",
+                        content4: "#272c34",
+                        success: {
+                            DEFAULT: "#22ff84",
+                            foreground: "#062814",
+                        },
+                    }
+                },
+            }
+        })
+    ]
 }
