@@ -24,8 +24,8 @@ const make = (name: string) => {
 };
 
 export const I = {
-    play: make("lucide:play"),
-    pause: make("lucide:pause"),
+    play: make("mdi:play"),
+    pause: make("mdi:pause"),
     home: make("lucide:home"),
     compass: make("lucide:compass"),
     box: make("lucide:package"),

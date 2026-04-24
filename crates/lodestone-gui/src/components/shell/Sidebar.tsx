@@ -1,6 +1,6 @@
 import {useState, type ReactNode} from "react";
 import {useLocation, useNavigate} from "react-router-dom";
-import {Popover, PopoverContent, PopoverTrigger} from "@heroui/react";
+import {Popover, PopoverContent, PopoverTrigger, Tooltip} from "@heroui/react";
 import {I} from "./icons";
 
 type NavId = "home" | "discover" | "worlds" | "servers" | "friends";
@@ -62,33 +62,35 @@ export default function Sidebar() {
                 const IconC = I[it.icon];
                 const isActive = active === it.id;
                 return (
-                    <div
-                        key={it.id}
-                        className={`nav-item${isActive ? " active" : ""}`}
-                        onClick={() => navigate(it.path)}
-                        title={it.label}
-                    >
-                        <IconC size={20}/>
-                    </div>
+                    <Tooltip key={it.id} content={it.label} placement="right" delay={250} offset={14}>
+                        <div
+                            className={`nav-item${isActive ? " active" : ""}`}
+                            onClick={() => navigate(it.path)}
+                        >
+                            <IconC size={20}/>
+                        </div>
+                    </Tooltip>
                 );
             })}
 
             <div className="flex-1"/>
 
-            <div
-                className={`nav-item${active === "downloads" ? " active" : ""}`}
-                onClick={() => navigate("/downloads")}
-                title="Downloads"
-            >
-                <I.download size={20}/>
-            </div>
-            <div
-                className={`nav-item${active === "settings" ? " active" : ""}`}
-                onClick={() => navigate("/settings")}
-                title="Settings"
-            >
-                <I.settings size={20}/>
-            </div>
+            <Tooltip content="Downloads" placement="right" delay={250} offset={14}>
+                <div
+                    className={`nav-item${active === "downloads" ? " active" : ""}`}
+                    onClick={() => navigate("/downloads")}
+                >
+                    <I.download size={20}/>
+                </div>
+            </Tooltip>
+            <Tooltip content="Settings" placement="right" delay={250} offset={14}>
+                <div
+                    className={`nav-item${active === "settings" ? " active" : ""}`}
+                    onClick={() => navigate("/settings")}
+                >
+                    <I.settings size={20}/>
+                </div>
+            </Tooltip>
 
             {/* User avatar with popover menu */}
             <Popover
@@ -160,10 +162,10 @@ function UserMenu({
                     EN
                 </div>
                 <div className="min-w-0 flex-1 text-left">
-                    <div className="text-[13px] font-bold text-ink-1 tracking-tight">
+                    <div className="text-[0.8125rem] font-bold text-ink-1 tracking-tight">
                         Not signed in
                     </div>
-                    <div className="font-mono text-[10px] text-ink-3 mt-0.5">OFFLINE MODE</div>
+                    <div className="font-mono text-[0.625rem] text-ink-3 mt-0.5">OFFLINE MODE</div>
                 </div>
             </div>
 
@@ -204,7 +206,7 @@ function MenuItem({
             type="button"
             onClick={onClick}
             className={[
-                "flex items-center gap-2.5 w-full px-2.5 py-2 bg-transparent border-none rounded-lg text-[13px] font-medium cursor-pointer text-left transition-colors font-sans",
+                "flex items-center gap-2.5 w-full px-2.5 py-2 bg-transparent border-none rounded-lg text-[0.8125rem] font-medium cursor-pointer text-left transition-colors font-sans",
                 danger
                     ? "text-[#ff6b6b] hover:bg-[rgba(255,107,107,0.1)]"
                     : "text-ink-1 hover:bg-[rgba(255,255,255,0.04)]",
