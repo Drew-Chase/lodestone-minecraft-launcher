@@ -1,12 +1,14 @@
 import {useState} from "react";
 import {Navigate, useNavigate, useParams} from "react-router-dom";
-import {Card, Tab, Tabs} from "@heroui/react";
+import {Tab, Tabs} from "@heroui/react";
 import InstanceHero from "../components/instance/InstanceHero";
 import OverviewTab from "../components/instance/OverviewTab";
 import ModsTab from "../components/instance/ModsTab";
 import ScreenshotsTab from "../components/instance/ScreenshotsTab";
 import LogsTab from "../components/instance/LogsTab";
-import {findInstanceBySlug, cardSurfaceStyle} from "../components/library/instances";
+import WorldsTab from "../components/instance/WorldsTab";
+import SettingsTab from "../components/instance/SettingsTab";
+import {findInstanceBySlug} from "../components/library/instances";
 
 type DetailTab = "overview" | "mods" | "worlds" | "screenshots" | "logs" | "settings";
 
@@ -63,23 +65,10 @@ export default function InstanceDetail() {
             <div className="flex-1 overflow-y-auto px-7 pt-5 pb-10">
                 {tab === "overview" && <OverviewTab instance={instance}/>}
                 {tab === "mods" && <ModsTab/>}
+                {tab === "worlds" && <WorldsTab instance={instance}/>}
                 {tab === "screenshots" && <ScreenshotsTab/>}
                 {tab === "logs" && <LogsTab/>}
-                {(tab === "worlds" || tab === "settings") && (
-                    <Card
-                        className="p-10 text-center text-ink-3 border border-line"
-                        style={cardSurfaceStyle}
-                    >
-                        <div className="text-sm mb-2">
-                            {tab === "worlds"
-                                ? "No saved worlds yet"
-                                : "Instance-specific overrides"}
-                        </div>
-                        <div className="text-xs">
-                            Tab content placeholder — not the focus of this review.
-                        </div>
-                    </Card>
-                )}
+                {tab === "settings" && <SettingsTab instance={instance}/>}
             </div>
         </div>
     );

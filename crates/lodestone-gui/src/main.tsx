@@ -9,6 +9,8 @@ import Home from "./pages/Home";
 import InstanceDetail from "./pages/InstanceDetail";
 import Login from "./pages/Login";
 import ComingSoon from "./pages/ComingSoon";
+import Worlds from "./pages/Worlds";
+import Settings from "./pages/Settings";
 
 // Ensure dark mode class is present so Tailwind/HeroUI dark theme applies.
 document.documentElement.classList.add("dark");
@@ -49,11 +51,11 @@ export function MainContentRenderer() {
                     <Route path="/library" element={<Home/>}/>
                     <Route path="/library/:slug" element={<InstanceDetail/>}/>
                     <Route path="/discover" element={<ComingSoon name="Discover"/>}/>
-                    <Route path="/worlds" element={<ComingSoon name="Worlds"/>}/>
+                    <Route path="/worlds" element={<Worlds/>}/>
                     <Route path="/servers" element={<ComingSoon name="Servers"/>}/>
                     <Route path="/friends" element={<ComingSoon name="Friends"/>}/>
                     <Route path="/downloads" element={<ComingSoon name="Downloads"/>}/>
-                    <Route path="/settings" element={<ComingSoon name="Settings"/>}/>
+                    <Route path="/settings" element={<Settings/>}/>
                 </Route>
             </Routes>
         </HeroUIProvider>
