@@ -17,3 +17,6 @@ _build_docker:
     docker build -t lodestone-builder -f Dockerfile .
     docker run --rm -v "${PWD}:/workspace" -v "${PWD}/target/docker:/target" lodestone-builder
     Copy-Item -Force target/docker/release/lodestone target/release/lodestone
+
+publish version="":
+    uv -g commit-push-tag {{version}}

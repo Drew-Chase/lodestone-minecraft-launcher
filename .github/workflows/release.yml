@@ -1,0 +1,251 @@
+# ---------------------------------------------------------------------------
+# Release pipeline for the Lodestone Minecraft Launcher.
+#
+# Triggered when a tag matching `v*` is pushed — which happens automatically
+# when you run `just publish <version>`. The `commit-push-tag` helper wired
+# into the justfile creates and pushes a `v<version>` tag.
+#
+# Flow:
+#
+#   1. create-release  — opens a draft GitHub release with an empty body,
+#                         publishes a release_id output the matrix consumes.
+#   2. build-tauri     — matrix build across Windows / macOS (universal) /
+#                         Linux. Each runner invokes `tauri-apps/tauri-action`,
+#                         which builds the frontend, runs `cargo tauri build`,
+#                         and uploads the bundled installers (NSIS, MSI, DMG,
+#                         AppImage, .deb, .rpm) to the draft release.
+#                         Extra steps upload the raw Windows .exe and Linux
+#                         binary, since tauri-action only uploads installers.
+#   3. publish-release — flips the draft to public. Runs only if every
+#                         matrix build succeeded; a failed build leaves the
+#                         draft in place so you can investigate.
+#
+# CurseForge API key:
+#   The `CURSEFORGE_API_KEY` repository secret is plumbed into every
+#   matrix build's environment. `hopper-mc`'s build.rs picks it up
+#   automatically when the crate is added as a dependency with the
+#   `embedded-key` feature enabled (see hopper-mc's README). The
+#   Tauri app does not currently depend on hopper-mc, so right now the
+#   env var is set but unused — no action is needed when you later
+#   wire the dep.
+#
+# Requirements:
+#   - Repository secret `CURSEFORGE_API_KEY` set under Settings → Secrets
+#     and variables → Actions (already done per the user's screenshot).
+#   - Repository secret `GH_TOKEN` holding a Personal Access Token with
+#     `contents: write` on this repo. GitHub reserves the name
+#     `GITHUB_TOKEN` for its auto-provisioned token and refuses it as a
+#     user-defined secret, so a differently-named PAT is required.
+#   - Tag format `v<semver>` (e.g. v0.1.0). Adjust the `tags` filter
+#     below if your tag scheme differs.
+# ---------------------------------------------------------------------------
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Needed so GITHUB_TOKEN can create releases and upload assets.
+permissions:
+  contents: write
+
+jobs:
+  # -------------------------------------------------------------------------
+  # 1. Create a draft release once so every matrix runner can attach to the
+  #    same release_id. Doing this in a dedicated job prevents race
+  #    conditions that would otherwise arise from three parallel matrix
+  #    runners each trying to create the release themselves.
+  # -------------------------------------------------------------------------
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create draft release
+        id: create
+        uses: actions/github-script@v7
+        with:
+          # Custom PAT stored as GH_TOKEN because the auto-provisioned
+          # GITHUB_TOKEN name is reserved and cannot be used for a
+          # user-defined secret.
+          github-token: ${{ secrets.GH_TOKEN }}
+          script: |
+            const tag = context.ref.replace("refs/tags/", "");
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: tag,
+              body: "",
+              draft: true,
+              prerelease: false,
+            });
+            return data.id;
+          result-encoding: string
+
+  # -------------------------------------------------------------------------
+  # 2. Platform matrix. Each runner builds the Tauri bundle for its OS and
+  #    attaches the artifacts to the draft release.
+  #
+  #    macOS uses `--target universal-apple-darwin` so one DMG works on
+  #    both Apple Silicon and Intel Macs.
+  # -------------------------------------------------------------------------
+  build-tauri:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: "windows-latest"
+            rust-targets: ""
+            args: ""
+          - platform: "macos-latest"
+            rust-targets: "aarch64-apple-darwin,x86_64-apple-darwin"
+            args: "--target universal-apple-darwin"
+          - platform: "ubuntu-22.04"
+            rust-targets: ""
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---- System deps (Linux only) --------------------------------------
+      # Tauri 2 needs webkit2gtk-4.1 and the AppIndicator / RSvg stacks.
+      # `patchelf` is required by tauri-bundler for AppImage output. We pin
+      # to Ubuntu 22.04 because AppImages built on 22.04's glibc run on
+      # 22.04+ systems; building on 24.04 would break older distros.
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libxdo-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            patchelf
+
+      # ---- Frontend toolchain --------------------------------------------
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+          cache-dependency-path: crates/lodestone-gui/pnpm-lock.yaml
+
+      # ---- Rust toolchain ------------------------------------------------
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      # Cache target/ and ~/.cargo to make repeat builds ~10x faster.
+      # Key is scoped per-platform so caches don't cross-contaminate.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          key: ${{ matrix.platform }}-release
+
+      # ---- Frontend install ----------------------------------------------
+      # tauri-action can install frontend deps itself, but running it
+      # explicitly here means the cache above keys on pnpm-lock.yaml
+      # correctly and the action's step just validates rather than
+      # re-downloads.
+      - name: Install frontend dependencies
+        working-directory: crates/lodestone-gui
+        run: pnpm install --frozen-lockfile
+
+      # ---- Tauri build + upload installers -------------------------------
+      # `tauri-action` does four things:
+      #   1. Runs `pnpm build` (beforeBuildCommand from tauri.conf.json).
+      #   2. Runs `cargo tauri build` with whatever is in `args`.
+      #   3. Collects every artifact under target/release/bundle/*.
+      #   4. Uploads them to the release identified by `releaseId`.
+      #
+      # CURSEFORGE_API_KEY is made available to cargo and therefore to
+      # hopper-mc's build.rs. The Tauri app does not currently depend on
+      # hopper-mc; once it does (with `features = ["embedded-key"]`), the
+      # key is obfuscated into the binary automatically — no workflow
+      # changes needed.
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          # tauri-action reads GITHUB_TOKEN from the env to attach
+          # artifacts to the release. We feed it our custom PAT.
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          projectPath: crates/lodestone-gui
+          args: ${{ matrix.args }}
+
+      # ---- Raw Windows binary --------------------------------------------
+      # tauri-action uploads the NSIS setup.exe and MSI installer but not
+      # the raw executable that lives at target/release/lodestone_gui.exe
+      # (the Cargo crate name is `lodestone_gui`; productName in
+      # tauri.conf.json is `lodestone-launcher` — only the bundler uses
+      # that for the installer filename). Ship the raw exe too for users
+      # who want a portable build without an installer.
+      - name: Upload raw Windows exe
+        if: matrix.platform == 'windows-latest'
+        env:
+          # The `gh` CLI reads the GH_TOKEN env var by convention; our
+          # PAT secret happens to share that name.
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release upload "$TAG" \
+            "target/release/lodestone_gui.exe" \
+            --clobber
+
+      # ---- Raw Linux binary ----------------------------------------------
+      # The AppImage is a self-contained executable blob produced by the
+      # bundler; the raw ELF binary at target/release/lodestone_gui is
+      # the unbundled equivalent for users who want to run it directly or
+      # integrate it into a custom package.
+      - name: Upload raw Linux binary
+        if: matrix.platform == 'ubuntu-22.04'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release upload "$TAG" \
+            "target/release/lodestone_gui" \
+            --clobber
+
+  # -------------------------------------------------------------------------
+  # 3. Publish the release. This only runs if every matrix build
+  #    succeeded — a failure anywhere leaves the draft untouched so the
+  #    tag is not prematurely associated with a broken release.
+  # -------------------------------------------------------------------------
+  publish-release:
+    needs: [create-release, build-tauri]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Flip release to public
+        uses: actions/github-script@v7
+        env:
+          release_id: ${{ needs.create-release.outputs.release_id }}
+        with:
+          github-token: ${{ secrets.GH_TOKEN }}
+          script: |
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: Number(process.env.release_id),
+              draft: false,
+              prerelease: false,
+            });
