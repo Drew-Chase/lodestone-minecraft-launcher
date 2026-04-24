@@ -220,11 +220,9 @@ jobs:
 
       # ---- Raw Windows binary --------------------------------------------
       # tauri-action uploads the NSIS setup.exe and MSI installer but not
-      # the raw executable that lives at target/release/lodestone_gui.exe
-      # (the Cargo crate name is `lodestone_gui`; productName in
-      # tauri.conf.json is `lodestone-launcher` — only the bundler uses
-      # that for the installer filename). Ship the raw exe too for users
-      # who want a portable build without an installer.
+      # the raw executable that lives at target/release/lodestone-launcher.exe.
+      # Ship the raw exe too for users who want a portable build without
+      # an installer.
       - name: Upload raw Windows exe
         if: matrix.platform == 'windows-latest'
         env:
@@ -235,14 +233,14 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           gh release upload "$TAG" \
-            "target/release/lodestone_gui.exe" \
+            "target/release/lodestone-launcher.exe" \
             --clobber
 
       # ---- Raw Linux binary ----------------------------------------------
       # The AppImage is a self-contained executable blob produced by the
-      # bundler; the raw ELF binary at target/release/lodestone_gui is
-      # the unbundled equivalent for users who want to run it directly or
-      # integrate it into a custom package.
+      # bundler; the raw ELF binary at target/release/lodestone-launcher
+      # is the unbundled equivalent for users who want to run it directly
+      # or integrate it into a custom package.
       - name: Upload raw Linux binary
         if: matrix.platform == 'ubuntu-22.04'
         env:
@@ -250,7 +248,7 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           gh release upload "$TAG" \
-            "target/release/lodestone_gui" \
+            "target/release/lodestone-launcher" \
             --clobber
 
   # -------------------------------------------------------------------------

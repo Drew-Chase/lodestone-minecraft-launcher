@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    lodestone_gui_lib::run()
+    lodestone_launcher_lib::run()
 }
