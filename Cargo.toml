@@ -4,4 +4,5 @@ members = [
     "crates/lodestone-core",
     "crates/lodestone-cli",
     "crates/lodestone-gui/src-tauri",
+    "crates/hopper-mc",
 ]
