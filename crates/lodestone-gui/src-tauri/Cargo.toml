@@ -22,3 +22,6 @@ tauri = { version = "2.10.3", features = [] }
 tauri-plugin-shell = "2.3.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+hopper-mc = { path = "../../hopper-mc" }
+tokio = { version = "1.48", features = ["rt-multi-thread", "macros"] }
+secrecy = "0.10"

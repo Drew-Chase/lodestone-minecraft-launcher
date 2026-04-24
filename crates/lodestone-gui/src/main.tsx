@@ -11,6 +11,9 @@ import Login from "./pages/Login";
 import ComingSoon from "./pages/ComingSoon";
 import Worlds from "./pages/Worlds";
 import Settings from "./pages/Settings";
+import Discover from "./pages/Discover";
+import ContentDetail from "./pages/ContentDetail";
+import ErrorBoundary from "./components/shell/ErrorBoundary";
 
 // Ensure dark mode class is present so Tailwind/HeroUI dark theme applies.
 document.documentElement.classList.add("dark");
@@ -48,14 +51,15 @@ export function MainContentRenderer() {
             <Routes>
                 <Route path="/" element={<Login/>}/>
                 <Route element={<AppShell/>}>
-                    <Route path="/library" element={<Home/>}/>
-                    <Route path="/library/:slug" element={<InstanceDetail/>}/>
-                    <Route path="/discover" element={<ComingSoon name="Discover"/>}/>
-                    <Route path="/worlds" element={<Worlds/>}/>
-                    <Route path="/servers" element={<ComingSoon name="Servers"/>}/>
-                    <Route path="/friends" element={<ComingSoon name="Friends"/>}/>
-                    <Route path="/downloads" element={<ComingSoon name="Downloads"/>}/>
-                    <Route path="/settings" element={<Settings/>}/>
+                    <Route path="/library" element={<ErrorBoundary><Home/></ErrorBoundary>}/>
+                    <Route path="/library/:slug" element={<ErrorBoundary><InstanceDetail/></ErrorBoundary>}/>
+                    <Route path="/discover" element={<ErrorBoundary><Discover/></ErrorBoundary>}/>
+                    <Route path="/discover/:platform/:id" element={<ErrorBoundary><ContentDetail/></ErrorBoundary>}/>
+                    <Route path="/worlds" element={<ErrorBoundary><Worlds/></ErrorBoundary>}/>
+                    <Route path="/servers" element={<ErrorBoundary><ComingSoon name="Servers"/></ErrorBoundary>}/>
+                    <Route path="/friends" element={<ErrorBoundary><ComingSoon name="Friends"/></ErrorBoundary>}/>
+                    <Route path="/downloads" element={<ErrorBoundary><ComingSoon name="Downloads"/></ErrorBoundary>}/>
+                    <Route path="/settings" element={<ErrorBoundary><Settings/></ErrorBoundary>}/>
                 </Route>
             </Routes>
         </HeroUIProvider>
