@@ -63,9 +63,9 @@ export default function WorldsTab() {
     });
 
     return (
-        <>
-            {/* Toolbar */}
-            <div className="flex items-center gap-2.5 mb-3.5">
+        <div className="flex-1 flex flex-col min-h-0 px-7 pt-5 pb-5">
+            {/* Toolbar — fixed, never scrolls */}
+            <div className="flex-shrink-0 flex items-center gap-2.5 mb-3.5">
                 <div className="relative flex-1 max-w-[280px]">
           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3">
             <I.search size={12}/>
@@ -117,13 +117,15 @@ export default function WorldsTab() {
                 </Button>
             </div>
 
-            {/* 2-column card grid */}
-            <div className="grid grid-cols-2 gap-3">
-                {visible.map((w, i) => (
-                    <WorldCard key={i} world={w} seedIndex={i}/>
-                ))}
+            {/* 2-column card grid — scrollable region below the fixed toolbar */}
+            <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1 pb-1">
+                <div className="grid grid-cols-2 gap-3">
+                    {visible.map((w, i) => (
+                        <WorldCard key={i} world={w} seedIndex={i}/>
+                    ))}
+                </div>
             </div>
-        </>
+        </div>
     );
 }
 

@@ -38,9 +38,10 @@ export default function SettingsTab() {
     const [active, setActive] = useState<NavKey>("java");
 
     return (
-        <div className="grid gap-7" style={{gridTemplateColumns: "180px 1fr"}}>
-            {/* Sidebar */}
-            <div className="sticky top-0 self-start">
+        <div className="flex-1 overflow-y-auto px-7 pt-5 pb-10">
+            <div className="grid gap-7" style={{gridTemplateColumns: "180px 1fr"}}>
+                {/* Sidebar */}
+                <div className="sticky top-0 self-start">
                 {navItems.map((item) => {
                     const Icon = item.icon;
                     const isActive = active === item.k;
@@ -237,7 +238,8 @@ export default function SettingsTab() {
                     </Row>
                 </Section>
 
-                <DangerZone/>
+                    <DangerZone/>
+                </div>
             </div>
         </div>
     );

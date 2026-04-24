@@ -25,13 +25,15 @@ const levelColor: Record<LogLevel, string> = {
 };
 
 // Terminal-style log viewer: file header with LIVE chip + Export button, then a
-// stream of timestamped log lines, capped by a blinking-caret prompt.
+// stream of timestamped log lines, capped by a blinking-caret prompt. Owns its
+// own scroll so log overflow is independently scrollable inside the card.
 export default function LogsTab() {
     return (
-        <Card
-            className="p-4 border border-line font-mono text-[0.71875rem] leading-[1.7]"
-            style={cardSurfaceStyle}
-        >
+        <div className="flex-1 overflow-y-auto px-7 pt-5 pb-10">
+            <Card
+                className="p-4 border border-line font-mono text-[0.71875rem] leading-[1.7]"
+                style={cardSurfaceStyle}
+            >
             {/* File header */}
             <div className="flex items-center gap-2.5 mb-2.5 pb-2.5 border-b border-line">
                 <I.terminal size={14} className="text-mc-green"/>
@@ -68,6 +70,7 @@ export default function LogsTab() {
                 <span className="text-ink-1">Awaiting player input</span>
                 <span className="caret"/>
             </div>
-        </Card>
+            </Card>
+        </div>
     );
 }

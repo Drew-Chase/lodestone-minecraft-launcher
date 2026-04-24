@@ -1,6 +1,6 @@
-import {useState} from "react";
 import {Tab, Tabs} from "@heroui/react";
 import {I} from "../shell/icons";
+import {usePersistedState} from "../../hooks/usePersistedState";
 import InstanceGrid from "./InstanceGrid";
 import InstanceCompact from "./InstanceCompact";
 import InstanceTable from "./InstanceTable";
@@ -14,11 +14,18 @@ type Props = {
 };
 
 // "Your Instances" section — section header, filter tabs, view-mode toggle,
-// and the currently-selected view (grid/compact/table).
+// and the currently-selected view (grid/compact/table). Both selections persist
+// across launches via localStorage.
 export default function InstanceList({instances}: Props)
 {
-    const [viewMode, setViewMode] = useState<ViewMode>("grid");
-    const [activeTab, setActiveTab] = useState<FilterTab>("Recent");
+    const [viewMode, setViewMode] = usePersistedState<ViewMode>(
+        "library.viewMode",
+        "grid",
+    );
+    const [activeTab, setActiveTab] = usePersistedState<FilterTab>(
+        "library.filterTab",
+        "Recent",
+    );
 
     return (
         <>

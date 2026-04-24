@@ -1,4 +1,3 @@
-import {useState} from "react";
 import {Navigate, useNavigate, useParams} from "react-router-dom";
 import {Tab, Tabs} from "@heroui/react";
 import InstanceHero from "../components/instance/InstanceHero";
@@ -9,6 +8,7 @@ import LogsTab from "../components/instance/LogsTab";
 import WorldsTab from "../components/instance/WorldsTab";
 import SettingsTab from "../components/instance/SettingsTab";
 import {findInstanceBySlug} from "../components/library/instances";
+import {usePersistedState} from "../hooks/usePersistedState";
 
 type DetailTab = "overview" | "mods" | "worlds" | "screenshots" | "logs" | "settings";
 
@@ -25,10 +25,19 @@ const tabKeys: DetailTab[] = [
 // Scene + title + actions, underlined tabs below, and the active tab's content
 // in the scroll area. Redirects to /library if the slug doesn't resolve to a
 // known instance (e.g. typo in the URL).
+//
+// The currently-selected tab persists per-instance via usePersistedState keyed
+// on the slug — switching between instances restores each one's last tab.
+// Tabs that want a sticky toolbar (Mods, Worlds) take over the vertical space
+// with their own flex layout; the content container is just `flex-1 min-h-0`
+// with no overflow, so each tab controls scrolling internally.
 export default function InstanceDetail() {
     const {slug} = useParams<{slug: string}>();
     const navigate = useNavigate();
-    const [tab, setTab] = useState<DetailTab>("overview");
+    const [tab, setTab] = usePersistedState<DetailTab>(
+        `instanceDetail.tab.${slug ?? ""}`,
+        "overview",
+    );
 
     const instance = slug ? findInstanceBySlug(slug) : undefined;
     if (!instance) {
@@ -61,8 +70,9 @@ export default function InstanceDetail() {
                 </Tabs>
             </div>
 
-            {/* Tab body */}
-            <div className="flex-1 overflow-y-auto px-7 pt-5 pb-10">
+            {/* Tab body — each tab component owns its own scroll so Mods / Worlds can
+                pin their toolbar while the list scrolls. */}
+            <div className="flex-1 min-h-0 flex flex-col">
                 {tab === "overview" && <OverviewTab instance={instance}/>}
                 {tab === "mods" && <ModsTab/>}
                 {tab === "worlds" && <WorldsTab/>}

@@ -1,4 +1,4 @@
-import {Button, Card, Input} from "@heroui/react";
+import {Button, Input} from "@heroui/react";
 import Chip from "../Chip";
 import {Switch} from "../Switch";
 import {I} from "../shell/icons";
@@ -54,13 +54,15 @@ const iconTintByColor: Record<ChipColor, {bg: string; border: string; text: stri
     },
 };
 
-// Mods tab — filter row + list card. Each mod shows a category-tinted icon
-// tile, name with category chip, author/version mono line, toggle, and overflow.
+// Mods tab — filter row pinned at top + scrollable list card beneath it. Each
+// mod shows a category-tinted icon tile, name with category chip, author/version
+// mono line, toggle, and overflow. The outer flex-col wrapper lets the header
+// stay put while only the card below scrolls.
 export default function ModsTab() {
     return (
-        <div>
-            {/* Filter row */}
-            <div className="flex gap-2.5 mb-3.5">
+        <div className="flex-1 flex flex-col min-h-0 px-7 pt-5 pb-5">
+            {/* Filter row — fixed, never scrolls */}
+            <div className="flex-shrink-0 flex gap-2.5 mb-3.5">
                 <Input
                     placeholder="Filter mods…"
                     size="sm"
@@ -87,9 +89,10 @@ export default function ModsTab() {
                 </Button>
             </div>
 
-            {/* Mods list */}
-            <Card
-                className="p-0 overflow-hidden border border-line"
+            {/* Mods list — scrollable region. Plain div rather than HeroUI Card
+                so flex-1 + overflow-y-auto aren't fighting Card's own flex layout. */}
+            <div
+                className="flex-1 min-h-0 overflow-y-auto rounded-md border border-line"
                 style={cardSurfaceStyle}
             >
                 {mods.map((m, i) => {
@@ -136,7 +139,7 @@ export default function ModsTab() {
                         </div>
                     );
                 })}
-            </Card>
+            </div>
         </div>
     );
 }
