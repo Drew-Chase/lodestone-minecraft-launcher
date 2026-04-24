@@ -1,0 +1,95 @@
+[package]
+name = "minecraft_modloaders"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde_json = { version = "1.0.148" }
+serde = { version = "1.0.228", features = ["derive"] }
+reqwest = { version = "0.13.1", features = ["json"] }
+anyhow = { version = "1.0.100" }
+thiserror = { version = "2.0.17" }
+semver = { version = "1.0.27" }
+tokio = { version = "1.39.0", features = ["fs", "process", "io-util"] }
+async-trait = "0.1"
+zip = { version = ">=2.3.0" }
+toml = { version = "0.9.10+spec-1.1.0" }
+chrono = { version = "0.4.42", features = ["serde"] }
+piston-mc = { version = "0.1.4-beta", features = [] }
+dunce = "1.0"
+
+
+[dev-dependencies]
+tokio = { version = "1.39.0", features = ["macros", "rt-multi-thread", "time"] }
+piston-mc = { version = "0.1.4-beta", features = ["java", "downloads", "assets", "log"] }
+tempfile = "3"
+crossterm = { version = "0.29.0" }
+simple_download_utility = "0.1.0"
+
+[[example]]
+name = "fabric_fetch_versions"
+path = "examples/fabric/fabric_fetch_versions.rs"
+
+[[example]]
+name = "fabric_download_server_jar"
+path = "examples/fabric/fabric_download_server_jar.rs"
+
+[[example]]
+name = "fabric_install_client"
+path = "examples/fabric/fabric_install_client.rs"
+
+[[example]]
+name = "fabric_install_server"
+path = "examples/fabric/fabric_install_server.rs"
+
+[[example]]
+name = "fabric_specific_version"
+path = "examples/fabric/fabric_specific_version.rs"
+
+[[example]]
+name = "fabric_read_mod_json"
+path = "examples/fabric/fabric_read_mod_json.rs"
+
+[[example]]
+name = "forge_read_mods_toml"
+path = "examples/forge/forge_read_mods_toml.rs"
+
+[[example]]
+name = "forge_fetch_versions"
+path = "examples/forge/forge_fetch_versions.rs"
+
+[[example]]
+name = "forge_download_installer"
+path = "examples/forge/forge_download_installer.rs"
+
+[[example]]
+name = "forge_install_server"
+path = "examples/forge/forge_install_server.rs"
+
+[[example]]
+name = "forge_install_client"
+path = "examples/forge/forge_install_client.rs"
+
+[[example]]
+name = "fabric_server_workflow"
+path = "examples/fabric/fabric_server_workflow.rs"
+
+[[example]]
+name = "fabric_client_workflow"
+path = "examples/fabric/fabric_client_workflow.rs"
+
+[[example]]
+name = "forge_server_workflow"
+path = "examples/forge/forge_server_workflow.rs"
+
+[[example]]
+name = "forge_client_workflow_legacy"
+path = "examples/forge/forge_client_workflow/legacy.rs"
+
+[[example]]
+name = "forge_client_workflow_args"
+path = "examples/forge/forge_client_workflow/args.rs"
+
+[[example]]
+name = "forge_client_workflow_modern"
+path = "examples/forge/forge_client_workflow/modern.rs"
