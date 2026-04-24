@@ -43,9 +43,9 @@ export function MainContentRenderer() {
             />
 
             <Routes>
-                <Route path="/login" element={<Login/>}/>
+                <Route path="/" element={<Login/>}/>
                 <Route element={<AppShell/>}>
-                    <Route path="/" element={<Home/>}/>
+                    <Route path="/library" element={<Home/>}/>
                     <Route path="/discover" element={<ComingSoon name="Discover"/>}/>
                     <Route path="/worlds" element={<ComingSoon name="Worlds"/>}/>
                     <Route path="/servers" element={<ComingSoon name="Servers"/>}/>
