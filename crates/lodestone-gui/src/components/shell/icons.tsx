@@ -67,6 +67,8 @@ export const I = {
     hardDrive: make("lucide:hard-drive"),
     copy: make("lucide:copy"),
     upload: make("lucide:upload"),
+    cloud: make("lucide:cloud"),
+    hash: make("lucide:hash"),
     signal: make("lucide:signal"),
     wifi: make("lucide:wifi"),
     headset: make("lucide:headphones"),

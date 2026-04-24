@@ -65,10 +65,10 @@ export default function InstanceDetail() {
             <div className="flex-1 overflow-y-auto px-7 pt-5 pb-10">
                 {tab === "overview" && <OverviewTab instance={instance}/>}
                 {tab === "mods" && <ModsTab/>}
-                {tab === "worlds" && <WorldsTab instance={instance}/>}
+                {tab === "worlds" && <WorldsTab/>}
                 {tab === "screenshots" && <ScreenshotsTab/>}
                 {tab === "logs" && <LogsTab/>}
-                {tab === "settings" && <SettingsTab instance={instance}/>}
+                {tab === "settings" && <SettingsTab/>}
             </div>
         </div>
     );
