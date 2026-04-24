@@ -1,21 +1,37 @@
 import {Button} from "@heroui/react";
+import {useNavigate} from "react-router-dom";
 import Scene from "../shell/Scene";
 import Chip from "../Chip";
 import {I} from "../shell/icons";
-import {cardHoverClass, cardSurfaceStyle, type Instance} from "./instances";
+import {cardHoverClass, cardSurfaceStyle, toSlug, type Instance} from "./instances";
 
 type Props = {
     instance: Instance;
 };
 
 // Single tile in the Library grid view: Scene thumbnail with PLAYING chip, more
-// button, title+version overlay, Play button, and a stats footer.
+// button, title+version overlay, Play button, and a stats footer. Clicking the
+// card body navigates to /library/:slug; the nested Play + More buttons stop
+// propagation so their own actions don't trigger the card navigation.
 export default function InstanceGridCard({instance: inst}: Props) {
+    const navigate = useNavigate();
+    const openDetail = () => navigate(`/library/${toSlug(inst.name)}`);
+    const stop = (e: React.MouseEvent) => e.stopPropagation();
+
     return (
         // Plain div (not <Card isPressable>) so the Scene + title/play overlay
         // can use absolute positioning — HeroUI's pressable Card wraps content
         // in a way that breaks the stacking context for the overlay row.
         <div
+            role="button"
+            tabIndex={0}
+            onClick={openDetail}
+            onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openDetail();
+                }
+            }}
             className={`rounded-lg overflow-hidden border border-line cursor-pointer ${cardHoverClass}`}
             style={cardSurfaceStyle}
         >
@@ -29,7 +45,7 @@ export default function InstanceGridCard({instance: inst}: Props) {
                         </Chip>
                     </div>
                 )}
-                <div className="absolute top-2.5 right-2.5 z-[2]">
+                <div className="absolute top-2.5 right-2.5 z-[2]" onClick={stop}>
                     <Button
                         isIconOnly
                         size="sm"
@@ -52,14 +68,16 @@ export default function InstanceGridCard({instance: inst}: Props) {
                         <div className="text-sm font-bold mb-0.5">{inst.name}</div>
                         <div className="font-mono text-[0.625rem] text-ink-2">{inst.version}</div>
                     </div>
-                    <Button
-                        color="success"
-                        size="sm"
-                        className="font-bold"
-                        startContent={<I.play size={11}/>}
-                    >
-                        Play
-                    </Button>
+                    <div onClick={stop}>
+                        <Button
+                            color="success"
+                            size="sm"
+                            className="font-bold"
+                            startContent={<I.play size={11}/>}
+                        >
+                            Play
+                        </Button>
+                    </div>
                 </div>
             </div>
             <div className="px-3.5 py-3 flex items-center gap-2.5 text-[0.6875rem] text-ink-3">

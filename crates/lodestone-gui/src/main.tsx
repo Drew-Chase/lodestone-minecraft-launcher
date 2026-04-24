@@ -6,6 +6,7 @@ import {HeroUIProvider, ToastProvider} from "@heroui/react";
 import "./css/index.css";
 import AppShell from "./components/shell/AppShell";
 import Home from "./pages/Home";
+import InstanceDetail from "./pages/InstanceDetail";
 import Login from "./pages/Login";
 import ComingSoon from "./pages/ComingSoon";
 
@@ -46,6 +47,7 @@ export function MainContentRenderer() {
                 <Route path="/" element={<Login/>}/>
                 <Route element={<AppShell/>}>
                     <Route path="/library" element={<Home/>}/>
+                    <Route path="/library/:slug" element={<InstanceDetail/>}/>
                     <Route path="/discover" element={<ComingSoon name="Discover"/>}/>
                     <Route path="/worlds" element={<ComingSoon name="Worlds"/>}/>
                     <Route path="/servers" element={<ComingSoon name="Servers"/>}/>

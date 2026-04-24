@@ -1,8 +1,9 @@
 import {Button, Card} from "@heroui/react";
+import {useNavigate} from "react-router-dom";
 import Scene from "../shell/Scene";
 import Chip from "../Chip";
 import {I} from "../shell/icons";
-import {cardSurfaceStyle, type Instance} from "./instances";
+import {cardSurfaceStyle, toSlug, type Instance} from "./instances";
 
 type Props = {
     list: Instance[];
@@ -14,9 +15,13 @@ const tdClass =
     "px-3.5 py-3 text-xs text-ink-1 align-middle border-b border-[color-mix(in_oklab,var(--line)_60%,transparent)]";
 
 // Dense tabular view with thumbnail column, instance, loader chip, MC version,
-// mods count, playtime, last-played date, and per-row actions. Rows get a subtle
-// green tint on hover instead of the card lift used by the other views.
+// mods count, playtime, last-played date, and per-row actions. Clicking a row
+// navigates to /library/:slug; the actions column stops propagation so Play /
+// More don't trigger the row navigation.
 export default function InstanceTable({list}: Props) {
+    const navigate = useNavigate();
+    const stop = (e: React.MouseEvent) => e.stopPropagation();
+
     return (
         <Card
             className="p-0 overflow-hidden border border-line"
@@ -40,6 +45,7 @@ export default function InstanceTable({list}: Props) {
                     <tr
                         key={i}
                         className="cursor-pointer transition-colors hover:bg-[rgba(34,255,132,0.04)]"
+                        onClick={() => navigate(`/library/${toSlug(inst.name)}`)}
                     >
                         <td className={`${tdClass} pr-0`}>
                             <div className="w-6 h-6 rounded-md overflow-hidden relative shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
@@ -70,7 +76,7 @@ export default function InstanceTable({list}: Props) {
                         </td>
                         <td className={`${tdClass} text-right font-mono text-[0.6875rem]`}>{inst.playtime}</td>
                         <td className={`${tdClass} text-ink-3 text-[0.6875rem]`}>{inst.lastPlayed}</td>
-                        <td className={`${tdClass} text-right`}>
+                        <td className={`${tdClass} text-right`} onClick={stop}>
                             <div className="inline-flex gap-1">
                                 <Button
                                     color="success"

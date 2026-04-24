@@ -106,3 +106,16 @@ export const cardSurfaceStyle: React.CSSProperties = {
 // a faint green rim. Applied to all pressable instance/action cards.
 export const cardHoverClass =
     "transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(34,255,132,0.25)] hover:shadow-[0_20px_48px_-24px_rgba(0,0,0,0.6),0_0_0_1px_rgba(34,255,132,0.15)]";
+
+// URL-friendly slug for a given instance name. Used as the :slug route param
+// on the detail page (e.g. "Aether Legacy" → "aether-legacy").
+export function toSlug(name: string): string {
+    return name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+}
+
+export function findInstanceBySlug(slug: string): Instance | undefined {
+    return instances.find((i) => toSlug(i.name) === slug);
+}

@@ -1,19 +1,33 @@
 import {Button} from "@heroui/react";
+import {useNavigate} from "react-router-dom";
 import Chip from "../Chip";
 import {I} from "../shell/icons";
-import {cardHoverClass, cardSurfaceStyle, type Instance} from "./instances";
+import {cardHoverClass, cardSurfaceStyle, toSlug, type Instance} from "./instances";
 
 type Props = {
     instance: Instance;
 };
 
 // Single dense tile in the Compact view: name on row 1, MC version + loader chip
-// + inline Play button on row 2. Used in a 4-up grid.
+// + inline Play button on row 2. Used in a 4-up grid. Click navigates to detail.
 export default function InstanceCompactCard({instance: inst}: Props) {
+    const navigate = useNavigate();
+    const openDetail = () => navigate(`/library/${toSlug(inst.name)}`);
+    const stop = (e: React.MouseEvent) => e.stopPropagation();
+
     return (
         // Plain div for consistency with InstanceGridCard (and to avoid HeroUI Card's
         // hover-scale effect fighting the shared cardHoverClass translate-y).
         <div
+            role="button"
+            tabIndex={0}
+            onClick={openDetail}
+            onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openDetail();
+                }
+            }}
             className={`rounded-lg border border-line px-3.5 py-3 flex flex-col gap-2 cursor-pointer ${cardHoverClass}`}
             style={cardSurfaceStyle}
         >
@@ -28,15 +42,17 @@ export default function InstanceCompactCard({instance: inst}: Props) {
                         style={{width: 6, height: 6}}
                     />
                 )}
-                <Button
-                    isIconOnly
-                    variant="flat"
-                    size="sm"
-                    aria-label="More"
-                    className="w-[22px] h-[22px] min-w-0 flex-shrink-0"
-                >
-                    <I.more size={12}/>
-                </Button>
+                <div onClick={stop}>
+                    <Button
+                        isIconOnly
+                        variant="flat"
+                        size="sm"
+                        aria-label="More"
+                        className="w-[22px] h-[22px] min-w-0 flex-shrink-0"
+                    >
+                        <I.more size={12}/>
+                    </Button>
+                </div>
             </div>
             {/* Row 2 */}
             <div className="font-mono flex items-center gap-1.5 text-[0.625rem] text-ink-3">
@@ -46,14 +62,16 @@ export default function InstanceCompactCard({instance: inst}: Props) {
                     {inst.loader}
                 </Chip>
                 <div className="flex-1"/>
-                <Button
-                    color="success"
-                    size="sm"
-                    className="font-bold min-w-0 h-auto px-2 py-1 text-[0.625rem]"
-                    startContent={<I.play size={9}/>}
-                >
-                    Play
-                </Button>
+                <div onClick={stop}>
+                    <Button
+                        color="success"
+                        size="sm"
+                        className="font-bold min-w-0 h-auto px-2 py-1 text-[0.625rem]"
+                        startContent={<I.play size={9}/>}
+                    >
+                        Play
+                    </Button>
+                </div>
             </div>
         </div>
     );
