@@ -18,7 +18,7 @@ export default function ComingSoon({name}: ComingSoonProps) {
                     <h1 className="text-2xl font-extrabold tracking-tight text-mc-green mb-2 drop-shadow-[0_0_24px_rgba(34,255,132,0.35)]">
                         {name}
                     </h1>
-                    <p className="text-[13px] text-ink-2">Coming soon.</p>
+                    <p className="text-[0.8125rem] text-ink-2">Coming soon.</p>
                 </CardBody>
             </Card>
         </div>

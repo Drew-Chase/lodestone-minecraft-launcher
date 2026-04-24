@@ -16,7 +16,7 @@ export default function WindowChrome()
 
             {/* Center: version label */}
             <div
-                className="flex-1 flex justify-center text-ink-3 font-mono select-none text-[11px] tracking-[0.3px]"
+                className="flex-1 flex justify-center text-ink-3 font-mono select-none text-[0.6875rem] tracking-[0.3px]"
                 data-tauri-drag-region=""
             >
                 LODESTONE · v2.1.4

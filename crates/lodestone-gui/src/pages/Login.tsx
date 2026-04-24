@@ -94,7 +94,7 @@ export default function Login() {
                             </div>
                             <div>
                                 <div
-                                    className="text-[22px] font-extrabold tracking-tight text-transparent bg-clip-text drop-shadow-[0_0_20px_rgba(34,255,132,0.25)]"
+                                    className="text-[1.375rem] font-extrabold tracking-tight text-transparent bg-clip-text drop-shadow-[0_0_20px_rgba(34,255,132,0.25)]"
                                     style={{
                                         backgroundImage:
                                             "linear-gradient(180deg, #ffffff 0%, #c8fcdf 100%)",
@@ -102,16 +102,16 @@ export default function Login() {
                                 >
                                     Lodestone
                                 </div>
-                                <div className="font-mono text-[11px] text-ink-3 tracking-[0.5px]">
+                                <div className="font-mono text-[0.6875rem] text-ink-3 tracking-[0.5px]">
                                     THIRD-PARTY LAUNCHER · v2.1.4
                                 </div>
                             </div>
                         </div>
 
-                        <div className="text-[26px] font-extrabold tracking-tight mb-1.5 text-white drop-shadow-[0_0_24px_rgba(34,255,132,0.35)]">
+                        <div className="text-[1.625rem] font-extrabold tracking-tight mb-1.5 text-white drop-shadow-[0_0_24px_rgba(34,255,132,0.35)]">
                             Welcome back, <span className="text-mc-green">crafter</span>
                         </div>
-                        <div className="text-[13px] text-ink-2 mb-7 leading-relaxed">
+                        <div className="text-[0.8125rem] text-ink-2 mb-7 leading-relaxed">
                             Sign in to sync your worlds, instances, and friends across devices.
                         </div>
 
@@ -146,7 +146,7 @@ export default function Login() {
 
                         <div className="flex items-center gap-3 my-[18px]">
                             <div className="flex-1 h-px bg-[rgba(255,255,255,0.08)]"/>
-                            <div className="text-[10px] text-ink-3 tracking-[1.5px] font-semibold">OR</div>
+                            <div className="text-[0.625rem] text-ink-3 tracking-[1.5px] font-semibold">OR</div>
                             <div className="flex-1 h-px bg-[rgba(255,255,255,0.08)]"/>
                         </div>
 
@@ -170,7 +170,7 @@ export default function Login() {
                         </div>
 
                         {/* Footer line */}
-                        <div className="mt-6 pt-[18px] border-t border-line text-[11px] text-ink-3 flex justify-between">
+                        <div className="mt-6 pt-[18px] border-t border-line text-[0.6875rem] text-ink-3 flex justify-between">
                             <span>Not affiliated with Mojang or Microsoft</span>
                             <span className="text-mc-green cursor-pointer">Learn more ↗</span>
                         </div>
@@ -178,7 +178,7 @@ export default function Login() {
                 </div>
 
                 {/* Bottom status bar */}
-                <div className="font-mono absolute bottom-[18px] left-6 right-6 flex items-center gap-3.5 z-[6] text-[11px] text-ink-3">
+                <div className="font-mono absolute bottom-[18px] left-6 right-6 flex items-center gap-3.5 z-[6] text-[0.6875rem] text-ink-3">
           <span className="flex items-center gap-1.5">
             {/* pulse-dot base class hardcodes 8px; override via inline style for the status variant. */}
             <span className="pulse-dot" style={{width: 6, height: 6}}/>

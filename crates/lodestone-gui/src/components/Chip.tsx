@@ -25,7 +25,7 @@ export default function Chip({variant = "neutral", children, className, style}: 
     return (
         <span
             className={[
-                "inline-flex items-center gap-1.5 font-mono uppercase font-semibold rounded-full text-[11px] px-2 py-1 tracking-[0.02em]",
+                "inline-flex items-center gap-1.5 font-mono uppercase font-semibold rounded-full text-[0.6875rem] px-2 py-1 tracking-[0.02em]",
                 variantClasses[variant],
                 className ?? "",
             ]
