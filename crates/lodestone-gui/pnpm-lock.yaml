@@ -15,8 +15,8 @@ importers:
         specifier: 2.3.0
         version: 2.3.0(react@18.2.0)
       '@tauri-apps/api':
-        specifier: 2.0.1
-        version: 2.0.1
+        specifier: 2.10.1
+        version: 2.10.1
       '@tauri-apps/plugin-shell':
         specifier: 2.3.5
         version: 2.3.5
@@ -2020,9 +2020,6 @@ packages:
 
   '@tanstack/virtual-core@3.11.3':
     resolution: {integrity: sha512-v2mrNSnMwnPJtcVqNvV0c5roGCBqeogN8jDtgtuHCphdwBasOZ17x8UV8qpHUh+u0MLfX43c0uUHKje0s+Zb0w==}
-
-  '@tauri-apps/api@2.0.1':
-    resolution: {integrity: sha512-eoQWT+Tq1qSwQpHV+nw1eNYe5B/nm1PoRjQCRiEOS12I1b+X4PUcREfXVX8dPcBT6GrzWGDtaecY0+1p0Rfqlw==}
 
   '@tauri-apps/api@2.10.1':
     resolution: {integrity: sha512-hKL/jWf293UDSUN09rR69hrToyIXBb8CjGaWC7gfinvnQrBVvnLr08FeFi38gxtugAVyVcTa5/FD/Xnkb1siBw==}
@@ -5959,8 +5956,6 @@ snapshots:
       react-dom: 18.2.0(react@18.2.0)
 
   '@tanstack/virtual-core@3.11.3': {}
-
-  '@tauri-apps/api@2.0.1': {}
 
   '@tauri-apps/api@2.10.1': {}
 
