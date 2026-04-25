@@ -4,5 +4,5 @@ pub mod traits;
 
 pub use traits::{
     ContentProvider, DatapackProvider, ModProvider, PackProvider, ResourcePackProvider,
-    ShaderPackProvider, WorldProvider,
+    ShaderPackProvider, VersionProvider, WorldProvider,
 };

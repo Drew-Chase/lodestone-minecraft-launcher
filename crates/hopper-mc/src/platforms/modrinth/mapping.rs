@@ -1,12 +1,15 @@
 //! Translation from Modrinth wire-format types into the crate's public model.
 
-use crate::model::common::{Author, ContentBase, License, Links, SideSupport};
+use crate::model::common::{
+    Author, ContentBase, Dependency, DependencyKind, License, Links, ProjectVersion, SideSupport,
+    VersionFile, VersionType,
+};
 use crate::model::{
     DatapackItem, ModItem, PackItem, ResourcePackItem, ShaderPackItem, WorldItem,
 };
 use crate::platform::{ContentType, Platform, SearchFilters, Sort};
 
-use super::dto::{GalleryItem, Project, SearchHit};
+use super::dto::{GalleryItem, MrDependency, MrVersion, MrVersionFile, Project, SearchHit};
 
 /// Modrinth `project_type` values. We primarily reach these via facet filters
 /// but they also appear on responses.
@@ -334,6 +337,61 @@ pub(crate) fn world_from_hit(hit: SearchHit) -> WorldItem {
         base: base_from_hit(&hit),
         mc_version: None,
         size_bytes: None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Version / file / dependency mappings
+// ---------------------------------------------------------------------------
+
+pub(crate) fn version_from_mr(v: MrVersion) -> ProjectVersion {
+    ProjectVersion {
+        id: v.id,
+        project_id: v.project_id,
+        name: v.name,
+        version_number: v.version_number,
+        changelog: v.changelog,
+        date_published: v.date_published,
+        downloads: v.downloads,
+        version_type: version_type_from_str(&v.version_type),
+        game_versions: v.game_versions,
+        loaders: v.loaders,
+        files: v.files.into_iter().map(file_from_mr).collect(),
+        dependencies: v.dependencies.iter().map(dependency_from_mr).collect(),
+        featured: v.featured,
+        platform: Platform::Modrinth,
+    }
+}
+
+fn version_type_from_str(s: &str) -> VersionType {
+    match s {
+        "beta" => VersionType::Beta,
+        "alpha" => VersionType::Alpha,
+        _ => VersionType::Release,
+    }
+}
+
+fn file_from_mr(f: MrVersionFile) -> VersionFile {
+    VersionFile {
+        url: Some(f.url),
+        filename: f.filename,
+        size: f.size,
+        primary: f.primary,
+        hashes: f.hashes,
+    }
+}
+
+fn dependency_from_mr(d: &MrDependency) -> Dependency {
+    Dependency {
+        project_id: d.project_id.clone(),
+        version_id: d.version_id.clone(),
+        kind: match d.dependency_type.as_str() {
+            "required" => DependencyKind::Required,
+            "optional" => DependencyKind::Optional,
+            "incompatible" => DependencyKind::Incompatible,
+            "embedded" => DependencyKind::Embedded,
+            _ => DependencyKind::Required,
+        },
     }
 }
 

@@ -148,7 +148,12 @@ export default function ContentDetail() {
                         <SummaryTab description={item.description} summary={item.summary}/>
                     )}
                     {tab === "gallery" && <GalleryTab images={item.gallery} title={item.title}/>}
-                    {tab === "versions" && <VersionsTab/>}
+                    {tab === "versions" && (
+                        <VersionsTab
+                            projectId={item.slug || item.id}
+                            platform={platform?.toLowerCase() ?? "modrinth"}
+                        />
+                    )}
                     {tab === "dependencies" && <DependenciesTab deps={deps}/>}
                 </div>
 

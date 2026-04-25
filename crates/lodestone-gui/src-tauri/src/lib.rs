@@ -8,7 +8,7 @@ use serde_json::Value;
 use hopper_mc::{
     ContentType, ModrinthProvider, Platform, SearchFilters, Sort,
     ModProvider, PackProvider, DatapackProvider, ResourcePackProvider,
-    ShaderPackProvider, WorldProvider,
+    ShaderPackProvider, VersionProvider, WorldProvider,
 };
 
 // ---------------------------------------------------------------------------
@@ -305,6 +305,55 @@ async fn get_content(
 }
 
 // ---------------------------------------------------------------------------
+// get_versions
+// ---------------------------------------------------------------------------
+
+static VERSIONS_CACHE: LazyLock<TtlCache<Vec<Value>>> = LazyLock::new(TtlCache::new);
+
+#[tauri::command]
+async fn get_project_versions(
+    project_id: String,
+    platform: String,
+) -> Result<Vec<Value>, String> {
+    let cache_key = format!("versions:{platform}:{project_id}");
+
+    if let Some(cached) = VERSIONS_CACHE.get(&cache_key) {
+        return Ok(cached);
+    }
+
+    let plat = match platform.as_str() {
+        "curseforge" => Platform::CurseForge,
+        _ => Platform::Modrinth,
+    };
+    let mr = ModrinthProvider::shared();
+
+    let result: Result<Vec<Value>, String> = match plat {
+        Platform::Modrinth => mr
+            .get_versions(&project_id)
+            .await
+            .map(|v| v.into_iter().filter_map(|i| serde_json::to_value(i).ok()).collect())
+            .map_err(|e| e.to_string()),
+        #[cfg(debug_assertions)]
+        Platform::CurseForge => {
+            let cf = curseforge_provider();
+            cf.get_versions(&project_id)
+                .await
+                .map(|v| v.into_iter().filter_map(|i| serde_json::to_value(i).ok()).collect())
+                .map_err(|e| e.to_string())
+        }
+        #[cfg(not(debug_assertions))]
+        Platform::CurseForge => Ok(Vec::new()),
+        _ => Err(format!("{plat:?} is not yet implemented")),
+    };
+
+    if let Ok(ref data) = result {
+        VERSIONS_CACHE.insert(cache_key, data.clone(), CONTENT_TTL);
+    }
+
+    result
+}
+
+// ---------------------------------------------------------------------------
 // get_minecraft_versions
 // ---------------------------------------------------------------------------
 
@@ -352,6 +401,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             search_content,
             get_content,
+            get_project_versions,
             get_minecraft_versions,
         ])
         .run(tauri::generate_context!())

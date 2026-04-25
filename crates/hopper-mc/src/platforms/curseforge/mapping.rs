@@ -1,12 +1,17 @@
 //! Translation from CurseForge wire-format types into the crate's public model.
 
-use crate::model::common::{Author, ContentBase, License, Links, SideSupport};
+use std::collections::HashMap;
+
+use crate::model::common::{
+    Author, ContentBase, Dependency, DependencyKind, License, Links, ProjectVersion, SideSupport,
+    VersionFile, VersionType,
+};
 use crate::model::{
     DatapackItem, ModItem, PackItem, ResourcePackItem, ShaderPackItem, WorldItem,
 };
 use crate::platform::{ContentType, Platform, Sort};
 
-use super::dto::{CfMod, FileIndex};
+use super::dto::{CfFile, CfFileDependency, CfMod, FileIndex};
 
 /// Minecraft's `gameId` on CurseForge.
 pub(crate) const MINECRAFT_GAME_ID: u64 = 432;
@@ -249,6 +254,77 @@ pub(crate) fn world_from(m: CfMod) -> WorldItem {
         base: base_from(&m),
         mc_version: None,
         size_bytes: None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Version / file / dependency mappings
+// ---------------------------------------------------------------------------
+
+/// Map a CurseForge file to a [`ProjectVersion`].
+pub(crate) fn version_from_cf(f: CfFile, project_id: &str) -> ProjectVersion {
+    // Filter game_versions to only include actual MC versions (not loader names).
+    let mc_versions: Vec<String> = f.game_versions.iter().filter(|v| is_mc_version(v)).cloned().collect();
+    let loaders: Vec<String> = f
+        .game_versions
+        .iter()
+        .filter_map(|v| {
+            // CurseForge puts loader names (Forge, Fabric, etc.) in game_versions.
+            match v.to_ascii_lowercase().as_str() {
+                "forge" => Some("forge".into()),
+                "fabric" => Some("fabric".into()),
+                "neoforge" => Some("neoforge".into()),
+                "quilt" => Some("quilt".into()),
+                "liteloader" => Some("liteloader".into()),
+                "cauldron" => Some("cauldron".into()),
+                _ => None,
+            }
+        })
+        .collect();
+
+    ProjectVersion {
+        id: f.id.to_string(),
+        project_id: project_id.to_string(),
+        name: f.display_name.clone(),
+        version_number: f.display_name, // CF doesn't have a separate semver field
+        changelog: None,                // CF changelog requires a separate endpoint
+        date_published: f.file_date.unwrap_or_default(),
+        downloads: f.download_count.unwrap_or(0),
+        version_type: cf_release_type(f.release_type.unwrap_or(1)),
+        game_versions: mc_versions,
+        loaders,
+        files: vec![VersionFile {
+            url: f.download_url,
+            filename: f.file_name,
+            size: f.file_length.unwrap_or(0),
+            primary: !f.is_server_pack.unwrap_or(false),
+            hashes: HashMap::new(), // CF uses fingerprints, not hex hashes
+        }],
+        dependencies: f.dependencies.iter().map(cf_dependency).collect(),
+        featured: false,
+        platform: Platform::CurseForge,
+    }
+}
+
+fn cf_release_type(n: u32) -> VersionType {
+    match n {
+        2 => VersionType::Beta,
+        3 => VersionType::Alpha,
+        _ => VersionType::Release,
+    }
+}
+
+fn cf_dependency(d: &CfFileDependency) -> Dependency {
+    Dependency {
+        project_id: Some(d.mod_id.to_string()),
+        version_id: None,
+        kind: match d.relation_type {
+            1 | 6 => DependencyKind::Embedded,
+            2 => DependencyKind::Optional,
+            3 => DependencyKind::Required,
+            5 => DependencyKind::Incompatible,
+            _ => DependencyKind::Required,
+        },
     }
 }
 

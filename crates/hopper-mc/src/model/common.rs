@@ -1,5 +1,7 @@
 //! Shared model types used across every content kind.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -97,6 +99,54 @@ pub enum DependencyKind {
     Optional,
     Incompatible,
     Embedded,
+}
+
+/// A released version of a project, containing one or more downloadable files.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectVersion {
+    pub id: String,
+    pub project_id: String,
+    /// Display name (e.g. "Sodium 0.6.0 for Minecraft 1.21.4").
+    pub name: String,
+    /// Semantic version string (e.g. "0.6.0").
+    pub version_number: String,
+    /// Markdown or HTML changelog, if provided.
+    pub changelog: Option<String>,
+    pub date_published: DateTime<Utc>,
+    pub downloads: u64,
+    pub version_type: VersionType,
+    /// Minecraft versions this release supports.
+    pub game_versions: Vec<String>,
+    /// Loader names (e.g. `["fabric", "quilt"]`).
+    pub loaders: Vec<String>,
+    pub files: Vec<VersionFile>,
+    pub dependencies: Vec<Dependency>,
+    pub featured: bool,
+    pub platform: Platform,
+}
+
+/// Release channel of a version.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum VersionType {
+    #[default]
+    Release,
+    Beta,
+    Alpha,
+}
+
+/// A downloadable file within a [`ProjectVersion`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VersionFile {
+    /// Direct download URL. `None` when the platform restricts
+    /// third-party distribution (e.g. some CurseForge projects).
+    pub url: Option<String>,
+    pub filename: String,
+    /// Size in bytes.
+    pub size: u64,
+    /// Whether this is the primary file for the version.
+    pub primary: bool,
+    /// Hash algorithm → hex digest (e.g. `{"sha1": "abc…", "sha512": "def…"}`).
+    pub hashes: HashMap<String, String>,
 }
 
 /// How a mod interacts with the client/server side.

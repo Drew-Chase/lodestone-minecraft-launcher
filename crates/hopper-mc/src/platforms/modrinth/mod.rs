@@ -12,12 +12,12 @@ use std::sync::OnceLock;
 
 use crate::error::{ContentError, Result};
 use crate::model::{
-    DatapackItem, ModItem, PackItem, ResourcePackItem, ShaderPackItem, WorldItem,
+    DatapackItem, ModItem, PackItem, ProjectVersion, ResourcePackItem, ShaderPackItem, WorldItem,
 };
 use crate::platform::{ContentType, Platform, SearchFilters, Sort};
 use crate::provider::{
     ContentProvider, DatapackProvider, ModProvider, PackProvider, ResourcePackProvider,
-    ShaderPackProvider, WorldProvider,
+    ShaderPackProvider, VersionProvider, WorldProvider,
 };
 
 /// Modrinth content provider.
@@ -255,5 +255,21 @@ impl WorldProvider for ModrinthProvider {
             platform: Platform::Modrinth,
             kind: ContentType::World,
         })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Versions
+// ---------------------------------------------------------------------------
+
+impl VersionProvider for ModrinthProvider {
+    async fn get_versions(&self, project_id: &str) -> Result<Vec<ProjectVersion>> {
+        let versions = api::get_project_versions(&self.client, project_id).await?;
+        Ok(versions.into_iter().map(mapping::version_from_mr).collect())
+    }
+
+    async fn get_version(&self, version_id: &str) -> Result<Option<ProjectVersion>> {
+        let v = api::get_version_by_id(&self.client, version_id).await?;
+        Ok(v.map(mapping::version_from_mr))
     }
 }

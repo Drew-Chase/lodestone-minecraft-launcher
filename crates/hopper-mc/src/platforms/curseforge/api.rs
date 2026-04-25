@@ -12,7 +12,7 @@ use reqwest::StatusCode;
 use crate::error::{ContentError, Result};
 use crate::platform::{ContentType, SearchFilters, Sort};
 
-use super::dto::{CfMod, Envelope, PaginatedEnvelope};
+use super::dto::{CfFile, CfMod, Envelope, PaginatedEnvelope};
 use super::mapping;
 
 pub(crate) const BASE_URL: &str = "https://api.curseforge.com/v1";
@@ -174,6 +174,28 @@ pub(crate) async fn get_by_id_or_slug(
     } else {
         get_mod_by_slug(client, api_key, id_or_slug, class_id).await
     }
+}
+
+/// List all files for a mod.
+pub(crate) async fn get_mod_files(
+    client: &reqwest::Client,
+    api_key: Option<&str>,
+    mod_id: u64,
+) -> Result<Vec<CfFile>> {
+    let key = require_key(api_key)?;
+    let game_id_s = mapping::MINECRAFT_GAME_ID.to_string();
+
+    let resp = client
+        .get(format!("{BASE_URL}/mods/{mod_id}/files"))
+        .header("x-api-key", key)
+        .query(&[("gameId", game_id_s.as_str())])
+        .send()
+        .await?;
+
+    handle_common_status(&resp)?;
+    let resp = resp.error_for_status()?;
+    let body: PaginatedEnvelope<CfFile> = resp.json().await?;
+    Ok(body.data)
 }
 
 fn handle_common_status(resp: &reqwest::Response) -> Result<()> {

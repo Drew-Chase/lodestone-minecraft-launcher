@@ -9,6 +9,8 @@
 //! the deserialization layer.
 #![allow(dead_code)]
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
@@ -149,4 +151,61 @@ pub struct TeamUser {
     pub name: Option<String>,
     #[serde(default)]
     pub url: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Version / file types — from `GET /v2/project/{id}/version`
+// ---------------------------------------------------------------------------
+
+/// A version of a project from `GET /v2/project/{id}/version` or
+/// `GET /v2/version/{id}`.
+#[derive(Debug, Deserialize)]
+pub struct MrVersion {
+    pub id: String,
+    pub project_id: String,
+    #[serde(default)]
+    pub author_id: Option<String>,
+    pub name: String,
+    pub version_number: String,
+    #[serde(default)]
+    pub changelog: Option<String>,
+    pub date_published: DateTime<Utc>,
+    #[serde(default)]
+    pub downloads: u64,
+    #[serde(default)]
+    pub version_type: String,
+    #[serde(default)]
+    pub game_versions: Vec<String>,
+    #[serde(default)]
+    pub loaders: Vec<String>,
+    #[serde(default)]
+    pub featured: bool,
+    #[serde(default)]
+    pub files: Vec<MrVersionFile>,
+    #[serde(default)]
+    pub dependencies: Vec<MrDependency>,
+}
+
+/// A downloadable file within a Modrinth version.
+#[derive(Debug, Deserialize)]
+pub struct MrVersionFile {
+    pub url: String,
+    pub filename: String,
+    #[serde(default)]
+    pub primary: bool,
+    #[serde(default)]
+    pub size: u64,
+    #[serde(default)]
+    pub hashes: HashMap<String, String>,
+}
+
+/// A dependency declared on a Modrinth version.
+#[derive(Debug, Deserialize)]
+pub struct MrDependency {
+    #[serde(default)]
+    pub version_id: Option<String>,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub dependency_type: String,
 }

@@ -8,7 +8,7 @@ use reqwest::StatusCode;
 use crate::error::{ContentError, Result};
 use crate::platform::{ContentType, SearchFilters, Sort};
 
-use super::dto::{Project, SearchResponse};
+use super::dto::{MrVersion, Project, SearchResponse};
 use super::mapping;
 
 pub(crate) const BASE_URL: &str = "https://api.modrinth.com/v2";
@@ -70,6 +70,39 @@ pub(crate) async fn get_project(
     handle_common_status(&resp)?;
     let resp = resp.error_for_status()?;
     let body: Project = resp.json().await?;
+    Ok(Some(body))
+}
+
+/// List all versions of a project.
+pub(crate) async fn get_project_versions(
+    client: &reqwest::Client,
+    project_id: &str,
+) -> Result<Vec<MrVersion>> {
+    let resp = client
+        .get(format!("{BASE_URL}/project/{project_id}/version"))
+        .send()
+        .await?;
+    handle_common_status(&resp)?;
+    let resp = resp.error_for_status()?;
+    let body: Vec<MrVersion> = resp.json().await?;
+    Ok(body)
+}
+
+/// Fetch a single version by id. Returns `Ok(None)` on 404.
+pub(crate) async fn get_version_by_id(
+    client: &reqwest::Client,
+    version_id: &str,
+) -> Result<Option<MrVersion>> {
+    let resp = client
+        .get(format!("{BASE_URL}/version/{version_id}"))
+        .send()
+        .await?;
+    if resp.status() == StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    handle_common_status(&resp)?;
+    let resp = resp.error_for_status()?;
+    let body: MrVersion = resp.json().await?;
     Ok(Some(body))
 }
 

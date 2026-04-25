@@ -53,12 +53,12 @@ use secrecy::{ExposeSecret, SecretString};
 
 use crate::error::Result;
 use crate::model::{
-    DatapackItem, ModItem, PackItem, ResourcePackItem, ShaderPackItem, WorldItem,
+    DatapackItem, ModItem, PackItem, ProjectVersion, ResourcePackItem, ShaderPackItem, WorldItem,
 };
 use crate::platform::{ContentType, Platform, SearchFilters, Sort};
 use crate::provider::{
     ContentProvider, DatapackProvider, ModProvider, PackProvider, ResourcePackProvider,
-    ShaderPackProvider, WorldProvider,
+    ShaderPackProvider, VersionProvider, WorldProvider,
 };
 
 /// CurseForge HTTP provider.
@@ -383,5 +383,27 @@ impl WorldProvider for CurseForgeProvider {
         let m =
             api::get_by_id_or_slug(&self.client, self.exposed_key(), id, mapping::CLASS_WORLDS).await?;
         Ok(m.map(mapping::world_from))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Versions
+// ---------------------------------------------------------------------------
+
+impl VersionProvider for CurseForgeProvider {
+    async fn get_versions(&self, project_id: &str) -> Result<Vec<ProjectVersion>> {
+        let mod_id: u64 = project_id
+            .parse()
+            .map_err(|_| crate::error::ContentError::BadRequest(
+                format!("CurseForge project id must be numeric, got: {project_id}"),
+            ))?;
+        let files = api::get_mod_files(&self.client, self.exposed_key(), mod_id).await?;
+        Ok(files.into_iter().map(|f| mapping::version_from_cf(f, project_id)).collect())
+    }
+
+    async fn get_version(&self, _version_id: &str) -> Result<Option<ProjectVersion>> {
+        // CurseForge uses file IDs, not version IDs. Single-file lookup
+        // would require knowing the mod ID too. Return None for now.
+        Ok(None)
     }
 }

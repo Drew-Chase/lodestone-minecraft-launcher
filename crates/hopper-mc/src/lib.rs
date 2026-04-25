@@ -52,7 +52,8 @@ pub mod provider;
 pub use error::{ContentError, Result};
 pub use model::{
     Author, ContentBase, DatapackItem, Dependency, DependencyKind, License, Links, ModItem,
-    PackItem, ResourcePackItem, ShaderPackItem, SideSupport, WorldItem,
+    PackItem, ProjectVersion, ResourcePackItem, ShaderPackItem, SideSupport, VersionFile,
+    VersionType, WorldItem,
 };
 pub use platform::{ContentType, Platform, SearchFilters, Sort};
 pub use platforms::{
@@ -60,7 +61,7 @@ pub use platforms::{
 };
 pub use provider::{
     ContentProvider, DatapackProvider, ModProvider, PackProvider, ResourcePackProvider,
-    ShaderPackProvider, WorldProvider,
+    ShaderPackProvider, VersionProvider, WorldProvider,
 };
 
 // ---------------------------------------------------------------------------
@@ -309,6 +310,28 @@ pub async fn get_world(id: &str, platform: Platform) -> Result<Option<WorldItem>
         Platform::CurseForge => CurseForgeProvider::shared().get_world(id).await,
         Platform::AtLauncher | Platform::Technic | Platform::Ftb => {
             unsupported!(platform, ContentType::World)
+        }
+    }
+}
+
+/// List all versions (with files and dependencies) for a project.
+pub async fn get_versions(project_id: &str, platform: Platform) -> Result<Vec<ProjectVersion>> {
+    match platform {
+        Platform::Modrinth => ModrinthProvider::shared().get_versions(project_id).await,
+        Platform::CurseForge => CurseForgeProvider::shared().get_versions(project_id).await,
+        Platform::AtLauncher | Platform::Technic | Platform::Ftb => {
+            Err(ContentError::NotImplemented(platform))
+        }
+    }
+}
+
+/// Fetch a single version by its platform-specific id.
+pub async fn get_version(version_id: &str, platform: Platform) -> Result<Option<ProjectVersion>> {
+    match platform {
+        Platform::Modrinth => ModrinthProvider::shared().get_version(version_id).await,
+        Platform::CurseForge => CurseForgeProvider::shared().get_version(version_id).await,
+        Platform::AtLauncher | Platform::Technic | Platform::Ftb => {
+            Err(ContentError::NotImplemented(platform))
         }
     }
 }

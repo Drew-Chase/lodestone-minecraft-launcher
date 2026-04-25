@@ -162,13 +162,15 @@ pub struct FileIndex {
     pub mod_loader: Option<u32>,
 }
 
-/// Minimal file shape — we keep what little we surface. `downloadUrl` is
-/// intentionally optional because CurseForge nulls it when the project
-/// disallows third-party distribution.
+/// File shape from CurseForge. `downloadUrl` is intentionally optional
+/// because CurseForge nulls it when the project disallows third-party
+/// distribution.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CfFile {
     pub id: u64,
+    #[serde(default)]
+    pub mod_id: Option<u64>,
     #[serde(default)]
     pub display_name: String,
     #[serde(default)]
@@ -177,8 +179,28 @@ pub struct CfFile {
     pub file_date: Option<DateTime<Utc>>,
     #[serde(default)]
     pub file_length: Option<u64>,
+    /// 1=Release, 2=Beta, 3=Alpha
+    #[serde(default)]
+    pub release_type: Option<u32>,
     #[serde(default)]
     pub download_url: Option<String>,
     #[serde(default)]
     pub game_versions: Vec<String>,
+    #[serde(default)]
+    pub dependencies: Vec<CfFileDependency>,
+    #[serde(default)]
+    pub is_server_pack: Option<bool>,
+    #[serde(default)]
+    pub download_count: Option<u64>,
+}
+
+/// A dependency declared on a CurseForge file.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CfFileDependency {
+    pub mod_id: u64,
+    /// 1=EmbeddedLibrary, 2=OptionalDependency, 3=RequiredDependency,
+    /// 4=Tool, 5=Incompatible, 6=Include
+    #[serde(default)]
+    pub relation_type: u32,
 }

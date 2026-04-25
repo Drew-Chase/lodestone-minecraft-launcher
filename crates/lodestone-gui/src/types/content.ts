@@ -125,6 +125,41 @@ export const defaultFilterState: FilterState = {
     environment: [],
 };
 
+export type VersionType = "Release" | "Beta" | "Alpha";
+
+export interface ProjectVersion {
+    id: string;
+    project_id: string;
+    name: string;
+    version_number: string;
+    changelog: string | null;
+    date_published: string;
+    downloads: number;
+    version_type: VersionType;
+    game_versions: string[];
+    loaders: string[];
+    files: VersionFile[];
+    dependencies: Dependency[];
+    featured: boolean;
+    platform: PlatformId;
+}
+
+export interface VersionFile {
+    url: string | null;
+    filename: string;
+    size: number;
+    primary: boolean;
+    hashes: Record<string, string>;
+}
+
+/** Format a file size in bytes to a human-readable string. */
+export function formatSize(bytes: number): string {
+    if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
+    if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${bytes} B`;
+}
+
 /** Format a large number with K/M suffix. */
 export function formatCount(n: number): string {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;

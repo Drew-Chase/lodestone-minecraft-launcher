@@ -10,7 +10,7 @@
 
 use crate::error::Result;
 use crate::model::{
-    DatapackItem, ModItem, PackItem, ResourcePackItem, ShaderPackItem, WorldItem,
+    DatapackItem, ModItem, PackItem, ProjectVersion, ResourcePackItem, ShaderPackItem, WorldItem,
 };
 use crate::platform::{Platform, SearchFilters, Sort};
 
@@ -119,4 +119,22 @@ pub trait WorldProvider: ContentProvider {
         &self,
         id: &str,
     ) -> impl std::future::Future<Output = Result<Option<WorldItem>>> + Send;
+}
+
+/// A provider that can list versions and their files for a project.
+///
+/// This is content-type agnostic — every project (mod, modpack, etc.) has
+/// versions identified by the same project id on a given platform.
+pub trait VersionProvider: ContentProvider {
+    /// List all versions of a project, most recent first.
+    fn get_versions(
+        &self,
+        project_id: &str,
+    ) -> impl std::future::Future<Output = Result<Vec<ProjectVersion>>> + Send;
+
+    /// Fetch a single version by its platform-specific version/file id.
+    fn get_version(
+        &self,
+        version_id: &str,
+    ) -> impl std::future::Future<Output = Result<Option<ProjectVersion>>> + Send;
 }
