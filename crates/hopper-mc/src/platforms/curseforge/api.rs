@@ -10,7 +10,7 @@
 use reqwest::StatusCode;
 
 use crate::error::{ContentError, Result};
-use crate::platform::{ContentType, Sort};
+use crate::platform::{ContentType, SearchFilters, Sort};
 
 use super::dto::{CfMod, Envelope, PaginatedEnvelope};
 use super::mapping;
@@ -38,12 +38,14 @@ fn require_key(api_key: Option<&str>) -> Result<&str> {
 }
 
 /// Run a `/mods/search` query for the given content type.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn search(
     client: &reqwest::Client,
     api_key: Option<&str>,
     query: Option<&str>,
     sort: Sort,
     kind: ContentType,
+    filters: &SearchFilters,
     page: u32,
     per_page: u32,
 ) -> Result<Vec<CfMod>> {
@@ -66,6 +68,15 @@ pub(crate) async fn search(
     let offset_s = offset.to_string();
     let limit_s = limit.to_string();
 
+    // CurseForge filter params — each supports only a single value.
+    let game_version_s = filters.versions.first().cloned().unwrap_or_default();
+    let loader_id_s = filters
+        .loaders
+        .first()
+        .and_then(|l| mapping::loader_name_to_id(l))
+        .map(|id| id.to_string())
+        .unwrap_or_default();
+
     let mut params: Vec<(&str, &str)> = vec![
         ("gameId", &game_id_s),
         ("classId", &class_id_s),
@@ -76,6 +87,12 @@ pub(crate) async fn search(
     ];
     if let Some(q) = query.filter(|s| !s.is_empty()) {
         params.push(("searchFilter", q));
+    }
+    if !game_version_s.is_empty() {
+        params.push(("gameVersion", &game_version_s));
+    }
+    if !loader_id_s.is_empty() {
+        params.push(("modLoaderType", &loader_id_s));
     }
 
     let resp = client

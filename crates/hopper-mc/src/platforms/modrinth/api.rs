@@ -6,7 +6,7 @@
 use reqwest::StatusCode;
 
 use crate::error::{ContentError, Result};
-use crate::platform::{ContentType, Sort};
+use crate::platform::{ContentType, SearchFilters, Sort};
 
 use super::dto::{Project, SearchResponse};
 use super::mapping;
@@ -19,10 +19,11 @@ pub(crate) async fn search(
     query: Option<&str>,
     sort: Sort,
     kind: ContentType,
+    filters: &SearchFilters,
     page: u32,
     per_page: u32,
 ) -> Result<SearchResponse> {
-    let Some(facets) = mapping::content_type_to_facets(kind) else {
+    let Some(facets) = mapping::build_facets(kind, filters) else {
         return Err(ContentError::UnsupportedContentType {
             platform: crate::platform::Platform::Modrinth,
             kind,

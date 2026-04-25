@@ -14,7 +14,7 @@ use crate::error::{ContentError, Result};
 use crate::model::{
     DatapackItem, ModItem, PackItem, ResourcePackItem, ShaderPackItem, WorldItem,
 };
-use crate::platform::{ContentType, Platform, Sort};
+use crate::platform::{ContentType, Platform, SearchFilters, Sort};
 use crate::provider::{
     ContentProvider, DatapackProvider, ModProvider, PackProvider, ResourcePackProvider,
     ShaderPackProvider, WorldProvider,
@@ -81,10 +81,11 @@ impl ModProvider for ModrinthProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> Result<Vec<ModItem>> {
-        let r = api::search(&self.client, query, sort, ContentType::Mod, page, per_page).await?;
+        let r = api::search(&self.client, query, sort, ContentType::Mod, filters, page, per_page).await?;
         Ok(r.hits.into_iter().map(mapping::mod_from_hit).collect())
     }
 
@@ -103,6 +104,7 @@ impl PackProvider for ModrinthProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> Result<Vec<PackItem>> {
@@ -111,6 +113,7 @@ impl PackProvider for ModrinthProvider {
             query,
             sort,
             ContentType::Modpack,
+            filters,
             page,
             per_page,
         )
@@ -133,6 +136,7 @@ impl DatapackProvider for ModrinthProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> Result<Vec<DatapackItem>> {
@@ -141,6 +145,7 @@ impl DatapackProvider for ModrinthProvider {
             query,
             sort,
             ContentType::Datapack,
+            filters,
             page,
             per_page,
         )
@@ -163,6 +168,7 @@ impl ResourcePackProvider for ModrinthProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> Result<Vec<ResourcePackItem>> {
@@ -171,6 +177,7 @@ impl ResourcePackProvider for ModrinthProvider {
             query,
             sort,
             ContentType::ResourcePack,
+            filters,
             page,
             per_page,
         )
@@ -197,6 +204,7 @@ impl ShaderPackProvider for ModrinthProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> Result<Vec<ShaderPackItem>> {
@@ -205,6 +213,7 @@ impl ShaderPackProvider for ModrinthProvider {
             query,
             sort,
             ContentType::ShaderPack,
+            filters,
             page,
             per_page,
         )
@@ -231,6 +240,7 @@ impl WorldProvider for ModrinthProvider {
         &self,
         _query: Option<&str>,
         _sort: Sort,
+        _filters: &SearchFilters,
         _page: u32,
         _per_page: u32,
     ) -> Result<Vec<WorldItem>> {

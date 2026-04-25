@@ -1,37 +1,52 @@
-import {useState} from "react";
+import {useState, useCallback} from "react";
 import {Input, Spinner} from "@heroui/react";
 import TitleBar from "../components/shell/TitleBar";
 import {I} from "../components/shell/icons";
 import ContentTabs from "../components/discover/ContentTabs";
-import SourceTabs from "../components/discover/SourceTabs";
+import SourceTabs, {isSourceAvailable, getSourcesForContentType} from "../components/discover/SourceTabs";
 import SortSelect from "../components/discover/SortSelect";
 import ViewModeToggle from "../components/discover/ViewModeToggle";
-import FilterPopover, {type FilterState} from "../components/discover/FilterPopover";
+import FilterDrawer from "../components/discover/FilterDrawer";
+import {isFilterKeyRelevant} from "../components/discover/filterConfig";
 import BrowseGrid from "../components/discover/BrowseGrid";
 import BrowseCompact from "../components/discover/BrowseCompact";
 import BrowseTable from "../components/discover/BrowseTable";
 import useContentSearch from "../hooks/useContentSearch";
-import type {ContentTypeKey, SortKey, SourceKey, ViewMode} from "../types/content";
+import {usePersistedState} from "../hooks/usePersistedState";
+import type {ContentTypeKey, FilterState, SortKey, SourceKey, ViewMode} from "../types/content";
+import {defaultFilterState} from "../types/content";
 
 export default function Discover() {
-    const [contentType, setContentType] = useState<ContentTypeKey>("mod");
-    const [source, setSource] = useState<SourceKey>("modrinth");
+    const [contentType, setContentTypePersisted] = usePersistedState<ContentTypeKey>("discover.contentType", "mod");
+    const [source, setSource] = usePersistedState<SourceKey>("discover.source", "modrinth");
     const [query, setQuery] = useState("");
     const [sort, setSort] = useState<SortKey>("downloads");
-    const [viewMode, setViewMode] = useState<ViewMode>("grid");
+    const [viewMode, setViewMode] = usePersistedState<ViewMode>("discover.viewMode", "grid");
     const [showFilter, setShowFilter] = useState(false);
-    const [filters, setFilters] = useState<FilterState>({
-        categories: [],
-        loaders: [],
-        versions: [],
-        environment: [],
-    });
+    const [filters, setFilters] = usePersistedState<FilterState>("discover.filters", defaultFilterState);
+
+    const setContentType = useCallback((ct: ContentTypeKey) => {
+        setContentTypePersisted(ct);
+        if (!isSourceAvailable(source, ct)) {
+            const first = getSourcesForContentType(ct).find(s => !s.disabled);
+            if (first) setSource(first.key);
+        }
+        // Clear filter fields that aren't relevant for the new content type.
+        const cleaned = {...filters};
+        for (const key of Object.keys(cleaned) as (keyof FilterState)[]) {
+            if (!isFilterKeyRelevant(key, ct)) {
+                cleaned[key] = [];
+            }
+        }
+        setFilters(cleaned);
+    }, [source, filters, setContentTypePersisted, setSource, setFilters]);
 
     const {results, loading, error, hasMore, sentinelRef} = useContentSearch({
         query,
         sort,
         source,
         contentType,
+        filters,
     });
 
     const activeFilterCount =
@@ -45,7 +60,7 @@ export default function Discover() {
                 <TitleBar title="Discover" subtitle="Browse mods, modpacks, shaders, and more"/>
 
                 {/* Content type tabs */}
-                <ContentTabs active={contentType} onChange={ct => {setContentType(ct); setSource("modrinth");}}/>
+                <ContentTabs active={contentType} onChange={setContentType}/>
 
                 {/* Filter + search toolbar */}
                 <div
@@ -76,50 +91,41 @@ export default function Discover() {
                     <SortSelect value={sort} onChange={setSort}/>
 
                     {/* Filter button */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setShowFilter(v => !v)}
-                            className="cursor-pointer flex items-center gap-2"
-                            style={{
-                                padding: "7px 12px",
-                                fontSize: 12,
-                                fontWeight: 600,
-                                borderRadius: 8,
-                                border: showFilter
-                                    ? "1px solid rgba(34,255,132,0.4)"
-                                    : "1px solid var(--line)",
-                                background: showFilter
-                                    ? "rgba(34,255,132,0.08)"
-                                    : "transparent",
-                                color: showFilter ? "var(--mc-green)" : "var(--ink-2)",
-                                transition: "all 0.12s",
-                            }}
-                        >
-                            <I.filter size={14}/>
-                            Filters
-                            {activeFilterCount > 0 && (
-                                <span
-                                    style={{
-                                        padding: "1px 6px",
-                                        borderRadius: 999,
-                                        fontSize: 10,
-                                        fontWeight: 700,
-                                        background: "rgba(34,255,132,0.14)",
-                                        color: "var(--mc-green)",
-                                    }}
-                                >
-                                    {activeFilterCount}
-                                </span>
-                            )}
-                        </button>
-                        {showFilter && (
-                            <FilterPopover
-                                filters={filters}
-                                onChange={setFilters}
-                                onClose={() => setShowFilter(false)}
-                            />
+                    <button
+                        onClick={() => setShowFilter(true)}
+                        className="cursor-pointer flex items-center gap-2"
+                        style={{
+                            padding: "7px 12px",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            borderRadius: 8,
+                            border: activeFilterCount > 0
+                                ? "1px solid rgba(34,255,132,0.4)"
+                                : "1px solid var(--line)",
+                            background: activeFilterCount > 0
+                                ? "rgba(34,255,132,0.08)"
+                                : "transparent",
+                            color: activeFilterCount > 0 ? "var(--mc-green)" : "var(--ink-2)",
+                            transition: "all 0.12s",
+                        }}
+                    >
+                        <I.filter size={14}/>
+                        Filters
+                        {activeFilterCount > 0 && (
+                            <span
+                                style={{
+                                    padding: "1px 6px",
+                                    borderRadius: 999,
+                                    fontSize: 10,
+                                    fontWeight: 700,
+                                    background: "rgba(34,255,132,0.14)",
+                                    color: "var(--mc-green)",
+                                }}
+                            >
+                                {activeFilterCount}
+                            </span>
                         )}
-                    </div>
+                    </button>
 
                     {/* View mode */}
                     <ViewModeToggle value={viewMode} onChange={setViewMode}/>
@@ -132,10 +138,16 @@ export default function Discover() {
             </div>
 
             {/* ── Scrollable results ── */}
-            <div className="flex-1 overflow-y-auto" style={{padding: "20px 28px 40px"}}>
+            <div
+                className={viewMode === "table"
+                    ? "flex-1 flex flex-col min-h-0 overflow-hidden"
+                    : "flex-1 overflow-y-auto"
+                }
+                style={{padding: viewMode === "table" ? "20px 28px 0" : "20px 28px 40px"}}
+            >
                 {error && (
                     <div
-                        className="border border-line rounded-xl flex items-center gap-3"
+                        className="border border-line rounded-xl flex items-center gap-3 flex-shrink-0"
                         style={{
                             padding: 16,
                             marginBottom: 14,
@@ -168,31 +180,48 @@ export default function Discover() {
                     <>
                         {viewMode === "grid" && <BrowseGrid items={results}/>}
                         {viewMode === "compact" && <BrowseCompact items={results}/>}
-                        {viewMode === "table" && <BrowseTable items={results}/>}
-
-                        {/* Infinite-scroll sentinel: when this scrolls into
-                            view (or within 200px of it), the hook fires the
-                            next page request automatically. */}
-                        {hasMore && (
-                            <div
-                                ref={sentinelRef}
-                                className="flex items-center justify-center py-6"
-                            >
-                                {loading && <Spinner size="sm" color="success"/>}
-                            </div>
+                        {viewMode === "table" && (
+                            <BrowseTable
+                                items={results}
+                                hasMore={hasMore}
+                                loading={loading}
+                                sentinelRef={sentinelRef}
+                            />
                         )}
 
-                        {!hasMore && results.length > 0 && (
-                            <div
-                                className="flex items-center justify-center py-6"
-                                style={{fontSize: 12, color: "var(--ink-4)", fontFamily: "var(--mono)"}}
-                            >
-                                End of results
-                            </div>
+                        {viewMode !== "table" && (
+                            <>
+                                {hasMore && (
+                                    <div
+                                        ref={sentinelRef}
+                                        className="flex items-center justify-center py-6"
+                                    >
+                                        {loading && <Spinner size="sm" color="success"/>}
+                                    </div>
+                                )}
+
+                                {!hasMore && results.length > 0 && (
+                                    <div
+                                        className="flex items-center justify-center py-6"
+                                        style={{fontSize: 12, color: "var(--ink-4)", fontFamily: "var(--mono)"}}
+                                    >
+                                        End of results
+                                    </div>
+                                )}
+                            </>
                         )}
                     </>
                 )}
             </div>
+
+            <FilterDrawer
+                isOpen={showFilter}
+                onClose={() => setShowFilter(false)}
+                filters={filters}
+                onChange={setFilters}
+                contentType={contentType}
+                source={source}
+            />
         </div>
     );
 }

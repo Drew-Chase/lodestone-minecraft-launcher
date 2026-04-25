@@ -4,7 +4,7 @@ use crate::model::common::{Author, ContentBase, License, Links, SideSupport};
 use crate::model::{
     DatapackItem, ModItem, PackItem, ResourcePackItem, ShaderPackItem, WorldItem,
 };
-use crate::platform::{ContentType, Platform, Sort};
+use crate::platform::{ContentType, Platform, SearchFilters, Sort};
 
 use super::dto::{GalleryItem, Project, SearchHit};
 
@@ -28,22 +28,55 @@ pub(crate) fn sort_to_index(sort: Sort) -> &'static str {
     }
 }
 
-/// Build the `facets` JSON array that restricts a search to a given content type.
+/// Build a complete Modrinth `facets` JSON string from a content type and
+/// optional search filters. Returns `None` only when the content type is
+/// unsupported (e.g. `World`).
 ///
-/// Modrinth represents datapacks two ways depending on when the project was
-/// uploaded: as `project_type=datapack`, or as `project_type=mod` with a
-/// `categories=datapack` facet. We emit a single facet group here — the most
-/// common/current shape — and tolerate the legacy form on deserialization.
-pub(crate) fn content_type_to_facets(kind: ContentType) -> Option<String> {
+/// Modrinth facets are a JSON array-of-arrays: the outer array is AND,
+/// each inner array is OR. So `[["versions:1.20.1","versions:1.21.4"],
+/// ["categories:fabric"]]` means "(1.20.1 OR 1.21.4) AND fabric".
+pub(crate) fn build_facets(kind: ContentType, filters: &SearchFilters) -> Option<String> {
     let pt = match kind {
         ContentType::Mod => PT_MOD,
         ContentType::Modpack => PT_MODPACK,
         ContentType::ResourcePack => PT_RESOURCEPACK,
         ContentType::ShaderPack => PT_SHADER,
         ContentType::Datapack => PT_DATAPACK,
-        ContentType::World => return None, // unsupported
+        ContentType::World => return None,
     };
-    Some(format!("[[\"project_type:{pt}\"]]"))
+
+    let mut groups: Vec<String> = Vec::new();
+
+    // Content type — always present.
+    groups.push(format!("[\"project_type:{pt}\"]"));
+
+    // Versions — OR within one group.
+    if !filters.versions.is_empty() {
+        let inner: Vec<String> = filters.versions.iter().map(|v| format!("\"versions:{v}\"")).collect();
+        groups.push(format!("[{}]", inner.join(",")));
+    }
+
+    // Loaders — Modrinth encodes loaders as categories in facets.
+    if !filters.loaders.is_empty() {
+        let inner: Vec<String> = filters.loaders.iter().map(|l| format!("\"categories:{l}\"")).collect();
+        groups.push(format!("[{}]", inner.join(",")));
+    }
+
+    // Categories — OR within one group.
+    if !filters.categories.is_empty() {
+        let inner: Vec<String> = filters.categories.iter().map(|c| format!("\"categories:{c}\"")).collect();
+        groups.push(format!("[{}]", inner.join(",")));
+    }
+
+    // Environment — each is its own AND group.
+    if let Some(ref cs) = filters.client_side {
+        groups.push(format!("[\"client_side:{cs}\"]"));
+    }
+    if let Some(ref ss) = filters.server_side {
+        groups.push(format!("[\"server_side:{ss}\"]"));
+    }
+
+    Some(format!("[{}]", groups.join(",")))
 }
 
 fn side(s: Option<&str>) -> SideSupport {
@@ -356,28 +389,43 @@ mod tests {
     }
 
     #[test]
-    fn content_type_facets() {
+    fn build_facets_content_type_only() {
+        let f = SearchFilters::default();
         assert_eq!(
-            content_type_to_facets(ContentType::Mod).as_deref(),
+            build_facets(ContentType::Mod, &f).as_deref(),
             Some("[[\"project_type:mod\"]]")
         );
         assert_eq!(
-            content_type_to_facets(ContentType::Modpack).as_deref(),
+            build_facets(ContentType::Modpack, &f).as_deref(),
             Some("[[\"project_type:modpack\"]]")
         );
         assert_eq!(
-            content_type_to_facets(ContentType::ResourcePack).as_deref(),
+            build_facets(ContentType::ResourcePack, &f).as_deref(),
             Some("[[\"project_type:resourcepack\"]]")
         );
         assert_eq!(
-            content_type_to_facets(ContentType::ShaderPack).as_deref(),
+            build_facets(ContentType::ShaderPack, &f).as_deref(),
             Some("[[\"project_type:shader\"]]")
         );
         assert_eq!(
-            content_type_to_facets(ContentType::Datapack).as_deref(),
+            build_facets(ContentType::Datapack, &f).as_deref(),
             Some("[[\"project_type:datapack\"]]")
         );
-        assert!(content_type_to_facets(ContentType::World).is_none());
+        assert!(build_facets(ContentType::World, &f).is_none());
+    }
+
+    #[test]
+    fn build_facets_with_filters() {
+        let f = SearchFilters {
+            versions: vec!["1.20.1".into(), "1.21.4".into()],
+            loaders: vec!["fabric".into()],
+            ..Default::default()
+        };
+        let facets = build_facets(ContentType::Mod, &f).unwrap();
+        assert!(facets.contains("\"project_type:mod\""));
+        assert!(facets.contains("\"versions:1.20.1\""));
+        assert!(facets.contains("\"versions:1.21.4\""));
+        assert!(facets.contains("\"categories:fabric\""));
     }
 
     #[test]

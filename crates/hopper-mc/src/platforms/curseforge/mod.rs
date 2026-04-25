@@ -16,12 +16,12 @@
 //! accidentally logged.
 //!
 //! ```no_run
-//! use hopper_mc::{CurseForgeProvider, ModProvider, Sort};
+//! use hopper_mc::{CurseForgeProvider, ModProvider, SearchFilters, Sort};
 //! use secrecy::SecretString;
 //!
 //! # async fn example(key: SecretString) -> Result<(), hopper_mc::ContentError> {
 //! let cf = CurseForgeProvider::new_with_secret_key(Some(key));
-//! let _ = cf.find_mods(Some("sodium"), Sort::Relevance, 0, 5).await?;
+//! let _ = cf.find_mods(Some("sodium"), Sort::Relevance, &SearchFilters::default(), 0, 5).await?;
 //! # Ok(()) }
 //! ```
 //!
@@ -55,7 +55,7 @@ use crate::error::Result;
 use crate::model::{
     DatapackItem, ModItem, PackItem, ResourcePackItem, ShaderPackItem, WorldItem,
 };
-use crate::platform::{ContentType, Platform, Sort};
+use crate::platform::{ContentType, Platform, SearchFilters, Sort};
 use crate::provider::{
     ContentProvider, DatapackProvider, ModProvider, PackProvider, ResourcePackProvider,
     ShaderPackProvider, WorldProvider,
@@ -187,6 +187,7 @@ impl ModProvider for CurseForgeProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> Result<Vec<ModItem>> {
@@ -196,6 +197,7 @@ impl ModProvider for CurseForgeProvider {
             query,
             sort,
             ContentType::Mod,
+            filters,
             page,
             per_page,
         )
@@ -218,6 +220,7 @@ impl PackProvider for CurseForgeProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> Result<Vec<PackItem>> {
@@ -227,6 +230,7 @@ impl PackProvider for CurseForgeProvider {
             query,
             sort,
             ContentType::Modpack,
+            filters,
             page,
             per_page,
         )
@@ -250,6 +254,7 @@ impl DatapackProvider for CurseForgeProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> Result<Vec<DatapackItem>> {
@@ -259,6 +264,7 @@ impl DatapackProvider for CurseForgeProvider {
             query,
             sort,
             ContentType::Datapack,
+            filters,
             page,
             per_page,
         )
@@ -282,6 +288,7 @@ impl ResourcePackProvider for CurseForgeProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> Result<Vec<ResourcePackItem>> {
@@ -291,6 +298,7 @@ impl ResourcePackProvider for CurseForgeProvider {
             query,
             sort,
             ContentType::ResourcePack,
+            filters,
             page,
             per_page,
         )
@@ -319,6 +327,7 @@ impl ShaderPackProvider for CurseForgeProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> Result<Vec<ShaderPackItem>> {
@@ -328,6 +337,7 @@ impl ShaderPackProvider for CurseForgeProvider {
             query,
             sort,
             ContentType::ShaderPack,
+            filters,
             page,
             per_page,
         )
@@ -351,6 +361,7 @@ impl WorldProvider for CurseForgeProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> Result<Vec<WorldItem>> {
@@ -360,6 +371,7 @@ impl WorldProvider for CurseForgeProvider {
             query,
             sort,
             ContentType::World,
+            filters,
             page,
             per_page,
         )

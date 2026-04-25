@@ -27,6 +27,8 @@ export default function SourceBadge({platform}: {platform: PlatformId}) {
                 fontWeight: 700,
                 letterSpacing: 0.5,
                 textTransform: "uppercase",
+                textShadow: "0 1px 3px rgba(0,0,0,0.6)",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
             }}
         >
             {platform}

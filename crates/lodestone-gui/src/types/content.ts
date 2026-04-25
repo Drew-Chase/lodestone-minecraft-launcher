@@ -107,9 +107,23 @@ export type ContentTypeKey =
 
 export type SortKey = "relevance" | "downloads" | "follows" | "latest" | "updated";
 
-export type SourceKey = "all" | "modrinth" | "curseforge";
+export type SourceKey = "modrinth" | "curseforge" | "atlauncher" | "ftb" | "technic";
 
 export type ViewMode = "grid" | "compact" | "table";
+
+export interface FilterState {
+    categories: string[];
+    loaders: string[];
+    versions: string[];
+    environment: string[];
+}
+
+export const defaultFilterState: FilterState = {
+    categories: [],
+    loaders: [],
+    versions: [],
+    environment: [],
+};
 
 /** Format a large number with K/M suffix. */
 export function formatCount(n: number): string {

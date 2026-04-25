@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useRef, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
-import type {ContentItem, ContentTypeKey, SortKey, SourceKey} from "../types/content";
+import type {ContentItem, ContentTypeKey, FilterState, SortKey, SourceKey} from "../types/content";
 
 const DEBOUNCE_MS = 300;
 const PER_PAGE = 20;
@@ -10,6 +10,7 @@ export interface UseContentSearchParams {
     sort: SortKey;
     source: SourceKey;
     contentType: ContentTypeKey;
+    filters: FilterState;
 }
 
 export interface UseContentSearchResult {
@@ -27,7 +28,7 @@ export interface UseContentSearchResult {
 export default function useContentSearch(
     params: UseContentSearchParams
 ): UseContentSearchResult {
-    const {query, sort, source, contentType} = params;
+    const {query, sort, source, contentType, filters} = params;
 
     const [results, setResults] = useState<ContentItem[]>([]);
     const [loading, setLoading] = useState(false);
@@ -61,6 +62,7 @@ export default function useContentSearch(
                     contentType,
                     page: searchPage,
                     perPage: PER_PAGE,
+                    filters,
                 });
 
                 if (gen !== generation.current) return;
@@ -81,7 +83,7 @@ export default function useContentSearch(
                 if (gen === generation.current) setLoading(false);
             }
         },
-        [query, sort, source, contentType]
+        [query, sort, source, contentType, filters]
     );
 
     // When params change, debounce and reset to page 0.

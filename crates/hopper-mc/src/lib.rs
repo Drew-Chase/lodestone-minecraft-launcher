@@ -15,16 +15,17 @@
 //! yet to be implemented return [`ContentError::NotImplemented`].
 //!
 //! ```no_run
-//! use hopper_mc::{find_mods, find_packs, get_mod, Platform, Sort};
+//! use hopper_mc::{find_mods, find_packs, get_mod, Platform, SearchFilters, Sort};
 //!
 //! # async fn example() -> Result<(), hopper_mc::ContentError> {
 //! let page = 0u32;
 //! let per = 10u32;
+//! let filters = SearchFilters::default();
 //!
-//! let modrinth_mods      = find_mods(None, Sort::Downloads, Platform::Modrinth, page, per).await?;
-//! let search_modrinth    = find_mods(Some("fabric api"), Sort::Latest, Platform::Modrinth, page, per).await?;
+//! let modrinth_mods      = find_mods(None, Sort::Downloads, &filters, Platform::Modrinth, page, per).await?;
+//! let search_modrinth    = find_mods(Some("fabric api"), Sort::Latest, &filters, Platform::Modrinth, page, per).await?;
 //! let one_mod            = get_mod("fabric-api", Platform::Modrinth).await?;
-//! let modrinth_modpacks  = find_packs(None, Sort::Latest, Platform::Modrinth, page, per).await?;
+//! let modrinth_modpacks  = find_packs(None, Sort::Latest, &filters, Platform::Modrinth, page, per).await?;
 //! # let _ = (modrinth_mods, search_modrinth, one_mod, modrinth_modpacks);
 //! # Ok(()) }
 //! ```
@@ -53,7 +54,7 @@ pub use model::{
     Author, ContentBase, DatapackItem, Dependency, DependencyKind, License, Links, ModItem,
     PackItem, ResourcePackItem, ShaderPackItem, SideSupport, WorldItem,
 };
-pub use platform::{ContentType, Platform, Sort};
+pub use platform::{ContentType, Platform, SearchFilters, Sort};
 pub use platforms::{
     AtLauncherProvider, CurseForgeProvider, FtbProvider, ModrinthProvider, TechnicProvider,
 };
@@ -79,6 +80,7 @@ macro_rules! unsupported {
 pub async fn find_mods(
     query: Option<&str>,
     sort: Sort,
+    filters: &SearchFilters,
     platform: Platform,
     page: u32,
     per_page: u32,
@@ -86,12 +88,12 @@ pub async fn find_mods(
     match platform {
         Platform::Modrinth => {
             ModrinthProvider::shared()
-                .find_mods(query, sort, page, per_page)
+                .find_mods(query, sort, filters, page, per_page)
                 .await
         }
         Platform::CurseForge => {
             CurseForgeProvider::shared()
-                .find_mods(query, sort, page, per_page)
+                .find_mods(query, sort, filters, page, per_page)
                 .await
         }
         Platform::AtLauncher | Platform::Technic | Platform::Ftb => {
@@ -115,6 +117,7 @@ pub async fn get_mod(id: &str, platform: Platform) -> Result<Option<ModItem>> {
 pub async fn find_packs(
     query: Option<&str>,
     sort: Sort,
+    filters: &SearchFilters,
     platform: Platform,
     page: u32,
     per_page: u32,
@@ -122,27 +125,27 @@ pub async fn find_packs(
     match platform {
         Platform::Modrinth => {
             ModrinthProvider::shared()
-                .find_packs(query, sort, page, per_page)
+                .find_packs(query, sort, filters, page, per_page)
                 .await
         }
         Platform::CurseForge => {
             CurseForgeProvider::shared()
-                .find_packs(query, sort, page, per_page)
+                .find_packs(query, sort, filters, page, per_page)
                 .await
         }
         Platform::AtLauncher => {
             AtLauncherProvider::shared()
-                .find_packs(query, sort, page, per_page)
+                .find_packs(query, sort, filters, page, per_page)
                 .await
         }
         Platform::Technic => {
             TechnicProvider::shared()
-                .find_packs(query, sort, page, per_page)
+                .find_packs(query, sort, filters, page, per_page)
                 .await
         }
         Platform::Ftb => {
             FtbProvider::shared()
-                .find_packs(query, sort, page, per_page)
+                .find_packs(query, sort, filters, page, per_page)
                 .await
         }
     }
@@ -163,6 +166,7 @@ pub async fn get_pack(id: &str, platform: Platform) -> Result<Option<PackItem>> 
 pub async fn find_datapacks(
     query: Option<&str>,
     sort: Sort,
+    filters: &SearchFilters,
     platform: Platform,
     page: u32,
     per_page: u32,
@@ -170,12 +174,12 @@ pub async fn find_datapacks(
     match platform {
         Platform::Modrinth => {
             ModrinthProvider::shared()
-                .find_datapacks(query, sort, page, per_page)
+                .find_datapacks(query, sort, filters, page, per_page)
                 .await
         }
         Platform::CurseForge => {
             CurseForgeProvider::shared()
-                .find_datapacks(query, sort, page, per_page)
+                .find_datapacks(query, sort, filters, page, per_page)
                 .await
         }
         Platform::AtLauncher | Platform::Technic | Platform::Ftb => {
@@ -199,6 +203,7 @@ pub async fn get_datapack(id: &str, platform: Platform) -> Result<Option<Datapac
 pub async fn find_resourcepacks(
     query: Option<&str>,
     sort: Sort,
+    filters: &SearchFilters,
     platform: Platform,
     page: u32,
     per_page: u32,
@@ -206,12 +211,12 @@ pub async fn find_resourcepacks(
     match platform {
         Platform::Modrinth => {
             ModrinthProvider::shared()
-                .find_resourcepacks(query, sort, page, per_page)
+                .find_resourcepacks(query, sort, filters, page, per_page)
                 .await
         }
         Platform::CurseForge => {
             CurseForgeProvider::shared()
-                .find_resourcepacks(query, sort, page, per_page)
+                .find_resourcepacks(query, sort, filters, page, per_page)
                 .await
         }
         Platform::AtLauncher | Platform::Technic | Platform::Ftb => {
@@ -238,6 +243,7 @@ pub async fn get_resourcepack(
 pub async fn find_shaderpacks(
     query: Option<&str>,
     sort: Sort,
+    filters: &SearchFilters,
     platform: Platform,
     page: u32,
     per_page: u32,
@@ -245,12 +251,12 @@ pub async fn find_shaderpacks(
     match platform {
         Platform::Modrinth => {
             ModrinthProvider::shared()
-                .find_shaderpacks(query, sort, page, per_page)
+                .find_shaderpacks(query, sort, filters, page, per_page)
                 .await
         }
         Platform::CurseForge => {
             CurseForgeProvider::shared()
-                .find_shaderpacks(query, sort, page, per_page)
+                .find_shaderpacks(query, sort, filters, page, per_page)
                 .await
         }
         Platform::AtLauncher | Platform::Technic | Platform::Ftb => {
@@ -274,6 +280,7 @@ pub async fn get_shaderpack(id: &str, platform: Platform) -> Result<Option<Shade
 pub async fn find_worlds(
     query: Option<&str>,
     sort: Sort,
+    filters: &SearchFilters,
     platform: Platform,
     page: u32,
     per_page: u32,
@@ -281,12 +288,12 @@ pub async fn find_worlds(
     match platform {
         Platform::Modrinth => {
             ModrinthProvider::shared()
-                .find_worlds(query, sort, page, per_page)
+                .find_worlds(query, sort, filters, page, per_page)
                 .await
         }
         Platform::CurseForge => {
             CurseForgeProvider::shared()
-                .find_worlds(query, sort, page, per_page)
+                .find_worlds(query, sort, filters, page, per_page)
                 .await
         }
         Platform::AtLauncher | Platform::Technic | Platform::Ftb => {

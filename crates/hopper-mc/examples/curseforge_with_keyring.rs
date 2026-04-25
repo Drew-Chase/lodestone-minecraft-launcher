@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cf = CurseForgeProvider::new_with_secret_key(Some(key));
 
     println!("\nSearching CurseForge for \"sodium\"...\n");
-    let hits = cf.find_mods(Some("sodium"), Sort::Relevance, 0, 5).await?;
+    let hits = cf.find_mods(Some("sodium"), Sort::Relevance, &hopper_mc::SearchFilters::default(), 0, 5).await?;
 
     for m in hits {
         println!(

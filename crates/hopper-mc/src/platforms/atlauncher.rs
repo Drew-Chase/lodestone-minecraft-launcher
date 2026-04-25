@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 
 use crate::error::{ContentError, Result};
 use crate::model::PackItem;
-use crate::platform::{Platform, Sort};
+use crate::platform::{Platform, SearchFilters, Sort};
 use crate::provider::{ContentProvider, PackProvider};
 
 #[derive(Debug)]
@@ -50,6 +50,7 @@ impl PackProvider for AtLauncherProvider {
         &self,
         _query: Option<&str>,
         _sort: Sort,
+        _filters: &SearchFilters,
         _page: u32,
         _per_page: u32,
     ) -> Result<Vec<PackItem>> {

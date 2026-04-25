@@ -76,6 +76,20 @@ pub(crate) fn loader_name(id: u32) -> Option<&'static str> {
     }
 }
 
+/// Inverse of [`loader_name`]: human-readable loader name → CurseForge
+/// `modLoaderType` integer. Returns `None` for unknown names.
+pub(crate) fn loader_name_to_id(name: &str) -> Option<u32> {
+    match name.to_ascii_lowercase().as_str() {
+        "forge" => Some(LOADER_FORGE),
+        "cauldron" => Some(LOADER_CAULDRON),
+        "liteloader" => Some(LOADER_LITELOADER),
+        "fabric" => Some(LOADER_FABRIC),
+        "quilt" => Some(LOADER_QUILT),
+        "neoforge" => Some(LOADER_NEOFORGE),
+        _ => None,
+    }
+}
+
 /// Return the distinct set of loader names present on a project, preserving
 /// first-seen order so the output is stable across runs.
 fn collect_loaders(indexes: &[FileIndex]) -> Vec<String> {

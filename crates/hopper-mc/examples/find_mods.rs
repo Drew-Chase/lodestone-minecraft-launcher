@@ -7,7 +7,7 @@
 //! cargo run --example find_mods -- "fabric api"
 //! ```
 
-use hopper_mc::{Platform, Sort, find_mods};
+use hopper_mc::{Platform, SearchFilters, Sort, find_mods};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         query_ref, sort
     );
 
-    let results = find_mods(query_ref, sort, Platform::Modrinth, page, per_page).await?;
+    let results = find_mods(query_ref, sort, &SearchFilters::default(), Platform::Modrinth, page, per_page).await?;
 
     println!("Got {} result(s):\n", results.len());
     for (i, m) in results.iter().enumerate() {

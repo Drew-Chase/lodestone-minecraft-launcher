@@ -55,3 +55,22 @@ pub enum ContentType {
     ShaderPack,
     World,
 }
+
+/// Optional filters applied to search/find queries.
+///
+/// All fields default to empty/`None`, meaning no filtering. Platforms map
+/// these to their own query parameters or facets as best they can — fields
+/// that a platform cannot represent are silently ignored.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SearchFilters {
+    /// Category tags to require (e.g. `["adventure", "tech"]`).
+    pub categories: Vec<String>,
+    /// Loader names to require (e.g. `["fabric", "forge"]`).
+    pub loaders: Vec<String>,
+    /// Minecraft version strings to require (e.g. `["1.20.1", "1.21.4"]`).
+    pub versions: Vec<String>,
+    /// Client-side support filter (`"required"`, `"optional"`, `"unsupported"`).
+    pub client_side: Option<String>,
+    /// Server-side support filter (`"required"`, `"optional"`, `"unsupported"`).
+    pub server_side: Option<String>,
+}

@@ -12,7 +12,7 @@ use crate::error::Result;
 use crate::model::{
     DatapackItem, ModItem, PackItem, ResourcePackItem, ShaderPackItem, WorldItem,
 };
-use crate::platform::{Platform, Sort};
+use crate::platform::{Platform, SearchFilters, Sort};
 
 /// Base trait: every provider identifies the platform it speaks to.
 pub trait ContentProvider: Send + Sync {
@@ -25,6 +25,7 @@ pub trait ModProvider: ContentProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> impl std::future::Future<Output = Result<Vec<ModItem>>> + Send;
@@ -41,6 +42,7 @@ pub trait PackProvider: ContentProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> impl std::future::Future<Output = Result<Vec<PackItem>>> + Send;
@@ -57,6 +59,7 @@ pub trait DatapackProvider: ContentProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> impl std::future::Future<Output = Result<Vec<DatapackItem>>> + Send;
@@ -73,6 +76,7 @@ pub trait ResourcePackProvider: ContentProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> impl std::future::Future<Output = Result<Vec<ResourcePackItem>>> + Send;
@@ -89,6 +93,7 @@ pub trait ShaderPackProvider: ContentProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> impl std::future::Future<Output = Result<Vec<ShaderPackItem>>> + Send;
@@ -105,6 +110,7 @@ pub trait WorldProvider: ContentProvider {
         &self,
         query: Option<&str>,
         sort: Sort,
+        filters: &SearchFilters,
         page: u32,
         per_page: u32,
     ) -> impl std::future::Future<Output = Result<Vec<WorldItem>>> + Send;

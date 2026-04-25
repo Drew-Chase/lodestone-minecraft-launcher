@@ -9,21 +9,31 @@ interface SourceTabsProps {
 type SourceDef = {key: SourceKey; label: string; disabled?: boolean};
 
 const baseSources: SourceDef[] = [
-    {key: "all", label: "All providers"},
     {key: "modrinth", label: "Modrinth"},
     {key: "curseforge", label: "CurseForge"},
 ];
 
 const modpackExtras: SourceDef[] = [
-    {key: "all", label: "ATLauncher", disabled: true},
-    {key: "all", label: "FTB", disabled: true},
-    {key: "all", label: "Technic", disabled: true},
+    {key: "atlauncher", label: "ATLauncher", disabled: true},
+    {key: "ftb", label: "FTB", disabled: true},
+    {key: "technic", label: "Technic", disabled: true},
 ];
 
-export default function SourceTabs({active, contentType, onChange}: SourceTabsProps) {
-    const sources = contentType === "modpack"
+/** Return the source definitions available for a given content type. */
+export function getSourcesForContentType(contentType: ContentTypeKey): SourceDef[] {
+    return contentType === "modpack"
         ? [...baseSources, ...modpackExtras]
         : baseSources;
+}
+
+/** Check whether a source key is selectable (exists and not disabled) for a content type. */
+export function isSourceAvailable(source: SourceKey, contentType: ContentTypeKey): boolean {
+    const sources = getSourcesForContentType(contentType);
+    return sources.some(s => s.key === source && !s.disabled);
+}
+
+export default function SourceTabs({active, contentType, onChange}: SourceTabsProps) {
+    const sources = getSourcesForContentType(contentType);
 
     return (
         <div className="flex gap-1">

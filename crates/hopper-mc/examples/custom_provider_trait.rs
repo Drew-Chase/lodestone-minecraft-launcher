@@ -12,7 +12,7 @@
 //! ```
 
 use hopper_mc::{
-    ContentError, ModItem, ModProvider, ModrinthProvider, Sort,
+    ContentError, ModItem, ModProvider, ModrinthProvider, SearchFilters, Sort,
 };
 
 /// Accept any provider that knows how to find mods. A simple generic
@@ -21,7 +21,7 @@ async fn first_hit<P: ModProvider>(
     provider: &P,
     query: &str,
 ) -> Result<Option<ModItem>, ContentError> {
-    let mut hits = provider.find_mods(Some(query), Sort::Relevance, 0, 1).await?;
+    let mut hits = provider.find_mods(Some(query), Sort::Relevance, &SearchFilters::default(), 0, 1).await?;
     Ok(hits.pop())
 }
 
