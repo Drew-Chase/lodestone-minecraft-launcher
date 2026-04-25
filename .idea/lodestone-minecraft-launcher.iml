@@ -16,6 +16,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/minecraft-content/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/minecraft-loaders/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/minecraft-loaders/tests" isTestSource="true" />
+      <excludeFolder url="file://$MODULE_DIR$/crates/lodestone-gui/src-tauri/gen/schemas" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

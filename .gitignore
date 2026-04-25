@@ -104,3 +104,4 @@ rust-project.json
 .claude
 CLAUDE.MD
 *claude*
+/extracted_handoff
