@@ -43,8 +43,8 @@ export default function FilterDrawer({
     // Filter and slice versions for display.
     const filteredVersions = versions.filter(v => {
         if (!showSnapshots && v.version_type !== "Release") return false;
-        if (versionSearch && !v.id.includes(versionSearch)) return false;
-        return true;
+        return !(versionSearch && !v.id.includes(versionSearch));
+
     });
     const visibleVersions = filteredVersions.slice(0, versionLimit);
     const hasMoreVersions = filteredVersions.length > versionLimit;
