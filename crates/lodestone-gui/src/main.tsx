@@ -53,8 +53,9 @@ export function MainContentRenderer() {
                 <Route element={<AppShell/>}>
                     <Route path="/library" element={<ErrorBoundary><Home/></ErrorBoundary>}/>
                     <Route path="/library/:slug" element={<ErrorBoundary><InstanceDetail/></ErrorBoundary>}/>
-                    <Route path="/discover" element={<ErrorBoundary><Discover/></ErrorBoundary>}/>
-                    <Route path="/discover/:platform/:id" element={<ErrorBoundary><ContentDetail/></ErrorBoundary>}/>
+                    <Route path="/discover" element={<ErrorBoundary><Discover/></ErrorBoundary>}>
+                        <Route path=":platform/:id" element={<ContentDetail/>}/>
+                    </Route>
                     <Route path="/worlds" element={<ErrorBoundary><Worlds/></ErrorBoundary>}/>
                     <Route path="/servers" element={<ErrorBoundary><ComingSoon name="Servers"/></ErrorBoundary>}/>
                     <Route path="/friends" element={<ErrorBoundary><ComingSoon name="Friends"/></ErrorBoundary>}/>

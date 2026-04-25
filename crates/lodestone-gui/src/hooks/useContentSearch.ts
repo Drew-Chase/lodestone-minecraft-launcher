@@ -19,9 +19,6 @@ export interface UseContentSearchResult {
     error: string | null;
     page: number;
     hasMore: boolean;
-    /** Attach this ref to an element at the bottom of your scrollable
-     *  container. An IntersectionObserver watches it and calls loadMore
-     *  automatically when the sentinel scrolls into view. */
     sentinelRef: React.RefCallback<HTMLElement>;
 }
 
@@ -39,8 +36,6 @@ export default function useContentSearch(
     const generation = useRef(0);
     const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Stable refs so the observer callback reads latest values without
-    // needing to re-create the observer on every render.
     const loadingRef = useRef(loading);
     loadingRef.current = loading;
     const hasMoreRef = useRef(hasMore);
@@ -86,8 +81,15 @@ export default function useContentSearch(
         [query, sort, source, contentType, filters]
     );
 
-    // When params change, debounce and reset to page 0.
+    // When params change, immediately clear results and show loading,
+    // then debounce the actual search.
     useEffect(() => {
+        // Immediately clear for a fresh start — the user sees a spinner.
+        setResults([]);
+        setHasMore(true);
+        setLoading(true);
+        setPage(0);
+
         if (debounceTimer.current) clearTimeout(debounceTimer.current);
         debounceTimer.current = setTimeout(() => {
             doSearch(0, false);
@@ -105,14 +107,15 @@ export default function useContentSearch(
 
     // ── Infinite scroll via IntersectionObserver ──
     const observerRef = useRef<IntersectionObserver | null>(null);
+    const sentinelNodeRef = useRef<HTMLElement | null>(null);
 
     const sentinelRef: React.RefCallback<HTMLElement> = useCallback(
         (node: HTMLElement | null) => {
-            // Disconnect the old observer if any.
             if (observerRef.current) {
                 observerRef.current.disconnect();
                 observerRef.current = null;
             }
+            sentinelNodeRef.current = node;
             if (!node) return;
 
             observerRef.current = new IntersectionObserver(
@@ -121,9 +124,6 @@ export default function useContentSearch(
                         loadMore();
                     }
                 },
-                // Fire when the sentinel is within 200px of the
-                // viewport bottom so the next page starts loading
-                // before the user actually hits the end.
                 {rootMargin: "0px 0px 200px 0px"},
             );
             observerRef.current.observe(node);
@@ -131,7 +131,19 @@ export default function useContentSearch(
         [loadMore],
     );
 
-    // Clean up on unmount.
+    // After a page loads and loading flips to false, re-check if the sentinel
+    // is still visible (large screens where content doesn't fill the viewport).
+    // If so, trigger another page load immediately.
+    useEffect(() => {
+        if (loading || !hasMore) return;
+        if (!sentinelNodeRef.current) return;
+
+        const rect = sentinelNodeRef.current.getBoundingClientRect();
+        if (rect.top < window.innerHeight + 200) {
+            loadMore();
+        }
+    }, [loading, hasMore, loadMore]);
+
     useEffect(() => {
         return () => {
             observerRef.current?.disconnect();

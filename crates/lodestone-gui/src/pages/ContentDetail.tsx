@@ -74,7 +74,7 @@ export default function ContentDetail() {
                     variant="bordered"
                     size="sm"
                     className="border-line text-ink-2"
-                    onPress={() => navigate("/discover")}
+                    onPress={() => navigate(-1)}
                     startContent={<I.chevRight size={14} style={{transform: "rotate(180deg)"}}/>}
                 >
                     Back to Discover
@@ -94,7 +94,7 @@ export default function ContentDetail() {
                     variant="light"
                     size="sm"
                     className="text-ink-3"
-                    onPress={() => navigate("/discover")}
+                    onPress={() => navigate(-1)}
                     startContent={<I.chevRight size={14} style={{transform: "rotate(180deg)"}}/>}
                 >
                     Back to Discover
@@ -147,7 +147,7 @@ export default function ContentDetail() {
                     {tab === "summary" && (
                         <SummaryTab description={item.description} summary={item.summary}/>
                     )}
-                    {tab === "gallery" && <GalleryTab images={item.gallery}/>}
+                    {tab === "gallery" && <GalleryTab images={item.gallery} title={item.title}/>}
                     {tab === "versions" && <VersionsTab/>}
                     {tab === "dependencies" && <DependenciesTab deps={deps}/>}
                 </div>

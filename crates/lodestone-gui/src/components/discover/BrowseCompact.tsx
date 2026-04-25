@@ -1,4 +1,6 @@
+import {useRef, useState, useEffect} from "react";
 import {useNavigate} from "react-router-dom";
+import {Tooltip} from "@heroui/react";
 import {cardSurfaceStyle, cardHoverClass} from "../surfaces";
 import SourceBadge from "./SourceBadge";
 import {I} from "../shell/icons";
@@ -36,11 +38,9 @@ function CompactCard({item}: {item: ContentItem}) {
                 )}
             </div>
 
-            <div style={{flex: 1, padding: "6px 10px"}}>
+            <div style={{flex: 1, padding: "6px 10px", minWidth: 0}}>
                 <div className="flex items-center gap-1.5">
-                    <span style={{fontSize: 12, fontWeight: 700}} className="truncate flex-1">
-                        {item.title}
-                    </span>
+                    <TruncatedTitle title={item.title}/>
                     <SourceBadge platform={item.platform}/>
                 </div>
                 <div style={{fontSize: 9, color: "var(--ink-3)"}} className="truncate">
@@ -61,5 +61,39 @@ function CompactCard({item}: {item: ContentItem}) {
                 </div>
             </div>
         </div>
+    );
+}
+
+function TruncatedTitle({title}: {title: string}) {
+    const ref = useRef<HTMLSpanElement>(null);
+    const [isTruncated, setIsTruncated] = useState(false);
+
+    useEffect(() => {
+        const el = ref.current;
+        if (el) setIsTruncated(el.scrollWidth > el.clientWidth);
+    }, [title]);
+
+    const span = (
+        <span
+            ref={ref}
+            style={{fontSize: 12, fontWeight: 700}}
+            className="truncate flex-1 min-w-0"
+        >
+            {title}
+        </span>
+    );
+
+    if (!isTruncated) return span;
+
+    return (
+        <Tooltip
+            content={title}
+            delay={400}
+            classNames={{
+                content: "bg-[#0d1117] border border-line text-xs text-[var(--ink-1)] max-w-[300px]",
+            }}
+        >
+            {span}
+        </Tooltip>
     );
 }

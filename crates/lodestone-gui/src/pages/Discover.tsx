@@ -1,4 +1,5 @@
 import {useState, useCallback} from "react";
+import {Outlet, useMatch} from "react-router-dom";
 import {Input, Spinner} from "@heroui/react";
 import TitleBar from "../components/shell/TitleBar";
 import {I} from "../components/shell/icons";
@@ -17,6 +18,10 @@ import type {ContentTypeKey, FilterState, SortKey, SourceKey, ViewMode} from "..
 import {defaultFilterState} from "../types/content";
 
 export default function Discover() {
+    // When a child route is active (/discover/:platform/:id), we render it
+    // as an overlay so the Discover page stays mounted (scroll, results, query preserved).
+    const detailMatch = useMatch("/discover/:platform/:id");
+    const showDetail = !!detailMatch;
     const [contentType, setContentTypePersisted] = usePersistedState<ContentTypeKey>("discover.contentType", "mod");
     const [source, setSource] = usePersistedState<SourceKey>("discover.source", "modrinth");
     const [query, setQuery] = useState("");
@@ -54,7 +59,7 @@ export default function Discover() {
         filters.versions.length + filters.environment.length;
 
     return (
-        <div className="flex-1 flex flex-col overflow-hidden" style={{background: "var(--bg-0)"}}>
+        <div className="flex-1 flex flex-col overflow-hidden relative" style={{background: "var(--bg-0)"}}>
             {/* ── Static header ── */}
             <div className="flex-shrink-0">
                 <TitleBar title="Discover" subtitle="Browse mods, modpacks, shaders, and more"/>
@@ -222,6 +227,13 @@ export default function Discover() {
                 contentType={contentType}
                 source={source}
             />
+
+            {/* Content detail overlay — Discover stays mounted underneath */}
+            {showDetail && (
+                <div className="absolute inset-0 z-30 flex flex-col" style={{background: "var(--bg-0)"}}>
+                    <Outlet/>
+                </div>
+            )}
         </div>
     );
 }

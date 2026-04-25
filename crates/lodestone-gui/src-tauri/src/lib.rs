@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -6,6 +10,61 @@ use hopper_mc::{
     ModProvider, PackProvider, DatapackProvider, ResourcePackProvider,
     ShaderPackProvider, WorldProvider,
 };
+
+// ---------------------------------------------------------------------------
+// In-memory TTL cache
+// ---------------------------------------------------------------------------
+
+struct CacheEntry<V> {
+    value: V,
+    expires: Instant,
+}
+
+struct TtlCache<V> {
+    map: Mutex<HashMap<String, CacheEntry<V>>>,
+}
+
+impl<V: Clone> TtlCache<V> {
+    fn new() -> Self {
+        Self { map: Mutex::new(HashMap::new()) }
+    }
+
+    fn get(&self, key: &str) -> Option<V> {
+        let map = self.map.lock().unwrap();
+        match map.get(key) {
+            Some(entry) if entry.expires > Instant::now() => Some(entry.value.clone()),
+            _ => None,
+        }
+    }
+
+    fn insert(&self, key: String, value: V, ttl: Duration) {
+        let mut map = self.map.lock().unwrap();
+        if map.len() > 500 {
+            let now = Instant::now();
+            map.retain(|_, e| e.expires > now);
+        }
+        map.insert(key, CacheEntry { value, expires: Instant::now() + ttl });
+    }
+}
+
+static SEARCH_CACHE: LazyLock<TtlCache<Vec<Value>>> = LazyLock::new(TtlCache::new);
+static CONTENT_CACHE: LazyLock<TtlCache<Option<Value>>> = LazyLock::new(TtlCache::new);
+
+/// Browse (no query): 10 min. Search (with query): 5 min.
+fn search_ttl(has_query: bool) -> Duration {
+    if has_query {
+        Duration::from_secs(5 * 60)
+    } else {
+        Duration::from_secs(10 * 60)
+    }
+}
+
+/// Content detail: 30 min.
+const CONTENT_TTL: Duration = Duration::from_secs(30 * 60);
+
+// ---------------------------------------------------------------------------
+// Filter parameters
+// ---------------------------------------------------------------------------
 
 /// Filter parameters received from the frontend.
 #[derive(Debug, Deserialize, Default)]
@@ -25,7 +84,6 @@ impl FilterParams {
             versions: self.versions.clone(),
             ..Default::default()
         };
-        // Map environment strings to client_side / server_side facets.
         for env in &self.environment {
             match env.to_ascii_lowercase().as_str() {
                 "client" => sf.client_side = Some("required".into()),
@@ -39,7 +97,18 @@ impl FilterParams {
         }
         sf
     }
+
+    fn cache_key_part(&self) -> String {
+        format!(
+            "c={};l={};v={};e={}",
+            self.categories.join(","),
+            self.loaders.join(","),
+            self.versions.join(","),
+            self.environment.join(","),
+        )
+    }
 }
+
 #[cfg(debug_assertions)]
 use hopper_mc::CurseForgeProvider;
 
@@ -74,9 +143,10 @@ fn parse_content_type(s: &str) -> ContentType {
     }
 }
 
-/// Search for content across one or both platforms. When `platform` is
-/// `"all"`, Modrinth and CurseForge are queried in parallel and the
-/// results merged.
+// ---------------------------------------------------------------------------
+// search_content
+// ---------------------------------------------------------------------------
+
 #[tauri::command]
 async fn search_content(
     query: Option<String>,
@@ -87,16 +157,29 @@ async fn search_content(
     per_page: u32,
     filters: Option<FilterParams>,
 ) -> Result<Vec<Value>, String> {
+    let fp = filters.unwrap_or_default();
+    let has_query = query.as_ref().is_some_and(|q| !q.is_empty());
+
+    let cache_key = format!(
+        "search:{}:{}:{}:{}:{page}:{per_page}:{}",
+        query.as_deref().unwrap_or(""),
+        sort, platform, content_type,
+        fp.cache_key_part(),
+    );
+
+    if let Some(cached) = SEARCH_CACHE.get(&cache_key) {
+        return Ok(cached);
+    }
+
     let s = parse_sort(&sort);
     let ct = parse_content_type(&content_type);
     let q = query.as_deref();
-    let sf = filters.unwrap_or_default().to_search_filters();
+    let sf = fp.to_search_filters();
 
-    match platform.as_str() {
+    let result = match platform.as_str() {
         "modrinth" => search_on_platform(q, s, Platform::Modrinth, ct, &sf, page, per_page).await,
         "curseforge" => search_on_platform(q, s, Platform::CurseForge, ct, &sf, page, per_page).await,
         _ => {
-            // "all" — query both in parallel, merge results
             let (mr_res, cf_res): (Result<Vec<Value>, String>, Result<Vec<Value>, String>) =
                 tokio::join!(
                     search_on_platform(q, s, Platform::Modrinth, ct, &sf, page, per_page),
@@ -106,7 +189,13 @@ async fn search_content(
             combined.extend(cf_res.unwrap_or_default());
             Ok(combined)
         }
+    };
+
+    if let Ok(ref data) = result {
+        SEARCH_CACHE.insert(cache_key, data.clone(), search_ttl(has_query));
     }
+
+    result
 }
 
 async fn search_on_platform(
@@ -153,13 +242,22 @@ async fn search_on_platform(
     }
 }
 
-/// Fetch a single content item by id/slug from a specific platform.
+// ---------------------------------------------------------------------------
+// get_content
+// ---------------------------------------------------------------------------
+
 #[tauri::command]
 async fn get_content(
     id: String,
     platform: String,
     content_type: String,
 ) -> Result<Option<Value>, String> {
+    let cache_key = format!("content:{platform}:{content_type}:{id}");
+
+    if let Some(cached) = CONTENT_CACHE.get(&cache_key) {
+        return Ok(cached);
+    }
+
     let ct = parse_content_type(&content_type);
     let plat = match platform.as_str() {
         "curseforge" => Platform::CurseForge,
@@ -190,17 +288,26 @@ async fn get_content(
         }};
     }
 
-    match ct {
+    let result = match ct {
         ContentType::Mod => get_item!(get_mod),
         ContentType::Modpack => get_item!(get_pack),
         ContentType::Datapack => get_item!(get_datapack),
         ContentType::ResourcePack => get_item!(get_resourcepack),
         ContentType::ShaderPack => get_item!(get_shaderpack),
         ContentType::World => get_item!(get_world),
+    };
+
+    if let Ok(ref data) = result {
+        CONTENT_CACHE.insert(cache_key, data.clone(), CONTENT_TTL);
     }
+
+    result
 }
 
-/// A Minecraft version entry returned to the frontend.
+// ---------------------------------------------------------------------------
+// get_minecraft_versions
+// ---------------------------------------------------------------------------
+
 #[derive(Debug, Clone, Serialize)]
 struct McVersion {
     id: String,
@@ -233,6 +340,10 @@ async fn get_minecraft_versions() -> Result<Vec<McVersion>, String> {
 
     Ok(versions.clone())
 }
+
+// ---------------------------------------------------------------------------
+// App entry
+// ---------------------------------------------------------------------------
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
