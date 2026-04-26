@@ -16,6 +16,7 @@ import ContentDetail from "./pages/ContentDetail";
 import ErrorBoundary from "./components/shell/ErrorBoundary";
 import RequireAuth from "./components/shell/RequireAuth";
 import {AuthProvider} from "./context/AuthContext";
+import {SettingsProvider} from "./context/SettingsContext";
 
 // Ensure dark mode class is present so Tailwind/HeroUI dark theme applies.
 document.documentElement.classList.add("dark");
@@ -51,6 +52,7 @@ export function MainContentRenderer() {
             />
 
             <AuthProvider>
+              <SettingsProvider>
                 <Routes>
                     <Route path="/" element={<Login/>}/>
                     <Route element={<RequireAuth/>}>
@@ -72,6 +74,7 @@ export function MainContentRenderer() {
                         </Route>
                     </Route>
                 </Routes>
+              </SettingsProvider>
             </AuthProvider>
         </HeroUIProvider>
     );

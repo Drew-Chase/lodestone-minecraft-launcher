@@ -1,8 +1,11 @@
 import {Button} from "@heroui/react";
 import {I} from "../shell/icons";
 import {SettingCard, ToggleRow} from "./primitives";
+import {useSettings} from "../../context/SettingsContext";
 
 export default function PrivacyPane() {
+    const {settings, update} = useSettings();
+
     return (
         <>
             <SettingCard
@@ -13,16 +16,20 @@ export default function PrivacyPane() {
                     <ToggleRow
                         label="Send crash reports"
                         desc="Stack traces with no personal data attached"
-                        on
+                        on={settings.crashReports}
+                        onChange={(v) => update("crashReports", v)}
                     />
                     <ToggleRow
                         label="Anonymous usage stats"
                         desc="Feature usage counters only"
-                        on
+                        on={settings.usageStats}
+                        onChange={(v) => update("usageStats", v)}
                     />
                     <ToggleRow
                         label="Performance diagnostics"
                         desc="FPS + launch times, per instance"
+                        on={settings.performanceDiagnostics}
+                        onChange={(v) => update("performanceDiagnostics", v)}
                         last
                     />
                 </div>
@@ -36,16 +43,20 @@ export default function PrivacyPane() {
                     <ToggleRow
                         label="Allow filesystem access"
                         desc="For mods with map import or screenshots"
-                        on
+                        on={settings.filesystemAccess}
+                        onChange={(v) => update("filesystemAccess", v)}
                     />
                     <ToggleRow
                         label="Allow network requests"
                         desc="Online skins, online leaderboards"
-                        on
+                        on={settings.networkAccess}
+                        onChange={(v) => update("networkAccess", v)}
                     />
                     <ToggleRow
                         label="Allow hardware access"
                         desc="Input devices, controllers, VR headsets"
+                        on={settings.hardwareAccess}
+                        onChange={(v) => update("hardwareAccess", v)}
                         last
                     />
                 </div>

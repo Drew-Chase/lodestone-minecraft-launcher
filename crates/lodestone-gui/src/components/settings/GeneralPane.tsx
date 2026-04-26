@@ -1,17 +1,37 @@
+import {Slider} from "@heroui/react";
 import {SelectSettingRow, SettingCard, ToggleRow} from "./primitives";
+import {useSettings} from "../../context/SettingsContext";
 
 export default function GeneralPane() {
+    const {settings, update} = useSettings();
+
     return (
         <>
             <SettingCard>
                 <div className="-m-1">
                     <SelectSettingRow
                         label="Default instance directory"
-                        value="~/Lodestone/instances"
+                        value={settings.instanceDir || "Loading..."}
                     />
-                    <SelectSettingRow label="Startup behavior" value="Show library"/>
-                    <SelectSettingRow label="On game launch" value="Minimize launcher"/>
-                    <SelectSettingRow label="After game exits" value="Restore launcher" last/>
+                    <SelectSettingRow
+                        label="Startup behavior"
+                        value={settings.startupBehavior}
+                        options={["Show library", "Show last instance", "Show discover"]}
+                        onChange={(v) => update("startupBehavior", v)}
+                    />
+                    <SelectSettingRow
+                        label="On game launch"
+                        value={settings.onGameLaunch}
+                        options={["Minimize launcher", "Keep open", "Close launcher"]}
+                        onChange={(v) => update("onGameLaunch", v)}
+                    />
+                    <SelectSettingRow
+                        label="After game exits"
+                        value={settings.afterGameExits}
+                        options={["Restore launcher", "Keep minimized", "Close launcher"]}
+                        onChange={(v) => update("afterGameExits", v)}
+                        last
+                    />
                 </div>
             </SettingCard>
 
@@ -23,16 +43,20 @@ export default function GeneralPane() {
                     <ToggleRow
                         label="Auto-update Lodestone"
                         desc="Install stable releases in the background"
-                        on
+                        on={settings.autoUpdate}
+                        onChange={(v) => update("autoUpdate", v)}
                     />
                     <ToggleRow
                         label="Beta channel"
                         desc="Get new features early (may be unstable)"
+                        on={settings.betaChannel}
+                        onChange={(v) => update("betaChannel", v)}
                     />
                     <ToggleRow
                         label="Auto-update game versions"
                         desc="Pull new Minecraft releases automatically"
-                        on
+                        on={settings.autoUpdateGames}
+                        onChange={(v) => update("autoUpdateGames", v)}
                         last
                     />
                 </div>
@@ -42,31 +66,25 @@ export default function GeneralPane() {
                 title="Concurrent downloads"
                 desc="How many files to fetch at once per instance."
             >
-                <div className="flex items-center gap-3.5">
-                    {/* Custom slider — absolute-positioned fill and handle on top of a
-                        rounded track. The value is display-only for now. */}
-                    <div className="relative flex-1 h-1.5 bg-line rounded-[3px]">
-                        <div
-                            className="absolute left-0 w-[55%] h-full rounded-[3px]"
-                            style={{
-                                background: "var(--mc-green)",
-                                boxShadow: "0 0 10px var(--mc-green-glow)",
-                            }}
-                        />
-                        <div
-                            className="absolute w-4 h-4 rounded-full bg-white -top-[5px]"
-                            style={{
-                                left: "55%",
-                                transform: "translateX(-50%)",
-                                boxShadow:
-                                    "0 2px 6px rgba(0,0,0,0.5), 0 0 0 3px rgba(34,255,132,0.25)",
-                            }}
-                        />
-                    </div>
-                    <div className="font-mono text-[0.8125rem] font-bold min-w-[28px] text-right">
-                        11
-                    </div>
-                </div>
+                <Slider
+                    minValue={1}
+                    maxValue={20}
+                    step={1}
+                    value={settings.concurrentDownloads}
+                    onChange={(v) => update("concurrentDownloads", v as number)}
+                    aria-label="Concurrent downloads"
+                    showTooltip
+                    classNames={{
+                        track: "bg-line h-1.5",
+                        filler: "bg-mc-green",
+                        thumb: "bg-white w-4 h-4 shadow-[0_2px_6px_rgba(0,0,0,0.5),0_0_0_3px_rgba(34,255,132,0.25)]",
+                    }}
+                    renderValue={({children}) => (
+                        <div className="font-mono text-[0.8125rem] font-bold min-w-[28px] text-right">
+                            {children}
+                        </div>
+                    )}
+                />
             </SettingCard>
         </>
     );

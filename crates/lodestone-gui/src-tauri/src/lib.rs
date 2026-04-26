@@ -1,5 +1,7 @@
 mod auth;
 mod instances;
+mod java;
+mod settings;
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -420,6 +422,13 @@ pub fn run() {
             instances::get_loader_versions,
             instances::get_java_for_version,
             instances::get_instances_dir,
+            settings::get_settings,
+            settings::save_settings,
+            settings::reset_settings,
+            settings::get_system_ram,
+            java::detect_system_java,
+            java::get_available_java_runtimes,
+            java::install_java_runtime,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

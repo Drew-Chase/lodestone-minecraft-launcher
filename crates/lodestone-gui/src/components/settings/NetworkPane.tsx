@@ -1,7 +1,10 @@
 import Chip from "../Chip";
 import {SelectSettingRow, SettingCard, ToggleRow} from "./primitives";
+import {useSettings} from "../../context/SettingsContext";
 
 export default function NetworkPane() {
+    const {settings, update} = useSettings();
+
     return (
         <>
             <SettingCard
@@ -21,8 +24,6 @@ export default function NetworkPane() {
                         <span className="pulse-dot" style={{width: 5, height: 5}}/> CONNECTED
                     </Chip>
                 </div>
-                {/* Sparkline — path copied directly from the design. The gradient fill
-                    gives the line a soft under-glow. */}
                 <svg viewBox="0 0 300 50" className="w-full h-[50px]">
                     <defs>
                         <linearGradient id="net-spark" x1="0" x2="0" y1="0" y2="1">
@@ -45,13 +46,31 @@ export default function NetworkPane() {
 
             <SettingCard>
                 <div className="-m-1">
-                    <SelectSettingRow label="Max concurrent downloads" value="8"/>
+                    <SelectSettingRow
+                        label="Max concurrent downloads"
+                        value={String(settings.maxConcurrentDownloads)}
+                        options={["4", "8", "12", "16", "20"]}
+                        onChange={(v) => update("maxConcurrentDownloads", parseInt(v, 10))}
+                    />
                     <SelectSettingRow
                         label="Mod source priority"
-                        value="Modrinth → CurseForge"
+                        value={settings.modSourcePriority}
+                        options={["Modrinth → CurseForge", "CurseForge → Modrinth", "Modrinth only", "CurseForge only"]}
+                        onChange={(v) => update("modSourcePriority", v)}
                     />
-                    <SelectSettingRow label="Asset CDN" value="Auto (closest)"/>
-                    <SelectSettingRow label="Connection timeout" value="30 s" last/>
+                    <SelectSettingRow
+                        label="Asset CDN"
+                        value={settings.assetCdn}
+                        options={["Auto (closest)", "US East", "US West", "Europe", "Asia"]}
+                        onChange={(v) => update("assetCdn", v)}
+                    />
+                    <SelectSettingRow
+                        label="Connection timeout"
+                        value={`${settings.connectionTimeout} s`}
+                        options={["10 s", "15 s", "30 s", "60 s", "120 s"]}
+                        onChange={(v) => update("connectionTimeout", parseInt(v, 10))}
+                        last
+                    />
                 </div>
             </SettingCard>
 
@@ -60,11 +79,16 @@ export default function NetworkPane() {
                     <ToggleRow
                         label="Use system proxy"
                         desc="Follow the OS network configuration"
-                        on
+                        on={settings.useSystemProxy}
+                        onChange={(v) => update("useSystemProxy", v)}
                     />
                     <ToggleRow
                         label="Custom HTTP proxy"
                         desc="Override with proxy.yourorg.com:3128"
+                        on={!!settings.customProxyUrl}
+                        onChange={(v) => {
+                            if (!v) update("customProxyUrl", "");
+                        }}
                         last
                     />
                 </div>

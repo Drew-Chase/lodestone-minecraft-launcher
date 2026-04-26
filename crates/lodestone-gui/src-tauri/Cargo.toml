@@ -31,4 +31,8 @@ secrecy = "0.10"
 md5 = "0.7"
 log = "0.4"
 chrono = "0.4"
-piston-mc = { version = "0.0.1-alpha", features = ["downloads"] }
+piston-mc = { version = "0.0.1-alpha", features = ["downloads", "java"] }
+sysinfo = "0.33"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"

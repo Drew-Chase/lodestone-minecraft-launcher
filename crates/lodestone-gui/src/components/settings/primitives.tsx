@@ -1,5 +1,5 @@
-import {type ReactNode} from "react";
-import {Card} from "@heroui/react";
+import {type ReactNode, useState} from "react";
+import {Card, Listbox, ListboxItem, Popover, PopoverContent, PopoverTrigger} from "@heroui/react";
 import {I} from "../shell/icons";
 import {Switch} from "../Switch";
 import {cardSurfaceStyle} from "../surfaces";
@@ -40,11 +40,13 @@ export function ToggleRow({
                               desc,
                               on,
                               last,
+                              onChange,
                           }: {
     label: string;
     desc?: string;
     on?: boolean;
     last?: boolean;
+    onChange?: (checked: boolean) => void;
 }) {
     return (
         <div
@@ -59,7 +61,8 @@ export function ToggleRow({
                 )}
             </div>
             <Switch
-                defaultSelected={on}
+                isSelected={on}
+                onValueChange={onChange}
                 size="sm"
                 color="success"
                 aria-label={label}
@@ -68,31 +71,64 @@ export function ToggleRow({
     );
 }
 
-// Row with a label on the left and a (visual) select button on the right.
-// Renamed from the modals' SelectRow to avoid collision at import sites.
+// Row with a label on the left and a select dropdown on the right.
 export function SelectSettingRow({
                                      label,
                                      value,
                                      last,
+                                     options,
+                                     onChange,
                                  }: {
     label: string;
     value: string;
     last?: boolean;
+    options?: string[];
+    onChange?: (value: string) => void;
 }) {
+    const [open, setOpen] = useState(false);
+
+    const button = (
+        <button
+            type="button"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-[rgba(255,255,255,0.04)] border border-line text-ink-1 text-[0.8125rem] cursor-pointer hover:bg-[rgba(255,255,255,0.08)] transition-colors max-w-[60%] min-w-0"
+        >
+            <span className="truncate">{value}</span>
+            <I.chevDown size={11} className="flex-shrink-0"/>
+        </button>
+    );
+
     return (
         <div
             className={`flex items-center gap-3.5 px-[18px] py-3.5 ${
                 last ? "" : "border-b border-line"
             }`}
         >
-            <div className="flex-1 text-[0.8125rem] font-medium">{label}</div>
-            <button
-                type="button"
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-[rgba(255,255,255,0.04)] border border-line text-ink-1 text-[0.8125rem] cursor-pointer hover:bg-[rgba(255,255,255,0.08)] transition-colors"
-            >
-                {value}
-                <I.chevDown size={11}/>
-            </button>
+            <div className="flex-shrink-0 text-[0.8125rem] font-medium">{label}</div>
+            <div className="flex-1"/>
+            {options && onChange ? (
+                <Popover isOpen={open} onOpenChange={setOpen} placement="bottom-end">
+                    <PopoverTrigger>{button}</PopoverTrigger>
+                    <PopoverContent className="p-0 bg-bg-2 border border-line min-w-[180px]">
+                        <Listbox
+                            aria-label={label}
+                            selectionMode="single"
+                            selectedKeys={new Set([value])}
+                            onAction={(key) => {
+                                onChange(String(key));
+                                setOpen(false);
+                            }}
+                        >
+                            {options.map((opt) => (
+                                <ListboxItem key={opt} className="text-[0.8125rem]">
+                                    {opt}
+                                </ListboxItem>
+                            ))}
+                        </Listbox>
+                    </PopoverContent>
+                </Popover>
+            ) : (
+                button
+            )}
         </div>
     );
 }

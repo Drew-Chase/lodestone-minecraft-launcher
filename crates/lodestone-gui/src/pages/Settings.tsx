@@ -8,6 +8,7 @@ import JavaPane from "../components/settings/JavaPane";
 import AppearancePane from "../components/settings/AppearancePane";
 import NetworkPane from "../components/settings/NetworkPane";
 import PrivacyPane from "../components/settings/PrivacyPane";
+import {useSettings} from "../context/SettingsContext";
 
 type Section = "general" | "account" | "java" | "appearance" | "network" | "privacy";
 
@@ -31,11 +32,10 @@ const sections: SectionDef[] = [
 export default function Settings() {
     const [section, setSection] = useState<Section>("general");
     const activeDef = sections.find((s) => s.id === section) ?? sections[0];
+    const {dirty, save, reset} = useSettings();
 
     return (
-        <div className="flex flex-1 min-w-0 bg-bg-0">
-            {/* Left sub-nav — 220px rail with icon + label items. Active gets a green
-                tint background and a 2px green left rail. */}
+        <div className="flex flex-1 min-w-0 min-h-0 bg-bg-0">
             <div className="w-[220px] border-r border-line px-3.5 py-6 flex-shrink-0">
                 <div className="text-[0.6875rem] text-ink-3 font-mono tracking-[0.1em] mb-2.5 pl-2.5">
                     SETTINGS
@@ -62,22 +62,30 @@ export default function Settings() {
                 })}
             </div>
 
-            <div className="flex-1 flex flex-col min-w-0">
+            <div className="flex-1 flex flex-col min-w-0 min-h-0">
                 <TitleBar title={activeDef.title} subtitle={activeDef.subtitle}>
                     <Button
                         variant="bordered"
                         size="sm"
                         startContent={<I.refresh size={13}/>}
+                        onPress={reset}
                     >
                         Reset
                     </Button>
-                    <Button color="success" size="sm" className="font-bold">
+                    <Button
+                        color="success"
+                        size="sm"
+                        className="font-bold"
+                        isDisabled={!dirty}
+                        onPress={save}
+                        style={{opacity: dirty ? 1 : 0.5}}
+                    >
                         Save changes
                     </Button>
                 </TitleBar>
 
                 <div className="flex-1 overflow-y-auto px-8 pt-7 pb-10">
-                    <div className="max-w-[820px]">
+                    <div className="w-full max-w-[1200px] mx-auto">
                         {section === "general" && <GeneralPane/>}
                         {section === "account" && <AccountsPane/>}
                         {section === "java" && <JavaPane/>}
