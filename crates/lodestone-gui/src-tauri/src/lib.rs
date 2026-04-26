@@ -1,3 +1,5 @@
+mod auth;
+
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
@@ -398,11 +400,18 @@ async fn get_minecraft_versions() -> Result<Vec<McVersion>, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .manage(auth::AuthState::new(auth::AuthInner::new()))
         .invoke_handler(tauri::generate_handler![
             search_content,
             get_content,
             get_project_versions,
             get_minecraft_versions,
+            auth::login_microsoft,
+            auth::login_offline,
+            auth::login_demo,
+            auth::get_session,
+            auth::logout,
+            auth::restore_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

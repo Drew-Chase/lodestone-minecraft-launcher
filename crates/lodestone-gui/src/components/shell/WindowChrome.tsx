@@ -1,5 +1,7 @@
+import {useEffect, useState} from "react";
 import {Button, ButtonGroup} from "@heroui/react";
 import {getCurrentWindow} from "@tauri-apps/api/window";
+import {getVersion} from "@tauri-apps/api/app";
 import {I} from "./icons";
 
 // Platform detection at module load. Read from `navigator.userAgent`
@@ -27,6 +29,8 @@ const HAS_NATIVE_CHROME: boolean = IS_MACOS || IS_LINUX;
 export default function WindowChrome()
 {
     const appWindow = getCurrentWindow();
+    const [version, setVersion] = useState("");
+    useEffect(() => { getVersion().then(setVersion).catch(() => {}); }, []);
     return (
         <div
             className={
@@ -53,7 +57,7 @@ export default function WindowChrome()
                 className="flex-1 flex justify-center text-ink-3 font-mono select-none text-[0.6875rem] tracking-[0.3px]"
                 data-tauri-drag-region=""
             >
-                LODESTONE · v2.1.4
+                LODESTONE{version ? ` · v${version}` : ""}
             </div>
 
             {/* Right: window controls. Hidden on both macOS (native

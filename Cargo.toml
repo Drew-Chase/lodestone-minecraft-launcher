@@ -6,4 +6,5 @@ members = [
     "crates/lodestone-gui/src-tauri",
     "crates/hopper-mc",
     "crates/minecraft-loaders",
+    "crates/emerald-auth",
 ]

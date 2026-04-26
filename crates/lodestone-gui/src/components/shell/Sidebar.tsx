@@ -2,6 +2,7 @@ import {useState, type ReactNode} from "react";
 import {useLocation, useNavigate} from "react-router-dom";
 import {Popover, PopoverContent, PopoverTrigger, Tooltip} from "@heroui/react";
 import {I} from "./icons";
+import {useAuth} from "../../context/AuthContext";
 
 type NavId = "home" | "discover" | "worlds" | "servers" | "friends";
 
@@ -25,9 +26,28 @@ function activeIdFor(pathname: string): NavId | "downloads" | "settings" | null 
     return null;
 }
 
+function modeLabel(mode: string): string {
+    switch (mode) {
+        case "microsoft": return "MICROSOFT";
+        case "offline": return "OFFLINE MODE";
+        case "demo": return "DEMO MODE";
+        default: return mode.toUpperCase();
+    }
+}
+
+function avatarColor(mode: string): string {
+    switch (mode) {
+        case "microsoft": return "#22ff84";
+        case "offline": return "#9747ff";
+        case "demo": return "#ff9747";
+        default: return "#22ff84";
+    }
+}
+
 export default function Sidebar() {
     const location = useLocation();
     const navigate = useNavigate();
+    const {session, logout} = useAuth();
     const [menuOpen, setMenuOpen] = useState(false);
     const active = activeIdFor(location.pathname);
 
@@ -36,6 +56,15 @@ export default function Sidebar() {
         setMenuOpen(false);
         fn();
     };
+
+    const handleSignOut = async () => {
+        setMenuOpen(false);
+        await logout();
+        navigate("/");
+    };
+
+    const initials = session ? session.username.substring(0, 2).toUpperCase() : "??";
+    const color = session ? avatarColor(session.mode) : "#22ff84";
 
     return (
         <div className="flex-shrink-0 flex flex-col items-center relative border-r border-line bg-bg-1 w-[68px] py-[18px] gap-1.5">
@@ -106,14 +135,12 @@ export default function Sidebar() {
                         aria-label="User menu"
                         className="relative mt-2 w-10 h-10 rounded-md flex items-center justify-center text-sm font-extrabold cursor-pointer p-0 border-2 shadow-mc-glow"
                         style={{
-                            // Gradient + border color stay inline (design tokens + alpha combos
-                            // not cleanly expressible as single Tailwind utilities).
-                            background: "linear-gradient(135deg, #22ff84 0%, #0a5c33 100%)",
-                            borderColor: "rgba(34,255,132,0.6)",
+                            background: `linear-gradient(135deg, ${color} 0%, #0a5c33 100%)`,
+                            borderColor: `${color}99`,
                             color: "#062814",
                         }}
                     >
-                        EN
+                        {initials}
                         <div className="absolute -bottom-px -right-px w-2.5 h-2.5 rounded-full bg-mc-green border-2 border-bg-1"/>
                     </button>
                 </PopoverTrigger>
@@ -126,11 +153,15 @@ export default function Sidebar() {
                     }}
                 >
                     <UserMenu
+                        username={session?.username ?? "Unknown"}
+                        mode={session ? modeLabel(session.mode) : "NOT SIGNED IN"}
+                        initials={initials}
+                        color={color}
                         onProfile={runThenClose(() => {
                             /* TODO: profile page */
                         })}
                         onSettings={runThenClose(() => navigate("/settings"))}
-                        onSignOut={runThenClose(() => navigate("/"))}
+                        onSignOut={handleSignOut}
                     />
                 </PopoverContent>
             </Popover>
@@ -139,10 +170,18 @@ export default function Sidebar() {
 }
 
 function UserMenu({
+                      username,
+                      mode,
+                      initials,
+                      color,
                       onProfile,
                       onSettings,
                       onSignOut,
                   }: {
+    username: string;
+    mode: string;
+    initials: string;
+    color: string;
     onProfile: () => void;
     onSettings: () => void;
     onSignOut: () => void;
@@ -154,18 +193,18 @@ function UserMenu({
                 <div
                     className="flex-shrink-0 w-9 h-9 rounded-md flex items-center justify-center text-xs font-extrabold border-2"
                     style={{
-                        background: "linear-gradient(135deg, #22ff84 0%, #0a5c33 100%)",
-                        borderColor: "rgba(34,255,132,0.6)",
+                        background: `linear-gradient(135deg, ${color} 0%, #0a5c33 100%)`,
+                        borderColor: `${color}99`,
                         color: "#062814",
                     }}
                 >
-                    EN
+                    {initials}
                 </div>
                 <div className="min-w-0 flex-1 text-left">
                     <div className="text-[0.8125rem] font-bold text-ink-1 tracking-tight">
-                        Not signed in
+                        {username}
                     </div>
-                    <div className="font-mono text-[0.625rem] text-ink-3 mt-0.5">OFFLINE MODE</div>
+                    <div className="font-mono text-[0.625rem] text-ink-3 mt-0.5">{mode}</div>
                 </div>
             </div>
 
