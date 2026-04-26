@@ -1,5 +1,7 @@
+import {useEffect, useState} from "react";
 import {Navigate, useNavigate, useParams} from "react-router-dom";
 import {Tab, Tabs} from "@heroui/react";
+import {invoke} from "@tauri-apps/api/core";
 import InstanceHero from "../components/instance/InstanceHero";
 import OverviewTab from "../components/instance/OverviewTab";
 import ModsTab from "../components/instance/ModsTab";
@@ -7,7 +9,7 @@ import ScreenshotsTab from "../components/instance/ScreenshotsTab";
 import LogsTab from "../components/instance/LogsTab";
 import WorldsTab from "../components/instance/WorldsTab";
 import SettingsTab from "../components/instance/SettingsTab";
-import {findInstanceBySlug} from "../components/library/instances";
+import {configToInstance, toSlug, type Instance} from "../components/library/instances";
 import {usePersistedState} from "../hooks/usePersistedState";
 
 type DetailTab = "overview" | "mods" | "worlds" | "screenshots" | "logs" | "settings";
@@ -21,16 +23,18 @@ const tabKeys: DetailTab[] = [
     "settings",
 ];
 
-// Instance detail page at /library/:slug. Hero banner at top with the instance's
-// Scene + title + actions, underlined tabs below, and the active tab's content
-// in the scroll area. Redirects to /library if the slug doesn't resolve to a
-// known instance (e.g. typo in the URL).
-//
-// The currently-selected tab persists per-instance via usePersistedState keyed
-// on the slug — switching between instances restores each one's last tab.
-// Tabs that want a sticky toolbar (Mods, Worlds) take over the vertical space
-// with their own flex layout; the content container is just `flex-1 min-h-0`
-// with no overflow, so each tab controls scrolling internally.
+interface InstanceConfig {
+    id: number;
+    name: string;
+    minecraft_version: string;
+    loader: string;
+    loader_version: string | null;
+    java_version: string | null;
+    created_at: string;
+    last_played: string | null;
+    instance_path: string;
+}
+
 export default function InstanceDetail() {
     const {slug} = useParams<{slug: string}>();
     const navigate = useNavigate();
@@ -39,7 +43,32 @@ export default function InstanceDetail() {
         "overview",
     );
 
-    const instance = slug ? findInstanceBySlug(slug) : undefined;
+    const [instance, setInstance] = useState<Instance | undefined>(undefined);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!slug) {
+            setLoading(false);
+            return;
+        }
+        invoke<InstanceConfig[]>("list_instances")
+            .then((configs) => {
+                const all = configs.map(configToInstance);
+                const found = all.find((i) => toSlug(i.name) === slug);
+                setInstance(found);
+            })
+            .catch(() => setInstance(undefined))
+            .finally(() => setLoading(false));
+    }, [slug]);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center flex-1 bg-bg-0">
+                <div className="w-6 h-6 border-2 border-mc-green border-t-transparent rounded-full animate-spin"/>
+            </div>
+        );
+    }
+
     if (!instance) {
         return <Navigate to="/library" replace/>;
     }
@@ -70,8 +99,6 @@ export default function InstanceDetail() {
                 </Tabs>
             </div>
 
-            {/* Tab body — each tab component owns its own scroll so Mods / Worlds can
-                pin their toolbar while the list scrolls. */}
             <div className="flex-1 min-h-0 flex flex-col">
                 {tab === "overview" && <OverviewTab instance={instance}/>}
                 {tab === "mods" && <ModsTab/>}

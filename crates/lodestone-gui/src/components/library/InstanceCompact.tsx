@@ -8,7 +8,7 @@ type Props = {
 // Compact view: 4-column layout of InstanceCompactCard tiles.
 export default function InstanceCompact({list}: Props) {
     return (
-        <div className="grid gap-2" style={{gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))"}}>
+        <div style={{display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10}}>
             {list.map((inst, i) => (
                 <InstanceCompactCard key={i} instance={inst}/>
             ))}

@@ -1,25 +1,54 @@
-import {useState} from "react";
+import {useCallback, useEffect, useState} from "react";
 import {Button, Input} from "@heroui/react";
+import {invoke} from "@tauri-apps/api/core";
 import TitleBar from "../components/shell/TitleBar";
 import {I} from "../components/shell/icons";
 import HeroBanner from "../components/library/HeroBanner";
 import QuickActions, {type QuickActionKey} from "../components/library/QuickActions";
 import InstanceList from "../components/library/InstanceList";
-import {instances} from "../components/library/instances";
+import {type Instance, configToInstance} from "../components/library/instances";
 import NewInstanceModal from "../components/modals/NewInstanceModal";
 import ImportModal from "../components/modals/ImportModal";
 import JoinServerModal from "../components/modals/JoinServerModal";
 import CoopSyncModal from "../components/modals/CoopSyncModal";
 
+interface InstanceConfig {
+    id: number;
+    name: string;
+    minecraft_version: string;
+    loader: string;
+    loader_version: string | null;
+    java_version: string | null;
+    created_at: string;
+    last_played: string | null;
+    instance_path: string;
+}
+
 export default function Home() {
     const [openModal, setOpenModal] = useState<QuickActionKey | null>(null);
     const closeModal = () => setOpenModal(null);
+    const [instances, setInstances] = useState<Instance[]>([]);
+    const fetchInstances = useCallback(async () => {
+        try {
+            const configs = await invoke<InstanceConfig[]>("list_instances");
+            setInstances(configs.map(configToInstance));
+        } catch {
+            setInstances([]);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchInstances();
+    }, [fetchInstances]);
 
     const featured = instances[0];
 
     return (
         <div className="flex flex-col flex-1 min-w-0 min-h-0 bg-bg-0">
-            <TitleBar title="Library" subtitle="6 instances · 300h total playtime">
+            <TitleBar
+                title="Library"
+                subtitle={`${instances.length} instance${instances.length !== 1 ? "s" : ""}`}
+            >
                 <Input
                     placeholder="Search instances…"
                     size="sm"
@@ -29,7 +58,7 @@ export default function Home() {
                     }}
                     startContent={<I.search size={14}/>}
                 />
-                <Button isIconOnly variant="bordered" size="sm" aria-label="Refresh">
+                <Button isIconOnly variant="bordered" size="sm" aria-label="Refresh" onPress={fetchInstances}>
                     <I.refresh size={16}/>
                 </Button>
                 <Button isIconOnly variant="bordered" size="sm" aria-label="Notifications">
@@ -47,13 +76,13 @@ export default function Home() {
             </TitleBar>
 
             <div className="flex-1 overflow-y-auto px-7 pt-6 pb-10">
-                <HeroBanner featured={featured}/>
+                {featured && <HeroBanner featured={featured}/>}
                 <QuickActions onActionPress={setOpenModal}/>
                 <InstanceList instances={instances}/>
             </div>
 
-            {/* Quick-action modals — mounted here so they can overlay the whole Library page. */}
-            <NewInstanceModal isOpen={openModal === "new"} onClose={closeModal}/>
+            {/* Quick-action modals */}
+            <NewInstanceModal isOpen={openModal === "new"} onClose={closeModal} onCreated={fetchInstances}/>
             <ImportModal isOpen={openModal === "import"} onClose={closeModal}/>
             <JoinServerModal isOpen={openModal === "server"} onClose={closeModal}/>
             <CoopSyncModal isOpen={openModal === "coop"} onClose={closeModal}/>

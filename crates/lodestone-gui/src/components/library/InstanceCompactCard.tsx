@@ -28,8 +28,8 @@ export default function InstanceCompactCard({instance: inst}: Props) {
                     openDetail();
                 }
             }}
-            className={`rounded-lg border border-line px-3.5 py-3 flex flex-col gap-2 cursor-pointer ${cardHoverClass}`}
-            style={cardSurfaceStyle}
+            className={`rounded-xl border border-line px-3.5 py-3 flex flex-col gap-2 cursor-pointer ${cardHoverClass}`}
+            style={{...cardSurfaceStyle, maxWidth: 500}}
         >
             {/* Row 1 */}
             <div className="flex items-center gap-1.5 min-w-0">

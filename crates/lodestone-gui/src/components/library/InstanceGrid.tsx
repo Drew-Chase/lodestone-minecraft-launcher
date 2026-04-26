@@ -8,7 +8,7 @@ type Props = {
 // Grid view: 3-column layout of InstanceGridCard tiles.
 export default function InstanceGrid({list}: Props) {
     return (
-        <div className="grid gap-4" style={{gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))"}}>
+        <div style={{display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14}}>
             {list.map((inst, i) => (
                 <InstanceGridCard key={i} instance={inst}/>
             ))}

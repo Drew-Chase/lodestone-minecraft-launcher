@@ -98,6 +98,69 @@ export const instances: Instance[] = [
 // import paths keep working without churn.
 export {cardSurfaceStyle, cardHoverClass} from "../surfaces";
 
+// Map a backend InstanceConfig (from the Tauri `list_instances` command) to the
+// frontend `Instance` type used by library components.
+const loaderColors: Record<string, ChipColor> = {
+    vanilla: "green",
+    fabric: "violet",
+    forge: "amber",
+    neoforge: "cyan",
+    quilt: "pink",
+};
+
+const loaderLabels: Record<string, Loader> = {
+    vanilla: "Vanilla",
+    fabric: "Fabric",
+    forge: "Forge",
+    neoforge: "NeoForge",
+    quilt: "Quilt",
+};
+
+const biomes: Biome[] = ["forest", "desert", "ocean", "nether", "end", "cherry"];
+
+export function configToInstance(config: {
+    id: number;
+    name: string;
+    minecraft_version: string;
+    loader: string;
+    loader_version: string | null;
+    created_at: string;
+    last_played: string | null;
+}): Instance {
+    const loaderLabel = loaderLabels[config.loader] ?? "Vanilla";
+    const versionStr =
+        config.loader === "vanilla"
+            ? `${config.minecraft_version} · Vanilla`
+            : `${config.minecraft_version} · ${loaderLabel}`;
+
+    // Deterministic biome/seed from the ID
+    const biome = biomes[config.id % biomes.length];
+    const seed = (config.id % 8) + 1;
+
+    // Relative time for last_played
+    let lastPlayed = "Never";
+    if (config.last_played) {
+        const diff = Date.now() - new Date(config.last_played).getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 60) lastPlayed = `${mins}m ago`;
+        else if (mins < 1440) lastPlayed = `${Math.floor(mins / 60)}h ago`;
+        else lastPlayed = `${Math.floor(mins / 1440)}d ago`;
+    }
+
+    return {
+        name: config.name,
+        version: versionStr,
+        loader: loaderLabel,
+        mc: config.minecraft_version,
+        biome,
+        seed,
+        playtime: "0h",
+        lastPlayed,
+        mods: 0,
+        color: loaderColors[config.loader] ?? "green",
+    };
+}
+
 // URL-friendly slug for a given instance name. Used as the :slug route param
 // on the detail page (e.g. "Aether Legacy" → "aether-legacy").
 export function toSlug(name: string): string {

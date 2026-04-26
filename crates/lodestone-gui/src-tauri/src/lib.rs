@@ -1,4 +1,5 @@
 mod auth;
+mod instances;
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -401,6 +402,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(auth::AuthState::new(auth::AuthInner::new()))
+        .manage(instances::InstanceManagerState::default())
         .invoke_handler(tauri::generate_handler![
             search_content,
             get_content,
@@ -412,6 +414,12 @@ pub fn run() {
             auth::get_session,
             auth::logout,
             auth::restore_session,
+            instances::create_instance,
+            instances::list_instances,
+            instances::delete_instance,
+            instances::get_loader_versions,
+            instances::get_java_for_version,
+            instances::get_instances_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

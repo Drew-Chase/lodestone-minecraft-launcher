@@ -24,8 +24,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hopper-mc = { path = "../../hopper-mc" }
 emerald-auth = { path = "../../emerald-auth" }
-tokio = { version = "1.48", features = ["rt-multi-thread", "macros"] }
+lodestone-core = { path = "../../lodestone-core" }
+minecraft_modloaders = { path = "../../minecraft-loaders" }
+tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "sync"] }
 secrecy = "0.10"
 md5 = "0.7"
 log = "0.4"
+chrono = "0.4"
 piston-mc = { version = "0.0.1-alpha", features = ["downloads"] }

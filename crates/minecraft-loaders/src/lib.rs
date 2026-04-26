@@ -1,5 +1,7 @@
 pub mod fabric;
 pub mod forge;
+pub mod neoforge;
+pub mod quilt;
 
 use anyhow::Result;
 use async_trait::async_trait;
