@@ -8,6 +8,7 @@ use vite_actix::start_vite_server;
 
 mod test_endpoint;
 mod releases_endpoint;
+mod seo_endpoint;
 mod util;
 
 pub static DEBUG: bool = cfg!(debug_assertions);
@@ -46,6 +47,7 @@ pub async fn run() -> Result<()> {
 						).into()
 					})
 			)
+			.configure(seo_endpoint::configure)
 			.service(
 				web::scope("api")
 					.configure(test_endpoint::configure)

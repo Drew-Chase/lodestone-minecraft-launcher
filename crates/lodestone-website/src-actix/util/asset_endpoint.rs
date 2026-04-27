@@ -25,7 +25,23 @@ static WWWROOT: Dir = include_dir!("target/wwwroot");
 //
 // An `impl Responder` which can either be a successful HTTP response containing
 // the `index.html` file, or an internal server error.
-pub async fn index(_req: HttpRequest) -> anyhow::Result<impl Responder, Error> {
+pub async fn index(req: HttpRequest) -> anyhow::Result<impl Responder, Error> {
+	let path = req.path().trim_start_matches('/');
+
+	// Serve the exact file if it exists in wwwroot (favicons, og-image, webmanifest, etc.)
+	if !path.is_empty() && path != "index.html"
+		&& let Some(file) = WWWROOT.get_file(path)
+	{
+		let mime = file
+			.path()
+			.extension()
+			.and_then(|ext| ext.to_str())
+			.map(file_extension_to_mime)
+			.unwrap_or_else(|| "application/octet-stream".parse().unwrap());
+		return Ok(HttpResponse::Ok().content_type(mime).body(file.contents()));
+	}
+
+	// SPA fallback — serve index.html for all unmatched routes
 	if let Some(file) = WWWROOT.get_file("index.html") {
 		let body = file.contents();
 		return Ok(HttpResponse::Ok().content_type("text/html").body(body));
