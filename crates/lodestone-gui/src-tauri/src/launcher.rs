@@ -167,6 +167,16 @@ struct GameFiles {
 }
 
 /// Download the Minecraft client jar, libraries, and assets.
+/// Cached version info saved to instance directory after first install.
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CachedVersionInfo {
+    asset_index: String,
+    main_class: String,
+    java_major: u8,
+    java_component: String,
+}
+
 async fn ensure_game_files(
     app: &tauri::AppHandle,
     instance_id: i64,
@@ -181,6 +191,27 @@ async fn ensure_game_files(
     let assets_dir = data_dir.join("assets");
     let client_jar = instance_path.join("client.jar");
     let library_dir = instance_path.join("libraries");
+    let libraries_marker = library_dir.join(format!(".lodestone-{mc_version}"));
+    let asset_index_dir = assets_dir.join("indexes");
+    let version_cache_path = instance_path.join(".lodestone-version-info.json");
+
+    // If everything is already installed, use cached version info to avoid network fetch
+    if client_jar.exists() && libraries_marker.exists() {
+        if let Ok(data) = std::fs::read_to_string(&version_cache_path) {
+            if let Ok(cached) = serde_json::from_str::<CachedVersionInfo>(&data) {
+                let asset_index_file = asset_index_dir.join(format!("{}.json", cached.asset_index));
+                if asset_index_file.exists() {
+                    return Ok(GameFiles {
+                        asset_index: cached.asset_index,
+                        client_jar,
+                        main_class: cached.main_class,
+                        java_major: cached.java_major,
+                        java_component: cached.java_component,
+                    });
+                }
+            }
+        }
+    }
 
     std::fs::create_dir_all(&assets_dir).map_err(|e| format!("mkdir assets: {e}"))?;
     std::fs::create_dir_all(&library_dir).map_err(|e| format!("mkdir libraries: {e}"))?;
@@ -248,89 +279,109 @@ async fn ensure_game_files(
         let _ = monitor.await;
     }
 
-    // Download libraries
-    emit_progress(app, &InstallProgress {
-        instance_id,
-        instance_name: instance_name.to_string(),
-        stage: "libraries".into(),
-        stage_label: "Downloading libraries...".into(),
-        progress: 0.0,
-        files_done: 0,
-        files_total: 0,
-    });
+    // Download libraries (skip if already completed for this MC version)
+    let libraries_marker = library_dir.join(format!(".lodestone-{mc_version}"));
+    if !libraries_marker.exists() {
+        emit_progress(app, &InstallProgress {
+            instance_id,
+            instance_name: instance_name.to_string(),
+            stage: "libraries".into(),
+            stage_label: "Downloading libraries...".into(),
+            progress: 0.0,
+            files_done: 0,
+            files_total: 0,
+        });
 
-    let (sender, mut receiver) = tokio::sync::mpsc::channel::<MultiDownloadProgress>(32);
-    let app_clone = app.clone();
-    let name_clone = instance_name.to_string();
-    let monitor = tokio::spawn(async move {
-        while let Some(msg) = receiver.recv().await {
-            let prog = if msg.files_total > 0 {
-                msg.files_downloaded as f32 / msg.files_total as f32
-            } else {
-                0.0
-            };
-            emit_progress(&app_clone, &InstallProgress {
-                instance_id,
-                instance_name: name_clone.clone(),
-                stage: "libraries".into(),
-                stage_label: "Downloading libraries...".into(),
-                progress: prog,
-                files_done: msg.files_downloaded,
-                files_total: msg.files_total,
-            });
-        }
-    });
+        let (sender, mut receiver) = tokio::sync::mpsc::channel::<MultiDownloadProgress>(32);
+        let app_clone = app.clone();
+        let name_clone = instance_name.to_string();
+        let monitor = tokio::spawn(async move {
+            while let Some(msg) = receiver.recv().await {
+                let prog = if msg.files_total > 0 {
+                    msg.files_downloaded as f32 / msg.files_total as f32
+                } else {
+                    0.0
+                };
+                emit_progress(&app_clone, &InstallProgress {
+                    instance_id,
+                    instance_name: name_clone.clone(),
+                    stage: "libraries".into(),
+                    stage_label: "Downloading libraries...".into(),
+                    progress: prog,
+                    files_done: msg.files_downloaded,
+                    files_total: msg.files_total,
+                });
+            }
+        });
 
-    let http = reqwest::Client::new();
-    version
-        .libraries
-        .download_with_client(&http, &library_dir, 50, Some(sender))
-        .await
-        .map_err(|e| format!("failed to download libraries: {e}"))?;
-    let _ = monitor.await;
+        let http = reqwest::Client::new();
+        version
+            .libraries
+            .download_with_client(&http, &library_dir, 50, Some(sender))
+            .await
+            .map_err(|e| format!("failed to download libraries: {e}"))?;
+        let _ = monitor.await;
 
-    // Download assets
-    emit_progress(app, &InstallProgress {
-        instance_id,
-        instance_name: instance_name.to_string(),
-        stage: "assets".into(),
-        stage_label: "Downloading assets...".into(),
-        progress: 0.0,
-        files_done: 0,
-        files_total: 0,
-    });
+        // Write marker so we skip next time
+        let _ = std::fs::write(&libraries_marker, mc_version);
+    }
 
-    let (sender, mut receiver) = tokio::sync::mpsc::channel::<MultiDownloadProgress>(32);
-    let app_clone = app.clone();
-    let name_clone = instance_name.to_string();
-    let monitor = tokio::spawn(async move {
-        while let Some(msg) = receiver.recv().await {
-            let prog = if msg.files_total > 0 {
-                msg.files_downloaded as f32 / msg.files_total as f32
-            } else {
-                0.0
-            };
-            emit_progress(&app_clone, &InstallProgress {
-                instance_id,
-                instance_name: name_clone.clone(),
-                stage: "assets".into(),
-                stage_label: format!("Downloading assets ({}/{})", msg.files_downloaded, msg.files_total),
-                progress: prog,
-                files_done: msg.files_downloaded,
-                files_total: msg.files_total,
-            });
-        }
-    });
+    // Download assets (skip if asset index already exists)
+    let asset_index_file = assets_dir.join("indexes").join(format!("{asset_index}.json"));
+    if !asset_index_file.exists() {
+        emit_progress(app, &InstallProgress {
+            instance_id,
+            instance_name: instance_name.to_string(),
+            stage: "assets".into(),
+            stage_label: "Downloading assets...".into(),
+            progress: 0.0,
+            files_done: 0,
+            files_total: 0,
+        });
 
-    let mut assets = version
-        .assets()
-        .await
-        .map_err(|e| format!("failed to fetch asset index: {e}"))?;
-    assets
-        .download(&assets_dir, 100, Some(sender))
-        .await
-        .map_err(|e| format!("failed to download assets: {e}"))?;
-    let _ = monitor.await;
+        let (sender, mut receiver) = tokio::sync::mpsc::channel::<MultiDownloadProgress>(32);
+        let app_clone = app.clone();
+        let name_clone = instance_name.to_string();
+        let monitor = tokio::spawn(async move {
+            while let Some(msg) = receiver.recv().await {
+                let prog = if msg.files_total > 0 {
+                    msg.files_downloaded as f32 / msg.files_total as f32
+                } else {
+                    0.0
+                };
+                emit_progress(&app_clone, &InstallProgress {
+                    instance_id,
+                    instance_name: name_clone.clone(),
+                    stage: "assets".into(),
+                    stage_label: format!("Downloading assets ({}/{})", msg.files_downloaded, msg.files_total),
+                    progress: prog,
+                    files_done: msg.files_downloaded,
+                    files_total: msg.files_total,
+                });
+            }
+        });
+
+        let mut assets = version
+            .assets()
+            .await
+            .map_err(|e| format!("failed to fetch asset index: {e}"))?;
+        assets
+            .download(&assets_dir, 100, Some(sender))
+            .await
+            .map_err(|e| format!("failed to download assets: {e}"))?;
+        let _ = monitor.await;
+    }
+
+    // Cache version info so subsequent launches skip the manifest fetch
+    let cached = CachedVersionInfo {
+        asset_index: asset_index.clone(),
+        main_class: main_class.clone(),
+        java_major,
+        java_component: java_component.clone(),
+    };
+    if let Ok(json) = serde_json::to_string_pretty(&cached) {
+        let _ = std::fs::write(&version_cache_path, json);
+    }
 
     Ok(GameFiles { asset_index, client_jar, main_class, java_major, java_component })
 }
@@ -488,16 +539,8 @@ pub async fn launch_instance(
     let jvm_str = jvm_args_str.unwrap_or(default_jvm);
     let jvm_args: Vec<&str> = jvm_str.split_whitespace().collect();
 
-    // Install loader if needed + build command
-    emit_progress(&app, &InstallProgress {
-        instance_id,
-        instance_name: instance_name.clone(),
-        stage: "loader".into(),
-        stage_label: "Preparing to launch...".into(),
-        progress: 0.9,
-        files_done: 0,
-        files_total: 0,
-    });
+    // Marker file to track whether the loader has been installed for this version combo
+    let loader_marker = instance_path.join(".lodestone-loader-installed");
 
     let command = match loader {
         LoaderType::Vanilla => {
@@ -521,10 +564,22 @@ pub async fn launch_instance(
                 .as_deref()
                 .ok_or("Fabric loader version not set")?;
 
-            fabric
-                .install_client(&mc_version, lv, &instance_path, &game.client_jar, &java_path)
-                .await
-                .map_err(|e| format!("Fabric install failed: {e}"))?;
+            if !loader_marker.exists() {
+                emit_progress(&app, &InstallProgress {
+                    instance_id,
+                    instance_name: instance_name.clone(),
+                    stage: "loader".into(),
+                    stage_label: "Installing Fabric...".into(),
+                    progress: 0.5,
+                    files_done: 0,
+                    files_total: 0,
+                });
+                fabric
+                    .install_client(&mc_version, lv, &instance_path, &game.client_jar, &java_path)
+                    .await
+                    .map_err(|e| format!("Fabric install failed: {e}"))?;
+                let _ = std::fs::write(&loader_marker, format!("fabric-{lv}-{mc_version}"));
+            }
 
             fabric
                 .run_fabric_client(
@@ -546,10 +601,22 @@ pub async fn launch_instance(
                 .as_deref()
                 .ok_or("Forge loader version not set")?;
 
-            forge
-                .install_client(&mc_version, lv, &instance_path, &game.client_jar, &java_path)
-                .await
-                .map_err(|e| format!("Forge install failed: {e}"))?;
+            if !loader_marker.exists() {
+                emit_progress(&app, &InstallProgress {
+                    instance_id,
+                    instance_name: instance_name.clone(),
+                    stage: "loader".into(),
+                    stage_label: "Installing Forge...".into(),
+                    progress: 0.5,
+                    files_done: 0,
+                    files_total: 0,
+                });
+                forge
+                    .install_client(&mc_version, lv, &instance_path, &game.client_jar, &java_path)
+                    .await
+                    .map_err(|e| format!("Forge install failed: {e}"))?;
+                let _ = std::fs::write(&loader_marker, format!("forge-{lv}-{mc_version}"));
+            }
 
             forge
                 .run_forge_client(
@@ -571,10 +638,22 @@ pub async fn launch_instance(
                 .as_deref()
                 .ok_or("Quilt loader version not set")?;
 
-            fabric
-                .install_client(&mc_version, lv, &instance_path, &game.client_jar, &java_path)
-                .await
-                .map_err(|e| format!("Quilt install failed: {e}"))?;
+            if !loader_marker.exists() {
+                emit_progress(&app, &InstallProgress {
+                    instance_id,
+                    instance_name: instance_name.clone(),
+                    stage: "loader".into(),
+                    stage_label: "Installing Quilt...".into(),
+                    progress: 0.5,
+                    files_done: 0,
+                    files_total: 0,
+                });
+                fabric
+                    .install_client(&mc_version, lv, &instance_path, &game.client_jar, &java_path)
+                    .await
+                    .map_err(|e| format!("Quilt install failed: {e}"))?;
+                let _ = std::fs::write(&loader_marker, format!("quilt-{lv}-{mc_version}"));
+            }
 
             fabric
                 .run_fabric_client(
