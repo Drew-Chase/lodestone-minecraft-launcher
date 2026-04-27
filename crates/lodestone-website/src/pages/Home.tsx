@@ -243,16 +243,40 @@ function Features() {
     );
 }
 
+function formatCount(n: number): { value: string; suffix: string } {
+    if (n >= 1_000_000) return {value: (n / 1_000_000).toFixed(1), suffix: "M"};
+    if (n >= 1_000) return {value: (n / 1_000).toFixed(1), suffix: "k"};
+    return {value: String(n), suffix: ""};
+}
+
+const REPO_URL = "https://github.com/drew-chase/lodestone-minecraft-launcher";
+
 function StatsStrip() {
+    const [stats, setStats] = useState<{ stars: number; total_downloads: number } | null>(null);
+
+    useEffect(() => {
+        fetch("/api/stats")
+            .then(r => r.ok ? r.json() : null)
+            .then(setStats)
+            .catch(() => setStats(null));
+    }, []);
+
+    const downloads = stats ? formatCount(stats.total_downloads) : null;
+    const stars = stats && stats.stars >= 1000 ? formatCount(stats.stars) : null;
+
     return (
         <div className="container" style={{marginTop: 80, marginBottom: 0}}>
             <div className="stats">
                 <div className="stat">
-                    <div className="stat-num">2.1<small>M</small></div>
-                    <div className="stat-lbl">Active players</div>
+                    {downloads
+                        ? <div className="stat-num">{downloads.value}<small>{downloads.suffix}</small></div>
+                        : <div className="stat-num">--</div>}
+                    <div className="stat-lbl">Total downloads</div>
                 </div>
                 <div className="stat">
-                    <div className="stat-num">18.4<small>k</small></div>
+                    {stars
+                        ? <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="stat-num">{stars.value}<small>{stars.suffix}</small></a>
+                        : <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="stat-num stat-link">Star on GitHub</a>}
                     <div className="stat-lbl">GitHub stars</div>
                 </div>
                 <div className="stat">
@@ -519,15 +543,39 @@ function Pricing() {
     );
 }
 
+interface Stats {
+    stars: number;
+    total_downloads: number;
+    forks: number;
+    open_issues: number;
+    license: string | null;
+    license_name: string | null;
+    contributors: number;
+}
+
 function OpenSource() {
     const {available, downloadUrl} = useReleaseContext();
+    const [stats, setStats] = useState<Stats | null>(null);
+
+    useEffect(() => {
+        fetch("/api/stats")
+            .then(r => r.ok ? r.json() : null)
+            .then(setStats)
+            .catch(() => setStats(null));
+    }, []);
+
+    const licenseSpdx = stats?.license ?? "MIT";
+    const licenseName = stats?.license_name ?? "MIT License";
+    const contributors = stats?.contributors ?? 0;
+    const forks = stats?.forks ?? 0;
+
     return (
         <section id="open-source">
             <div className="container">
                 <div className="section-eyebrow">OPEN SOURCE</div>
                 <h2 className="section-title">The launcher is free. Forever.</h2>
                 <p className="section-lede">
-                    The Lodestone launcher is MIT-licensed and developed publicly on GitHub.
+                    The Lodestone launcher is {licenseSpdx}-licensed and developed publicly on GitHub.
                     No ads, no telemetry, no feature paywall — every mod, modpack, instance, and co-op feature works without an account.
                     Cloud sync is the one optional add-on that keeps the lights on.
                 </p>
@@ -544,7 +592,7 @@ function OpenSource() {
                             ) : (
                                 <span className="btn btn-primary btn-lg" style={{opacity: 0.7, cursor: "default"}}><Ic.download size={15}/> Coming Soon</span>
                             )}
-                            <a className="btn btn-ghost btn-lg" href="https://github.com/drew-chase/lodestone-minecraft-launcher" target="_blank" rel="noopener noreferrer"><Ic.heart size={13}/> Sponsor on GitHub</a>
+                            <a className="btn btn-ghost btn-lg" href={REPO_URL} target="_blank" rel="noopener noreferrer"><Ic.heart size={13}/> Sponsor on GitHub</a>
                         </div>
                     </div>
                     <div className="oss-list">
@@ -558,22 +606,22 @@ function OpenSource() {
                         <div className="oss-row">
                             <div className="oss-ic" style={{background: "rgba(151,71,255,0.15)", color: "var(--violet)"}}><Ic.shield size={16}/></div>
                             <div style={{flex: 1}}>
-                                <div className="lbl">MIT licensed</div>
+                                <div className="lbl">{licenseName}</div>
                                 <div className="sub">Use, fork, redistribute freely</div>
                             </div>
                         </div>
                         <div className="oss-row">
                             <div className="oss-ic" style={{background: "rgba(71,217,255,0.15)", color: "var(--cyan)"}}><Ic.users size={16}/></div>
                             <div style={{flex: 1}}>
-                                <div className="lbl">312 contributors</div>
-                                <div className="sub">From 47 countries</div>
+                                <div className="lbl">{contributors > 0 ? `${contributors.toLocaleString()} contributors` : "Contributors"}</div>
+                                <div className="sub">Open to contributions from anyone</div>
                             </div>
                         </div>
                         <div className="oss-row">
-                            <div className="oss-ic" style={{background: "rgba(255,181,69,0.15)", color: "var(--amber)"}}><Ic.heart size={16}/></div>
+                            <div className="oss-ic" style={{background: "rgba(255,181,69,0.15)", color: "var(--amber)"}}><Ic.gitFork size={16}/></div>
                             <div style={{flex: 1}}>
-                                <div className="lbl">2,438 sponsors</div>
-                                <div className="sub">$14,200 / month covers infra</div>
+                                <div className="lbl">{forks > 0 ? `${forks.toLocaleString()} forks` : "Forks"}</div>
+                                <div className="sub">Fork it, build your own launcher</div>
                             </div>
                         </div>
                     </div>

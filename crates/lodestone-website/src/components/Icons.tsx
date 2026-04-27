@@ -40,4 +40,5 @@ export const Ic = {
     heart: (p: IcProps) => <IcSvg {...p}><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></IcSvg>,
     menu: (p: IcProps) => <IcSvg {...p}><path d="M3 12h18M3 6h18M3 18h18"/></IcSvg>,
     x: (p: IcProps) => <IcSvg {...p}><path d="M18 6L6 18M6 6l12 12"/></IcSvg>,
+    gitFork: (p: IcProps) => <IcSvg {...p}><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></IcSvg>,
 };
