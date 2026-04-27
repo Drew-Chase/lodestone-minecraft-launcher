@@ -124,14 +124,23 @@ async fn release_by_tag(
     }
 }
 
+/// GET /api/stats
+/// Returns GitHub stars and total download count across all releases.
+#[get("/stats")]
+async fn repo_stats(cache: web::Data<Arc<ReleasesCache>>) -> Result<impl Responder> {
+    let stats = cache.get_stats().await?;
+    Ok(HttpResponse::Ok().json(stats))
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/releases")
-            .service(all_releases)
-            .service(latest_release)
-            .service(latest_version)
-            .service(latest_changelog)
-            .service(latest_platform)
-            .service(release_by_tag),
-    );
+    cfg.service(repo_stats)
+        .service(
+            web::scope("/releases")
+                .service(all_releases)
+                .service(latest_release)
+                .service(latest_version)
+                .service(latest_changelog)
+                .service(latest_platform)
+                .service(release_by_tag),
+        );
 }
