@@ -422,6 +422,9 @@ section { position: relative; padding: 120px 0; }
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
 }
 .stat-num small { font-size: 22px; color: var(--mc-green); -webkit-text-fill-color: var(--mc-green); }
+a.stat-num { text-decoration: none; }
+a.stat-num:hover { filter: brightness(1.2); }
+a.stat-link { font-size: 22px; letter-spacing: -0.5px; }
 .stat-lbl { font-family: var(--mono); font-size: 11px; color: var(--ink-3); letter-spacing: 1px; margin-top: 4px; text-transform: uppercase; }
 
 /* ────── Showcase split ────── */
@@ -452,7 +455,7 @@ section { position: relative; padding: 120px 0; }
   aspect-ratio: 1000 / 540;
   background: var(--bg-1);
 }
-.showcase-mock .showcase-window { border-radius: 14px; }
+.showcase-mock .showcase-window { border-radius: 14px; height: 100%; }
 .showcase-mock .shot-screen { aspect-ratio: auto; height: calc(100% - 36px); }
 
 /* ────── Quotes ────── */
