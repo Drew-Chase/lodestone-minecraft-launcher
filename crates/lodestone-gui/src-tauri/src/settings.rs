@@ -96,10 +96,7 @@ impl Default for Settings {
 // ---------------------------------------------------------------------------
 
 fn settings_file_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("failed to resolve app data dir: {e}"))?;
+    let dir = app.path().app_data_dir().map_err(|e| format!("failed to resolve app data dir: {e}"))?;
     Ok(dir.join("settings.json"))
 }
 
@@ -108,18 +105,15 @@ fn load_settings_from_disk(app: &tauri::AppHandle) -> Result<Settings, String> {
     if !path.exists() {
         return Ok(Settings::default());
     }
-    let data =
-        std::fs::read_to_string(&path).map_err(|e| format!("failed to read settings.json: {e}"))?;
-    let settings: Settings =
-        serde_json::from_str(&data).map_err(|e| format!("failed to parse settings.json: {e}"))?;
+    let data = std::fs::read_to_string(&path).map_err(|e| format!("failed to read settings.json: {e}"))?;
+    let settings: Settings = serde_json::from_str(&data).map_err(|e| format!("failed to parse settings.json: {e}"))?;
     Ok(settings)
 }
 
 fn save_settings_to_disk(app: &tauri::AppHandle, settings: &Settings) -> Result<(), String> {
     let path = settings_file_path(app)?;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("failed to create app data dir: {e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("failed to create app data dir: {e}"))?;
     }
     let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| format!("failed to write settings.json: {e}"))
@@ -133,10 +127,10 @@ fn save_settings_to_disk(app: &tauri::AppHandle, settings: &Settings) -> Result<
 pub async fn get_settings(app: tauri::AppHandle) -> Result<Settings, String> {
     let mut settings = load_settings_from_disk(&app)?;
     // Fill in the real default instance dir if it was never set.
-    if settings.instance_dir.is_empty() {
-        if let Ok(dir) = app.path().app_data_dir() {
-            settings.instance_dir = dir.join("instances").to_string_lossy().to_string();
-        }
+    if settings.instance_dir.is_empty()
+        && let Ok(dir) = app.path().app_data_dir()
+    {
+        settings.instance_dir = dir.join("instances").to_string_lossy().to_string();
     }
     Ok(settings)
 }
