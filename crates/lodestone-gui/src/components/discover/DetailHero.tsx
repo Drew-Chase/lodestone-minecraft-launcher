@@ -1,4 +1,5 @@
 import {Button} from "@heroui/react";
+import {open as shellOpen} from "@tauri-apps/plugin-shell";
 import {I} from "../shell/icons";
 import SourceBadge from "./SourceBadge";
 import type {ContentItem} from "../../types/content";
@@ -88,7 +89,7 @@ export default function DetailHero({item: base}: {item: ContentItem}) {
                             variant="bordered"
                             size="sm"
                             className="border-line text-ink-2"
-                            onPress={() => window.open(base.links.website!, "_blank")}
+                            onPress={() => shellOpen(base.links.website!)}
                             startContent={<I.external size={14}/>}
                         >
                             Website

@@ -485,12 +485,29 @@ pub async fn toggle_mod(
 }
 
 #[tauri::command]
-pub async fn delete_mod(instance_path: String, file_name: String) -> Result<(), String> {
+pub async fn delete_mod(
+    instance_id: i64,
+    instance_path: String,
+    file_name: String,
+    mgr_state: tauri::State<'_, InstanceManagerState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     let path = PathBuf::from(&instance_path).join("mods").join(&file_name);
     if !path.exists() {
         return Err(format!("mod file not found: {file_name}"));
     }
-    std::fs::remove_file(&path).map_err(|e| format!("failed to delete mod: {e}"))
+    std::fs::remove_file(&path).map_err(|e| format!("failed to delete mod: {e}"))?;
+
+    // Remove from DB (try both the exact name and without .disabled suffix)
+    ensure_manager(&mgr_state, &app).await?;
+    let guard = mgr_state.lock().await;
+    let mgr = guard.as_ref().unwrap();
+    let base_name = file_name.strip_suffix(".disabled").unwrap_or(&file_name);
+    let _ = mgr.remove_installed_mod(instance_id, &file_name).await;
+    if base_name != file_name {
+        let _ = mgr.remove_installed_mod(instance_id, base_name).await;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -922,4 +939,395 @@ pub async fn save_instance_settings(
     let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     std::fs::write(&path, json)
         .map_err(|e| format!("failed to write instance settings: {e}"))
+}
+
+// ---------------------------------------------------------------------------
+// Mod installation with dependency resolution
+// ---------------------------------------------------------------------------
+
+/// Find the best matching version for a project given MC version and loader.
+async fn find_matching_version(
+    project_id: &str,
+    platform: hopper_mc::Platform,
+    mc_version: &str,
+    loader: &str,
+) -> Result<Option<hopper_mc::ProjectVersion>, String> {
+    let versions = hopper_mc::get_versions(project_id, platform)
+        .await
+        .map_err(|e| format!("failed to fetch versions for {project_id}: {e}"))?;
+
+    // Find first version that matches both MC version and loader
+    let matching = versions.into_iter().find(|v| {
+        v.game_versions.iter().any(|gv| gv == mc_version)
+            && v.loaders.iter().any(|l| l.eq_ignore_ascii_case(loader))
+    });
+    Ok(matching)
+}
+
+/// Info about a resolved mod file to download + track in the DB.
+struct ResolvedModFile {
+    filename: String,
+    url: String,
+    project_id: String,
+    version_id: String,
+    project_name: String,
+    icon_url: Option<String>,
+}
+
+/// Collect all files to download for a mod + its required dependencies.
+/// Deduplicates by project_id.
+fn resolve_mod_files<'a>(
+    project_id: &'a str,
+    platform: hopper_mc::Platform,
+    mc_version: &'a str,
+    loader: &'a str,
+    mods_dir: &'a Path,
+    resolved: &'a mut std::collections::HashSet<String>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<ResolvedModFile>, String>> + Send + 'a>> {
+    Box::pin(async move {
+    if resolved.contains(project_id) {
+        return Ok(vec![]);
+    }
+    resolved.insert(project_id.to_string());
+
+    let version = find_matching_version(project_id, platform, mc_version, loader)
+        .await?
+        .ok_or_else(|| {
+            format!("No compatible version found for {project_id} (MC {mc_version}, {loader})")
+        })?;
+
+    let mut files = Vec::new();
+
+    // Fetch project info for icon + title
+    let project_info = hopper_mc::get_mod(project_id, platform)
+        .await
+        .ok()
+        .flatten();
+    let icon_url = project_info.as_ref().and_then(|m| m.base.icon_url.clone());
+    let mod_title = project_info.as_ref().map(|m| m.base.title.clone())
+        .unwrap_or_else(|| version.name.clone());
+
+    // Get the primary file
+    if let Some(file) = version.files.iter().find(|f| f.primary).or(version.files.first()) {
+        if let Some(url) = &file.url {
+            if !mods_dir.join(&file.filename).exists() {
+                files.push(ResolvedModFile {
+                    filename: file.filename.clone(),
+                    url: url.clone(),
+                    project_id: version.project_id.clone(),
+                    version_id: version.id.clone(),
+                    project_name: mod_title.clone(),
+                    icon_url: icon_url.clone(),
+                });
+            }
+        }
+    }
+
+    // Resolve required dependencies
+    for dep in &version.dependencies {
+        if dep.kind != hopper_mc::DependencyKind::Required {
+            continue;
+        }
+        if let Some(dep_project_id) = &dep.project_id {
+            match resolve_mod_files(dep_project_id, platform, mc_version, loader, mods_dir, resolved).await {
+                Ok(dep_files) => files.extend(dep_files),
+                Err(e) => {
+                    log::warn!("Failed to resolve dependency {dep_project_id}: {e}");
+                }
+            }
+        }
+    }
+
+    Ok(files)
+    }) // end Box::pin
+}
+
+/// Helper to download resolved mod files and return installed filenames.
+async fn download_mod_files(
+    files: &[ResolvedModFile],
+    mods_dir: &Path,
+) -> Result<Vec<String>, String> {
+    if files.is_empty() {
+        return Ok(vec![]);
+    }
+    let client = reqwest::Client::new();
+    let mut installed = Vec::new();
+    for f in files {
+        let dest = mods_dir.join(&f.filename);
+        let response = client.get(&f.url).send().await
+            .map_err(|e| format!("failed to download {}: {e}", f.filename))?;
+        if !response.status().is_success() {
+            return Err(format!("download failed for {}: HTTP {}", f.filename, response.status()));
+        }
+        let bytes = response.bytes().await
+            .map_err(|e| format!("failed to read {}: {e}", f.filename))?;
+        std::fs::write(&dest, &bytes)
+            .map_err(|e| format!("failed to write {}: {e}", f.filename))?;
+        installed.push(f.filename.clone());
+    }
+    Ok(installed)
+}
+
+#[tauri::command]
+pub async fn install_mod(
+    instance_id: i64,
+    instance_path: String,
+    project_id: String,
+    platform: String,
+    mc_version: String,
+    loader: String,
+    project_name: Option<String>,
+    mgr_state: tauri::State<'_, InstanceManagerState>,
+    app: tauri::AppHandle,
+) -> Result<Vec<String>, String> {
+    let plat = match platform.as_str() {
+        "modrinth" => hopper_mc::Platform::Modrinth,
+        "curseforge" => hopper_mc::Platform::CurseForge,
+        _ => return Err(format!("unsupported platform: {platform}")),
+    };
+
+    let mods_dir = PathBuf::from(&instance_path).join("mods");
+    std::fs::create_dir_all(&mods_dir)
+        .map_err(|e| format!("failed to create mods dir: {e}"))?;
+
+    let mut resolved = std::collections::HashSet::new();
+    let files = resolve_mod_files(&project_id, plat, &mc_version, &loader, &mods_dir, &mut resolved).await?;
+    let installed = download_mod_files(&files, &mods_dir).await?;
+
+    // Save ALL resolved mods (including dependencies) to DB
+    if !files.is_empty() {
+        ensure_manager(&mgr_state, &app).await?;
+        let guard = mgr_state.lock().await;
+        let mgr = guard.as_ref().unwrap();
+        for f in &files {
+            // Check if already tracked
+            let (mr_id, cf_id) = match platform.as_str() {
+                "modrinth" => (Some(f.project_id.as_str()), None),
+                "curseforge" => (None, Some(f.project_id.as_str())),
+                _ => (None, None),
+            };
+            let existing = mgr.find_installed_mod_by_project(instance_id, mr_id, cf_id).await.ok().flatten();
+            if existing.is_none() {
+                // Use the user-provided name for the primary mod, version name for deps
+                let name = if f.project_id == project_id {
+                    project_name.as_deref().unwrap_or(&f.project_name)
+                } else {
+                    &f.project_name
+                };
+                let _ = mgr.add_installed_mod(
+                    instance_id, &f.filename, mr_id, cf_id,
+                    Some(f.version_id.as_str()), Some(name),
+                    f.icon_url.as_deref(),
+                ).await;
+            }
+        }
+    }
+
+    Ok(installed)
+}
+
+#[tauri::command]
+pub async fn install_mod_version(
+    instance_id: i64,
+    instance_path: String,
+    version_id: String,
+    platform: String,
+    mc_version: String,
+    loader: String,
+    project_name: Option<String>,
+    mgr_state: tauri::State<'_, InstanceManagerState>,
+    app: tauri::AppHandle,
+) -> Result<Vec<String>, String> {
+    let plat = match platform.as_str() {
+        "modrinth" => hopper_mc::Platform::Modrinth,
+        "curseforge" => hopper_mc::Platform::CurseForge,
+        _ => return Err(format!("unsupported platform: {platform}")),
+    };
+
+    let mods_dir = PathBuf::from(&instance_path).join("mods");
+    std::fs::create_dir_all(&mods_dir)
+        .map_err(|e| format!("failed to create mods dir: {e}"))?;
+
+    let version = hopper_mc::get_version(&version_id, plat)
+        .await
+        .map_err(|e| format!("failed to fetch version: {e}"))?
+        .ok_or_else(|| format!("version {version_id} not found"))?;
+
+    // Fetch icon for the primary project
+    let primary_icon = hopper_mc::get_mod(&version.project_id, plat)
+        .await.ok().flatten().and_then(|m| m.base.icon_url);
+
+    let mut files_to_download: Vec<ResolvedModFile> = Vec::new();
+    if let Some(file) = version.files.iter().find(|f| f.primary).or(version.files.first()) {
+        if let Some(url) = &file.url {
+            if !mods_dir.join(&file.filename).exists() {
+                files_to_download.push(ResolvedModFile {
+                    filename: file.filename.clone(),
+                    url: url.clone(),
+                    project_id: version.project_id.clone(),
+                    version_id: version.id.clone(),
+                    project_name: version.name.clone(),
+                    icon_url: primary_icon.clone(),
+                });
+            }
+        }
+    }
+
+    let mut resolved = std::collections::HashSet::new();
+    resolved.insert(version.project_id.clone());
+    for dep in &version.dependencies {
+        if dep.kind != hopper_mc::DependencyKind::Required { continue; }
+        if let Some(dep_project_id) = &dep.project_id {
+            match resolve_mod_files(dep_project_id, plat, &mc_version, &loader, &mods_dir, &mut resolved).await {
+                Ok(dep_files) => files_to_download.extend(dep_files),
+                Err(e) => log::warn!("Failed to resolve dependency {dep_project_id}: {e}"),
+            }
+        }
+    }
+
+    let installed = download_mod_files(&files_to_download, &mods_dir).await?;
+
+    // Save ALL mods (primary + deps) to DB
+    if !files_to_download.is_empty() {
+        ensure_manager(&mgr_state, &app).await?;
+        let guard = mgr_state.lock().await;
+        let mgr = guard.as_ref().unwrap();
+        for f in &files_to_download {
+            let (mr_id, cf_id) = match platform.as_str() {
+                "modrinth" => (Some(f.project_id.as_str()), None),
+                "curseforge" => (None, Some(f.project_id.as_str())),
+                _ => (None, None),
+            };
+            let existing = mgr.find_installed_mod_by_project(instance_id, mr_id, cf_id).await.ok().flatten();
+            if let Some(rec) = existing {
+                let _ = mgr.update_installed_mod(rec.id, &f.filename, Some(&f.version_id)).await;
+            } else {
+                let name = if f.project_id == version.project_id {
+                    project_name.as_deref().unwrap_or(&f.project_name)
+                } else {
+                    &f.project_name
+                };
+                let _ = mgr.add_installed_mod(
+                    instance_id, &f.filename, mr_id, cf_id,
+                    Some(f.version_id.as_str()), Some(name),
+                    f.icon_url.as_deref(),
+                ).await;
+            }
+        }
+    }
+
+    Ok(installed)
+}
+
+/// Replace an installed mod version: delete the old file, download the new version.
+#[tauri::command]
+pub async fn replace_mod_version(
+    instance_id: i64,
+    instance_path: String,
+    old_file_name: String,
+    version_id: String,
+    platform: String,
+    mc_version: String,
+    loader: String,
+    mgr_state: tauri::State<'_, InstanceManagerState>,
+    app: tauri::AppHandle,
+) -> Result<Vec<String>, String> {
+    let plat = match platform.as_str() {
+        "modrinth" => hopper_mc::Platform::Modrinth,
+        "curseforge" => hopper_mc::Platform::CurseForge,
+        _ => return Err(format!("unsupported platform: {platform}")),
+    };
+
+    let mods_dir = PathBuf::from(&instance_path).join("mods");
+
+    // Delete old file
+    let old_path = mods_dir.join(&old_file_name);
+    if old_path.exists() {
+        std::fs::remove_file(&old_path).map_err(|e| format!("failed to delete old mod: {e}"))?;
+    }
+    // Also try .disabled variant
+    let old_disabled = mods_dir.join(format!("{old_file_name}.disabled"));
+    if old_disabled.exists() {
+        let _ = std::fs::remove_file(&old_disabled);
+    }
+
+    let version = hopper_mc::get_version(&version_id, plat)
+        .await
+        .map_err(|e| format!("failed to fetch version: {e}"))?
+        .ok_or_else(|| format!("version {version_id} not found"))?;
+
+    let replace_icon = hopper_mc::get_mod(&version.project_id, plat)
+        .await.ok().flatten().and_then(|m| m.base.icon_url);
+
+    let mut files_to_download: Vec<ResolvedModFile> = Vec::new();
+    if let Some(file) = version.files.iter().find(|f| f.primary).or(version.files.first()) {
+        if let Some(url) = &file.url {
+            files_to_download.push(ResolvedModFile {
+                filename: file.filename.clone(),
+                url: url.clone(),
+                project_id: version.project_id.clone(),
+                version_id: version.id.clone(),
+                project_name: version.name.clone(),
+                icon_url: replace_icon.clone(),
+            });
+        }
+    }
+
+    // Also resolve deps
+    let mut resolved = std::collections::HashSet::new();
+    resolved.insert(version.project_id.clone());
+    for dep in &version.dependencies {
+        if dep.kind != hopper_mc::DependencyKind::Required { continue; }
+        if let Some(dep_project_id) = &dep.project_id {
+            match resolve_mod_files(dep_project_id, plat, &mc_version, &loader, &mods_dir, &mut resolved).await {
+                Ok(dep_files) => files_to_download.extend(dep_files),
+                Err(e) => log::warn!("Failed to resolve dependency {dep_project_id}: {e}"),
+            }
+        }
+    }
+
+    let installed = download_mod_files(&files_to_download, &mods_dir).await?;
+
+    // Update DB records for all files
+    if !files_to_download.is_empty() {
+        ensure_manager(&mgr_state, &app).await?;
+        let guard = mgr_state.lock().await;
+        let mgr = guard.as_ref().unwrap();
+        for f in &files_to_download {
+            let (mr_id, cf_id) = match platform.as_str() {
+                "modrinth" => (Some(f.project_id.as_str()), None),
+                "curseforge" => (None, Some(f.project_id.as_str())),
+                _ => (None, None),
+            };
+            let existing = mgr.find_installed_mod_by_project(instance_id, mr_id, cf_id).await.ok().flatten();
+            if let Some(rec) = existing {
+                let _ = mgr.update_installed_mod(rec.id, &f.filename, Some(&f.version_id)).await;
+            } else {
+                let _ = mgr.add_installed_mod(
+                    instance_id, &f.filename, mr_id, cf_id,
+                    Some(f.version_id.as_str()), Some(&f.project_name),
+                    f.icon_url.as_deref(),
+                ).await;
+            }
+        }
+    }
+
+    Ok(installed)
+}
+
+/// Get installed mod metadata for an instance (from DB).
+#[tauri::command]
+pub async fn get_installed_mods_info(
+    instance_id: i64,
+    mgr_state: tauri::State<'_, InstanceManagerState>,
+    app: tauri::AppHandle,
+) -> Result<Vec<serde_json::Value>, String> {
+    ensure_manager(&mgr_state, &app).await?;
+    let guard = mgr_state.lock().await;
+    let mgr = guard.as_ref().unwrap();
+    let records = mgr.list_installed_mods(instance_id).await
+        .map_err(|e| format!("failed to list installed mods: {e}"))?;
+    serde_json::to_value(&records)
+        .map(|v| match v { serde_json::Value::Array(a) => a, _ => vec![] })
+        .map_err(|e| format!("serialization error: {e}"))
 }

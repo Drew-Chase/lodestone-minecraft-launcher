@@ -154,7 +154,13 @@ export default function ContentDetail() {
                             platform={platform?.toLowerCase() ?? "modrinth"}
                         />
                     )}
-                    {tab === "dependencies" && <DependenciesTab deps={deps}/>}
+                    {tab === "dependencies" && (
+                        <DependenciesTab
+                            deps={deps}
+                            projectId={item.slug || item.id}
+                            platform={platform?.toLowerCase()}
+                        />
+                    )}
                 </div>
 
                 {/* Sidebar */}
