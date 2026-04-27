@@ -107,6 +107,7 @@ export default function DependenciesTab({deps, projectId, platform, onOpenDetail
                     projectId: d.project_id || "",
                     versionId: d.version_id || undefined,
                     kind: d.kind,
+                    item: null,
                     name: null,
                     iconUrl: null,
                     versions: [],

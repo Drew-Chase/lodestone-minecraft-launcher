@@ -706,8 +706,10 @@ function InstanceVersionsTab({projectId, platform, instance, onInstalled, curren
                     <DropdownMenu aria-label="Loader filter" selectionMode="single" selectedKeys={new Set([filterLoader])}
                         onSelectionChange={keys => { const v = [...keys][0] as string; setFilterLoader(v === "__all__" ? "" : v); }}
                         itemClasses={{base: "text-xs text-[var(--ink-2)] data-[hover=true]:bg-white/[0.04] data-[selected=true]:text-[var(--mc-green)]"}}>
-                        <DropdownItem key="__all__">All loaders</DropdownItem>
-                        {availableLoaders.map(l => <DropdownItem key={l.toLowerCase()}>{l}</DropdownItem>)}
+                        {[
+                            <DropdownItem key="__all__">All loaders</DropdownItem>,
+                            ...availableLoaders.map(l => <DropdownItem key={l.toLowerCase()}>{l}</DropdownItem>),
+                        ]}
                     </DropdownMenu>
                 </Dropdown>
 
@@ -729,8 +731,10 @@ function InstanceVersionsTab({projectId, platform, instance, onInstalled, curren
                     <DropdownMenu aria-label="Version type filter" selectionMode="single" selectedKeys={new Set([filterType])}
                         onSelectionChange={keys => { const v = [...keys][0] as string; setFilterType(v); }}
                         itemClasses={{base: "text-xs text-[var(--ink-2)] data-[hover=true]:bg-white/[0.04] data-[selected=true]:text-[var(--mc-green)]"}}>
-                        <DropdownItem key="all">All types</DropdownItem>
-                        {availableTypes.map(t => <DropdownItem key={t}>{t}</DropdownItem>)}
+                        {[
+                            <DropdownItem key="all">All types</DropdownItem>,
+                            ...availableTypes.map(t => <DropdownItem key={t}>{t}</DropdownItem>),
+                        ]}
                     </DropdownMenu>
                 </Dropdown>
 
@@ -758,7 +762,6 @@ function InstanceVersionsTab({projectId, platform, instance, onInstalled, curren
                 </div>
             ) : versions.map(v => {
                 const badge = versionTypeBadge[v.version_type] ?? versionTypeBadge.Release;
-                const primaryFile = v.files.find(f => f.primary) ?? v.files[0];
                 const expanded = expandedId === v.id;
                 const isInstalling = installing.has(v.id);
                 const isInstalled = installedVersions.has(v.id);
@@ -872,7 +875,6 @@ function InstallButton({installing, installed, onInstall}: { installing: boolean
 }
 
 function InstallableCard({item, installing, installed, onInstall, onClick}: { item: ContentItem; installing: boolean; installed: boolean; onInstall: () => void; onClick: () => void }) {
-    const loaders = "loaders" in item ? (item as { loaders: string[] }).loaders : [];
     return (
         <div className={`border border-line rounded-xl overflow-hidden cursor-pointer ${cardHoverClass}`} style={cardSurfaceStyle} onClick={onClick}>
             <div className="relative flex items-center justify-center" style={{height: 130, background: "rgba(0,0,0,0.25)", overflow: "hidden"}}>

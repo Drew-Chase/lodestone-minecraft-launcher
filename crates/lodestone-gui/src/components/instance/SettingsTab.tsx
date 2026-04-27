@@ -1,7 +1,6 @@
 import {useCallback, useEffect, useRef, useState, type ReactNode} from "react";
 import {Button, Slider} from "@heroui/react";
 import {invoke} from "@tauri-apps/api/core";
-import Chip from "../Chip";
 import {Switch} from "../Switch";
 import {I} from "../shell/icons";
 import {cardSurfaceStyle} from "../surfaces";

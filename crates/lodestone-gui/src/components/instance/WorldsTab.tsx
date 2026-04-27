@@ -2,7 +2,6 @@ import {useCallback, useEffect, useState} from "react";
 import {Button} from "@heroui/react";
 import {invoke} from "@tauri-apps/api/core";
 import Scene from "../shell/Scene";
-import Chip from "../Chip";
 import {I} from "../shell/icons";
 import {cardSurfaceStyle, type Instance} from "../library/instances";
 import type {Biome} from "../shell/Scene";
