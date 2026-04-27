@@ -3,9 +3,11 @@ use serde_json::json;
 use log::*;
 use anyhow::Result;
 use crate::util::asset_endpoint::AssetsAppConfig;
+use crate::util::github_releases::ReleasesCache;
 use vite_actix::start_vite_server;
 
 mod test_endpoint;
+mod releases_endpoint;
 mod util;
 
 pub static DEBUG: bool = cfg!(debug_assertions);
@@ -27,9 +29,12 @@ pub async fn run() -> Result<()> {
 		let _ = std::env::set_current_dir("crates/lodestone-website");
 	}
 
+	let releases_cache = ReleasesCache::new();
+
 	let server = HttpServer::new(move || {
 		App::new()
 			.wrap(middleware::Logger::default())
+			.app_data(web::Data::new(releases_cache.clone()))
 			.app_data(
 				web::JsonConfig::default()
 					.limit(4096)
@@ -44,6 +49,7 @@ pub async fn run() -> Result<()> {
 			.service(
 				web::scope("api")
 					.configure(test_endpoint::configure)
+					.configure(releases_endpoint::configure)
 			)
 			.configure_frontend_routes()
 	})
