@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react";
-import {Navigate, useNavigate, useParams} from "react-router-dom";
+import {Navigate, useNavigate, useParams, useSearchParams} from "react-router-dom";
 import {Tab, Tabs} from "@heroui/react";
 import {invoke} from "@tauri-apps/api/core";
 import InstanceHero from "../components/instance/InstanceHero";
@@ -9,17 +9,20 @@ import ScreenshotsTab from "../components/instance/ScreenshotsTab";
 import LogsTab from "../components/instance/LogsTab";
 import WorldsTab from "../components/instance/WorldsTab";
 import SettingsTab from "../components/instance/SettingsTab";
+import FileBrowserTab from "../components/instance/FileBrowserTab";
+import DeleteInstanceModal from "../components/modals/DeleteInstanceModal";
 import {configToInstance, toSlug, type Instance} from "../components/library/instances";
 import {usePersistedState} from "../hooks/usePersistedState";
 
-type DetailTab = "overview" | "mods" | "worlds" | "screenshots" | "logs" | "settings";
+type DetailTab = "overview" | "mods" | "worlds" | "screenshots" | "logs" | "files" | "settings";
 
-const tabKeys: DetailTab[] = [
+const allTabKeys: DetailTab[] = [
     "overview",
     "mods",
     "worlds",
     "screenshots",
     "logs",
+    "files",
     "settings",
 ];
 
@@ -36,15 +39,30 @@ interface InstanceConfig {
 }
 
 export default function InstanceDetail() {
-    const {slug} = useParams<{slug: string}>();
+    const {slug} = useParams<{ slug: string }>();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const tabParam = searchParams.get("tab");
+    const initialTab = tabParam && allTabKeys.includes(tabParam as DetailTab)
+        ? (tabParam as DetailTab)
+        : undefined;
     const [tab, setTab] = usePersistedState<DetailTab>(
         `instanceDetail.tab.${slug ?? ""}`,
-        "overview",
+        initialTab ?? "overview",
     );
+
+    // Apply and clear the tab param from the URL after reading it
+    useEffect(() => {
+        if (initialTab) {
+            setTab(initialTab);
+            searchParams.delete("tab");
+            setSearchParams(searchParams, {replace: true});
+        }
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const [instance, setInstance] = useState<Instance | undefined>(undefined);
     const [loading, setLoading] = useState(true);
+    const [showDelete, setShowDelete] = useState(false);
 
     useEffect(() => {
         if (!slug) {
@@ -73,11 +91,22 @@ export default function InstanceDetail() {
         return <Navigate to="/library" replace/>;
     }
 
+    // Hide mods tab for vanilla instances
+    const isVanilla = instance.loader === "Vanilla";
+    const tabKeys = isVanilla
+        ? allTabKeys.filter((t) => t !== "mods")
+        : allTabKeys;
+
+    // If current tab is "mods" but instance is vanilla, reset to overview
+    if (isVanilla && tab === "mods") {
+        setTab("overview");
+    }
+
     return (
         <div className="flex flex-col flex-1 min-w-0 min-h-0 bg-bg-0">
             <InstanceHero instance={instance} onBack={() => navigate("/library")}/>
 
-            {/* Tabs row — pt-[52px] clears the avatar that protrudes from the hero. */}
+            {/* Tabs row */}
             <div className="pl-7 pr-7 pt-[52px] border-b border-line">
                 <Tabs
                     aria-label="Instance sections"
@@ -101,12 +130,25 @@ export default function InstanceDetail() {
 
             <div className="flex-1 min-h-0 flex flex-col">
                 {tab === "overview" && <OverviewTab instance={instance}/>}
-                {tab === "mods" && <ModsTab/>}
-                {tab === "worlds" && <WorldsTab/>}
-                {tab === "screenshots" && <ScreenshotsTab/>}
-                {tab === "logs" && <LogsTab/>}
-                {tab === "settings" && <SettingsTab/>}
+                {tab === "mods" && !isVanilla && <ModsTab instance={instance}/>}
+                {tab === "worlds" && <WorldsTab instance={instance}/>}
+                {tab === "screenshots" && <ScreenshotsTab instance={instance}/>}
+                {tab === "logs" && <LogsTab instance={instance}/>}
+                {tab === "files" && <FileBrowserTab instance={instance}/>}
+                {tab === "settings" && (
+                    <SettingsTab
+                        instance={instance}
+                        onDeleteRequest={() => setShowDelete(true)}
+                    />
+                )}
             </div>
+
+            <DeleteInstanceModal
+                isOpen={showDelete}
+                instance={instance}
+                onClose={() => setShowDelete(false)}
+                onDeleted={() => navigate("/library")}
+            />
         </div>
     );
 }

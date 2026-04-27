@@ -11,6 +11,7 @@ import NewInstanceModal from "../components/modals/NewInstanceModal";
 import ImportModal from "../components/modals/ImportModal";
 import JoinServerModal from "../components/modals/JoinServerModal";
 import CoopSyncModal from "../components/modals/CoopSyncModal";
+import DeleteInstanceModal from "../components/modals/DeleteInstanceModal";
 
 interface InstanceConfig {
     id: number;
@@ -27,6 +28,7 @@ interface InstanceConfig {
 export default function Home() {
     const [openModal, setOpenModal] = useState<QuickActionKey | null>(null);
     const closeModal = () => setOpenModal(null);
+    const [deleteTarget, setDeleteTarget] = useState<Instance | null>(null);
     const [instances, setInstances] = useState<Instance[]>([]);
     const fetchInstances = useCallback(async () => {
         try {
@@ -76,9 +78,9 @@ export default function Home() {
             </TitleBar>
 
             <div className="flex-1 overflow-y-auto px-7 pt-6 pb-10">
-                {featured && <HeroBanner featured={featured}/>}
+                {featured && <HeroBanner featured={featured} onDeleteRequest={setDeleteTarget}/>}
                 <QuickActions onActionPress={setOpenModal}/>
-                <InstanceList instances={instances}/>
+                <InstanceList instances={instances} onDeleteRequest={setDeleteTarget}/>
             </div>
 
             {/* Quick-action modals */}
@@ -86,6 +88,12 @@ export default function Home() {
             <ImportModal isOpen={openModal === "import"} onClose={closeModal}/>
             <JoinServerModal isOpen={openModal === "server"} onClose={closeModal}/>
             <CoopSyncModal isOpen={openModal === "coop"} onClose={closeModal}/>
+            <DeleteInstanceModal
+                isOpen={deleteTarget !== null}
+                instance={deleteTarget}
+                onClose={() => setDeleteTarget(null)}
+                onDeleted={fetchInstances}
+            />
         </div>
     );
 }

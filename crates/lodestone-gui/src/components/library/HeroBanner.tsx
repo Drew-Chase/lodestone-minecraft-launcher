@@ -1,17 +1,27 @@
 import {Button} from "@heroui/react";
+import {useNavigate} from "react-router-dom";
+import {invoke} from "@tauri-apps/api/core";
 import Scene from "../shell/Scene";
 import Particles from "../shell/Particles";
 import Chip from "../Chip";
 import {I} from "../shell/icons";
-import type {Instance} from "./instances";
+import {toSlug, type Instance} from "./instances";
+import InstanceActionsDropdown from "./InstanceActionsDropdown";
+import {useLaunch} from "../../context/LaunchContext";
 
 type HeroBannerProps = {
     featured: Instance;
+    onDeleteRequest: (inst: Instance) => void;
 };
 
 // The "now playing" hero at the top of the Library. Scene + particles backdrop,
 // chips, title, description, Resume Session cluster, and the stats pill.
-export default function HeroBanner({featured}: HeroBannerProps) {
+export default function HeroBanner({featured, onDeleteRequest}: HeroBannerProps) {
+    const navigate = useNavigate();
+    const {launchInstance, stopInstance, isRunning, isInstalling} = useLaunch();
+    const running = isRunning(featured.id);
+    const installing = isInstalling(featured.id);
+
     return (
         <div className="relative h-[260px] rounded-[20px] overflow-hidden mb-7 shadow-[0_20px_40px_-20px_rgba(0,0,0,0.8)]">
             <Scene biome={featured.biome} seed={featured.seed}/>
@@ -41,19 +51,36 @@ export default function HeroBanner({featured}: HeroBannerProps) {
                         · last played {featured.lastPlayed}
                     </div>
                     <div className="flex gap-2.5">
-                        <Button
-                            color="success"
-                            size="lg"
-                            className="font-bold px-6"
-                            startContent={<I.play size={14}/>}
-                        >
-                            Resume Session
-                        </Button>
+                        {running ? (
+                            <Button
+                                color="danger"
+                                size="lg"
+                                className="font-bold px-6"
+                                startContent={<I.x size={14}/>}
+                                onPress={() => stopInstance(featured.id)}
+                            >
+                                Stop
+                            </Button>
+                        ) : (
+                            <Button
+                                color="success"
+                                size="lg"
+                                className="font-bold px-6"
+                                startContent={installing
+                                    ? <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"/>
+                                    : <I.play size={14}/>}
+                                isDisabled={installing}
+                                onPress={() => launchInstance(featured.id)}
+                            >
+                                {installing ? "Installing..." : "Play"}
+                            </Button>
+                        )}
                         <Button
                             isIconOnly
                             variant="bordered"
                             aria-label="Open Folder"
                             className="w-[42px] h-[42px]"
+                            onPress={() => invoke("open_directory", {path: featured.instancePath})}
                         >
                             <I.folder size={16}/>
                         </Button>
@@ -62,17 +89,20 @@ export default function HeroBanner({featured}: HeroBannerProps) {
                             variant="bordered"
                             aria-label="Configure"
                             className="w-[42px] h-[42px]"
+                            onPress={() => navigate(`/library/${toSlug(featured.name)}?tab=settings`)}
                         >
                             <I.settings size={16}/>
                         </Button>
-                        <Button
-                            isIconOnly
-                            variant="bordered"
-                            aria-label="More"
-                            className="w-[42px] h-[42px]"
-                        >
-                            <I.more size={16}/>
-                        </Button>
+                        <InstanceActionsDropdown instance={featured} onDeleteRequest={onDeleteRequest}>
+                            <Button
+                                isIconOnly
+                                variant="bordered"
+                                aria-label="More"
+                                className="w-[42px] h-[42px]"
+                            >
+                                <I.more size={16}/>
+                            </Button>
+                        </InstanceActionsDropdown>
                     </div>
                 </div>
             </div>

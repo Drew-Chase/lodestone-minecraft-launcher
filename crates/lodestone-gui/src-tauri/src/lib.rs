@@ -1,6 +1,7 @@
 mod auth;
 mod instances;
 mod java;
+mod launcher;
 mod settings;
 
 use std::collections::HashMap;
@@ -405,6 +406,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(auth::AuthState::new(auth::AuthInner::new()))
         .manage(instances::InstanceManagerState::default())
+        .manage(launcher::RunningInstances::default())
         .invoke_handler(tauri::generate_handler![
             search_content,
             get_content,
@@ -419,13 +421,32 @@ pub fn run() {
             instances::create_instance,
             instances::list_instances,
             instances::delete_instance,
+            instances::update_instance,
             instances::get_loader_versions,
             instances::get_java_for_version,
             instances::get_instances_dir,
+            instances::open_directory,
+            instances::get_instance_details,
+            instances::list_instance_mods,
+            instances::toggle_mod,
+            instances::delete_mod,
+            instances::list_instance_worlds,
+            instances::delete_world,
+            instances::list_instance_screenshots,
+            instances::delete_screenshot,
+            instances::read_instance_screenshot,
+            instances::list_log_files,
+            instances::read_log_file,
+            instances::list_instance_files,
+            instances::get_instance_settings,
+            instances::save_instance_settings,
             settings::get_settings,
             settings::save_settings,
             settings::reset_settings,
             settings::get_system_ram,
+            launcher::launch_instance,
+            launcher::stop_instance,
+            launcher::get_running_instances,
             java::detect_system_java,
             java::get_available_java_runtimes,
             java::install_java_runtime,

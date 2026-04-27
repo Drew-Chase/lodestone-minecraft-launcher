@@ -5,9 +5,14 @@ export type Loader = "Fabric" | "Vanilla" | "Forge" | "NeoForge" | "Quilt";
 export type ViewMode = "grid" | "compact" | "table";
 
 export type Instance = {
+    id: number;
+    instancePath: string;
     name: string;
     version: string;
     loader: Loader;
+    loaderVersion: string | null;
+    javaVersion: string | null;
+    createdAt: string;
     mc: string;
     biome: Biome;
     seed: number;
@@ -20,6 +25,7 @@ export type Instance = {
 
 export const instances: Instance[] = [
     {
+        id: 0, instancePath: "", loaderVersion: null, javaVersion: null, createdAt: "",
         name: "Aether Legacy",
         version: "1.20.1 · Fabric",
         loader: "Fabric",
@@ -33,6 +39,7 @@ export const instances: Instance[] = [
         color: "violet",
     },
     {
+        id: 0, instancePath: "", loaderVersion: null, javaVersion: null, createdAt: "",
         name: "Vanilla Survival",
         version: "1.20.4 · Vanilla",
         loader: "Vanilla",
@@ -45,6 +52,7 @@ export const instances: Instance[] = [
         color: "green",
     },
     {
+        id: 0, instancePath: "", loaderVersion: null, javaVersion: null, createdAt: "",
         name: "Create: Above & Beyond",
         version: "1.16.5 · Forge",
         loader: "Forge",
@@ -57,6 +65,7 @@ export const instances: Instance[] = [
         color: "amber",
     },
     {
+        id: 0, instancePath: "", loaderVersion: null, javaVersion: null, createdAt: "",
         name: "RLCraft Extreme",
         version: "1.12.2 · Forge",
         loader: "Forge",
@@ -69,6 +78,7 @@ export const instances: Instance[] = [
         color: "pink",
     },
     {
+        id: 0, instancePath: "", loaderVersion: null, javaVersion: null, createdAt: "",
         name: "SkyFactory 4",
         version: "1.12.2 · Forge",
         loader: "Forge",
@@ -81,6 +91,7 @@ export const instances: Instance[] = [
         color: "cyan",
     },
     {
+        id: 0, instancePath: "", loaderVersion: null, javaVersion: null, createdAt: "",
         name: "Cherry Grove Peaceful",
         version: "1.20.4 · Vanilla",
         loader: "Vanilla",
@@ -124,8 +135,10 @@ export function configToInstance(config: {
     minecraft_version: string;
     loader: string;
     loader_version: string | null;
+    java_version: string | null;
     created_at: string;
     last_played: string | null;
+    instance_path: string;
 }): Instance {
     const loaderLabel = loaderLabels[config.loader] ?? "Vanilla";
     const versionStr =
@@ -148,9 +161,14 @@ export function configToInstance(config: {
     }
 
     return {
+        id: config.id,
+        instancePath: config.instance_path,
         name: config.name,
         version: versionStr,
         loader: loaderLabel,
+        loaderVersion: config.loader_version,
+        javaVersion: config.java_version,
+        createdAt: config.created_at,
         mc: config.minecraft_version,
         biome,
         seed,

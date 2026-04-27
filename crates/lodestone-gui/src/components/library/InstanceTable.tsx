@@ -4,9 +4,12 @@ import Scene from "../shell/Scene";
 import Chip from "../Chip";
 import {I} from "../shell/icons";
 import {cardSurfaceStyle, toSlug, type Instance} from "./instances";
+import InstanceActionsDropdown from "./InstanceActionsDropdown";
+import {useLaunch} from "../../context/LaunchContext";
 
 type Props = {
     list: Instance[];
+    onDeleteRequest: (inst: Instance) => void;
 };
 
 const thClass =
@@ -18,8 +21,9 @@ const tdClass =
 // mods count, playtime, last-played date, and per-row actions. Clicking a row
 // navigates to /library/:slug; the actions column stops propagation so Play /
 // More don't trigger the row navigation.
-export default function InstanceTable({list}: Props) {
+export default function InstanceTable({list, onDeleteRequest}: Props) {
     const navigate = useNavigate();
+    const {launchInstance, stopInstance, isRunning, isInstalling} = useLaunch();
     const stop = (e: React.MouseEvent) => e.stopPropagation();
 
     return (
@@ -55,7 +59,7 @@ export default function InstanceTable({list}: Props) {
                         <td className={tdClass}>
                             <div className="flex items-center gap-2">
                                 <span className="font-semibold">{inst.name}</span>
-                                {inst.playing && (
+                                {isRunning(inst.id) && (
                                     <Chip variant="green" className="text-[0.5625rem] px-1.5 py-px">
                                         <span className="pulse-dot" style={{width: 4, height: 4}}/>
                                         playing
@@ -78,23 +82,26 @@ export default function InstanceTable({list}: Props) {
                         <td className={`${tdClass} text-ink-3 text-[0.6875rem]`}>{inst.lastPlayed}</td>
                         <td className={`${tdClass} text-right`} onClick={stop}>
                             <div className="inline-flex gap-1">
-                                <Button
-                                    color="success"
-                                    size="sm"
-                                    className="font-bold text-[0.6875rem]"
-                                    startContent={<I.play size={10}/>}
-                                >
-                                    Play
-                                </Button>
-                                <Button
-                                    isIconOnly
-                                    variant="bordered"
-                                    size="sm"
-                                    aria-label="More"
-                                    className="w-[26px] h-[26px] min-w-0"
-                                >
-                                    <I.more size={12}/>
-                                </Button>
+                                {isRunning(inst.id) ? (
+                                    <Button color="danger" size="sm" className="font-bold text-[0.6875rem]" startContent={<I.x size={10}/>} onPress={() => stopInstance(inst.id)}>
+                                        Stop
+                                    </Button>
+                                ) : (
+                                    <Button color="success" size="sm" className="font-bold text-[0.6875rem]" startContent={<I.play size={10}/>} isDisabled={isInstalling(inst.id)} onPress={() => launchInstance(inst.id)}>
+                                        {isInstalling(inst.id) ? "..." : "Play"}
+                                    </Button>
+                                )}
+                                <InstanceActionsDropdown instance={inst} onDeleteRequest={onDeleteRequest}>
+                                    <Button
+                                        isIconOnly
+                                        variant="bordered"
+                                        size="sm"
+                                        aria-label="More"
+                                        className="w-[26px] h-[26px] min-w-0"
+                                    >
+                                        <I.more size={12}/>
+                                    </Button>
+                                </InstanceActionsDropdown>
                             </div>
                         </td>
                     </tr>

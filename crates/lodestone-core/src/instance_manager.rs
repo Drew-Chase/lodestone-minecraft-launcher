@@ -157,6 +157,28 @@ impl InstanceManager {
         Ok(())
     }
 
+    /// Update an instance's version fields.
+    pub async fn update(
+        &self,
+        id: i64,
+        minecraft_version: &str,
+        loader: &LoaderType,
+        loader_version: Option<&str>,
+        java_version: Option<&str>,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE instances SET minecraft_version = ?, loader = ?, loader_version = ?, java_version = ? WHERE id = ?",
+        )
+        .bind(minecraft_version)
+        .bind(loader.as_str())
+        .bind(loader_version)
+        .bind(java_version)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     /// Return the current instances directory path.
     pub fn instances_dir(&self) -> &Path {
         &self.instances_dir

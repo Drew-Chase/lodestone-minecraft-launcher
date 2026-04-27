@@ -1,227 +1,187 @@
-import {useState} from "react";
+import {useCallback, useEffect, useState} from "react";
 import {Button} from "@heroui/react";
+import {invoke} from "@tauri-apps/api/core";
 import Scene from "../shell/Scene";
-import Chip from "../Chip";
 import {I} from "../shell/icons";
-import {cardSurfaceStyle} from "../surfaces";
+import {cardSurfaceStyle, type Instance} from "../library/instances";
 import type {Biome} from "../shell/Scene";
-import type {ChipColor} from "../library/instances";
 
-type Mode = "Survival" | "Creative" | "Hardcore" | "Adventure";
-
-type World = {
-    name: string;
-    biome: Biome;
-    seed: string;
-    mode: Mode;
-    diff: string;
-    size: string;
-    played: string;
-    last: string;
-    badges: ("pinned" | "cloud" | "backed-up")[];
-    version: string;
+type Props = {
+    instance: Instance;
 };
 
-// Design-matched sample data — the v2 instance page shows these six worlds for
-// the currently-selected instance.
-const worlds: World[] = [
-    {name: "Aether Hub", biome: "end", seed: "-4827193047281", mode: "Survival", diff: "Hard", size: "1.4 GB", played: "48h 12m", last: "02:14 today", badges: ["pinned", "cloud"], version: "1.20.1"},
-    {name: "Creative Sandbox", biome: "cherry", seed: "8821094572", mode: "Creative", diff: "Peaceful", size: "412 MB", played: "9h 04m", last: "Yesterday", badges: ["cloud"], version: "1.20.1"},
-    {name: "SkyBlock Classic", biome: "ocean", seed: "12345", mode: "Survival", diff: "Normal", size: "284 MB", played: "22h 47m", last: "3 days ago", badges: ["backed-up"], version: "1.20.1"},
-    {name: "Nether Outpost", biome: "nether", seed: "-918273645", mode: "Hardcore", diff: "Hard", size: "2.1 GB", played: "104h 31m", last: "Last week", badges: ["pinned"], version: "1.20.1"},
-    {name: "Pixel Town", biome: "forest", seed: "7391047", mode: "Survival", diff: "Normal", size: "896 MB", played: "31h 18m", last: "2 weeks ago", badges: [], version: "1.19.4"},
-    {name: "Desert Expedition", biome: "desert", seed: "-2837461", mode: "Adventure", diff: "Hard", size: "644 MB", played: "14h 22m", last: "Apr 8, 2026", badges: ["backed-up"], version: "1.20.1"},
-];
+interface WorldEntry {
+    dirName: string;
+    sizeBytes: number;
+    lastModified: string;
+}
 
-const modeColor: Record<Mode, ChipColor> = {
-    Survival: "green",
-    Creative: "cyan",
-    Hardcore: "amber",
-    Adventure: "violet",
-};
+const biomes: Biome[] = ["forest", "desert", "ocean", "nether", "end", "cherry", "snow", "mushroom"];
 
-type FilterKey = "all" | "single" | "backups";
+function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
 
-const filters: {id: FilterKey; label: string}[] = [
-    {id: "all", label: "All"},
-    {id: "single", label: "Singleplayer"},
-    {id: "backups", label: "Backups"},
-];
+function relativeTime(iso: string): string {
+    if (!iso) return "—";
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
+    return `${Math.floor(mins / 1440)}d ago`;
+}
 
-// Per-instance worlds tab — matches the v2 design: search + segmented All /
-// Singleplayer / Backups filter + Import + New world buttons above a 2-column
-// grid of horizontal world cards (128px biome thumbnail on the left, details
-// on the right with mode chip, seed, playtime/size, and Play action).
-export default function WorldsTab() {
-    const [filter, setFilter] = useState<FilterKey>("all");
+function hashName(name: string): number {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) {
+        h = ((h << 5) - h + name.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h);
+}
 
-    const visible = worlds.filter((w) => {
-        if (filter === "backups") return w.badges.includes("backed-up");
-        // "all" and "single" both render the full list for this sample dataset
-        // (a real multiplayer-aware filter would check a server-joined flag).
-        return true;
-    });
+export default function WorldsTab({instance}: Props) {
+    const [worlds, setWorlds] = useState<WorldEntry[]>([]);
+    const [search, setSearch] = useState("");
+
+    const fetchWorlds = useCallback(async () => {
+        try {
+            const result = await invoke<WorldEntry[]>("list_instance_worlds", {
+                instancePath: instance.instancePath,
+            });
+            setWorlds(result);
+        } catch {
+            setWorlds([]);
+        }
+    }, [instance.instancePath]);
+
+    useEffect(() => {
+        fetchWorlds();
+    }, [fetchWorlds]);
+
+    const handleDelete = async (dirName: string) => {
+        if (!confirm(`Delete world "${dirName}"? This cannot be undone.`)) return;
+        await invoke("delete_world", {
+            instancePath: instance.instancePath,
+            dirName,
+        });
+        fetchWorlds();
+    };
+
+    const handleOpenFolder = (dirName: string) => {
+        const sep = instance.instancePath.includes("/") ? "/" : "\\";
+        invoke("open_directory", {
+            path: `${instance.instancePath}${sep}saves${sep}${dirName}`,
+        });
+    };
+
+    const filtered = worlds.filter((w) =>
+        w.dirName.toLowerCase().includes(search.toLowerCase()),
+    );
 
     return (
         <div className="flex-1 flex flex-col min-h-0 px-7 pt-5 pb-5">
-            {/* Toolbar — fixed, never scrolls */}
+            {/* Toolbar */}
             <div className="flex-shrink-0 flex items-center gap-2.5 mb-3.5">
                 <div className="relative flex-1 max-w-[280px]">
-          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3">
-            <I.search size={12}/>
-          </span>
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3">
+                        <I.search size={12}/>
+                    </span>
                     <input
                         placeholder="Search worlds…"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
                         className="w-full bg-bg-1 border border-line rounded-lg py-[7px] pl-7 pr-2.5 text-ink-0 text-xs outline-none font-sans"
                     />
                 </div>
-
-                <div className="flex gap-1 p-[3px] bg-bg-1 border border-line rounded-lg">
-                    {filters.map((f) => {
-                        const active = filter === f.id;
-                        return (
-                            <button
-                                key={f.id}
-                                type="button"
-                                onClick={() => setFilter(f.id)}
-                                className={[
-                                    "px-2.5 py-[5px] text-[0.6875rem] rounded-md cursor-pointer transition-colors",
-                                    active
-                                        ? "bg-bg-2 text-ink-0"
-                                        : "bg-transparent text-ink-3 hover:text-ink-1",
-                                ].join(" ")}
-                            >
-                                {f.label}
-                            </button>
-                        );
-                    })}
-                </div>
-
                 <div className="flex-1"/>
-
                 <Button
                     variant="bordered"
                     size="sm"
                     className="text-[0.6875rem]"
-                    startContent={<I.upload size={11}/>}
+                    startContent={<I.refresh size={11}/>}
+                    onPress={fetchWorlds}
                 >
-                    Import
-                </Button>
-                <Button
-                    variant="bordered"
-                    size="sm"
-                    className="text-[0.6875rem]"
-                    startContent={<I.plus size={11}/>}
-                >
-                    New world
+                    Refresh
                 </Button>
             </div>
 
-            {/* 2-column card grid — scrollable region below the fixed toolbar */}
-            <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1 pb-1">
-                <div className="grid grid-cols-2 gap-3">
-                    {visible.map((w, i) => (
-                        <WorldCard key={i} world={w} seedIndex={i}/>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function WorldCard({world: w, seedIndex}: {world: World; seedIndex: number}) {
-    return (
-        <div
-            className="rounded-lg overflow-hidden border border-line flex relative"
-            style={cardSurfaceStyle}
-        >
-            {/* 128px biome thumbnail on the left */}
-            <div className="w-[128px] h-[128px] flex-shrink-0 relative border-r border-line">
-                <Scene biome={w.biome} seed={w.seed.length * 3 + seedIndex}/>
-                <div
-                    className="absolute inset-0"
-                    style={{
-                        background:
-                            "linear-gradient(135deg, transparent 55%, rgba(8,9,10,0.65) 100%)",
-                    }}
-                />
-                {w.badges.includes("pinned") && (
-                    <div className="absolute top-1.5 left-1.5 w-5 h-5 rounded-md flex items-center justify-center text-mc-green backdrop-blur-md bg-[rgba(8,9,10,0.7)]">
-                        <I.pin size={10}/>
+            {worlds.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center text-ink-3 text-sm">
+                    <div className="text-center">
+                        <I.globe size={32} className="mx-auto mb-3 opacity-40"/>
+                        <div>No worlds found</div>
+                        <div className="text-xs mt-1 text-ink-4">
+                            Worlds will appear here after you play
+                        </div>
                     </div>
-                )}
-                <div className="absolute bottom-1.5 right-1.5 font-mono bg-[rgba(8,9,10,0.6)] rounded-sm px-1.5 py-px text-[0.5625rem] tracking-[0.3px] text-[rgba(255,255,255,0.85)]">
-                    {w.version}
                 </div>
-            </div>
-
-            {/* Right details column */}
-            <div className="flex-1 px-3.5 py-3 min-w-0 flex flex-col">
-                <div className="flex items-center gap-1.5 mb-1">
-                    <div className="text-sm font-semibold -tracking-[0.2px] flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-                        {w.name}
+            ) : (
+                <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1 pb-1">
+                    <div className="grid grid-cols-2 gap-3">
+                        {filtered.map((w) => {
+                            const h = hashName(w.dirName);
+                            const biome = biomes[h % biomes.length];
+                            return (
+                                <div
+                                    key={w.dirName}
+                                    className="rounded-lg overflow-hidden border border-line flex relative"
+                                    style={cardSurfaceStyle}
+                                >
+                                    <div className="w-[128px] h-[128px] flex-shrink-0 relative border-r border-line">
+                                        <Scene biome={biome} seed={h % 20}/>
+                                        <div
+                                            className="absolute inset-0"
+                                            style={{
+                                                background:
+                                                    "linear-gradient(135deg, transparent 55%, rgba(8,9,10,0.65) 100%)",
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="flex-1 px-3.5 py-3 min-w-0 flex flex-col">
+                                        <div className="text-sm font-semibold -tracking-[0.2px] truncate mb-2">
+                                            {w.dirName}
+                                        </div>
+                                        <div className="flex gap-3 text-[0.625rem] text-ink-2 font-mono mt-auto">
+                                            <span>
+                                                <span className="text-ink-3">size</span> {formatBytes(w.sizeBytes)}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-line">
+                                            <div className="text-[0.625rem] text-ink-3 flex-1">
+                                                Modified {relativeTime(w.lastModified)}
+                                            </div>
+                                            <Button
+                                                isIconOnly
+                                                variant="bordered"
+                                                size="sm"
+                                                aria-label="Open folder"
+                                                className="w-6 h-6 min-w-0"
+                                                onPress={() => handleOpenFolder(w.dirName)}
+                                            >
+                                                <I.folder size={11}/>
+                                            </Button>
+                                            <Button
+                                                isIconOnly
+                                                variant="bordered"
+                                                size="sm"
+                                                aria-label="Delete"
+                                                className="w-6 h-6 min-w-0"
+                                                onPress={() => handleDelete(w.dirName)}
+                                            >
+                                                <I.trash size={11}/>
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
-                    {w.badges.includes("cloud") && (
-                        <I.cloud size={11} className="text-accent-cyan flex-shrink-0"/>
-                    )}
-                    {w.badges.includes("backed-up") && (
-                        <I.shield size={11} className="text-ink-3 flex-shrink-0"/>
-                    )}
                 </div>
-
-                <div className="flex gap-1 mb-2 flex-wrap">
-                    <Chip variant={modeColor[w.mode]} className="text-[0.5625rem]">
-                        {w.mode.toUpperCase()}
-                    </Chip>
-                    <Chip className="text-[0.5625rem]">{w.diff.toUpperCase()}</Chip>
-                </div>
-
-                <div className="text-[0.625rem] text-ink-3 font-mono mb-1 flex items-center gap-1.5">
-                    <I.hash size={9}/>
-                    <span className="overflow-hidden text-ellipsis whitespace-nowrap">
-            {w.seed}
-          </span>
-                </div>
-
-                <div className="flex gap-3 text-[0.625rem] text-ink-2 font-mono mt-auto">
-          <span>
-            <span className="text-ink-3">play</span> {w.played}
-          </span>
-                    <span>
-            <span className="text-ink-3">size</span> {w.size}
-          </span>
-                </div>
-
-                <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-line">
-                    <div className="text-[0.625rem] text-ink-3 flex-1">Saved {w.last}</div>
-                    <Button
-                        isIconOnly
-                        variant="bordered"
-                        size="sm"
-                        aria-label="Open folder"
-                        className="w-6 h-6 min-w-0"
-                    >
-                        <I.folder size={11}/>
-                    </Button>
-                    <Button
-                        isIconOnly
-                        variant="bordered"
-                        size="sm"
-                        aria-label="More"
-                        className="w-6 h-6 min-w-0"
-                    >
-                        <I.more size={11}/>
-                    </Button>
-                    <Button
-                        color="success"
-                        size="sm"
-                        className="font-bold text-[0.625rem] min-w-0 h-auto px-2.5 py-[5px]"
-                        startContent={<I.play size={9}/>}
-                    >
-                        Play
-                    </Button>
-                </div>
-            </div>
+            )}
         </div>
     );
 }

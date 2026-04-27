@@ -41,7 +41,7 @@ struct JavaInstallProgress {
 // ---------------------------------------------------------------------------
 
 /// Run `java -version` and parse the version string from stderr.
-async fn probe_java_version(java_exe: &Path) -> Option<String> {
+pub(crate) async fn probe_java_version(java_exe: &Path) -> Option<String> {
     let output = tokio::time::timeout(
         Duration::from_secs(5),
         Command::new(java_exe).arg("-version").output(),
@@ -67,7 +67,7 @@ fn parse_version_from_output(output: &str) -> Option<String> {
     None
 }
 
-fn major_version_from_string(version: &str) -> Option<u8> {
+pub(crate) fn major_version_from_string(version: &str) -> Option<u8> {
     let first = version.split('.').next()?;
     let major: u8 = first.parse().ok()?;
     // Java 1.x style (Java 8 = "1.8.0_xxx")
@@ -133,7 +133,7 @@ fn java_exe_name() -> &'static str {
 // System Java candidate collection
 // ---------------------------------------------------------------------------
 
-fn collect_system_java_candidates() -> Vec<PathBuf> {
+pub(crate) fn collect_system_java_candidates() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
 
     // 1. JAVA_HOME
@@ -448,7 +448,7 @@ pub async fn install_java_runtime(
     .ok_or_else(|| format!("no runtime found for component: {component}"))?;
 
     let (sender, mut receiver) =
-        tokio::sync::mpsc::channel::<piston_mc::download_util::MultiDownloadProgress>(16);
+        tokio::sync::mpsc::channel::<simple_download_utility::MultiDownloadProgress>(16);
     let component_clone = component.clone();
     let app_clone = app.clone();
 

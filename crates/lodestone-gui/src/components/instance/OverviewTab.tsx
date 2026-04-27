@@ -1,171 +1,159 @@
 import {useEffect, useState, type ReactNode} from "react";
 import {Card} from "@heroui/react";
-import Scene from "../shell/Scene";
+import {invoke} from "@tauri-apps/api/core";
 import {I} from "../shell/icons";
 import {cardSurfaceStyle, type Instance} from "../library/instances";
-import type {Biome} from "../shell/Scene";
 
 type Props = {
     instance: Instance;
 };
 
-const screenshotBiomes: Biome[] = ["end", "nether", "mushroom", "ocean", "cherry", "snow"];
+interface InstanceDetails {
+    diskSizeBytes: number;
+    fileCount: number;
+    modCount: number;
+    worldCount: number;
+    screenshotCount: number;
+}
 
-const sessionStats: {k: string; v: string; color: string}[] = [
-    {k: "Playtime", v: "12 min", color: "var(--mc-green)"},
-    {k: "Total", v: "24h 12m", color: "var(--ink-0)"},
-    {k: "Memory", v: "2.1 / 6 GB", color: "var(--cyan)"},
-    {k: "Framerate", v: "58 fps", color: "var(--amber)"},
-    {k: "Tick time", v: "18.2 ms", color: "var(--ink-0)"},
-];
+function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
 
-const playingWith: {n: string; c: string}[] = [
-    {n: "pixelpete", c: "#ff5ec8"},
-    {n: "cavesworn", c: "#47d9ff"},
-    {n: "sundayknight", c: "#ffb545"},
-];
+function formatDate(iso: string): string {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, {year: "numeric", month: "short", day: "numeric"});
+}
 
-// Wrapper to reuse the "glassy card" styling for the sub-cards in this tab.
-function OverviewCard({
-                          children,
-                          className = "",
-                      }: {
-    children: ReactNode;
-    className?: string;
-}) {
+function InfoCard({children, className = ""}: { children: ReactNode; className?: string }) {
     return (
-        <Card
-            className={`p-[18px] border border-line ${className}`}
-            style={cardSurfaceStyle}
-        >
+        <Card className={`p-[18px] border border-line ${className}`} style={cardSurfaceStyle}>
             {children}
         </Card>
     );
 }
 
-// Overview tab — 2fr/1fr grid. Left: About card, optional install progress,
-// screenshots preview grid. Right: Session stats card, Playing With card.
-// Owns its own scroll (parent InstanceDetail's tab body is flex-col, no
-// overflow) so Mods/Worlds can use sticky toolbars without fighting a common
-// scroll container.
+function StatRow({label, value, color}: { label: string; value: string; color?: string }) {
+    return (
+        <div className="flex py-2.5 text-xs border-b border-line last:border-b-0">
+            <div className="text-ink-2 flex-1">{label}</div>
+            <div className="font-mono font-semibold" style={{color: color ?? "var(--ink-0)"}}>
+                {value}
+            </div>
+        </div>
+    );
+}
+
 export default function OverviewTab({instance}: Props) {
-    const [progress, setProgress] = useState(62);
-    const installing = progress < 100;
+    const [details, setDetails] = useState<InstanceDetails | null>(null);
 
     useEffect(() => {
-        const t = setInterval(
-            () => setProgress((p) => (p >= 100 ? 100 : p + 0.6)),
-            100,
-        );
-        return () => clearInterval(t);
-    }, []);
+        invoke<InstanceDetails>("get_instance_details", {instancePath: instance.instancePath})
+            .then(setDetails)
+            .catch(() => setDetails(null));
+    }, [instance.instancePath]);
 
     return (
         <div className="flex-1 overflow-y-auto px-7 pt-5 pb-10">
             <div className="grid gap-[18px]" style={{gridTemplateColumns: "2fr 1fr"}}>
+                {/* Left column */}
                 <div>
-                    <OverviewCard className="mb-4">
-                        <div className="text-[0.8125rem] font-semibold mb-2.5">About</div>
-                        <div className="text-xs text-ink-2 leading-relaxed">
-                            A re-imagining of the classic Aether mod — soar between floating isles,
-                            battle Slider bosses, and uncover the secrets of a continent suspended
-                            in the void.
+                    <InfoCard className="mb-4">
+                        <div className="text-xs text-ink-3 mb-3 font-mono tracking-[0.05em]">
+                            INSTANCE INFO
                         </div>
-                    </OverviewCard>
+                        <StatRow label="Minecraft Version" value={instance.mc} color="var(--mc-green)"/>
+                        <StatRow
+                            label="Mod Loader"
+                            value={
+                                instance.loader === "Vanilla"
+                                    ? "Vanilla"
+                                    : `${instance.loader} ${instance.loaderVersion ?? ""}`
+                            }
+                            color="var(--violet)"
+                        />
+                        <StatRow
+                            label="Java Version"
+                            value={instance.javaVersion ? `Java ${instance.javaVersion}` : "Auto"}
+                        />
+                        <StatRow label="Created" value={formatDate(instance.createdAt)}/>
+                        <StatRow label="Last Played" value={instance.lastPlayed}/>
+                        <StatRow
+                            label="Disk Size"
+                            value={details ? formatBytes(details.diskSizeBytes) : "…"}
+                            color="var(--cyan)"
+                        />
+                    </InfoCard>
 
-                    {installing && (
-                        <OverviewCard className="mb-4">
-                            <div className="flex items-center gap-2.5 mb-2.5">
-                                <I.download size={14} className="text-mc-green"/>
-                                <div className="text-[0.8125rem] font-semibold">
-                                    Syncing mod updates
-                                </div>
-                                <div className="flex-1"/>
-                                <div className="font-mono text-[0.6875rem] text-mc-green">
-                                    {Math.round(progress)}%
-                                </div>
-                            </div>
-                            <div className="h-1.5 rounded-[3px] bg-[rgba(255,255,255,0.06)] overflow-hidden relative">
-                                <div
-                                    className="shimmer h-full rounded-[3px] transition-[width] duration-300 ease-in-out"
-                                    style={{
-                                        width: `${progress}%`,
-                                        background:
-                                            "linear-gradient(90deg, var(--mc-green-dim) 0%, var(--mc-green) 100%)",
-                                    }}
-                                />
-                            </div>
-                            <div className="text-[0.6875rem] text-ink-3 mt-2 font-mono">
-                                Downloading iris-mc{instance.mc}-1.7.1.jar · 12.4 MB/s
-                            </div>
-                        </OverviewCard>
-                    )}
-
-                    <div className="text-[0.8125rem] font-semibold mb-2.5">Screenshots</div>
-                    <div className="grid grid-cols-3 gap-2.5">
-                        {screenshotBiomes.map((b, i) => (
-                            <div key={i} className="h-[100px] rounded-[10px] overflow-hidden relative">
-                                <Scene biome={b} seed={i * 9}/>
-                                <div
-                                    className="absolute bottom-1.5 left-2 font-mono"
-                                    style={{
-                                        fontSize: "0.5625rem",
-                                        color: "rgba(255,255,255,0.7)",
-                                    }}
-                                >
-                                    2026-04-{10 + i}_18.0{i}.png
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                    <InfoCard>
+                        <div className="text-xs text-ink-3 mb-3 font-mono tracking-[0.05em]">
+                            INSTANCE PATH
+                        </div>
+                        <div className="text-xs text-ink-1 font-mono break-all leading-relaxed">
+                            {instance.instancePath}
+                        </div>
+                    </InfoCard>
                 </div>
 
+                {/* Right column */}
                 <div>
-                    <OverviewCard className="mb-3.5">
+                    <InfoCard>
                         <div className="text-xs text-ink-3 mb-3 font-mono tracking-[0.05em]">
-                            SESSION
+                            QUICK STATS
                         </div>
-                        {sessionStats.map((s, idx) => (
-                            <div
-                                key={s.k}
-                                className="flex py-2 text-xs"
-                                style={{
-                                    borderBottom:
-                                        idx === sessionStats.length - 1 ? "none" : "1px solid var(--line)",
-                                }}
-                            >
-                                <div className="text-ink-2 flex-1">{s.k}</div>
+                        {[
+                            {
+                                icon: I.box,
+                                label: "Mods",
+                                value: details?.modCount ?? 0,
+                                color: "var(--violet)",
+                            },
+                            {
+                                icon: I.globe,
+                                label: "Worlds",
+                                value: details?.worldCount ?? 0,
+                                color: "var(--cyan)",
+                            },
+                            {
+                                icon: I.image,
+                                label: "Screenshots",
+                                value: details?.screenshotCount ?? 0,
+                                color: "var(--amber)",
+                            },
+                            {
+                                icon: I.hardDrive,
+                                label: "Total Files",
+                                value: details?.fileCount ?? 0,
+                                color: "var(--ink-0)",
+                            },
+                        ].map((s) => {
+                            const Icon = s.icon;
+                            return (
                                 <div
-                                    className="font-mono font-semibold"
-                                    style={{color: s.color}}
+                                    key={s.label}
+                                    className="flex items-center gap-3 py-2.5 border-b border-line last:border-b-0"
                                 >
-                                    {s.v}
+                                    <div
+                                        className="w-7 h-7 rounded-md flex items-center justify-center border border-line"
+                                        style={{
+                                            background: `color-mix(in oklab, ${s.color} 12%, transparent)`,
+                                            color: s.color,
+                                        }}
+                                    >
+                                        <Icon size={13}/>
+                                    </div>
+                                    <div className="flex-1 text-xs text-ink-2">{s.label}</div>
+                                    <div className="font-mono text-sm font-semibold" style={{color: s.color}}>
+                                        {s.value}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                    </OverviewCard>
-
-                    <OverviewCard>
-                        <div className="text-xs text-ink-3 mb-3 font-mono tracking-[0.05em]">
-                            PLAYING WITH
-                        </div>
-                        {playingWith.map((u) => (
-                            <div
-                                key={u.n}
-                                className="flex items-center gap-2.5 py-1.5"
-                            >
-                                <div
-                                    className="w-6 h-6 rounded-md flex items-center justify-center text-[0.625rem] font-bold text-black"
-                                    style={{background: u.c}}
-                                >
-                                    {u.n.slice(0, 2).toUpperCase()}
-                                </div>
-                                <div className="text-xs">{u.n}</div>
-                                <div className="flex-1"/>
-                                <span className="pulse-dot" style={{width: 6, height: 6}}/>
-                            </div>
-                        ))}
-                    </OverviewCard>
+                            );
+                        })}
+                    </InfoCard>
                 </div>
             </div>
         </div>

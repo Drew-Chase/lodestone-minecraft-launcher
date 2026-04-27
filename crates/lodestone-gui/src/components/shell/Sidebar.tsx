@@ -3,6 +3,7 @@ import {useLocation, useNavigate} from "react-router-dom";
 import {Popover, PopoverContent, PopoverTrigger, Tooltip} from "@heroui/react";
 import {I} from "./icons";
 import {useAuth} from "../../context/AuthContext";
+import DownloadsPopoverButton from "./DownloadsPopover";
 
 type NavId = "home" | "discover" | "worlds" | "servers" | "friends";
 
@@ -104,14 +105,7 @@ export default function Sidebar() {
 
             <div className="flex-1"/>
 
-            <Tooltip content="Downloads" placement="right" delay={250} offset={14}>
-                <div
-                    className={`nav-item${active === "downloads" ? " active" : ""}`}
-                    onClick={() => navigate("/downloads")}
-                >
-                    <I.download size={20}/>
-                </div>
-            </Tooltip>
+            <DownloadsPopoverButton/>
             <Tooltip content="Settings" placement="right" delay={250} offset={14}>
                 <div
                     className={`nav-item${active === "settings" ? " active" : ""}`}

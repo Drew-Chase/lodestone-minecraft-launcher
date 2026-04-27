@@ -11,12 +11,13 @@ type FilterTab = (typeof filterTabs)[number];
 
 type Props = {
     instances: Instance[];
+    onDeleteRequest: (inst: Instance) => void;
 };
 
 // "Your Instances" section — section header, filter tabs, view-mode toggle,
 // and the currently-selected view (grid/compact/table). Both selections persist
 // across launches via localStorage.
-export default function InstanceList({instances}: Props)
+export default function InstanceList({instances, onDeleteRequest}: Props)
 {
     const [viewMode, setViewMode] = usePersistedState<ViewMode>(
         "library.viewMode",
@@ -102,9 +103,9 @@ export default function InstanceList({instances}: Props)
             </div>
 
             {/* Active view */}
-            {viewMode === "grid" && <InstanceGrid list={instances}/>}
-            {viewMode === "compact" && <InstanceCompact list={instances}/>}
-            {viewMode === "table" && <InstanceTable list={instances}/>}
+            {viewMode === "grid" && <InstanceGrid list={instances} onDeleteRequest={onDeleteRequest}/>}
+            {viewMode === "compact" && <InstanceCompact list={instances} onDeleteRequest={onDeleteRequest}/>}
+            {viewMode === "table" && <InstanceTable list={instances} onDeleteRequest={onDeleteRequest}/>}
         </>
     );
 }

@@ -3,15 +3,21 @@ import {useNavigate} from "react-router-dom";
 import Chip from "../Chip";
 import {I} from "../shell/icons";
 import {cardHoverClass, cardSurfaceStyle, toSlug, type Instance} from "./instances";
+import InstanceActionsDropdown from "./InstanceActionsDropdown";
+import {useLaunch} from "../../context/LaunchContext";
 
 type Props = {
     instance: Instance;
+    onDeleteRequest: (inst: Instance) => void;
 };
 
 // Single dense tile in the Compact view: name on row 1, MC version + loader chip
 // + inline Play button on row 2. Used in a 4-up grid. Click navigates to detail.
-export default function InstanceCompactCard({instance: inst}: Props) {
+export default function InstanceCompactCard({instance: inst, onDeleteRequest}: Props) {
     const navigate = useNavigate();
+    const {launchInstance, stopInstance, isRunning, isInstalling} = useLaunch();
+    const running = isRunning(inst.id);
+    const installing = isInstalling(inst.id);
     const openDetail = () => navigate(`/library/${toSlug(inst.name)}`);
     const stop = (e: React.MouseEvent) => e.stopPropagation();
 
@@ -36,22 +42,24 @@ export default function InstanceCompactCard({instance: inst}: Props) {
                 <div className="text-xs font-bold tracking-tight overflow-hidden text-ellipsis whitespace-nowrap flex-1 text-left">
                     {inst.name}
                 </div>
-                {inst.playing && (
+                {running && (
                     <span
                         className="pulse-dot flex-shrink-0"
                         style={{width: 6, height: 6}}
                     />
                 )}
                 <div onClick={stop}>
-                    <Button
-                        isIconOnly
-                        variant="flat"
-                        size="sm"
-                        aria-label="More"
-                        className="w-[22px] h-[22px] min-w-0 flex-shrink-0"
-                    >
-                        <I.more size={12}/>
-                    </Button>
+                    <InstanceActionsDropdown instance={inst} onDeleteRequest={onDeleteRequest}>
+                        <Button
+                            isIconOnly
+                            variant="flat"
+                            size="sm"
+                            aria-label="More"
+                            className="w-[22px] h-[22px] min-w-0 flex-shrink-0"
+                        >
+                            <I.more size={12}/>
+                        </Button>
+                    </InstanceActionsDropdown>
                 </div>
             </div>
             {/* Row 2 */}
@@ -63,14 +71,15 @@ export default function InstanceCompactCard({instance: inst}: Props) {
                 </Chip>
                 <div className="flex-1"/>
                 <div onClick={stop}>
-                    <Button
-                        color="success"
-                        size="sm"
-                        className="font-bold min-w-0 h-auto px-2 py-1 text-[0.625rem]"
-                        startContent={<I.play size={9}/>}
-                    >
-                        Play
-                    </Button>
+                    {running ? (
+                        <Button color="danger" size="sm" className="font-bold min-w-0 h-auto px-2 py-1 text-[0.625rem]" startContent={<I.x size={9}/>} onPress={() => stopInstance(inst.id)}>
+                            Stop
+                        </Button>
+                    ) : (
+                        <Button color="success" size="sm" className="font-bold min-w-0 h-auto px-2 py-1 text-[0.625rem]" startContent={<I.play size={9}/>} isDisabled={installing} onPress={() => launchInstance(inst.id)}>
+                            {installing ? "..." : "Play"}
+                        </Button>
+                    )}
                 </div>
             </div>
         </div>

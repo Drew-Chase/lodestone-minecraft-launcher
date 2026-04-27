@@ -4,13 +4,19 @@ import Scene from "../shell/Scene";
 import Chip from "../Chip";
 import {I} from "../shell/icons";
 import {cardHoverClass, cardSurfaceStyle, toSlug, type Instance} from "./instances";
+import InstanceActionsDropdown from "./InstanceActionsDropdown";
+import {useLaunch} from "../../context/LaunchContext";
 
 type Props = {
     instance: Instance;
+    onDeleteRequest: (inst: Instance) => void;
 };
 
-export default function InstanceGridCard({instance: inst}: Props) {
+export default function InstanceGridCard({instance: inst, onDeleteRequest}: Props) {
     const navigate = useNavigate();
+    const {launchInstance, stopInstance, isRunning, isInstalling} = useLaunch();
+    const running = isRunning(inst.id);
+    const installing = isInstalling(inst.id);
     const openDetail = () => navigate(`/library/${toSlug(inst.name)}`);
     const stop = (e: React.MouseEvent) => e.stopPropagation();
 
@@ -31,7 +37,7 @@ export default function InstanceGridCard({instance: inst}: Props) {
             {/* Thumbnail */}
             <div className="relative w-full" style={{height: 130}}>
                 <Scene biome={inst.biome} seed={inst.seed}/>
-                {inst.playing && (
+                {running && (
                     <div className="absolute top-2 left-2 z-[2]">
                         <Chip variant="green" className="text-[0.5625rem] px-1.5 py-0.5">
                             <span className="pulse-dot" style={{width: 5, height: 5}}/>
@@ -40,15 +46,17 @@ export default function InstanceGridCard({instance: inst}: Props) {
                     </div>
                 )}
                 <div className="absolute top-2 right-2 z-[2]" onClick={stop}>
-                    <Button
-                        isIconOnly
-                        size="sm"
-                        variant="flat"
-                        aria-label="More"
-                        className="w-7 h-7 min-w-0 bg-[rgba(0,0,0,0.5)] backdrop-blur-sm"
-                    >
-                        <I.more size={14}/>
-                    </Button>
+                    <InstanceActionsDropdown instance={inst} onDeleteRequest={onDeleteRequest}>
+                        <Button
+                            isIconOnly
+                            size="sm"
+                            variant="flat"
+                            aria-label="More"
+                            className="w-7 h-7 min-w-0 bg-[rgba(0,0,0,0.5)] backdrop-blur-sm"
+                        >
+                            <I.more size={14}/>
+                        </Button>
+                    </InstanceActionsDropdown>
                 </div>
                 <div
                     className="absolute inset-0"
@@ -63,14 +71,15 @@ export default function InstanceGridCard({instance: inst}: Props) {
                         <div className="font-mono text-[0.625rem] text-ink-2">{inst.version}</div>
                     </div>
                     <div onClick={stop}>
-                        <Button
-                            color="success"
-                            size="sm"
-                            className="font-bold"
-                            startContent={<I.play size={11}/>}
-                        >
-                            Play
-                        </Button>
+                        {running ? (
+                            <Button color="danger" size="sm" className="font-bold" startContent={<I.x size={11}/>} onPress={() => stopInstance(inst.id)}>
+                                Stop
+                            </Button>
+                        ) : (
+                            <Button color="success" size="sm" className="font-bold" startContent={<I.play size={11}/>} isDisabled={installing} onPress={() => launchInstance(inst.id)}>
+                                {installing ? "..." : "Play"}
+                            </Button>
+                        )}
                     </div>
                 </div>
             </div>
