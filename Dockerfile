@@ -37,10 +37,29 @@ RUN corepack enable \
 # builds (and the incremental cache) across container runs. Tauri's bundler
 # writes its output to ${CARGO_TARGET_DIR}/release/bundle/ as well.
 ENV CARGO_TARGET_DIR=/target
+
+# CI=true suppresses interactive prompts (pnpm module purge confirmation, etc.).
+ENV CI=true
+
 WORKDIR /workspace
 
-# Build the Tauri desktop bundle for Linux. pnpm install hydrates node_modules
-# (including @tauri-apps/cli) and then the `tauri-build` script from
-# crates/lodestone-gui/package.json runs `tauri build`, which in turn triggers
-# the Vite frontend build via beforeBuildCommand.
-CMD ["bash", "-lc", "cd crates/lodestone-gui && pnpm install && pnpm run tauri-build"]
+# Build both the Tauri desktop app and the website backend.
+#
+# pnpm v10+ blocks dependency postinstall/build scripts by default for security.
+# The .npmrc files in each crate allowlist the packages that need their scripts:
+#   - @tauri-apps/cli: downloads the platform-specific Tauri CLI native binary
+#   - esbuild: installs the platform-specific WASM/native bundler binary
+#   - @parcel/watcher: native file-watcher addon
+#   - @heroui/shared-utils: build step for the UI library
+#
+# Flow:
+#   1. Tauri app: pnpm install + tauri build (frontend via beforeBuildCommand,
+#      then cargo builds the Tauri app bundle).
+#   2. Website: pnpm install + vite build (frontend into target/wwwroot), then
+#      cargo build compiles the Actix binary which embeds the frontend via
+#      include_dir!().
+CMD ["bash", "-c", "\
+  cd crates/lodestone-gui && pnpm install && pnpm run tauri-build \
+  && cd ../lodestone-website && pnpm install && pnpm run build-frontend \
+  && cd ../.. && cargo build --release --package lodestone_website \
+"]

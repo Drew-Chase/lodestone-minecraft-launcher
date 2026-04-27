@@ -16,13 +16,28 @@ _build_docker:
     New-Item -ItemType Directory -Force -Path target/docker, target/release | Out-Null
     docker build -t lodestone-builder -f Dockerfile .
     docker run --rm -v "${PWD}:/workspace" -v "${PWD}/target/docker:/target" lodestone-builder
-    Copy-Item -Force target/docker/release/lodestone target/release/lodestone
+    Copy-Item -Force target/docker/release/lodestone-launcher target/release/lodestone-launcher
+    Copy-Item -Force target/docker/release/lodestone_website target/release/lodestone_website
 
 publish version="":
     uv -g commit-push-tag {{ version }}
 
 run platform="app":
     @just {{ if platform == "website" { "_run_website" } else { "_run_app" } }}
+
+# Build only the website (frontend + backend binary)
+build-website:
+    @just _build_website_frontend
+    cargo build --release --package lodestone_website
+
+[windows]
+_build_website_frontend:
+    cd crates/lodestone-website; pnpm install && pnpm run build-frontend
+
+[linux]
+[macos]
+_build_website_frontend:
+    cd crates/lodestone-website && pnpm install && pnpm run build-frontend
 
 [windows]
 _run_app:
