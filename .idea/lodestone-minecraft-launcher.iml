@@ -19,6 +19,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/emerald-auth/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/emerald-auth/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/emerald-auth/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lodestone-website/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/crates/lodestone-gui/src-tauri/gen/schemas" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>

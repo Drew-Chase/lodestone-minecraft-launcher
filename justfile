@@ -1,4 +1,4 @@
-set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile","-Command"]
+set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
 set shell := ["bash", "-c"]
 
 [windows]
@@ -19,4 +19,27 @@ _build_docker:
     Copy-Item -Force target/docker/release/lodestone target/release/lodestone
 
 publish version="":
-    uv -g commit-push-tag {{version}}
+    uv -g commit-push-tag {{ version }}
+
+run platform="app":
+    @just {{ if platform == "website" { "_run_website" } else { "_run_app" } }}
+
+[windows]
+_run_app:
+    cd crates/lodestone-gui; pnpm install && pnpm run tauri-dev
+
+[windows]
+_run_website:
+    cd crates/lodestone-website; pnpm install
+    cargo run --package lodestone_website
+
+[linux]
+[macos]
+_run_app:
+    cd crates/lodestone-gui && pnpm install && pnpm run tauri-dev
+
+[linux]
+[macos]
+_run_website:
+    cd crates/lodestone-website && pnpm install
+    cargo run --package lodestone_website
