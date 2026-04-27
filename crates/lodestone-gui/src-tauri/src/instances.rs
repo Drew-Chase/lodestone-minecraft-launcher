@@ -501,8 +501,127 @@ pub async fn delete_mod(instance_path: String, file_name: String) -> Result<(), 
 #[serde(rename_all = "camelCase")]
 pub struct WorldEntry {
     pub dir_name: String,
+    pub world_name: String,
+    pub seed: i64,
+    pub game_mode: u8,
+    pub hardcore: bool,
+    pub difficulty: u8,
+    pub playtime_ticks: i64,
+    pub minecraft_version: String,
     pub size_bytes: u64,
     pub last_modified: String,
+    pub has_icon: bool,
+}
+
+/// Parse seed from the separate `data/minecraft/world_gen_settings.dat` file
+/// used by newer MC versions (26+) where WorldGenSettings was moved out of level.dat.
+fn parse_world_gen_seed(world_dir: &Path) -> Option<i64> {
+    use flate2::read::GzDecoder;
+    use std::io::Read;
+    use valence_nbt::Value;
+
+    let wgs_path = world_dir
+        .join("data")
+        .join("minecraft")
+        .join("world_gen_settings.dat");
+    if !wgs_path.exists() {
+        return None;
+    }
+
+    let file = std::fs::File::open(&wgs_path).ok()?;
+    let mut decoder = GzDecoder::new(file);
+    let mut buf = Vec::new();
+    decoder.read_to_end(&mut buf).ok()?;
+
+    let (root, _) = valence_nbt::from_binary::<String>(&mut buf.as_slice()).ok()?;
+
+    // Structure: root.data.seed
+    let data = match root.get("data")? {
+        Value::Compound(c) => c,
+        _ => return None,
+    };
+
+    match data.get("seed") {
+        Some(Value::Long(s)) => Some(*s),
+        _ => None,
+    }
+}
+
+/// Parse level.dat NBT and extract world metadata.
+fn parse_level_dat(world_dir: &Path) -> Option<(String, i64, u8, bool, u8, i64, String)> {
+    use flate2::read::GzDecoder;
+    use std::io::Read;
+    use valence_nbt::Value;
+
+    let level_dat = world_dir.join("level.dat");
+    if !level_dat.exists() {
+        return None;
+    }
+
+    let file = std::fs::File::open(&level_dat).ok()?;
+    let mut decoder = GzDecoder::new(file);
+    let mut buf = Vec::new();
+    decoder.read_to_end(&mut buf).ok()?;
+
+    let (root, _) = valence_nbt::from_binary::<String>(&mut buf.as_slice()).ok()?;
+
+    let data = match root.get("Data")? {
+        Value::Compound(c) => c,
+        _ => return None,
+    };
+
+    let world_name = match data.get("LevelName") {
+        Some(Value::String(s)) => s.clone(),
+        _ => String::new(),
+    };
+
+    // Seed resolution order:
+    // 1. Data.WorldGenSettings.seed (MC 1.16–1.20ish, in level.dat)
+    // 2. Data.RandomSeed (legacy MC < 1.16, in level.dat)
+    // 3. Separate file: data/minecraft/world_gen_settings.dat (MC 26+)
+    //    → root.data.seed
+    let seed = if let Some(Value::Compound(wgs)) = data.get("WorldGenSettings") {
+        match wgs.get("seed") {
+            Some(Value::Long(s)) => *s,
+            _ => 0,
+        }
+    } else if let Some(Value::Long(s)) = data.get("RandomSeed") {
+        *s
+    } else {
+        // Try the separate world_gen_settings.dat file (newest MC versions)
+        parse_world_gen_seed(world_dir).unwrap_or(0)
+    };
+
+    let game_mode = match data.get("GameType") {
+        Some(Value::Int(v)) => *v as u8,
+        _ => 0,
+    };
+
+    let hardcore = match data.get("hardcore") {
+        Some(Value::Byte(v)) => *v != 0,
+        _ => false,
+    };
+
+    let difficulty = match data.get("Difficulty") {
+        Some(Value::Byte(v)) => *v as u8,
+        _ => 2,
+    };
+
+    let playtime_ticks = match data.get("Time") {
+        Some(Value::Long(v)) => *v,
+        _ => 0,
+    };
+
+    let mc_version = if let Some(Value::Compound(ver)) = data.get("Version") {
+        match ver.get("Name") {
+            Some(Value::String(s)) => s.clone(),
+            _ => String::new(),
+        }
+    } else {
+        String::new()
+    };
+
+    Some((world_name, seed, game_mode, hardcore, difficulty, playtime_ticks, mc_version))
 }
 
 #[tauri::command]
@@ -519,6 +638,7 @@ pub async fn list_instance_worlds(instance_path: String) -> Result<Vec<WorldEntr
             continue;
         }
         let dir_name = entry.file_name().to_string_lossy().to_string();
+        let world_path = entry.path();
         let meta = entry.metadata().map_err(|e| format!("metadata error: {e}"))?;
         let modified = meta
             .modified()
@@ -527,14 +647,45 @@ pub async fn list_instance_worlds(instance_path: String) -> Result<Vec<WorldEntr
             .and_then(|d| chrono::DateTime::from_timestamp(d.as_secs() as i64, 0))
             .map(|dt| dt.to_rfc3339())
             .unwrap_or_default();
+
+        let (world_name, seed, game_mode, hardcore, difficulty, playtime_ticks, minecraft_version) =
+            parse_level_dat(&world_path).unwrap_or_else(|| {
+                (dir_name.clone(), 0, 0, false, 2, 0, String::new())
+            });
+
+        let has_icon = world_path.join("icon.png").exists();
+
         worlds.push(WorldEntry {
-            size_bytes: dir_size(&entry.path()),
+            size_bytes: dir_size(&world_path),
             dir_name,
+            world_name,
+            seed,
+            game_mode,
+            hardcore,
+            difficulty,
+            playtime_ticks,
+            minecraft_version,
             last_modified: modified,
+            has_icon,
         });
     }
     worlds.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
     Ok(worlds)
+}
+
+#[tauri::command]
+pub async fn read_world_icon(
+    instance_path: String,
+    dir_name: String,
+) -> Result<Vec<u8>, String> {
+    let path = PathBuf::from(&instance_path)
+        .join("saves")
+        .join(&dir_name)
+        .join("icon.png");
+    if !path.exists() {
+        return Err("icon.png not found".into());
+    }
+    std::fs::read(&path).map_err(|e| format!("failed to read icon: {e}"))
 }
 
 #[tauri::command]

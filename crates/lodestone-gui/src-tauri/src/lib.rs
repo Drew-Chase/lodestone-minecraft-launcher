@@ -432,6 +432,7 @@ pub fn run() {
             instances::delete_mod,
             instances::list_instance_worlds,
             instances::delete_world,
+            instances::read_world_icon,
             instances::list_instance_screenshots,
             instances::delete_screenshot,
             instances::read_instance_screenshot,

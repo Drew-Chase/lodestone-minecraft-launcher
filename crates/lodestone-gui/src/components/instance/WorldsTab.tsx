@@ -2,6 +2,7 @@ import {useCallback, useEffect, useState} from "react";
 import {Button} from "@heroui/react";
 import {invoke} from "@tauri-apps/api/core";
 import Scene from "../shell/Scene";
+import Chip from "../Chip";
 import {I} from "../shell/icons";
 import {cardSurfaceStyle, type Instance} from "../library/instances";
 import type {Biome} from "../shell/Scene";
@@ -12,8 +13,16 @@ type Props = {
 
 interface WorldEntry {
     dirName: string;
+    worldName: string;
+    seed: number;
+    gameMode: number;
+    hardcore: boolean;
+    difficulty: number;
+    playtimeTicks: number;
+    minecraftVersion: string;
     sizeBytes: number;
     lastModified: string;
+    hasIcon: boolean;
 }
 
 const biomes: Biome[] = ["forest", "desert", "ocean", "nether", "end", "cherry", "snow", "mushroom"];
@@ -21,26 +30,50 @@ const biomes: Biome[] = ["forest", "desert", "ocean", "nether", "end", "cherry",
 function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-function relativeTime(iso: string): string {
-    if (!iso) return "—";
-    const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "Just now";
-    if (mins < 60) return `${mins}m ago`;
-    if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
-    return `${Math.floor(mins / 1440)}d ago`;
+function formatPlaytime(ticks: number): string {
+    const totalSeconds = Math.floor(ticks / 20);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    if (hours === 0) return `${minutes}m`;
+    return `${hours}h`;
 }
 
-function hashName(name: string): number {
-    let h = 0;
-    for (let i = 0; i < name.length; i++) {
-        h = ((h << 5) - h + name.charCodeAt(i)) | 0;
+function gameModeName(mode: number, hardcore: boolean): string {
+    if (hardcore) return "Hardcore";
+    switch (mode) {
+        case 0: return "Survival";
+        case 1: return "Creative";
+        case 2: return "Adventure";
+        case 3: return "Spectator";
+        default: return "Survival";
     }
-    return Math.abs(h);
+}
+
+function gameModeColor(mode: number, hardcore: boolean): string {
+    if (hardcore) return "#ff5e5e";
+    switch (mode) {
+        case 1: return "var(--cyan)";
+        case 2: return "var(--violet)";
+        default: return "var(--mc-green)";
+    }
+}
+
+function difficultyName(diff: number): string {
+    switch (diff) {
+        case 0: return "Peaceful";
+        case 1: return "Easy";
+        case 2: return "Normal";
+        case 3: return "Hard";
+        default: return "Normal";
+    }
+}
+
+function seedToBiome(seed: number): Biome {
+    return biomes[Math.abs(seed) % biomes.length];
 }
 
 export default function WorldsTab({instance}: Props) {
@@ -62,24 +95,23 @@ export default function WorldsTab({instance}: Props) {
         fetchWorlds();
     }, [fetchWorlds]);
 
-    const handleDelete = async (dirName: string) => {
-        if (!confirm(`Delete world "${dirName}"? This cannot be undone.`)) return;
-        await invoke("delete_world", {
-            instancePath: instance.instancePath,
-            dirName,
-        });
+    const handleDelete = async (dirName: string, worldName: string) => {
+        if (!confirm(`Delete world "${worldName || dirName}"? This cannot be undone.`)) return;
+        await invoke("delete_world", {instancePath: instance.instancePath, dirName});
         fetchWorlds();
     };
 
     const handleOpenFolder = (dirName: string) => {
         const sep = instance.instancePath.includes("/") ? "/" : "\\";
-        invoke("open_directory", {
-            path: `${instance.instancePath}${sep}saves${sep}${dirName}`,
-        });
+        invoke("open_directory", {path: `${instance.instancePath}${sep}saves${sep}${dirName}`});
+    };
+
+    const handleCopySeed = (seed: number) => {
+        navigator.clipboard.writeText(String(seed));
     };
 
     const filtered = worlds.filter((w) =>
-        w.dirName.toLowerCase().includes(search.toLowerCase()),
+        (w.worldName || w.dirName).toLowerCase().includes(search.toLowerCase()),
     );
 
     return (
@@ -98,13 +130,7 @@ export default function WorldsTab({instance}: Props) {
                     />
                 </div>
                 <div className="flex-1"/>
-                <Button
-                    variant="bordered"
-                    size="sm"
-                    className="text-[0.6875rem]"
-                    startContent={<I.refresh size={11}/>}
-                    onPress={fetchWorlds}
-                >
+                <Button variant="bordered" size="sm" className="text-[0.6875rem]" startContent={<I.refresh size={11}/>} onPress={fetchWorlds}>
                     Refresh
                 </Button>
             </div>
@@ -114,74 +140,112 @@ export default function WorldsTab({instance}: Props) {
                     <div className="text-center">
                         <I.globe size={32} className="mx-auto mb-3 opacity-40"/>
                         <div>No worlds found</div>
-                        <div className="text-xs mt-1 text-ink-4">
-                            Worlds will appear here after you play
-                        </div>
+                        <div className="text-xs mt-1 text-ink-4">Worlds will appear here after you play</div>
                     </div>
                 </div>
             ) : (
                 <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1 pb-1">
-                    <div className="grid grid-cols-2 gap-3">
-                        {filtered.map((w) => {
-                            const h = hashName(w.dirName);
-                            const biome = biomes[h % biomes.length];
-                            return (
-                                <div
-                                    key={w.dirName}
-                                    className="rounded-lg overflow-hidden border border-line flex relative"
-                                    style={cardSurfaceStyle}
-                                >
-                                    <div className="w-[128px] h-[128px] flex-shrink-0 relative border-r border-line">
-                                        <Scene biome={biome} seed={h % 20}/>
-                                        <div
-                                            className="absolute inset-0"
-                                            style={{
-                                                background:
-                                                    "linear-gradient(135deg, transparent 55%, rgba(8,9,10,0.65) 100%)",
-                                            }}
-                                        />
-                                    </div>
-                                    <div className="flex-1 px-3.5 py-3 min-w-0 flex flex-col">
-                                        <div className="text-sm font-semibold -tracking-[0.2px] truncate mb-2">
-                                            {w.dirName}
-                                        </div>
-                                        <div className="flex gap-3 text-[0.625rem] text-ink-2 font-mono mt-auto">
-                                            <span>
-                                                <span className="text-ink-3">size</span> {formatBytes(w.sizeBytes)}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-line">
-                                            <div className="text-[0.625rem] text-ink-3 flex-1">
-                                                Modified {relativeTime(w.lastModified)}
-                                            </div>
-                                            <Button
-                                                isIconOnly
-                                                variant="bordered"
-                                                size="sm"
-                                                aria-label="Open folder"
-                                                className="w-6 h-6 min-w-0"
-                                                onPress={() => handleOpenFolder(w.dirName)}
-                                            >
-                                                <I.folder size={11}/>
-                                            </Button>
-                                            <Button
-                                                isIconOnly
-                                                variant="bordered"
-                                                size="sm"
-                                                aria-label="Delete"
-                                                className="w-6 h-6 min-w-0"
-                                                onPress={() => handleDelete(w.dirName)}
-                                            >
-                                                <I.trash size={11}/>
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
+                    <div className="grid grid-cols-3 gap-3.5">
+                        {filtered.map((w) => (
+                            <WorldCard
+                                key={w.dirName}
+                                world={w}
+                                instancePath={instance.instancePath}
+                                instanceName={instance.name}
+                                onOpenFolder={() => handleOpenFolder(w.dirName)}
+                                onDelete={() => handleDelete(w.dirName, w.worldName)}
+                                onCopySeed={() => handleCopySeed(w.seed)}
+                            />
+                        ))}
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
+
+function WorldCard({world: w, instancePath, instanceName, onOpenFolder, onDelete, onCopySeed}: {
+    world: WorldEntry;
+    instancePath: string;
+    instanceName: string;
+    onOpenFolder: () => void;
+    onDelete: () => void;
+    onCopySeed: () => void;
+}) {
+    const [iconUrl, setIconUrl] = useState<string | null>(null);
+    const name = w.worldName || w.dirName;
+    const mode = gameModeName(w.gameMode, w.hardcore);
+    const modeColor = gameModeColor(w.gameMode, w.hardcore);
+    const diff = difficultyName(w.difficulty);
+    const biome = seedToBiome(w.seed);
+    const seedNum = Math.abs(w.seed % 100);
+
+    // Load icon.png if available
+    useEffect(() => {
+        if (!w.hasIcon) return;
+        invoke<number[]>("read_world_icon", {
+            instancePath,
+            dirName: w.dirName,
+        }).then((bytes) => {
+            const uint8 = new Uint8Array(bytes);
+            const blob = new Blob([uint8], {type: "image/png"});
+            setIconUrl(URL.createObjectURL(blob));
+        }).catch(() => {});
+        return () => {
+            if (iconUrl) URL.revokeObjectURL(iconUrl);
+        };
+    }, [w.hasIcon, w.dirName, instancePath]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return (
+        <div className="rounded-xl overflow-hidden border border-line cursor-pointer" style={cardSurfaceStyle}>
+            {/* Thumbnail — 150px, icon.png or Scene fallback */}
+            <div className="relative h-[150px]">
+                {iconUrl ? (
+                    <img src={iconUrl} alt={name} className="w-full h-full object-cover"/>
+                ) : (
+                    <Scene biome={biome} seed={seedNum}/>
+                )}
+                <div className="absolute inset-0" style={{background: "linear-gradient(180deg, transparent 50%, rgba(0,0,0,0.8) 100%)"}}/>
+                {/* Title overlay at bottom */}
+                <div className="absolute bottom-2.5 left-3 right-3 z-[2]">
+                    <div className="text-[15px] font-extrabold -tracking-[0.3px] mb-0.5">{name}</div>
+                    <div className="text-[10px] text-ink-2 font-mono">
+                        {instanceName} · {w.minecraftVersion || "Unknown"}
+                    </div>
+                </div>
+            </div>
+
+            {/* Stat row: mode · difficulty + playtime + size */}
+            <div className="px-3.5 py-2.5 flex items-center gap-2.5 text-[11px] text-ink-3 font-mono">
+                <span className="inline-flex items-center gap-1.5 font-bold tracking-[0.3px]">
+                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{background: modeColor, boxShadow: `0 0 6px ${modeColor}`}}/>
+                    <span className="text-ink-2">{mode.toUpperCase()}</span>
+                    <span className="text-ink-4">·</span>
+                    <span className="text-ink-3">{diff.toUpperCase()}</span>
+                </span>
+                <div className="flex-1"/>
+                <span className="flex items-center gap-1"><I.clock size={10}/> {formatPlaytime(w.playtimeTicks)}</span>
+                <span className="flex items-center gap-1"><I.hardDrive size={10}/> {formatBytes(w.sizeBytes)}</span>
+            </div>
+
+            {/* Seed pill + actions */}
+            <div className="px-3.5 pb-3 flex items-center gap-1.5">
+                <div
+                    className="flex-1 min-w-0 px-2.5 py-1.5 rounded-md text-[10px] text-ink-3 font-mono overflow-hidden text-ellipsis whitespace-nowrap"
+                    style={{background: "rgba(255,255,255,0.03)", border: "1px solid var(--line)"}}
+                >
+                    SEED · {String(w.seed)}
+                </div>
+                <Button isIconOnly variant="bordered" size="sm" aria-label="Copy seed" className="w-[30px] h-[30px] min-w-0" onPress={onCopySeed}>
+                    <I.copy size={13}/>
+                </Button>
+                <Button isIconOnly variant="bordered" size="sm" aria-label="Open folder" className="w-[30px] h-[30px] min-w-0" onPress={onOpenFolder}>
+                    <I.folder size={13}/>
+                </Button>
+                <Button isIconOnly variant="bordered" size="sm" aria-label="Delete" className="w-[30px] h-[30px] min-w-0" onPress={onDelete}>
+                    <I.trash size={13}/>
+                </Button>
+            </div>
         </div>
     );
 }
