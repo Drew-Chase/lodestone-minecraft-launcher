@@ -5,6 +5,7 @@ LABEL authors="drew.chase"
 #   1. General Rust/crate build deps (pkg-config, libssl-dev, build-essential, git).
 #   2. Tauri 2 Linux bundling deps (webkit2gtk 4.1, gtk/appindicator/rsvg, xdo,
 #      patchelf for AppImage relinking, and curl/wget/file used by the bundler).
+#   3. musl-tools for building a fully static website binary.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
         pkg-config \
@@ -20,6 +21,7 @@ RUN apt-get update \
         libayatana-appindicator3-dev \
         librsvg2-dev \
         patchelf \
+        musl-tools \
  && rm -rf /var/lib/apt/lists/*
 
 # Node.js 20.x is required to run the Vite frontend build that Tauri invokes via
@@ -33,6 +35,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 RUN corepack enable \
  && corepack prepare pnpm@latest --activate
 
+# Install the musl target for a fully static website binary that runs on any Linux
+# (CentOS, Alpine, older Ubuntu, etc.) without glibc version requirements.
+RUN rustup target add x86_64-unknown-linux-musl
+
 # Write cargo artifacts to /target so the host bind-mount preserves debug/release
 # builds (and the incremental cache) across container runs. Tauri's bundler
 # writes its output to ${CARGO_TARGET_DIR}/release/bundle/ as well.
@@ -43,23 +49,29 @@ ENV CI=true
 
 WORKDIR /workspace
 
-# Build both the Tauri desktop app and the website backend.
+# BUILD_TARGET controls what to build: "all" (default), "app", or "website".
+# Passed via: docker run -e BUILD_TARGET=website ...
+ENV BUILD_TARGET=all
+
+# The entrypoint script reads BUILD_TARGET and runs the appropriate build(s).
 #
 # pnpm v10+ blocks dependency postinstall/build scripts by default for security.
-# The .npmrc files in each crate allowlist the packages that need their scripts:
-#   - @tauri-apps/cli: downloads the platform-specific Tauri CLI native binary
-#   - esbuild: installs the platform-specific WASM/native bundler binary
-#   - @parcel/watcher: native file-watcher addon
-#   - @heroui/shared-utils: build step for the UI library
+# The .npmrc files in each crate allowlist the packages that need their scripts.
 #
-# Flow:
-#   1. Tauri app: pnpm install + tauri build (frontend via beforeBuildCommand,
-#      then cargo builds the Tauri app bundle).
-#   2. Website: pnpm install + vite build (frontend into target/wwwroot), then
-#      cargo build compiles the Actix binary which embeds the frontend via
-#      include_dir!().
+# App build:     Tauri desktop bundle (glibc-linked, normal for desktop Linux).
+# Website build: Static musl binary with no glibc/libssl dependency.
 CMD ["bash", "-c", "\
-  cd crates/lodestone-gui && pnpm install && pnpm run tauri-build \
-  && cd ../lodestone-website && pnpm install && pnpm run build-frontend \
-  && cd ../.. && cargo build --release --package lodestone_website \
+  set -e; \
+  if [ \"$BUILD_TARGET\" = 'all' ] || [ \"$BUILD_TARGET\" = 'app' ]; then \
+    echo '=== Building Tauri app ===' \
+    && cd crates/lodestone-gui && pnpm install && pnpm run tauri-build \
+    && cd ../..; \
+  fi; \
+  if [ \"$BUILD_TARGET\" = 'all' ] || [ \"$BUILD_TARGET\" = 'website' ]; then \
+    echo '=== Building website ===' \
+    && cd crates/lodestone-website && pnpm install && pnpm run build-frontend \
+    && cd ../.. \
+    && cargo build --release --package lodestone_website --target x86_64-unknown-linux-musl; \
+  fi; \
+  echo '=== Build complete ===' \
 "]
