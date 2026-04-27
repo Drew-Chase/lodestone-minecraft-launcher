@@ -1,32 +1,24 @@
 import React from "react";
-import {BrowserRouter, Route, Routes, useNavigate} from "react-router-dom";
 import ReactDOM from "react-dom/client";
 
 import "./css/index.css";
 import Home from "./pages/Home.tsx";
 import Navigation from "./components/Navigation.tsx";
-import {HeroUIProvider} from "@heroui/react";
+import {useRelease, ReleaseContext} from "./hooks/useRelease.ts";
 
+function App() {
+    const release = useRelease();
+
+    return (
+        <ReleaseContext.Provider value={release}>
+            <Navigation/>
+            <Home/>
+        </ReleaseContext.Provider>
+    );
+}
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
-        <BrowserRouter>
-            <MainContentRenderer/>
-        </BrowserRouter>
+        <App/>
     </React.StrictMode>
 );
-
-export function MainContentRenderer()
-{
-    const navigate = useNavigate();
-    return (
-        <HeroUIProvider navigate={navigate}>
-            <Navigation/>
-            <Routes>
-                <Route>
-                    <Route path="/" element={<Home/>}/>
-                </Route>
-            </Routes>
-        </HeroUIProvider>
-    );
-}
