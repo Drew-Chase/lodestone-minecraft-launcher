@@ -5,7 +5,13 @@ import SourceBadge from "./SourceBadge";
 import type {ContentItem} from "../../types/content";
 import {formatCount} from "../../types/content";
 
-export default function DetailHero({item: base}: {item: ContentItem}) {
+interface Props {
+    item: ContentItem;
+    onInstall?: () => void;
+    installing?: boolean;
+}
+
+export default function DetailHero({item: base, onInstall, installing}: Props) {
     return (
         <div
             className="relative flex-shrink-0"
@@ -95,13 +101,26 @@ export default function DetailHero({item: base}: {item: ContentItem}) {
                             Website
                         </Button>
                     )}
-                    <Button
-                        className="bg-mc-green text-[#072010] font-bold"
-                        size="sm"
-                        startContent={<I.download size={14}/>}
-                    >
-                        Install
-                    </Button>
+                    {onInstall && (
+                        <Button
+                            className="bg-mc-green text-[#072010] font-bold"
+                            size="sm"
+                            startContent={<I.download size={14}/>}
+                            onPress={onInstall}
+                            isDisabled={installing}
+                        >
+                            {installing ? "Installing..." : "Install Modpack"}
+                        </Button>
+                    )}
+                    {!onInstall && (
+                        <Button
+                            className="bg-mc-green text-[#072010] font-bold"
+                            size="sm"
+                            startContent={<I.download size={14}/>}
+                        >
+                            Install
+                        </Button>
+                    )}
                 </div>
             </div>
         </div>

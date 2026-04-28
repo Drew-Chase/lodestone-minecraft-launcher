@@ -50,7 +50,7 @@ _build_website_frontend:
 
 [windows]
 _run_app:
-    cd crates/lodestone-gui; pnpm install && pnpm run tauri-dev
+    cd crates/lodestone-gui; pnpm install; pnpm run tauri-dev
 
 [windows]
 _run_website:

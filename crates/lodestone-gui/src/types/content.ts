@@ -152,6 +152,38 @@ export interface VersionFile {
     hashes: Record<string, string>;
 }
 
+// ---------------------------------------------------------------------------
+// Modpack import types
+// ---------------------------------------------------------------------------
+
+export interface RecentImport {
+    id: string;
+    name: string;
+    source: string;
+    sizeBytes: number;
+    importedAt: string;
+    fileName: string;
+}
+
+export type ModpackProgressStage =
+    | "parsing"
+    | "creatingInstance"
+    | "resolvingFiles"
+    | "downloadingMods"
+    | "extractingOverrides"
+    | "complete"
+    | "failed";
+
+export interface ModpackProgress {
+    stage: ModpackProgressStage;
+    name?: string;
+    current?: number;
+    total?: number;
+    fileName?: string;
+    instanceId?: number;
+    error?: string;
+}
+
 /** Format a file size in bytes to a human-readable string. */
 export function formatSize(bytes: number): string {
     if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;

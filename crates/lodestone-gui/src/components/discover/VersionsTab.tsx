@@ -1,4 +1,4 @@
-import {useEffect, useState} from "react";
+import {useCallback, useEffect, useState} from "react";
 import {Spinner} from "@heroui/react";
 import {invoke} from "@tauri-apps/api/core";
 import {cardSurfaceStyle} from "../surfaces";
@@ -9,13 +9,15 @@ import {formatCount, formatSize, timeAgo} from "../../types/content";
 interface VersionsTabProps {
     projectId: string;
     platform: string;
+    isModpack?: boolean;
 }
 
-export default function VersionsTab({projectId, platform}: VersionsTabProps) {
+export default function VersionsTab({projectId, platform, isModpack}: VersionsTabProps) {
     const [versions, setVersions] = useState<ProjectVersion[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [expandedId, setExpandedId] = useState<string | null>(null);
+    const [installingVersionId, setInstallingVersionId] = useState<string | null>(null);
 
     useEffect(() => {
         setLoading(true);
@@ -24,6 +26,21 @@ export default function VersionsTab({projectId, platform}: VersionsTabProps) {
             .then(setVersions)
             .catch(e => setError(String(e)))
             .finally(() => setLoading(false));
+    }, [projectId, platform]);
+
+    const handleInstallModpackVersion = useCallback(async (versionId: string) => {
+        setInstallingVersionId(versionId);
+        try {
+            await invoke("install_modpack_from_discover", {
+                projectId,
+                versionId,
+                platform,
+            });
+        } catch (e) {
+            console.error("Failed to install modpack version:", e);
+        } finally {
+            setInstallingVersionId(null);
+        }
     }, [projectId, platform]);
 
     if (loading) {
@@ -65,6 +82,9 @@ export default function VersionsTab({projectId, platform}: VersionsTabProps) {
                     version={v}
                     expanded={expandedId === v.id}
                     onToggle={() => setExpandedId(expandedId === v.id ? null : v.id)}
+                    isModpack={isModpack}
+                    onInstallModpack={() => handleInstallModpackVersion(v.id)}
+                    installingModpack={installingVersionId === v.id}
                 />
             ))}
         </div>
@@ -77,13 +97,15 @@ const versionTypeBadge: Record<string, {bg: string; color: string}> = {
     Alpha: {bg: "rgba(255,80,80,0.12)", color: "#ff5050"},
 };
 
-function VersionRow({version: v, expanded, onToggle}: {
+function VersionRow({version: v, expanded, onToggle, isModpack, onInstallModpack, installingModpack}: {
     version: ProjectVersion;
     expanded: boolean;
     onToggle: () => void;
+    isModpack?: boolean;
+    onInstallModpack?: () => void;
+    installingModpack?: boolean;
 }) {
     const badge = versionTypeBadge[v.version_type] ?? versionTypeBadge.Release;
-    const primaryFile = v.files.find(f => f.primary) ?? v.files[0];
 
     return (
         <div
@@ -160,23 +182,29 @@ function VersionRow({version: v, expanded, onToggle}: {
                     )}
                 </div>
 
-                {/* Download button for primary file */}
-                {primaryFile?.url && (
-                    <a
-                        href={primaryFile.url}
-                        onClick={e => e.stopPropagation()}
-                        className="flex-shrink-0 flex items-center justify-center"
+                {/* Install button — only shown for modpacks */}
+                {isModpack && onInstallModpack && (
+                    <button
+                        onClick={e => {
+                            e.stopPropagation();
+                            onInstallModpack();
+                        }}
+                        disabled={installingModpack}
+                        className="flex-shrink-0 flex items-center justify-center cursor-pointer"
                         style={{
                             width: 32,
                             height: 32,
                             borderRadius: 8,
-                            background: "rgba(34,255,132,0.1)",
+                            background: installingModpack
+                                ? "rgba(34,255,132,0.05)"
+                                : "rgba(34,255,132,0.1)",
                             color: "var(--mc-green)",
                             border: "1px solid rgba(34,255,132,0.25)",
+                            opacity: installingModpack ? 0.5 : 1,
                         }}
                     >
-                        <I.download size={14}/>
-                    </a>
+                        {installingModpack ? <Spinner size="sm" color="success"/> : <I.download size={14}/>}
+                    </button>
                 )}
 
                 {/* Expand chevron */}
@@ -242,13 +270,17 @@ function VersionRow({version: v, expanded, onToggle}: {
                                                 Primary
                                             </span>
                                         )}
-                                        {f.url && (
-                                            <a
-                                                href={f.url}
+                                        {f.url && isModpack && onInstallModpack && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onInstallModpack();
+                                                }}
+                                                className="cursor-pointer bg-transparent border-0"
                                                 style={{color: "var(--mc-green)", flexShrink: 0}}
                                             >
                                                 <I.download size={12}/>
-                                            </a>
+                                            </button>
                                         )}
                                     </div>
                                 ))}

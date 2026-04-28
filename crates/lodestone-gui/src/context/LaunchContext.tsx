@@ -87,6 +87,20 @@ export function LaunchProvider({children}: { children: ReactNode }) {
             });
         }).then((u) => unlisteners.push(u));
 
+        // Modpack install completed (not launched, just installed)
+        listen<{instanceId: number; instanceName: string}>("install-completed", (event) => {
+            const {instanceId, instanceName} = event.payload;
+            setInstalling((prev) => {
+                const next = new Map(prev);
+                next.delete(instanceId);
+                return next;
+            });
+            setCompleted((c) => [
+                {instanceId, instanceName, completedAt: Date.now()},
+                ...c,
+            ].slice(0, 20));
+        }).then((u) => unlisteners.push(u));
+
         return () => {
             for (const u of unlisteners) u();
         };
