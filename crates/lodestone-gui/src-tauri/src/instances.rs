@@ -1563,10 +1563,20 @@ async fn install_modpack_from_archive(
     let _ = hopper_mc::extract_overrides(&override_file, &instance_dir, true)
         .map_err(|e| format!("failed to extract overrides: {e}"))?;
 
-    // 6. Track mods in DB with proper platform IDs and metadata
+    // 6. Track mods in DB with proper platform IDs, names, and icons.
+    //    Fetch mod metadata from the platform API concurrently.
     {
-        let guard = state.lock().await;
-        let mgr = guard.as_ref().unwrap();
+        // Build a list of (file_name, mr_id, cf_id, version_id) tuples
+        struct ModDbEntry {
+            file_name: String,
+            mr_id: Option<String>,
+            cf_id: Option<String>,
+            version_id: Option<String>,
+            project_name: String,
+            icon_url: Option<String>,
+        }
+
+        let mut entries: Vec<ModDbEntry> = Vec::new();
         for pack_file in &manifest.files {
             if !pack_file.required {
                 continue;
@@ -1575,11 +1585,11 @@ async fn install_modpack_from_archive(
                 .path
                 .rsplit('/')
                 .next()
-                .unwrap_or(&pack_file.path);
+                .unwrap_or(&pack_file.path)
+                .to_string();
 
             let (mr_id, cf_id, version_id) = match manifest.source {
                 hopper_mc::ModpackSource::Modrinth => {
-                    // Parse project_id and version_id from Modrinth CDN URL
                     let parsed = pack_file.download_urls.first()
                         .and_then(|url| parse_modrinth_cdn_url(url));
                     match parsed {
@@ -1594,21 +1604,61 @@ async fn install_modpack_from_archive(
                 }
             };
 
-            // Derive a project name from the filename (strip extension)
-            let project_name = file_name
+            // Fallback name from filename
+            let fallback_name = file_name
                 .rsplit_once('.')
                 .map(|(name, _)| name)
-                .unwrap_or(file_name);
+                .unwrap_or(&file_name)
+                .to_string();
 
+            entries.push(ModDbEntry {
+                file_name,
+                mr_id,
+                cf_id,
+                version_id,
+                project_name: fallback_name,
+                icon_url: None,
+            });
+        }
+
+        // Fetch mod metadata from platform APIs concurrently
+        let sem = Arc::new(tokio::sync::Semaphore::new(8));
+        let mut handles = Vec::new();
+        for (idx, entry) in entries.iter().enumerate() {
+            let project_id = entry.mr_id.clone().or_else(|| entry.cf_id.clone());
+            let Some(pid) = project_id else { continue };
+            let platform = if entry.mr_id.is_some() {
+                hopper_mc::Platform::Modrinth
+            } else {
+                hopper_mc::Platform::CurseForge
+            };
+            let sem = Arc::clone(&sem);
+            handles.push(tokio::spawn(async move {
+                let _permit = sem.acquire().await.unwrap();
+                let info = hopper_mc::get_mod(&pid, platform).await.ok().flatten();
+                (idx, info)
+            }));
+        }
+        for handle in handles {
+            if let Ok((idx, Some(mod_info))) = handle.await {
+                entries[idx].project_name = mod_info.base.title;
+                entries[idx].icon_url = mod_info.base.icon_url;
+            }
+        }
+
+        // Save all entries to DB
+        let guard = state.lock().await;
+        let mgr = guard.as_ref().unwrap();
+        for entry in &entries {
             let _ = mgr
                 .add_installed_mod(
                     instance.id,
-                    file_name,
-                    mr_id.as_deref(),
-                    cf_id.as_deref(),
-                    version_id.as_deref(),
-                    Some(project_name),
-                    None,
+                    &entry.file_name,
+                    entry.mr_id.as_deref(),
+                    entry.cf_id.as_deref(),
+                    entry.version_id.as_deref(),
+                    Some(&entry.project_name),
+                    entry.icon_url.as_deref(),
                 )
                 .await;
         }
