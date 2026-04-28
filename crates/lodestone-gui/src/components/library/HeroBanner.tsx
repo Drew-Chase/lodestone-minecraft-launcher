@@ -8,6 +8,7 @@ import {I} from "../shell/icons";
 import {toSlug, type Instance} from "./instances";
 import InstanceActionsDropdown from "./InstanceActionsDropdown";
 import {useLaunch} from "../../context/LaunchContext";
+import {useInstanceImage} from "../../hooks/useInstanceImage";
 
 type HeroBannerProps = {
     featured: Instance;
@@ -21,10 +22,16 @@ export default function HeroBanner({featured, onDeleteRequest}: HeroBannerProps)
     const {launchInstance, stopInstance, isRunning, isInstalling} = useLaunch();
     const running = isRunning(featured.id);
     const installing = isInstalling(featured.id);
+    const bannerUrl = useInstanceImage(featured.instancePath, "banner.png");
+    const iconUrl = useInstanceImage(featured.instancePath, "icon.png");
 
     return (
         <div className="relative h-[260px] rounded-[20px] overflow-hidden mb-7 shadow-[0_20px_40px_-20px_rgba(0,0,0,0.8)]">
-            <Scene biome={featured.biome} seed={featured.seed}/>
+            {bannerUrl ? (
+                <img src={bannerUrl} alt="" className="absolute inset-0 w-full h-full object-cover"/>
+            ) : (
+                <Scene biome={featured.biome} seed={featured.seed}/>
+            )}
             <Particles count={12}/>
             <div
                 className="absolute inset-0 flex items-end p-8"
@@ -34,6 +41,14 @@ export default function HeroBanner({featured, onDeleteRequest}: HeroBannerProps)
                         "linear-gradient(90deg, rgba(8,9,10,0.92) 0%, rgba(8,9,10,0.6) 45%, transparent 80%)",
                 }}
             >
+                {iconUrl && (
+                    <div
+                        className="w-[90px] h-[90px] rounded-[14px] flex-shrink-0 overflow-hidden mr-5"
+                        style={{boxShadow: "0 12px 30px -6px rgba(0,0,0,0.7), 0 0 0 2px rgba(255,255,255,0.06)"}}
+                    >
+                        <img src={iconUrl} alt={featured.name} className="w-full h-full object-cover"/>
+                    </div>
+                )}
                 <div className="max-w-[500px]">
                     <div className="flex items-center gap-2 mb-3">
                         <Chip variant="green">

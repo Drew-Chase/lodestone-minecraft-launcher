@@ -1,4 +1,3 @@
-import {useEffect, useState} from "react";
 import {Button} from "@heroui/react";
 import {invoke} from "@tauri-apps/api/core";
 import Scene from "../shell/Scene";
@@ -7,29 +6,12 @@ import Chip from "../Chip";
 import {I} from "../shell/icons";
 import type {Instance} from "../library/instances";
 import {useLaunch} from "../../context/LaunchContext";
+import {useInstanceImage} from "../../hooks/useInstanceImage";
 
 type Props = {
     instance: Instance;
     onBack?: () => void;
 };
-
-function useInstanceImage(instancePath: string, imageName: string): string | null {
-    const [url, setUrl] = useState<string | null>(null);
-    useEffect(() => {
-        let revoke: string | null = null;
-        invoke<number[]>("read_instance_image", {instancePath, imageName})
-            .then((bytes) => {
-                const blob = new Blob([new Uint8Array(bytes)], {type: "image/png"});
-                revoke = URL.createObjectURL(blob);
-                setUrl(revoke);
-            })
-            .catch(() => setUrl(null));
-        return () => {
-            if (revoke) URL.revokeObjectURL(revoke);
-        };
-    }, [instancePath, imageName]);
-    return url;
-}
 
 export default function InstanceHero({instance, onBack}: Props) {
     const {launchInstance, stopInstance, isRunning, isInstalling, installingInstances} = useLaunch();

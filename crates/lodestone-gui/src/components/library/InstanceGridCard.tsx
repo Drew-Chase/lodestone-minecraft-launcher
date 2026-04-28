@@ -6,6 +6,7 @@ import {I} from "../shell/icons";
 import {cardHoverClass, cardSurfaceStyle, toSlug, type Instance} from "./instances";
 import InstanceActionsDropdown from "./InstanceActionsDropdown";
 import {useLaunch} from "../../context/LaunchContext";
+import {useInstanceImage} from "../../hooks/useInstanceImage";
 
 type Props = {
     instance: Instance;
@@ -17,6 +18,7 @@ export default function InstanceGridCard({instance: inst, onDeleteRequest}: Prop
     const {launchInstance, stopInstance, isRunning, isInstalling} = useLaunch();
     const running = isRunning(inst.id);
     const installing = isInstalling(inst.id);
+    const bannerUrl = useInstanceImage(inst.instancePath, "banner.png");
     const openDetail = () => navigate(`/library/${toSlug(inst.name)}`);
     const stop = (e: React.MouseEvent) => e.stopPropagation();
 
@@ -36,7 +38,11 @@ export default function InstanceGridCard({instance: inst, onDeleteRequest}: Prop
         >
             {/* Thumbnail */}
             <div className="relative w-full" style={{height: 130}}>
-                <Scene biome={inst.biome} seed={inst.seed}/>
+                {bannerUrl ? (
+                    <img src={bannerUrl} alt="" className="absolute inset-0 w-full h-full object-cover"/>
+                ) : (
+                    <Scene biome={inst.biome} seed={inst.seed}/>
+                )}
                 {running && (
                     <div className="absolute top-2 left-2 z-[2]">
                         <Chip variant="green" className="text-[0.5625rem] px-1.5 py-0.5">
