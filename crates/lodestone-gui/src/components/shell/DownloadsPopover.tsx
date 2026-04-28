@@ -1,3 +1,4 @@
+import {useEffect, useRef, useState} from "react";
 import {Popover, PopoverTrigger, PopoverContent, Tooltip, Button} from "@heroui/react";
 import {I} from "./icons";
 import Chip from "../Chip";
@@ -63,6 +64,16 @@ export default function DownloadsPopoverButton() {
     const {installingInstances, completedInstalls, runningInstances, clearCompleted} = useLaunch();
     const activeCount = installingInstances.size;
     const hasActivity = activeCount > 0 || completedInstalls.length > 0;
+    const [isOpen, setIsOpen] = useState(false);
+    const prevCount = useRef(activeCount);
+
+    // Auto-open when a new download starts
+    useEffect(() => {
+        if (activeCount > prevCount.current) {
+            setIsOpen(true);
+        }
+        prevCount.current = activeCount;
+    }, [activeCount]);
 
     // Calculate aggregate progress
     const activeList = [...installingInstances.values()];
@@ -71,7 +82,7 @@ export default function DownloadsPopoverButton() {
         : 0;
 
     return (
-        <Popover placement="right" offset={12}>
+        <Popover placement="right" offset={12} isOpen={isOpen} onOpenChange={setIsOpen}>
             <Tooltip content="Downloads" placement="right" delay={250} offset={14}>
                 <div className="relative">
                     <PopoverTrigger>
