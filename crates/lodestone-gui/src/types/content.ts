@@ -157,7 +157,8 @@ export interface VersionFile {
 // ---------------------------------------------------------------------------
 
 export interface RecentImport {
-    id: string;
+    id: number;
+    fileHash: string;
     name: string;
     source: string;
     sizeBytes: number;

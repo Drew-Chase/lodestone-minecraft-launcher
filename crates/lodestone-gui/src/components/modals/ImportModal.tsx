@@ -103,7 +103,7 @@ export default function ImportModal({isOpen, onClose}: Props) {
         }
     }, [importFile]);
 
-    const handleReimport = useCallback(async (importId: string) => {
+    const handleReimport = useCallback(async (importId: number) => {
         setInstalling(true);
         setProgress(null);
         try {

@@ -1664,8 +1664,8 @@ async fn install_modpack_from_archive(
         }
     }
 
-    // 7. Save to recent-imports
-    save_recent_import(app, archive_path, &manifest.name, &manifest.source)?;
+    // 7. Save to recent-imports (DB + archive copy)
+    save_recent_import(state, app, archive_path, &manifest.name, &manifest.source).await?;
 
     // 8. Signal completion — progress=1.0 then install-completed event
     emit_install_progress(app, &InstallProgressPayload {
@@ -1686,22 +1686,8 @@ async fn install_modpack_from_archive(
 }
 
 // ---------------------------------------------------------------------------
-// Recent imports tracking
+// Recent imports tracking (stored in SQLite, archives in recent-imports dir)
 // ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RecentImport {
-    pub id: String,
-    pub name: String,
-    pub source: String,
-    pub size_bytes: u64,
-    pub imported_at: String,
-    pub file_name: String,
-}
-
-const MAX_RECENT_IMPORTS: usize = 3;
-const RECENT_IMPORTS_MAX_AGE_DAYS: i64 = 90;
 
 fn recent_imports_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let data_dir = app
@@ -1714,65 +1700,26 @@ fn recent_imports_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn recent_imports_json_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    Ok(recent_imports_dir(app)?.join("recent-imports.json"))
+/// Compute SHA-256 hash of a file for deduplication.
+fn hash_file(path: &Path) -> Result<String, String> {
+    use sha2::{Sha256, Digest};
+    let bytes = std::fs::read(path)
+        .map_err(|e| format!("failed to read file for hashing: {e}"))?;
+    Ok(format!("{:x}", Sha256::digest(&bytes)))
 }
 
-fn load_recent_imports(app: &tauri::AppHandle) -> Result<Vec<RecentImport>, String> {
-    let path = recent_imports_json_path(app)?;
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let data = std::fs::read_to_string(&path)
-        .map_err(|e| format!("failed to read recent-imports.json: {e}"))?;
-    serde_json::from_str(&data)
-        .map_err(|e| format!("failed to parse recent-imports.json: {e}"))
-}
-
-fn save_recent_imports_list(app: &tauri::AppHandle, imports: &[RecentImport]) -> Result<(), String> {
-    let path = recent_imports_json_path(app)?;
-    let data = serde_json::to_string_pretty(imports)
-        .map_err(|e| format!("failed to serialize recent imports: {e}"))?;
-    std::fs::write(&path, data)
-        .map_err(|e| format!("failed to write recent-imports.json: {e}"))
-}
-
-fn prune_recent_imports(app: &tauri::AppHandle, imports: &mut Vec<RecentImport>) -> Result<(), String> {
-    let cutoff = chrono::Utc::now() - chrono::Duration::days(RECENT_IMPORTS_MAX_AGE_DAYS);
-    let cutoff_str = cutoff.to_rfc3339();
-    let dir = recent_imports_dir(app)?;
-
-    // Remove entries older than 90 days
-    imports.retain(|entry| {
-        if entry.imported_at < cutoff_str {
-            let file_path = dir.join(&entry.file_name);
-            let _ = std::fs::remove_file(&file_path);
-            false
-        } else {
-            true
-        }
-    });
-
-    // Keep only the last 3
-    while imports.len() > MAX_RECENT_IMPORTS {
-        let removed = imports.remove(0);
-        let file_path = dir.join(&removed.file_name);
-        let _ = std::fs::remove_file(&file_path);
-    }
-
-    Ok(())
-}
-
-fn save_recent_import(
+async fn save_recent_import(
+    state: &InstanceManagerState,
     app: &tauri::AppHandle,
     archive_path: &Path,
     name: &str,
     source: &hopper_mc::ModpackSource,
 ) -> Result<(), String> {
     let dir = recent_imports_dir(app)?;
+    let file_hash = hash_file(archive_path)?;
 
     let size_bytes = std::fs::metadata(archive_path)
-        .map(|m| m.len())
+        .map(|m| m.len() as i64)
         .unwrap_or(0);
 
     let original_name = archive_path
@@ -1780,33 +1727,26 @@ fn save_recent_import(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "modpack.zip".to_string());
 
-    // Generate a unique filename to avoid collisions
-    let timestamp = chrono::Utc::now().timestamp();
-    let dest_name = format!("{timestamp}_{original_name}");
+    // Use the hash as part of the filename so duplicate packs reuse the same file
+    let dest_name = format!("{}_{}", &file_hash[..12], original_name);
     let dest = dir.join(&dest_name);
 
-    // Copy archive to recent-imports directory
-    std::fs::copy(archive_path, &dest)
-        .map_err(|e| format!("failed to copy archive to recent-imports: {e}"))?;
+    // Only copy if not already present
+    if !dest.exists() {
+        std::fs::copy(archive_path, &dest)
+            .map_err(|e| format!("failed to copy archive to recent-imports: {e}"))?;
+    }
 
     let source_str = match source {
         hopper_mc::ModpackSource::Modrinth => "Modrinth",
         hopper_mc::ModpackSource::CurseForge => "CurseForge",
     };
 
-    let entry = RecentImport {
-        id: format!("{timestamp}_{}", md5::compute(name.as_bytes()).0.iter().map(|b| format!("{b:02x}")).collect::<String>()),
-        name: name.to_string(),
-        source: source_str.to_string(),
-        size_bytes,
-        imported_at: chrono::Utc::now().to_rfc3339(),
-        file_name: dest_name,
-    };
-
-    let mut imports = load_recent_imports(app)?;
-    imports.push(entry);
-    prune_recent_imports(app, &mut imports)?;
-    save_recent_imports_list(app, &imports)?;
+    let guard = state.lock().await;
+    let mgr = guard.as_ref().unwrap();
+    mgr.add_recent_import(&file_hash, name, source_str, size_bytes, &dest_name)
+        .await
+        .map_err(|e| format!("failed to save recent import: {e}"))?;
 
     Ok(())
 }
@@ -1896,25 +1836,32 @@ pub async fn install_modpack_from_discover(
 
 #[tauri::command]
 pub async fn list_recent_imports(
+    state: tauri::State<'_, InstanceManagerState>,
     app: tauri::AppHandle,
-) -> Result<Vec<RecentImport>, String> {
-    let mut imports = load_recent_imports(&app)?;
-    prune_recent_imports(&app, &mut imports)?;
-    save_recent_imports_list(&app, &imports)?;
-    Ok(imports)
+) -> Result<Vec<lodestone_core::instance_manager::RecentImportRecord>, String> {
+    ensure_manager(&state, &app).await?;
+    let guard = state.lock().await;
+    let mgr = guard.as_ref().unwrap();
+    mgr.list_recent_imports()
+        .await
+        .map_err(|e| format!("failed to list recent imports: {e}"))
 }
 
 #[tauri::command]
 pub async fn reimport_modpack(
-    import_id: String,
+    import_id: i64,
     state: tauri::State<'_, InstanceManagerState>,
     app: tauri::AppHandle,
 ) -> Result<InstanceConfig, String> {
-    let imports = load_recent_imports(&app)?;
-    let entry = imports
-        .iter()
-        .find(|e| e.id == import_id)
-        .ok_or_else(|| format!("recent import not found: {import_id}"))?;
+    ensure_manager(&state, &app).await?;
+    let entry = {
+        let guard = state.lock().await;
+        let mgr = guard.as_ref().unwrap();
+        mgr.get_recent_import(import_id)
+            .await
+            .map_err(|e| format!("failed to get recent import: {e}"))?
+            .ok_or_else(|| format!("recent import not found: {import_id}"))?
+    };
 
     let dir = recent_imports_dir(&app)?;
     let archive_path = dir.join(&entry.file_name);
