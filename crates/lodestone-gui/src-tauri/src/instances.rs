@@ -900,6 +900,25 @@ pub async fn list_instance_files(
 }
 
 // ---------------------------------------------------------------------------
+// Instance images (icon.png / banner.png)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn read_instance_image(
+    instance_path: String,
+    image_name: String,
+) -> Result<Vec<u8>, String> {
+    if image_name != "icon.png" && image_name != "banner.png" {
+        return Err("invalid image name".into());
+    }
+    let path = PathBuf::from(&instance_path).join(&image_name);
+    if !path.exists() {
+        return Err(format!("{image_name} not found"));
+    }
+    std::fs::read(&path).map_err(|e| format!("failed to read {image_name}: {e}"))
+}
+
+// ---------------------------------------------------------------------------
 // Per-instance settings
 // ---------------------------------------------------------------------------
 
@@ -1367,11 +1386,43 @@ fn emit_install_completed(app: &tauri::AppHandle, payload: &InstallCompletedPayl
     let _ = app.emit("install-completed", payload);
 }
 
+/// Optional metadata about the modpack sourced from the platform API.
+/// Used to download the icon/banner and to populate mod DB records.
+struct PackMeta {
+    icon_url: Option<String>,
+    banner_url: Option<String>,
+    platform: Option<hopper_mc::Platform>,
+}
+
+/// Download an image URL to a local file path, ignoring errors silently.
+async fn download_image(client: &reqwest::Client, url: &str, dest: &Path) {
+    match client.get(url).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            if let Ok(bytes) = resp.bytes().await {
+                let _ = std::fs::write(dest, &bytes);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Extract Modrinth project ID and version ID from a CDN download URL.
+/// URLs follow the pattern: `https://cdn.modrinth.com/data/{project_id}/versions/{version_id}/{filename}`
+fn parse_modrinth_cdn_url(url: &str) -> Option<(String, String)> {
+    let url = url.strip_prefix("https://cdn.modrinth.com/data/")?;
+    let mut parts = url.splitn(4, '/');
+    let project_id = parts.next()?;
+    let _versions = parts.next().filter(|s| *s == "versions")?;
+    let version_id = parts.next()?;
+    Some((project_id.to_string(), version_id.to_string()))
+}
+
 /// Shared logic for installing a modpack from a local archive file.
 async fn install_modpack_from_archive(
     archive_path: &Path,
     state: &InstanceManagerState,
     app: &tauri::AppHandle,
+    meta: Option<PackMeta>,
 ) -> Result<InstanceConfig, String> {
     // 1. Parse the archive
     let file = std::fs::File::open(archive_path)
@@ -1422,6 +1473,17 @@ async fn install_modpack_from_archive(
     let real_id = instance.id;
     let instance_dir = PathBuf::from(&instance.instance_path);
 
+    // 3b. Download icon and banner images if available
+    let http_client = reqwest::Client::new();
+    if let Some(ref meta) = meta {
+        if let Some(ref icon) = meta.icon_url {
+            download_image(&http_client, icon, &instance_dir.join("icon.png")).await;
+        }
+        if let Some(ref banner) = meta.banner_url {
+            download_image(&http_client, banner, &instance_dir.join("banner.png")).await;
+        }
+    }
+
     // 4. Download mod files
     let downloadable: Vec<_> = manifest
         .files
@@ -1431,7 +1493,7 @@ async fn install_modpack_from_archive(
     let total = downloadable.len();
 
     if total > 0 {
-        let client = reqwest::Client::new();
+        let client = &http_client;
         let sem = Arc::new(tokio::sync::Semaphore::new(8));
 
         for (i, pack_file) in downloadable.iter().enumerate() {
@@ -1501,7 +1563,7 @@ async fn install_modpack_from_archive(
     let _ = hopper_mc::extract_overrides(&override_file, &instance_dir, true)
         .map_err(|e| format!("failed to extract overrides: {e}"))?;
 
-    // 6. Track mods in DB
+    // 6. Track mods in DB with proper platform IDs and metadata
     {
         let guard = state.lock().await;
         let mgr = guard.as_ref().unwrap();
@@ -1515,21 +1577,37 @@ async fn install_modpack_from_archive(
                 .next()
                 .unwrap_or(&pack_file.path);
 
-            let (mr_id, cf_id) = match manifest.source {
-                hopper_mc::ModpackSource::Modrinth => (None, None),
+            let (mr_id, cf_id, version_id) = match manifest.source {
+                hopper_mc::ModpackSource::Modrinth => {
+                    // Parse project_id and version_id from Modrinth CDN URL
+                    let parsed = pack_file.download_urls.first()
+                        .and_then(|url| parse_modrinth_cdn_url(url));
+                    match parsed {
+                        Some((pid, vid)) => (Some(pid), None, Some(vid)),
+                        None => (None, None, None),
+                    }
+                }
                 hopper_mc::ModpackSource::CurseForge => {
-                    (None, pack_file.project_id.as_deref())
+                    let cf = pack_file.project_id.clone();
+                    let vid = pack_file.file_id.clone();
+                    (None, cf, vid)
                 }
             };
+
+            // Derive a project name from the filename (strip extension)
+            let project_name = file_name
+                .rsplit_once('.')
+                .map(|(name, _)| name)
+                .unwrap_or(file_name);
 
             let _ = mgr
                 .add_installed_mod(
                     instance.id,
                     file_name,
-                    mr_id,
-                    cf_id,
-                    None,
-                    None,
+                    mr_id.as_deref(),
+                    cf_id.as_deref(),
+                    version_id.as_deref(),
+                    Some(project_name),
                     None,
                 )
                 .await;
@@ -1698,7 +1776,7 @@ pub async fn import_modpack(
         return Err(format!("file not found: {file_path}"));
     }
 
-    install_modpack_from_archive(&path, &state, &app).await
+    install_modpack_from_archive(&path, &state, &app, None).await
 }
 
 #[tauri::command]
@@ -1714,6 +1792,14 @@ pub async fn install_modpack_from_discover(
         "curseforge" => hopper_mc::Platform::CurseForge,
         _ => return Err(format!("unsupported platform: {platform}")),
     };
+
+    // Fetch pack info for icon and gallery (banner)
+    let pack_info = hopper_mc::get_pack(&project_id, plat).await.ok().flatten();
+    let meta = pack_info.as_ref().map(|p| PackMeta {
+        icon_url: p.base.icon_url.clone(),
+        banner_url: p.base.gallery.first().cloned(),
+        platform: Some(plat),
+    });
 
     // Fetch the version to get the download URL
     let version = hopper_mc::get_version(&version_id, plat)
@@ -1750,7 +1836,7 @@ pub async fn install_modpack_from_discover(
     std::fs::write(&tmp_path, &bytes)
         .map_err(|e| format!("failed to write temp file: {e}"))?;
 
-    let result = install_modpack_from_archive(&tmp_path, &state, &app).await;
+    let result = install_modpack_from_archive(&tmp_path, &state, &app, meta).await;
 
     // Clean up temp file
     let _ = std::fs::remove_file(&tmp_path);
@@ -1787,5 +1873,5 @@ pub async fn reimport_modpack(
         return Err(format!("archive file no longer exists: {}", entry.file_name));
     }
 
-    install_modpack_from_archive(&archive_path, &state, &app).await
+    install_modpack_from_archive(&archive_path, &state, &app, None).await
 }

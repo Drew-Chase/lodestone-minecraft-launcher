@@ -439,6 +439,7 @@ pub fn run() {
             instances::list_log_files,
             instances::read_log_file,
             instances::list_instance_files,
+            instances::read_instance_image,
             instances::get_instance_settings,
             instances::save_instance_settings,
             instances::install_mod,

@@ -1,3 +1,4 @@
+import {useEffect, useState} from "react";
 import {Button} from "@heroui/react";
 import {invoke} from "@tauri-apps/api/core";
 import Scene from "../shell/Scene";
@@ -12,11 +13,32 @@ type Props = {
     onBack?: () => void;
 };
 
+function useInstanceImage(instancePath: string, imageName: string): string | null {
+    const [url, setUrl] = useState<string | null>(null);
+    useEffect(() => {
+        let revoke: string | null = null;
+        invoke<number[]>("read_instance_image", {instancePath, imageName})
+            .then((bytes) => {
+                const blob = new Blob([new Uint8Array(bytes)], {type: "image/png"});
+                revoke = URL.createObjectURL(blob);
+                setUrl(revoke);
+            })
+            .catch(() => setUrl(null));
+        return () => {
+            if (revoke) URL.revokeObjectURL(revoke);
+        };
+    }, [instancePath, imageName]);
+    return url;
+}
+
 export default function InstanceHero({instance, onBack}: Props) {
     const {launchInstance, stopInstance, isRunning, isInstalling, installingInstances} = useLaunch();
     const running = isRunning(instance.id);
     const installing = isInstalling(instance.id);
     const progress = installingInstances.get(instance.id);
+
+    const iconUrl = useInstanceImage(instance.instancePath, "icon.png");
+    const bannerUrl = useInstanceImage(instance.instancePath, "banner.png");
 
     const loaderChip =
         instance.loader !== "Vanilla" && instance.loaderVersion
@@ -25,7 +47,16 @@ export default function InstanceHero({instance, onBack}: Props) {
 
     return (
         <div className="relative h-[230px] flex-shrink-0">
-            <Scene biome={instance.biome} seed={instance.seed}/>
+            {bannerUrl ? (
+                <img
+                    src={bannerUrl}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover"
+                    style={{opacity: 0.5}}
+                />
+            ) : (
+                <Scene biome={instance.biome} seed={instance.seed}/>
+            )}
             <Particles count={18} color="var(--violet)"/>
             <div
                 className="absolute inset-0"
@@ -72,7 +103,11 @@ export default function InstanceHero({instance, onBack}: Props) {
                             "0 20px 40px -10px rgba(0,0,0,0.8), 0 0 0 3px var(--bg-0)",
                     }}
                 >
-                    <Scene biome={instance.biome} seed={instance.seed}/>
+                    {iconUrl ? (
+                        <img src={iconUrl} alt={instance.name} className="w-full h-full object-cover"/>
+                    ) : (
+                        <Scene biome={instance.biome} seed={instance.seed}/>
+                    )}
                 </div>
                 <div className="pb-[18px] flex-1 min-w-0">
                     <div className="flex gap-1.5 mb-2 flex-wrap">
