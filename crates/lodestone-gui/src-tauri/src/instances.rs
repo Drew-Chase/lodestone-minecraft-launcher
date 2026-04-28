@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::sync::Mutex;
 
 use lodestone_core::instance::{CreateInstanceParams, InstanceConfig, LoaderType};
@@ -1330,4 +1330,462 @@ pub async fn get_installed_mods_info(
     serde_json::to_value(&records)
         .map(|v| match v { serde_json::Value::Array(a) => a, _ => vec![] })
         .map_err(|e| format!("serialization error: {e}"))
+}
+
+// ---------------------------------------------------------------------------
+// Modpack import & installation
+// ---------------------------------------------------------------------------
+
+/// Progress payload that matches the frontend's `InstallProgress` interface,
+/// so modpack installs appear in the Downloads popover automatically.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstallProgressPayload {
+    instance_id: i64,
+    instance_name: String,
+    stage: String,
+    stage_label: String,
+    progress: f64,
+    files_done: usize,
+    files_total: usize,
+}
+
+fn emit_install_progress(app: &tauri::AppHandle, payload: &InstallProgressPayload) {
+    let _ = app.emit("install-progress", payload);
+}
+
+/// Emitted when a modpack install finishes so the frontend can move it
+/// from "installing" to "completed" without waiting for `instance-started`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstallCompletedPayload {
+    instance_id: i64,
+    instance_name: String,
+}
+
+fn emit_install_completed(app: &tauri::AppHandle, payload: &InstallCompletedPayload) {
+    let _ = app.emit("install-completed", payload);
+}
+
+/// Shared logic for installing a modpack from a local archive file.
+async fn install_modpack_from_archive(
+    archive_path: &Path,
+    state: &InstanceManagerState,
+    app: &tauri::AppHandle,
+) -> Result<InstanceConfig, String> {
+    // 1. Parse the archive
+    let file = std::fs::File::open(archive_path)
+        .map_err(|e| format!("failed to open archive: {e}"))?;
+
+    let mut manifest = hopper_mc::parse_modpack(&file)
+        .map_err(|e| format!("failed to parse modpack: {e}"))?;
+
+    let pack_name = manifest.name.clone();
+
+    // 2. Resolve CurseForge file URLs if needed
+    if manifest.source == hopper_mc::ModpackSource::CurseForge {
+        let unresolved = manifest.files.iter().filter(|f| f.download_urls.is_empty()).count();
+        if unresolved > 0 {
+            let cf = hopper_mc::CurseForgeProvider::shared();
+            cf.resolve_pack_files(&mut manifest.files)
+                .await
+                .map_err(|e| format!("failed to resolve CurseForge files: {e}"))?;
+        }
+    }
+
+    // 3. Create instance
+
+    let loader = LoaderType::parse(&manifest.loader).unwrap_or(LoaderType::Vanilla);
+    let loader_version = if manifest.loader_version.is_empty() {
+        None
+    } else {
+        Some(manifest.loader_version.clone())
+    };
+
+    let params = CreateInstanceParams {
+        name: manifest.name.clone(),
+        minecraft_version: manifest.minecraft_version.clone(),
+        loader,
+        loader_version,
+        java_version: None,
+    };
+
+    ensure_manager(state, app).await?;
+    let instance = {
+        let guard = state.lock().await;
+        let mgr = guard.as_ref().unwrap();
+        mgr.create(params)
+            .await
+            .map_err(|e| format!("failed to create instance: {e}"))?
+    };
+
+    let real_id = instance.id;
+    let instance_dir = PathBuf::from(&instance.instance_path);
+
+    // 4. Download mod files
+    let downloadable: Vec<_> = manifest
+        .files
+        .iter()
+        .filter(|f| !f.download_urls.is_empty() && f.required)
+        .collect();
+    let total = downloadable.len();
+
+    if total > 0 {
+        let client = reqwest::Client::new();
+        let sem = Arc::new(tokio::sync::Semaphore::new(8));
+
+        for (i, pack_file) in downloadable.iter().enumerate() {
+            let file_name = pack_file
+                .path
+                .rsplit('/')
+                .next()
+                .unwrap_or(&pack_file.path);
+
+            let progress_frac = 0.1 + 0.8 * ((i as f64) / (total as f64));
+            emit_install_progress(app, &InstallProgressPayload {
+                instance_id: real_id,
+                instance_name: pack_name.clone(),
+                stage: "downloadingMods".to_string(),
+                stage_label: format!("Downloading {file_name}..."),
+                progress: progress_frac,
+                files_done: i,
+                files_total: total,
+            });
+
+            let dest = instance_dir.join(&pack_file.path);
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("failed to create directory: {e}"))?;
+            }
+
+            let _permit = sem.acquire().await.map_err(|e| format!("semaphore error: {e}"))?;
+
+            let mut downloaded = false;
+            for url in &pack_file.download_urls {
+                match client.get(url).send().await {
+                    Ok(resp) if resp.status().is_success() => {
+                        let bytes = resp.bytes().await
+                            .map_err(|e| format!("failed to read {file_name}: {e}"))?;
+                        std::fs::write(&dest, &bytes)
+                            .map_err(|e| format!("failed to write {file_name}: {e}"))?;
+                        downloaded = true;
+                        break;
+                    }
+                    Ok(resp) => {
+                        log::warn!("download failed for {file_name} from {url}: HTTP {}", resp.status());
+                    }
+                    Err(e) => {
+                        log::warn!("download error for {file_name} from {url}: {e}");
+                    }
+                }
+            }
+            if !downloaded {
+                log::warn!("could not download {file_name} from any URL");
+            }
+        }
+    }
+
+    // 5. Extract overrides
+    emit_install_progress(app, &InstallProgressPayload {
+        instance_id: real_id,
+        instance_name: pack_name.clone(),
+        stage: "extractingOverrides".to_string(),
+        stage_label: "Extracting overrides...".to_string(),
+        progress: 0.92,
+        files_done: total,
+        files_total: total,
+    });
+
+    let override_file = std::fs::File::open(archive_path)
+        .map_err(|e| format!("failed to reopen archive for overrides: {e}"))?;
+    let _ = hopper_mc::extract_overrides(&override_file, &instance_dir, true)
+        .map_err(|e| format!("failed to extract overrides: {e}"))?;
+
+    // 6. Track mods in DB
+    {
+        let guard = state.lock().await;
+        let mgr = guard.as_ref().unwrap();
+        for pack_file in &manifest.files {
+            if !pack_file.required {
+                continue;
+            }
+            let file_name = pack_file
+                .path
+                .rsplit('/')
+                .next()
+                .unwrap_or(&pack_file.path);
+
+            let (mr_id, cf_id) = match manifest.source {
+                hopper_mc::ModpackSource::Modrinth => (None, None),
+                hopper_mc::ModpackSource::CurseForge => {
+                    (None, pack_file.project_id.as_deref())
+                }
+            };
+
+            let _ = mgr
+                .add_installed_mod(
+                    instance.id,
+                    file_name,
+                    mr_id,
+                    cf_id,
+                    None,
+                    None,
+                    None,
+                )
+                .await;
+        }
+    }
+
+    // 7. Save to recent-imports
+    save_recent_import(app, archive_path, &manifest.name, &manifest.source)?;
+
+    // 8. Signal completion — progress=1.0 then install-completed event
+    emit_install_progress(app, &InstallProgressPayload {
+        instance_id: real_id,
+        instance_name: pack_name.clone(),
+        stage: "complete".to_string(),
+        stage_label: "Install complete!".to_string(),
+        progress: 1.0,
+        files_done: total,
+        files_total: total,
+    });
+    emit_install_completed(app, &InstallCompletedPayload {
+        instance_id: real_id,
+        instance_name: pack_name,
+    });
+
+    Ok(instance)
+}
+
+// ---------------------------------------------------------------------------
+// Recent imports tracking
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentImport {
+    pub id: String,
+    pub name: String,
+    pub source: String,
+    pub size_bytes: u64,
+    pub imported_at: String,
+    pub file_name: String,
+}
+
+const MAX_RECENT_IMPORTS: usize = 3;
+const RECENT_IMPORTS_MAX_AGE_DAYS: i64 = 90;
+
+fn recent_imports_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?;
+    let dir = data_dir.join("recent-imports");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("failed to create recent-imports dir: {e}"))?;
+    Ok(dir)
+}
+
+fn recent_imports_json_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(recent_imports_dir(app)?.join("recent-imports.json"))
+}
+
+fn load_recent_imports(app: &tauri::AppHandle) -> Result<Vec<RecentImport>, String> {
+    let path = recent_imports_json_path(app)?;
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let data = std::fs::read_to_string(&path)
+        .map_err(|e| format!("failed to read recent-imports.json: {e}"))?;
+    serde_json::from_str(&data)
+        .map_err(|e| format!("failed to parse recent-imports.json: {e}"))
+}
+
+fn save_recent_imports_list(app: &tauri::AppHandle, imports: &[RecentImport]) -> Result<(), String> {
+    let path = recent_imports_json_path(app)?;
+    let data = serde_json::to_string_pretty(imports)
+        .map_err(|e| format!("failed to serialize recent imports: {e}"))?;
+    std::fs::write(&path, data)
+        .map_err(|e| format!("failed to write recent-imports.json: {e}"))
+}
+
+fn prune_recent_imports(app: &tauri::AppHandle, imports: &mut Vec<RecentImport>) -> Result<(), String> {
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(RECENT_IMPORTS_MAX_AGE_DAYS);
+    let cutoff_str = cutoff.to_rfc3339();
+    let dir = recent_imports_dir(app)?;
+
+    // Remove entries older than 90 days
+    imports.retain(|entry| {
+        if entry.imported_at < cutoff_str {
+            let file_path = dir.join(&entry.file_name);
+            let _ = std::fs::remove_file(&file_path);
+            false
+        } else {
+            true
+        }
+    });
+
+    // Keep only the last 3
+    while imports.len() > MAX_RECENT_IMPORTS {
+        let removed = imports.remove(0);
+        let file_path = dir.join(&removed.file_name);
+        let _ = std::fs::remove_file(&file_path);
+    }
+
+    Ok(())
+}
+
+fn save_recent_import(
+    app: &tauri::AppHandle,
+    archive_path: &Path,
+    name: &str,
+    source: &hopper_mc::ModpackSource,
+) -> Result<(), String> {
+    let dir = recent_imports_dir(app)?;
+
+    let size_bytes = std::fs::metadata(archive_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    let original_name = archive_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "modpack.zip".to_string());
+
+    // Generate a unique filename to avoid collisions
+    let timestamp = chrono::Utc::now().timestamp();
+    let dest_name = format!("{timestamp}_{original_name}");
+    let dest = dir.join(&dest_name);
+
+    // Copy archive to recent-imports directory
+    std::fs::copy(archive_path, &dest)
+        .map_err(|e| format!("failed to copy archive to recent-imports: {e}"))?;
+
+    let source_str = match source {
+        hopper_mc::ModpackSource::Modrinth => "Modrinth",
+        hopper_mc::ModpackSource::CurseForge => "CurseForge",
+    };
+
+    let entry = RecentImport {
+        id: format!("{timestamp}_{}", md5::compute(name.as_bytes()).0.iter().map(|b| format!("{b:02x}")).collect::<String>()),
+        name: name.to_string(),
+        source: source_str.to_string(),
+        size_bytes,
+        imported_at: chrono::Utc::now().to_rfc3339(),
+        file_name: dest_name,
+    };
+
+    let mut imports = load_recent_imports(app)?;
+    imports.push(entry);
+    prune_recent_imports(app, &mut imports)?;
+    save_recent_imports_list(app, &imports)?;
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Modpack Tauri commands
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn import_modpack(
+    file_path: String,
+    state: tauri::State<'_, InstanceManagerState>,
+    app: tauri::AppHandle,
+) -> Result<InstanceConfig, String> {
+    let path = PathBuf::from(&file_path);
+    if !path.exists() {
+        return Err(format!("file not found: {file_path}"));
+    }
+
+    install_modpack_from_archive(&path, &state, &app).await
+}
+
+#[tauri::command]
+pub async fn install_modpack_from_discover(
+    project_id: String,
+    version_id: String,
+    platform: String,
+    state: tauri::State<'_, InstanceManagerState>,
+    app: tauri::AppHandle,
+) -> Result<InstanceConfig, String> {
+    let plat = match platform.as_str() {
+        "modrinth" => hopper_mc::Platform::Modrinth,
+        "curseforge" => hopper_mc::Platform::CurseForge,
+        _ => return Err(format!("unsupported platform: {platform}")),
+    };
+
+    // Fetch the version to get the download URL
+    let version = hopper_mc::get_version(&version_id, plat)
+        .await
+        .map_err(|e| format!("failed to fetch version: {e}"))?
+        .ok_or_else(|| format!("version {version_id} not found"))?;
+
+    let file = version.files.iter().find(|f| f.primary)
+        .or(version.files.first())
+        .ok_or("no files in version")?;
+
+    let url = file.url.as_ref()
+        .ok_or("modpack file has no download URL (restricted distribution)")?;
+
+    // Download to temp directory
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?;
+    let tmp_dir = data_dir.join("tmp");
+    std::fs::create_dir_all(&tmp_dir)
+        .map_err(|e| format!("failed to create tmp dir: {e}"))?;
+
+    let tmp_path = tmp_dir.join(&file.filename);
+
+    let client = reqwest::Client::new();
+    let resp = client.get(url).send().await
+        .map_err(|e| format!("failed to download modpack: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("download failed: HTTP {}", resp.status()));
+    }
+    let bytes = resp.bytes().await
+        .map_err(|e| format!("failed to read modpack: {e}"))?;
+    std::fs::write(&tmp_path, &bytes)
+        .map_err(|e| format!("failed to write temp file: {e}"))?;
+
+    let result = install_modpack_from_archive(&tmp_path, &state, &app).await;
+
+    // Clean up temp file
+    let _ = std::fs::remove_file(&tmp_path);
+
+    result
+}
+
+#[tauri::command]
+pub async fn list_recent_imports(
+    app: tauri::AppHandle,
+) -> Result<Vec<RecentImport>, String> {
+    let mut imports = load_recent_imports(&app)?;
+    prune_recent_imports(&app, &mut imports)?;
+    save_recent_imports_list(&app, &imports)?;
+    Ok(imports)
+}
+
+#[tauri::command]
+pub async fn reimport_modpack(
+    import_id: String,
+    state: tauri::State<'_, InstanceManagerState>,
+    app: tauri::AppHandle,
+) -> Result<InstanceConfig, String> {
+    let imports = load_recent_imports(&app)?;
+    let entry = imports
+        .iter()
+        .find(|e| e.id == import_id)
+        .ok_or_else(|| format!("recent import not found: {import_id}"))?;
+
+    let dir = recent_imports_dir(&app)?;
+    let archive_path = dir.join(&entry.file_name);
+
+    if !archive_path.exists() {
+        return Err(format!("archive file no longer exists: {}", entry.file_name));
+    }
+
+    install_modpack_from_archive(&archive_path, &state, &app).await
 }
