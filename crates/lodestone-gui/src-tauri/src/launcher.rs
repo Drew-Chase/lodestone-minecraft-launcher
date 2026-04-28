@@ -595,7 +595,7 @@ pub async fn launch_instance(
                 )
                 .map_err(|e| format!("Fabric launch failed: {e}"))?
         }
-        LoaderType::Forge | LoaderType::Neoforge => {
+        LoaderType::Forge => {
             let forge = ForgeModLoader::new();
             let lv = loader_version
                 .as_deref()
@@ -611,6 +611,7 @@ pub async fn launch_instance(
                     files_done: 0,
                     files_total: 0,
                 });
+                log::info!("Installing Forge {lv} for MC {mc_version}");
                 forge
                     .install_client(&mc_version, lv, &instance_path, &game.client_jar, &java_path)
                     .await
@@ -631,6 +632,47 @@ pub async fn launch_instance(
                     &instance_path,
                 )
                 .map_err(|e| format!("Forge launch failed: {e}"))?
+        }
+        LoaderType::Neoforge => {
+            let forge = ForgeModLoader::new();
+            let lv = loader_version
+                .as_deref()
+                .ok_or("NeoForge loader version not set")?;
+
+            if !loader_marker.exists() {
+                emit_progress(&app, &InstallProgress {
+                    instance_id,
+                    instance_name: instance_name.clone(),
+                    stage: "loader".into(),
+                    stage_label: "Installing NeoForge...".into(),
+                    progress: 0.5,
+                    files_done: 0,
+                    files_total: 0,
+                });
+                log::info!("Installing NeoForge {lv} for MC {mc_version}");
+                // NeoForge uses its own Maven repository
+                let installer_url = minecraft_modloaders::neoforge::NeoForgeVersions::installer_url(lv);
+                log::info!("NeoForge installer URL: {installer_url}");
+                forge
+                    .install_client_from_url(&installer_url, &mc_version, lv, &instance_path, &game.client_jar, &java_path)
+                    .await
+                    .map_err(|e| format!("NeoForge install failed: {e}"))?;
+                let _ = std::fs::write(&loader_marker, format!("neoforge-{lv}-{mc_version}"));
+            }
+
+            forge
+                .run_forge_client(
+                    &instance_path,
+                    &game.client_jar,
+                    &mc_version,
+                    lv,
+                    &jvm_args,
+                    &java_path,
+                    &assets_dir,
+                    &game.asset_index,
+                    &instance_path,
+                )
+                .map_err(|e| format!("NeoForge launch failed: {e}"))?
         }
         LoaderType::Quilt => {
             let fabric = FabricModLoader::new();

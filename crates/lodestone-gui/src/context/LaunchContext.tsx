@@ -68,10 +68,10 @@ export function LaunchProvider({children}: { children: ReactNode }) {
             setInstalling((prev) => {
                 const progress = prev.get(id);
                 if (progress) {
-                    setCompleted((c) => [
-                        {instanceId: id, instanceName: progress.instanceName, completedAt: Date.now()},
-                        ...c,
-                    ].slice(0, 20));
+                    setCompleted((c) => {
+                        if (c.some(x => x.instanceId === id)) return c;
+                        return [{instanceId: id, instanceName: progress.instanceName, completedAt: Date.now()}, ...c].slice(0, 20);
+                    });
                 }
                 const next = new Map(prev);
                 next.delete(id);
@@ -95,10 +95,10 @@ export function LaunchProvider({children}: { children: ReactNode }) {
                 next.delete(instanceId);
                 return next;
             });
-            setCompleted((c) => [
-                {instanceId, instanceName, completedAt: Date.now()},
-                ...c,
-            ].slice(0, 20));
+            setCompleted((c) => {
+                if (c.some(x => x.instanceId === instanceId)) return c;
+                return [{instanceId, instanceName, completedAt: Date.now()}, ...c].slice(0, 20);
+            });
         }).then((u) => unlisteners.push(u));
 
         return () => {

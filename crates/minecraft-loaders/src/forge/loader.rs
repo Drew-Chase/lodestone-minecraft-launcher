@@ -163,6 +163,40 @@ impl ForgeModLoader {
         )
     }
 
+    /// Install a Forge-compatible client from a custom installer URL.
+    /// Used by NeoForge which has a different Maven repository but the
+    /// same installer JAR format.
+    pub async fn install_client_from_url(
+        &self,
+        installer_url: &str,
+        minecraft_version: &str,
+        loader_version: &str,
+        library_directory: &Path,
+        client_path: &Path,
+        _java_path: &Path,
+    ) -> Result<PathBuf> {
+        let era = ForgeEra::from_minecraft_version(minecraft_version);
+        fs::create_dir_all(library_directory).await?;
+
+        let installer_path = library_directory.join(format!(
+            "loader-{}-{}-installer.jar",
+            minecraft_version, loader_version
+        ));
+
+        Self::download_file(installer_url, &installer_path).await?;
+
+        Self::extract_and_install_client(
+            &installer_path,
+            library_directory,
+            minecraft_version,
+            loader_version,
+            era,
+        ).await?;
+
+        let _ = fs::remove_file(&installer_path).await;
+        Ok(client_path.to_path_buf())
+    }
+
     /// Downloads a file from a URL to the specified path.
     async fn download_file(url: &str, output_path: &Path) -> Result<PathBuf> {
         let response = reqwest::get(url)
