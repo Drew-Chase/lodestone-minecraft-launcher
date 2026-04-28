@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useState} from "react";
 import {Button, Input} from "@heroui/react";
 import {invoke} from "@tauri-apps/api/core";
+import {listen} from "@tauri-apps/api/event";
 import TitleBar from "../components/shell/TitleBar";
 import {I} from "../components/shell/icons";
 import HeroBanner from "../components/library/HeroBanner";
@@ -23,6 +24,7 @@ interface InstanceConfig {
     created_at: string;
     last_played: string | null;
     instance_path: string;
+    mod_count?: number;
 }
 
 export default function Home() {
@@ -41,6 +43,13 @@ export default function Home() {
 
     useEffect(() => {
         fetchInstances();
+        // Auto-refresh when instances are created, deleted, or imported
+        const unlisten = listen("instances-changed", () => {
+            fetchInstances();
+        });
+        return () => {
+            unlisten.then((fn) => fn());
+        };
     }, [fetchInstances]);
 
     const featured = instances[0];

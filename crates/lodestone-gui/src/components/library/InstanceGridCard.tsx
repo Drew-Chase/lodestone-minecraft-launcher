@@ -19,6 +19,7 @@ export default function InstanceGridCard({instance: inst, onDeleteRequest}: Prop
     const running = isRunning(inst.id);
     const installing = isInstalling(inst.id);
     const bannerUrl = useInstanceImage(inst.instancePath, "banner.png");
+    const iconUrl = useInstanceImage(inst.instancePath, "icon.png");
     const openDetail = () => navigate(`/library/${toSlug(inst.name)}`);
     const stop = (e: React.MouseEvent) => e.stopPropagation();
 
@@ -71,7 +72,12 @@ export default function InstanceGridCard({instance: inst, onDeleteRequest}: Prop
                             "linear-gradient(180deg, transparent 50%, rgba(0,0,0,0.75) 100%)",
                     }}
                 />
-                <div className="absolute bottom-2.5 left-3 right-3 flex items-end z-[2]">
+                <div className="absolute bottom-2.5 left-3 right-3 flex items-end z-[2] gap-2.5">
+                    {iconUrl && (
+                        <div className="w-10 h-10 rounded-lg flex-shrink-0 overflow-hidden" style={{boxShadow: "0 4px 12px rgba(0,0,0,0.5)"}}>
+                            <img src={iconUrl} alt="" className="w-full h-full object-cover"/>
+                        </div>
+                    )}
                     <div className="min-w-0 flex-1">
                         <div className="text-[0.8125rem] font-bold truncate">{inst.name}</div>
                         <div className="font-mono text-[0.625rem] text-ink-2">{inst.version}</div>

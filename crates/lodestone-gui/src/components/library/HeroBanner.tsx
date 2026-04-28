@@ -15,8 +15,6 @@ type HeroBannerProps = {
     onDeleteRequest: (inst: Instance) => void;
 };
 
-// The "now playing" hero at the top of the Library. Scene + particles backdrop,
-// chips, title, description, Resume Session cluster, and the stats pill.
 export default function HeroBanner({featured, onDeleteRequest}: HeroBannerProps) {
     const navigate = useNavigate();
     const {launchInstance, stopInstance, isRunning, isInstalling} = useLaunch();
@@ -24,6 +22,10 @@ export default function HeroBanner({featured, onDeleteRequest}: HeroBannerProps)
     const installing = isInstalling(featured.id);
     const bannerUrl = useInstanceImage(featured.instancePath, "banner.png");
     const iconUrl = useInstanceImage(featured.instancePath, "icon.png");
+
+    const loaderChip = featured.loader !== "Vanilla" && featured.loaderVersion
+        ? `${featured.loader.toUpperCase()} ${featured.loaderVersion}`
+        : featured.loader.toUpperCase();
 
     return (
         <div className="relative h-[260px] rounded-[20px] overflow-hidden mb-7 shadow-[0_20px_40px_-20px_rgba(0,0,0,0.8)]">
@@ -36,14 +38,13 @@ export default function HeroBanner({featured, onDeleteRequest}: HeroBannerProps)
             <div
                 className="absolute inset-0 flex items-end p-8"
                 style={{
-                    // Horizontal fade uses three rgba stops — keep inline.
                     background:
                         "linear-gradient(90deg, rgba(8,9,10,0.92) 0%, rgba(8,9,10,0.6) 45%, transparent 80%)",
                 }}
             >
                 {iconUrl && (
                     <div
-                        className="w-[90px] h-[90px] rounded-[14px] flex-shrink-0 overflow-hidden mr-5"
+                        className="w-[90px] h-[90px] rounded-[14px] flex-shrink-0 overflow-hidden mr-5 self-end mb-1"
                         style={{boxShadow: "0 12px 30px -6px rgba(0,0,0,0.7), 0 0 0 2px rgba(255,255,255,0.06)"}}
                     >
                         <img src={iconUrl} alt={featured.name} className="w-full h-full object-cover"/>
@@ -51,18 +52,24 @@ export default function HeroBanner({featured, onDeleteRequest}: HeroBannerProps)
                 )}
                 <div className="max-w-[500px]">
                     <div className="flex items-center gap-2 mb-3">
-                        <Chip variant="green">
-                            <span className="pulse-dot" style={{width: 6, height: 6}}/> NOW PLAYING
-                        </Chip>
-                        <Chip variant="violet">FABRIC 0.14.21</Chip>
-                        <Chip>MC 1.20.1</Chip>
+                        {running && (
+                            <Chip variant="green">
+                                <span className="pulse-dot" style={{width: 6, height: 6}}/> NOW PLAYING
+                            </Chip>
+                        )}
+                        {installing && (
+                            <Chip variant="cyan">
+                                <span className="pulse-dot" style={{width: 6, height: 6}}/> INSTALLING
+                            </Chip>
+                        )}
+                        <Chip variant={featured.color}>{loaderChip}</Chip>
+                        <Chip>MC {featured.mc}</Chip>
                     </div>
                     <div className="text-[2.5rem] font-extrabold -tracking-[1px] leading-none mb-2">
                         {featured.name}
                     </div>
                     <div className="text-[0.8125rem] text-ink-2 mb-5 leading-relaxed">
-                        Climb the floating islands, battle Slider bosses, uncover a continent hanging in the void.
-                        <span className="text-mc-green ml-1.5">{featured.mods} mods</span>{" "}
+                        <span className="text-mc-green">{featured.mods} mods</span>{" "}
                         · last played {featured.lastPlayed}
                     </div>
                     <div className="flex gap-2.5">
@@ -120,10 +127,6 @@ export default function HeroBanner({featured, onDeleteRequest}: HeroBannerProps)
                         </InstanceActionsDropdown>
                     </div>
                 </div>
-            </div>
-            {/* Stats pill */}
-            <div className="font-mono absolute top-6 right-6 text-[0.6875rem] text-ink-2 px-2.5 py-1.5 rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.55)] backdrop-blur-md flex items-center gap-1.5">
-                <I.cpu size={12}/> 2.1 GB / 6 GB · 58 FPS
             </div>
         </div>
     );

@@ -5,6 +5,7 @@ import {I} from "../shell/icons";
 import {cardHoverClass, cardSurfaceStyle, toSlug, type Instance} from "./instances";
 import InstanceActionsDropdown from "./InstanceActionsDropdown";
 import {useLaunch} from "../../context/LaunchContext";
+import {useInstanceImage} from "../../hooks/useInstanceImage";
 
 type Props = {
     instance: Instance;
@@ -18,12 +19,11 @@ export default function InstanceCompactCard({instance: inst, onDeleteRequest}: P
     const {launchInstance, stopInstance, isRunning, isInstalling} = useLaunch();
     const running = isRunning(inst.id);
     const installing = isInstalling(inst.id);
+    const iconUrl = useInstanceImage(inst.instancePath, "icon.png");
     const openDetail = () => navigate(`/library/${toSlug(inst.name)}`);
     const stop = (e: React.MouseEvent) => e.stopPropagation();
 
     return (
-        // Plain div for consistency with InstanceGridCard (and to avoid HeroUI Card's
-        // hover-scale effect fighting the shared cardHoverClass translate-y).
         <div
             role="button"
             tabIndex={0}
@@ -38,7 +38,12 @@ export default function InstanceCompactCard({instance: inst, onDeleteRequest}: P
             style={{...cardSurfaceStyle, maxWidth: 500}}
         >
             {/* Row 1 */}
-            <div className="flex items-center gap-1.5 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+                {iconUrl && (
+                    <div className="w-7 h-7 rounded-md flex-shrink-0 overflow-hidden">
+                        <img src={iconUrl} alt="" className="w-full h-full object-cover"/>
+                    </div>
+                )}
                 <div className="text-xs font-bold tracking-tight overflow-hidden text-ellipsis whitespace-nowrap flex-1 text-left">
                     {inst.name}
                 </div>

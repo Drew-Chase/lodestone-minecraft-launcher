@@ -69,22 +69,39 @@ pub async fn create_instance(
     ensure_manager(&state, &app).await?;
     let guard = state.lock().await;
     let mgr = guard.as_ref().unwrap();
-    mgr.create(params)
+    let result = mgr.create(params)
         .await
-        .map_err(|e| format!("failed to create instance: {e}"))
+        .map_err(|e| format!("failed to create instance: {e}"))?;
+    emit_instances_changed(&app);
+    Ok(result)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceWithMods {
+    #[serde(flatten)]
+    pub config: InstanceConfig,
+    pub mod_count: u32,
 }
 
 #[tauri::command]
 pub async fn list_instances(
     state: tauri::State<'_, InstanceManagerState>,
     app: tauri::AppHandle,
-) -> Result<Vec<InstanceConfig>, String> {
+) -> Result<Vec<InstanceWithMods>, String> {
     ensure_manager(&state, &app).await?;
     let guard = state.lock().await;
     let mgr = guard.as_ref().unwrap();
-    mgr.list()
+    let configs = mgr.list()
         .await
-        .map_err(|e| format!("failed to list instances: {e}"))
+        .map_err(|e| format!("failed to list instances: {e}"))?;
+    Ok(configs
+        .into_iter()
+        .map(|config| {
+            let mod_count = count_mods(&config.instance_path);
+            InstanceWithMods { config, mod_count }
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -98,7 +115,9 @@ pub async fn delete_instance(
     let mgr = guard.as_ref().unwrap();
     mgr.delete(id)
         .await
-        .map_err(|e| format!("failed to delete instance: {e}"))
+        .map_err(|e| format!("failed to delete instance: {e}"))?;
+    emit_instances_changed(&app);
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]
@@ -418,6 +437,29 @@ pub async fn get_instance_details(instance_path: String) -> Result<InstanceDetai
 // ---------------------------------------------------------------------------
 // Mods
 // ---------------------------------------------------------------------------
+
+/// Count .jar files in an instance's mods/ directory.
+fn count_mods(instance_path: &str) -> u32 {
+    let mods_dir = PathBuf::from(instance_path).join("mods");
+    if !mods_dir.exists() {
+        return 0;
+    }
+    std::fs::read_dir(&mods_dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|e| {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    name.ends_with(".jar") || name.ends_with(".jar.disabled")
+                })
+                .count() as u32
+        })
+        .unwrap_or(0)
+}
+
+fn emit_instances_changed(app: &tauri::AppHandle) {
+    let _ = app.emit("instances-changed", ());
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1681,6 +1723,7 @@ async fn install_modpack_from_archive(
         instance_id: real_id,
         instance_name: pack_name,
     });
+    emit_instances_changed(app);
 
     Ok(instance)
 }
