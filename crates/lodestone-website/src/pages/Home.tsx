@@ -3,7 +3,7 @@ import Marquee from "../components/Marquee.tsx";
 import Features from "../components/Features.tsx";
 import ShowcaseSplits from "../components/ShowcaseSplits.tsx";
 import Steps from "../components/Steps.tsx";
-import Quotes from "../components/Quotes.tsx";
+// import Quotes from "../components/Quotes.tsx";
 import Pricing from "../components/Pricing.tsx";
 import OpenSource from "../components/OpenSource.tsx";
 import FinalCTA from "../components/FinalCTA.tsx";
@@ -17,7 +17,7 @@ export default function Home() {
             <Features/>
             <ShowcaseSplits/>
             <Steps/>
-            <Quotes/>
+            {/*<Quotes/>*/}
             <Pricing/>
             <OpenSource/>
             <FinalCTA/>

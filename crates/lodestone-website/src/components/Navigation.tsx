@@ -29,7 +29,7 @@ export default function Navigation() {
                     <div className="nav-links">
                         <a href="#features">Features</a>
                         <a href="#pricing">Pricing</a>
-                        <a href="#community">Community</a>
+                        {/*<a href="#community">Community</a>*/}
                         <a href="#open-source">Open Source</a>
                         <a href="https://github.com/drew-chase/lodestone-minecraft-launcher/wiki" target="_blank" rel="noopener noreferrer">Docs</a>
                     </div>
@@ -62,7 +62,7 @@ export default function Navigation() {
                 <div className="mobile-drawer-links">
                     <a href="#features" onClick={() => setOpen(false)}>Features</a>
                     <a href="#pricing" onClick={() => setOpen(false)}>Pricing</a>
-                    <a href="#community" onClick={() => setOpen(false)}>Community</a>
+                    {/*<a href="#community" onClick={() => setOpen(false)}>Community</a>*/}
                     <a href="#open-source" onClick={() => setOpen(false)}>Open Source</a>
                     <a href="https://github.com/drew-chase/lodestone-minecraft-launcher/wiki" target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}>Docs</a>
                 </div>
