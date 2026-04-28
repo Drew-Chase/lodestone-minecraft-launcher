@@ -78,13 +78,16 @@ export default function ContentBrowser({
         filters.categories.length + filters.loaders.length +
         filters.versions.length + filters.environment.length;
 
-    // Install handler (instance mode)
+    // Whether install buttons should show for the current content type
+    const showInstallButtons = isInstanceMode || contentType === "modpack";
+
+    // Install handler
     const handleInstall = useCallback(async (item: ContentItem) => {
-        if (!instanceId || !instancePath || !mcVersion || !loader) return;
         setInstalling(prev => new Set([...prev, item.id]));
         try {
             if (contentType === "modpack") {
-                // For modpacks, fetch latest version and install
+                // Modpack install works in both discover and instance mode —
+                // downloads archive and creates a new instance.
                 const versions = await invoke<{id: string}[]>("get_project_versions", {
                     projectId: item.id,
                     platform: item.platform.toLowerCase(),
@@ -96,7 +99,8 @@ export default function ContentBrowser({
                         platform: item.platform.toLowerCase(),
                     });
                 }
-            } else {
+            } else if (instanceId && instancePath && mcVersion && loader) {
+                // Mod/resource pack/shader/etc install requires an instance
                 await invoke("install_mod", {
                     instanceId, instancePath, projectId: item.id,
                     platform: item.platform.toLowerCase(), mcVersion, loader: loader.toLowerCase(),
@@ -194,7 +198,7 @@ export default function ContentBrowser({
                                         key={`${item.id}-${i}`}
                                         item={item}
                                         onClick={() => handleItemClick(item)}
-                                        onInstall={isInstanceMode ? () => handleInstall(item) : undefined}
+                                        onInstall={showInstallButtons ? () => handleInstall(item) : undefined}
                                         installing={installing.has(item.id)}
                                         installed={installed.has(item.id)}
                                     />
@@ -208,7 +212,7 @@ export default function ContentBrowser({
                                         key={`${item.id}-${i}`}
                                         item={item}
                                         onClick={() => handleItemClick(item)}
-                                        onInstall={isInstanceMode ? () => handleInstall(item) : undefined}
+                                        onInstall={showInstallButtons ? () => handleInstall(item) : undefined}
                                         installing={installing.has(item.id)}
                                         installed={installed.has(item.id)}
                                     />
@@ -223,7 +227,7 @@ export default function ContentBrowser({
                                         item={item}
                                         isLast={i === results.length - 1}
                                         onClick={() => handleItemClick(item)}
-                                        onInstall={isInstanceMode ? () => handleInstall(item) : undefined}
+                                        onInstall={showInstallButtons ? () => handleInstall(item) : undefined}
                                         installing={installing.has(item.id)}
                                         installed={installed.has(item.id)}
                                     />
