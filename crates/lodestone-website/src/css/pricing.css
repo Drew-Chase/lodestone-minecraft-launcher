@@ -1,0 +1,113 @@
+/* ────── Pricing ────── */
+.billing-toggle {
+  display: inline-flex; align-items: center; gap: 0;
+  padding: 5px; margin: 36px auto 0;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--line);
+  position: relative;
+}
+.billing-toggle button {
+  position: relative; z-index: 2;
+  padding: 9px 22px; border-radius: 999px;
+  font-family: var(--display); font-size: 13px; font-weight: 600; letter-spacing: 0.2px;
+  background: transparent; border: none; color: var(--ink-3);
+  cursor: pointer; transition: color 0.25s;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.billing-toggle button.on { color: #0a1f12; }
+.billing-toggle .knob {
+  position: absolute; top: 5px; bottom: 5px;
+  border-radius: 999px; background: var(--mc-green);
+  box-shadow: 0 4px 14px -4px var(--mc-green-glow);
+  transition: left 0.3s cubic-bezier(0.4, 0.0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+  z-index: 1;
+}
+.billing-toggle .save-pill {
+  display: inline-flex; padding: 2px 7px; border-radius: 999px;
+  font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+  background: rgba(34,255,132,0.18); color: var(--mc-green);
+  border: 1px solid rgba(34,255,132,0.35);
+}
+.billing-toggle button.on .save-pill {
+  background: rgba(0,0,0,0.18); color: #0a1f12; border-color: transparent;
+}
+
+.pricing-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 56px;
+}
+.price-card {
+  position: relative;
+  padding: 32px 28px 28px;
+  border-radius: 18px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 18px;
+  transition: all 0.25s;
+}
+.price-card:hover { transform: translateY(-3px); border-color: var(--line-strong); }
+.price-card.featured {
+  background: linear-gradient(180deg, rgba(34,255,132,0.06) 0%, var(--bg-1) 60%);
+  border-color: rgba(34,255,132,0.4);
+  box-shadow: 0 0 0 1px rgba(34,255,132,0.15), 0 30px 80px -30px rgba(34,255,132,0.4);
+}
+.price-card .badge {
+  position: absolute; top: -10px; right: 24px;
+  padding: 4px 10px; border-radius: 999px;
+  background: var(--mc-green); color: #0a1f12;
+  font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 1px;
+}
+.price-name {
+  font-family: var(--display); font-size: 14px; font-weight: 600;
+  color: var(--mc-green); letter-spacing: 1.5px; text-transform: uppercase;
+}
+.price-card.solo .price-name { color: var(--cyan); }
+.price-card.unlimited .price-name { color: var(--violet); }
+.price-amount {
+  font-family: var(--display); font-size: 52px; font-weight: 700;
+  letter-spacing: -2px; line-height: 1; display: flex; align-items: baseline; gap: 4px;
+}
+.price-amount .per { font-size: 14px; color: var(--ink-3); font-weight: 500; letter-spacing: 0; }
+.price-tagline { font-size: 13.5px; color: var(--ink-2); line-height: 1.5; }
+.price-billed {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-3);
+  letter-spacing: 0.3px; margin-top: -10px;
+  display: flex; align-items: center; gap: 6px; min-height: 14px;
+}
+.price-billed s { color: rgba(255,255,255,0.25); }
+.price-billed .save {
+  color: var(--mc-green); font-weight: 700;
+}
+.price-card .feats { display: flex; flex-direction: column; gap: 11px; flex: 1; }
+.price-card .feats li {
+  list-style: none; display: flex; gap: 10px; align-items: flex-start;
+  font-size: 13px; color: var(--ink-1); line-height: 1.45;
+}
+.price-card .feats .ic {
+  flex-shrink: 0; width: 16px; height: 16px; border-radius: 5px;
+  background: rgba(34,255,132,0.14); color: var(--mc-green);
+  display: flex; align-items: center; justify-content: center; margin-top: 2px;
+}
+.price-card .feats li.muted { color: var(--ink-3); }
+.price-card .feats li.muted .ic { background: rgba(255,255,255,0.05); color: var(--ink-3); }
+.price-cta {
+  margin-top: 4px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 16px; border-radius: 10px;
+  font-size: 13px; font-weight: 700;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--line);
+  color: var(--ink-1); transition: all 0.2s;
+}
+.price-card.featured .price-cta {
+  background: var(--mc-green); color: #0a1f12;
+  box-shadow: 0 6px 18px -6px rgba(34,255,132,0.6);
+  border-color: transparent;
+}
+.price-card .price-cta:hover { background: rgba(255,255,255,0.08); }
+.price-card.featured .price-cta:hover { background: #34ff90; }
+
+.price-foot {
+  margin-top: 36px; text-align: center;
+  font-size: 12.5px; color: var(--ink-3); font-family: var(--mono);
+}
+.price-foot a { color: var(--mc-green); }

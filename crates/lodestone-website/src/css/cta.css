@@ -1,0 +1,33 @@
+/* ────── Final CTA ────── */
+.final-cta {
+  position: relative;
+  padding: 100px 0 120px;
+  text-align: center;
+  overflow: hidden;
+}
+.final-cta::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, rgba(34,255,132,0.12) 0%, transparent 60%);
+  pointer-events: none;
+}
+.final-cta h2 {
+  font-family: var(--display);
+  font-size: clamp(40px, 5vw, 64px);
+  font-weight: 700; letter-spacing: -2px; line-height: 1.05;
+  margin-bottom: 18px; text-wrap: balance;
+  position: relative;
+}
+.final-cta p { font-size: 17px; color: var(--ink-2); margin-bottom: 32px; position: relative; }
+.final-cta .actions { display: flex; gap: 12px; justify-content: center; position: relative; flex-wrap: wrap; }
+
+.os-buttons { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+.os-btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 12px 18px; border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--line);
+  font-size: 13px; color: var(--ink-1);
+  transition: all 0.2s;
+}
+.os-btn:hover { background: rgba(255,255,255,0.08); border-color: var(--line-strong); }
+.os-btn .os-meta { font-size: 11px; color: var(--ink-3); font-family: var(--mono); margin-left: 4px; }

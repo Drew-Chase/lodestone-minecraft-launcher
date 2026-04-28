@@ -1,0 +1,66 @@
+/* ────── Feature grid ────── */
+.features-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 56px;
+}
+.feature {
+  position: relative;
+  padding: 28px 26px 30px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0) 100%);
+  border: 1px solid var(--line);
+  transition: all 0.3s;
+  overflow: hidden;
+}
+.feature:hover {
+  border-color: rgba(34,255,132,0.25);
+  background: linear-gradient(180deg, rgba(34,255,132,0.04) 0%, rgba(34,255,132,0) 100%);
+  transform: translateY(-3px);
+}
+.feature-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: rgba(34,255,132,0.1);
+  border: 1px solid rgba(34,255,132,0.2);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--mc-green); margin-bottom: 22px;
+}
+.feature.violet .feature-icon { background: rgba(151,71,255,0.1); border-color: rgba(151,71,255,0.2); color: var(--violet); }
+.feature.cyan .feature-icon   { background: rgba(71,217,255,0.1); border-color: rgba(71,217,255,0.2); color: var(--cyan); }
+.feature.amber .feature-icon  { background: rgba(255,181,69,0.1); border-color: rgba(255,181,69,0.2); color: var(--amber); }
+.feature.pink .feature-icon   { background: rgba(255,94,200,0.1); border-color: rgba(255,94,200,0.2); color: var(--pink); }
+
+.feature h3 {
+  font-family: var(--display); font-size: 18px; font-weight: 600; letter-spacing: -0.3px;
+  margin-bottom: 8px;
+}
+.feature p { font-size: 13.5px; color: var(--ink-2); line-height: 1.55; }
+.feature .corner {
+  position: absolute; top: 0; right: 0; width: 80px; height: 80px;
+  background: radial-gradient(circle at top right, rgba(34,255,132,0.08), transparent 60%);
+  pointer-events: none;
+}
+
+/* ────── Sources / Modrinth + CurseForge ────── */
+.sources-card {
+  margin-top: 48px;
+  padding: 36px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(34,255,132,0.04) 0%, rgba(151,71,255,0.04) 100%);
+  border: 1px solid var(--line-strong);
+  display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center;
+}
+.source-logos { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+.source-logo {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 18px; border-radius: 12px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--line);
+}
+.source-logo .swatch {
+  width: 28px; height: 28px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700;
+}
+.source-logo .swatch.modrinth { background: rgba(34,255,132,0.15); color: var(--mc-green); }
+.source-logo .swatch.curse { background: rgba(255,181,69,0.15); color: var(--amber); }
+.source-logo .name { font-weight: 700; font-size: 14px; }
+.source-logo .meta { font-size: 11px; color: var(--ink-3); font-family: var(--mono); margin-top: 2px; }

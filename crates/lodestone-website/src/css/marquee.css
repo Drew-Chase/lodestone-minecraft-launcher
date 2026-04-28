@@ -1,0 +1,16 @@
+/* ────── Marquee strip ────── */
+.marquee {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 22px 0;
+  background: rgba(0,0,0,0.3);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.marquee-track { display: inline-flex; gap: 56px; animation: marq 40s linear infinite; }
+.marquee-track span {
+  font-family: var(--mono); font-size: 13px; color: var(--ink-3); letter-spacing: 0.3px;
+  display: inline-flex; align-items: center; gap: 10px;
+}
+.marquee-track span b { color: var(--mc-green); font-weight: 700; }
+@keyframes marq { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
