@@ -139,7 +139,7 @@ export function configToInstance(config: {
     created_at: string;
     last_played: string | null;
     instance_path: string;
-    mod_count?: number;
+    modCount?: number;
 }): Instance {
     const loaderLabel = loaderLabels[config.loader] ?? "Vanilla";
     const versionStr =
@@ -175,7 +175,7 @@ export function configToInstance(config: {
         seed,
         playtime: "0h",
         lastPlayed,
-        mods: config.mod_count ?? 0,
+        mods: config.modCount ?? 0,
         color: loaderColors[config.loader] ?? "green",
     };
 }

@@ -24,7 +24,7 @@ interface InstanceConfig {
     created_at: string;
     last_played: string | null;
     instance_path: string;
-    mod_count?: number;
+    modCount?: number;
 }
 
 export default function Home() {
