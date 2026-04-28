@@ -31,6 +31,12 @@ pub enum ContentError {
 
     #[error("unexpected response: {0}")]
     Unexpected(String),
+
+    #[error("invalid modpack archive: {0}")]
+    InvalidArchive(String),
+
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 /// Convenience alias used by trait and dispatch APIs.

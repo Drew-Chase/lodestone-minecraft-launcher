@@ -45,6 +45,7 @@
 
 pub mod error;
 pub mod model;
+pub mod modpack;
 pub mod platform;
 pub mod platforms;
 pub mod provider;
@@ -54,6 +55,10 @@ pub use model::{
     Author, ContentBase, DatapackItem, Dependency, DependencyKind, License, Links, ModItem,
     PackItem, ProjectVersion, ResourcePackItem, ShaderPackItem, SideSupport, VersionFile,
     VersionType, WorldItem,
+};
+pub use modpack::{
+    extract_overrides, parse_curseforge_pack, parse_modpack, parse_mrpack, ModpackFile,
+    ModpackFileEnv, ModpackManifest, ModpackSource,
 };
 pub use platform::{ContentType, Platform, SearchFilters, Sort};
 pub use platforms::{

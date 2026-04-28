@@ -198,6 +198,26 @@ pub(crate) async fn get_mod_files(
     Ok(body.data)
 }
 
+/// Fetch a single file by mod ID and file ID.
+pub(crate) async fn get_file(
+    client: &reqwest::Client,
+    api_key: Option<&str>,
+    mod_id: u64,
+    file_id: u64,
+) -> Result<CfFile> {
+    let key = require_key(api_key)?;
+    let resp = client
+        .get(format!("{BASE_URL}/mods/{mod_id}/files/{file_id}"))
+        .header("x-api-key", key)
+        .send()
+        .await?;
+
+    handle_common_status(&resp)?;
+    let resp = resp.error_for_status()?;
+    let body: Envelope<CfFile> = resp.json().await?;
+    Ok(body.data)
+}
+
 fn handle_common_status(resp: &reqwest::Response) -> Result<()> {
     match resp.status() {
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => Err(ContentError::BadRequest(

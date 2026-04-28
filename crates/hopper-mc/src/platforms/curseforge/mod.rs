@@ -164,6 +164,82 @@ impl CurseForgeProvider {
     fn exposed_key(&self) -> Option<&str> {
         self.api_key.as_ref().map(|s| s.expose_secret())
     }
+
+    /// Resolve download URLs for CurseForge modpack files.
+    ///
+    /// Iterates `files` that have `project_id` and `file_id` set but empty
+    /// `download_urls`, calls the CurseForge API to fetch each file's
+    /// metadata, and populates `download_urls`, `size`, and `path`.
+    ///
+    /// Files with restricted distribution (`download_url: null`) are left
+    /// with empty `download_urls`; the caller should handle this gracefully.
+    ///
+    /// Uses up to 8 concurrent API requests via a semaphore.
+    pub async fn resolve_pack_files(
+        &self,
+        files: &mut [crate::modpack::ModpackFile],
+    ) -> Result<()> {
+        use tokio::sync::Semaphore;
+        use std::sync::Arc;
+
+        let sem = Arc::new(Semaphore::new(8));
+        let client = &self.client;
+        let key = self.exposed_key();
+
+        let mut handles = Vec::new();
+
+        for (idx, file) in files.iter().enumerate() {
+            if !file.download_urls.is_empty() {
+                continue;
+            }
+            let (Some(pid_str), Some(fid_str)) = (&file.project_id, &file.file_id) else {
+                continue;
+            };
+            let Ok(mod_id) = pid_str.parse::<u64>() else {
+                continue;
+            };
+            let Ok(file_id) = fid_str.parse::<u64>() else {
+                continue;
+            };
+
+            let sem = Arc::clone(&sem);
+            let client = client.clone();
+            let key = key.map(|k| k.to_string());
+
+            handles.push(tokio::spawn(async move {
+                let _permit = sem.acquire().await.unwrap();
+                let result = api::get_file(&client, key.as_deref(), mod_id, file_id).await;
+                (idx, result)
+            }));
+        }
+
+        for handle in handles {
+            let (idx, result) = handle.await.map_err(|e| {
+                crate::error::ContentError::Unexpected(format!("task join error: {e}"))
+            })?;
+            match result {
+                Ok(cf_file) => {
+                    let entry = &mut files[idx];
+                    if let Some(url) = cf_file.download_url {
+                        entry.download_urls.push(url);
+                    }
+                    entry.size = cf_file.file_length;
+                    if entry.path.is_empty() {
+                        entry.path = format!("mods/{}", cf_file.file_name);
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to resolve CurseForge file {}/{}: {e}",
+                        files[idx].project_id.as_deref().unwrap_or("?"),
+                        files[idx].file_id.as_deref().unwrap_or("?"),
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for CurseForgeProvider {

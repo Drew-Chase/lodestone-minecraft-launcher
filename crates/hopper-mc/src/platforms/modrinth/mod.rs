@@ -91,7 +91,8 @@ impl ModProvider for ModrinthProvider {
 
     async fn get_mod(&self, id: &str) -> Result<Option<ModItem>> {
         let p = api::get_project(&self.client, id).await?;
-        Ok(p.map(mapping::mod_from_project))
+        Ok(p.filter(|p| p.project_type.as_deref() == Some("mod"))
+            .map(mapping::mod_from_project))
     }
 }
 
@@ -123,7 +124,8 @@ impl PackProvider for ModrinthProvider {
 
     async fn get_pack(&self, id: &str) -> Result<Option<PackItem>> {
         let p = api::get_project(&self.client, id).await?;
-        Ok(p.map(mapping::pack_from_project))
+        Ok(p.filter(|p| p.project_type.as_deref() == Some("modpack"))
+            .map(mapping::pack_from_project))
     }
 }
 
@@ -155,7 +157,8 @@ impl DatapackProvider for ModrinthProvider {
 
     async fn get_datapack(&self, id: &str) -> Result<Option<DatapackItem>> {
         let p = api::get_project(&self.client, id).await?;
-        Ok(p.map(mapping::datapack_from_project))
+        Ok(p.filter(|p| p.project_type.as_deref() == Some("datapack"))
+            .map(mapping::datapack_from_project))
     }
 }
 
@@ -191,7 +194,8 @@ impl ResourcePackProvider for ModrinthProvider {
 
     async fn get_resourcepack(&self, id: &str) -> Result<Option<ResourcePackItem>> {
         let p = api::get_project(&self.client, id).await?;
-        Ok(p.map(mapping::resourcepack_from_project))
+        Ok(p.filter(|p| p.project_type.as_deref() == Some("resourcepack"))
+            .map(mapping::resourcepack_from_project))
     }
 }
 
@@ -227,7 +231,8 @@ impl ShaderPackProvider for ModrinthProvider {
 
     async fn get_shaderpack(&self, id: &str) -> Result<Option<ShaderPackItem>> {
         let p = api::get_project(&self.client, id).await?;
-        Ok(p.map(mapping::shaderpack_from_project))
+        Ok(p.filter(|p| p.project_type.as_deref() == Some("shader"))
+            .map(mapping::shaderpack_from_project))
     }
 }
 
