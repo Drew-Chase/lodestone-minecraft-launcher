@@ -1665,7 +1665,7 @@ async fn install_modpack_from_archive(
     }
 
     // 7. Save to recent-imports (DB + archive copy)
-    save_recent_import(state, app, archive_path, &manifest.name, &manifest.source).await?;
+    save_recent_import(state, app, archive_path, &manifest.name, &manifest.source, meta.as_ref()).await?;
 
     // 8. Signal completion — progress=1.0 then install-completed event
     emit_install_progress(app, &InstallProgressPayload {
@@ -1714,6 +1714,7 @@ async fn save_recent_import(
     archive_path: &Path,
     name: &str,
     source: &hopper_mc::ModpackSource,
+    meta: Option<&PackMeta>,
 ) -> Result<(), String> {
     let dir = recent_imports_dir(app)?;
     let file_hash = hash_file(archive_path)?;
@@ -1742,9 +1743,12 @@ async fn save_recent_import(
         hopper_mc::ModpackSource::CurseForge => "CurseForge",
     };
 
+    let icon = meta.and_then(|m| m.icon_url.as_deref());
+    let banner = meta.and_then(|m| m.banner_url.as_deref());
+
     let guard = state.lock().await;
     let mgr = guard.as_ref().unwrap();
-    mgr.add_recent_import(&file_hash, name, source_str, size_bytes, &dest_name)
+    mgr.add_recent_import(&file_hash, name, source_str, size_bytes, &dest_name, icon, banner)
         .await
         .map_err(|e| format!("failed to save recent import: {e}"))?;
 
@@ -1870,5 +1874,15 @@ pub async fn reimport_modpack(
         return Err(format!("archive file no longer exists: {}", entry.file_name));
     }
 
-    install_modpack_from_archive(&archive_path, &state, &app, None).await
+    let meta = if entry.icon_url.is_some() || entry.banner_url.is_some() {
+        Some(PackMeta {
+            icon_url: entry.icon_url,
+            banner_url: entry.banner_url,
+            platform: None,
+        })
+    } else {
+        None
+    };
+
+    install_modpack_from_archive(&archive_path, &state, &app, meta).await
 }

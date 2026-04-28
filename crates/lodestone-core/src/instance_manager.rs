@@ -101,12 +101,22 @@ impl InstanceManager {
                 source       TEXT    NOT NULL,
                 size_bytes   INTEGER NOT NULL,
                 imported_at  TEXT    NOT NULL,
-                file_name    TEXT    NOT NULL
+                file_name    TEXT    NOT NULL,
+                icon_url     TEXT,
+                banner_url   TEXT
             )
             "#,
         )
         .execute(&self.pool)
         .await?;
+
+        // Migration: add icon/banner columns if missing (for existing DBs)
+        let _ = sqlx::query("ALTER TABLE recent_imports ADD COLUMN icon_url TEXT")
+            .execute(&self.pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE recent_imports ADD COLUMN banner_url TEXT")
+            .execute(&self.pool)
+            .await;
 
         sqlx::query(
             r#"
@@ -405,12 +415,14 @@ impl InstanceManager {
         source: &str,
         size_bytes: i64,
         file_name: &str,
+        icon_url: Option<&str>,
+        banner_url: Option<&str>,
     ) -> anyhow::Result<i64> {
         let now = chrono::Utc::now().to_rfc3339();
         // Upsert: if hash exists, update timestamp and name
         sqlx::query(
-            r#"INSERT INTO recent_imports (file_hash, name, source, size_bytes, imported_at, file_name)
-               VALUES (?, ?, ?, ?, ?, ?)
+            r#"INSERT INTO recent_imports (file_hash, name, source, size_bytes, imported_at, file_name, icon_url, banner_url)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(file_hash) DO UPDATE SET imported_at = excluded.imported_at, name = excluded.name"#,
         )
         .bind(file_hash)
@@ -419,6 +431,8 @@ impl InstanceManager {
         .bind(size_bytes)
         .bind(&now)
         .bind(file_name)
+        .bind(icon_url)
+        .bind(banner_url)
         .execute(&self.pool)
         .await?;
 
@@ -449,43 +463,24 @@ impl InstanceManager {
     /// List all recent imports (max 3, most recent first).
     pub async fn list_recent_imports(&self) -> anyhow::Result<Vec<RecentImportRecord>> {
         let rows = sqlx::query(
-            "SELECT id, file_hash, name, source, size_bytes, imported_at, file_name FROM recent_imports ORDER BY imported_at DESC LIMIT 3",
+            "SELECT id, file_hash, name, source, size_bytes, imported_at, file_name, icon_url, banner_url FROM recent_imports ORDER BY imported_at DESC LIMIT 3",
         )
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows
-            .iter()
-            .map(|r| RecentImportRecord {
-                id: r.get("id"),
-                file_hash: r.get("file_hash"),
-                name: r.get("name"),
-                source: r.get("source"),
-                size_bytes: r.get("size_bytes"),
-                imported_at: r.get("imported_at"),
-                file_name: r.get("file_name"),
-            })
-            .collect())
+        Ok(rows.iter().map(row_to_recent_import).collect())
     }
 
     /// Get a single recent import by ID.
     pub async fn get_recent_import(&self, id: i64) -> anyhow::Result<Option<RecentImportRecord>> {
         let row = sqlx::query(
-            "SELECT id, file_hash, name, source, size_bytes, imported_at, file_name FROM recent_imports WHERE id = ?",
+            "SELECT id, file_hash, name, source, size_bytes, imported_at, file_name, icon_url, banner_url FROM recent_imports WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|r| RecentImportRecord {
-            id: r.get("id"),
-            file_hash: r.get("file_hash"),
-            name: r.get("name"),
-            source: r.get("source"),
-            size_bytes: r.get("size_bytes"),
-            imported_at: r.get("imported_at"),
-            file_name: r.get("file_name"),
-        }))
+        Ok(row.as_ref().map(row_to_recent_import))
     }
 
     // -----------------------------------------------------------------------
@@ -630,6 +625,8 @@ pub struct RecentImportRecord {
     pub size_bytes: i64,
     pub imported_at: String,
     pub file_name: String,
+    pub icon_url: Option<String>,
+    pub banner_url: Option<String>,
 }
 
 /// Record of a saved account.
@@ -659,6 +656,20 @@ fn row_to_config(row: &sqlx::sqlite::SqliteRow) -> InstanceConfig {
         created_at: row.get("created_at"),
         last_played: row.get("last_played"),
         instance_path: row.get("instance_path"),
+    }
+}
+
+fn row_to_recent_import(row: &sqlx::sqlite::SqliteRow) -> RecentImportRecord {
+    RecentImportRecord {
+        id: row.get("id"),
+        file_hash: row.get("file_hash"),
+        name: row.get("name"),
+        source: row.get("source"),
+        size_bytes: row.get("size_bytes"),
+        imported_at: row.get("imported_at"),
+        file_name: row.get("file_name"),
+        icon_url: row.get("icon_url"),
+        banner_url: row.get("banner_url"),
     }
 }
 
