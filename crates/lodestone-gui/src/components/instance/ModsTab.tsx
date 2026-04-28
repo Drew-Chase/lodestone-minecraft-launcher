@@ -4,20 +4,15 @@ import {invoke} from "@tauri-apps/api/core";
 import {open as shellOpen} from "@tauri-apps/plugin-shell";
 import {Switch} from "../Switch";
 import {I} from "../shell/icons";
-import {cardSurfaceStyle, cardHoverClass, type Instance} from "../library/instances";
-import SourceTabs from "../discover/SourceTabs";
-import SortSelect from "../discover/SortSelect";
-import ViewModeToggle from "../discover/ViewModeToggle";
-import FilterDrawer from "../discover/FilterDrawer";
+import {cardSurfaceStyle, type Instance} from "../library/instances";
 import SourceBadge from "../discover/SourceBadge";
 import DetailSidebar from "../discover/DetailSidebar";
 import SummaryTab from "../discover/SummaryTab";
 import GalleryTab from "../discover/GalleryTab";
 import DependenciesTab from "../discover/DependenciesTab";
-import useContentSearch from "../../hooks/useContentSearch";
-import {usePersistedState} from "../../hooks/usePersistedState";
-import {defaultFilterState, formatCount, formatSize, timeAgo} from "../../types/content";
-import type {ContentItem, Dependency, FilterState, ProjectVersion, SortKey, SourceKey, ViewMode} from "../../types/content";
+import ContentBrowser from "../discover/ContentBrowser";
+import {formatCount, formatSize, timeAgo} from "../../types/content";
+import type {ContentItem, Dependency, ProjectVersion} from "../../types/content";
 
 type Props = {
     instance: Instance;
@@ -106,7 +101,15 @@ export default function ModsTab({instance}: Props) {
     const filtered = mods.filter((m) => displayName(m.fileName).toLowerCase().includes(filter.toLowerCase()));
 
     if (browsing) {
-        return <ModBrowser instance={instance} onBack={() => { setBrowsing(false); fetchMods(); }}/>;
+        return (
+            <ContentBrowser
+                instanceId={instance.id}
+                instancePath={instance.instancePath}
+                mcVersion={instance.mc}
+                loader={instance.loader}
+                onBack={() => { setBrowsing(false); fetchMods(); }}
+            />
+        );
     }
 
     // Detail overlay for clicking an installed mod
@@ -180,132 +183,6 @@ export default function ModsTab({instance}: Props) {
             {mods.length > 0 && (
                 <div className="flex-shrink-0 text-xs text-ink-3 mt-2.5 font-mono">
                     {mods.filter((m) => m.enabled).length} enabled · {mods.filter((m) => !m.enabled).length} disabled · {mods.length} total
-                </div>
-            )}
-        </div>
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Full mod browser — reuses Discover components + detail overlay
-// ---------------------------------------------------------------------------
-
-function ModBrowser({instance, onBack}: { instance: Instance; onBack: () => void }) {
-    const [source, setSource] = useState<SourceKey>("modrinth");
-    const [query, setQuery] = useState("");
-    const [sort, setSort] = useState<SortKey>("downloads");
-    const [viewMode, setViewMode] = usePersistedState<ViewMode>("modBrowser.viewMode", "grid");
-    const [showFilter, setShowFilter] = useState(false);
-    const [filters, setFilters] = useState<FilterState>({
-        ...defaultFilterState,
-        loaders: [instance.loader.toLowerCase()],
-        versions: [instance.mc],
-    });
-    const [installing, setInstalling] = useState<Set<string>>(new Set());
-    const [installed, setInstalled] = useState<Set<string>>(new Set());
-    const [detailItem, setDetailItem] = useState<ContentItem | null>(null);
-
-    const {results, loading, error, hasMore, sentinelRef} = useContentSearch({
-        query, sort, source, contentType: "mod", filters,
-    });
-
-    const activeFilterCount = filters.categories.length + filters.loaders.length + filters.versions.length + filters.environment.length;
-
-    const handleInstall = async (item: ContentItem) => {
-        setInstalling((prev) => new Set([...prev, item.id]));
-        try {
-            await invoke("install_mod", {
-                instanceId: instance.id, instancePath: instance.instancePath, projectId: item.id,
-                platform: item.platform.toLowerCase(), mcVersion: instance.mc, loader: instance.loader.toLowerCase(),
-                projectName: item.title,
-            });
-            setInstalled((prev) => new Set([...prev, item.id]));
-        } catch (e) { console.error("Install failed:", e); }
-        finally {
-            setInstalling((prev) => { const n = new Set(prev); n.delete(item.id); return n; });
-        }
-    };
-
-    const openDetail = async (item: ContentItem) => {
-        try {
-            const full = await invoke<ContentItem | null>("get_content", {
-                id: item.slug || item.id,
-                platform: item.platform.toLowerCase(),
-                contentType: "mod",
-            });
-            setDetailItem(full ?? item);
-        } catch {
-            setDetailItem(item);
-        }
-    };
-
-    return (
-        <div className="flex-1 flex flex-col overflow-hidden relative">
-            {/* Toolbar */}
-            <div className="flex-shrink-0 flex items-center gap-3 flex-wrap border-b border-line" style={{padding: "14px 28px"}}>
-                <Button variant="bordered" size="sm" startContent={<I.chevRight size={13} className="rotate-180"/>} onPress={onBack}>Back</Button>
-                <div className="relative" style={{width: 300}}>
-                    <Input placeholder="Search mods…" value={query} onValueChange={setQuery} startContent={<I.search size={14} style={{color: "var(--ink-3)"}}/>}
-                        size="sm" variant="bordered" classNames={{inputWrapper: "border-line bg-[rgba(0,0,0,0.3)]"}}/>
-                </div>
-                <SourceTabs active={source} contentType="mod" onChange={setSource}/>
-                <div className="flex-1"/>
-                <SortSelect value={sort} onChange={setSort}/>
-                <button onClick={() => setShowFilter(true)} className="cursor-pointer flex items-center gap-2"
-                    style={{padding: "7px 12px", fontSize: 12, fontWeight: 600, borderRadius: 8,
-                        border: activeFilterCount > 0 ? "1px solid rgba(34,255,132,0.4)" : "1px solid var(--line)",
-                        background: activeFilterCount > 0 ? "rgba(34,255,132,0.08)" : "transparent",
-                        color: activeFilterCount > 0 ? "var(--mc-green)" : "var(--ink-2)"}}>
-                    <I.filter size={14}/> Filters
-                    {activeFilterCount > 0 && <span style={{padding: "1px 6px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: "rgba(34,255,132,0.14)", color: "var(--mc-green)"}}>{activeFilterCount}</span>}
-                </button>
-                <ViewModeToggle value={viewMode} onChange={setViewMode}/>
-                <span style={{fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--mono)"}}>{results.length} result{results.length !== 1 ? "s" : ""}</span>
-            </div>
-
-            {/* Results */}
-            <div className="flex-1 overflow-y-auto" style={{padding: "20px 28px 40px"}}>
-                {error && <div className="border border-line rounded-xl flex items-center gap-3 mb-3.5" style={{padding: 16, background: "rgba(255,80,80,0.06)", borderColor: "rgba(255,80,80,0.2)", color: "#ff5050", fontSize: 12}}><I.x size={14}/> {error}</div>}
-                {loading && results.length === 0 ? (
-                    <div className="flex items-center justify-center py-20"><Spinner size="lg" color="success"/></div>
-                ) : results.length === 0 && !loading ? (
-                    <div className="flex flex-col items-center justify-center py-20 gap-3">
-                        <I.search size={40} style={{color: "var(--ink-4)"}}/>
-                        <span style={{fontSize: 14, color: "var(--ink-3)"}}>No results found</span>
-                    </div>
-                ) : (
-                    <>
-                        {viewMode === "grid" && (
-                            <div style={{display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14}}>
-                                {results.map((item, i) => <InstallableCard key={`${item.id}-${i}`} item={item} installing={installing.has(item.id)} installed={installed.has(item.id)} onInstall={() => handleInstall(item)} onClick={() => openDetail(item)}/>)}
-                            </div>
-                        )}
-                        {viewMode === "compact" && (
-                            <div style={{display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10}}>
-                                {results.map((item, i) => <InstallableCompact key={`${item.id}-${i}`} item={item} installing={installing.has(item.id)} installed={installed.has(item.id)} onInstall={() => handleInstall(item)} onClick={() => openDetail(item)}/>)}
-                            </div>
-                        )}
-                        {viewMode === "table" && (
-                            <div className="rounded-md border border-line overflow-hidden" style={cardSurfaceStyle}>
-                                {results.map((item, i) => <InstallableRow key={`${item.id}-${i}`} item={item} isLast={i === results.length - 1} installing={installing.has(item.id)} installed={installed.has(item.id)} onInstall={() => handleInstall(item)} onClick={() => openDetail(item)}/>)}
-                            </div>
-                        )}
-                        {hasMore && <div ref={sentinelRef} className="flex items-center justify-center py-6">{loading && <Spinner size="sm" color="success"/>}</div>}
-                        {!hasMore && results.length > 0 && <div className="flex items-center justify-center py-6" style={{fontSize: 12, color: "var(--ink-4)", fontFamily: "var(--mono)"}}>End of results</div>}
-                    </>
-                )}
-            </div>
-            <FilterDrawer isOpen={showFilter} onClose={() => setShowFilter(false)} filters={filters} onChange={setFilters} contentType="mod" source={source}/>
-
-            {/* Detail overlay — covers everything, browser stays mounted underneath */}
-            {detailItem && (
-                <div className="fixed top-0 right-0 bottom-0 z-50 flex flex-col" style={{left: 68, background: "var(--bg-0)"}}>
-                    <ModDetailOverlay
-                        item={detailItem}
-                        instance={instance}
-                        onBack={() => setDetailItem(null)}
-                        onInstalled={(id) => setInstalled((prev) => new Set([...prev, id]))}
-                    />
                 </div>
             )}
         </div>
@@ -864,56 +741,3 @@ function InstanceVersionsTab({projectId, platform, instance, onInstalled, curren
     );
 }
 
-// ---------------------------------------------------------------------------
-// Card variants with Install button + onClick for detail
-// ---------------------------------------------------------------------------
-
-function InstallButton({installing, installed, onInstall}: { installing: boolean; installed: boolean; onInstall: () => void }) {
-    if (installed) return <Button size="sm" variant="flat" className="font-bold text-mc-green" isDisabled startContent={<I.check size={12}/>}>Installed</Button>;
-    if (installing) return <Button size="sm" variant="bordered" isDisabled startContent={<div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"/>}>Installing</Button>;
-    return <Button color="success" size="sm" className="font-bold" startContent={<I.download size={12}/>} onPress={onInstall}>Install</Button>;
-}
-
-function InstallableCard({item, installing, installed, onInstall, onClick}: { item: ContentItem; installing: boolean; installed: boolean; onInstall: () => void; onClick: () => void }) {
-    return (
-        <div className={`border border-line rounded-xl overflow-hidden cursor-pointer ${cardHoverClass}`} style={cardSurfaceStyle} onClick={onClick}>
-            <div className="relative flex items-center justify-center" style={{height: 130, background: "rgba(0,0,0,0.25)", overflow: "hidden"}}>
-                {item.icon_url ? <img src={item.icon_url} alt={item.title} className="w-full h-full object-cover"/> : <I.box size={40} style={{color: "var(--ink-4)"}}/>}
-                {item.categories.length > 0 && <div className="absolute top-2 left-2 flex gap-1 flex-wrap">{item.categories.slice(0, 2).map(c => <span key={c} style={{fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(0,0,0,0.5)", color: "var(--ink-2)", backdropFilter: "blur(6px)"}}>{c}</span>)}</div>}
-                <div className="absolute bottom-2 left-2"><SourceBadge platform={item.platform}/></div>
-            </div>
-            <div style={{padding: "12px 14px"}}>
-                <div style={{fontSize: 13, fontWeight: 700, marginBottom: 2}} className="truncate">{item.title}</div>
-                <div style={{fontSize: 10, color: "var(--ink-3)"}} className="truncate">{item.authors?.map(a => a.name).join(", ") || "Unknown"}</div>
-                <div style={{fontSize: 11, color: "var(--ink-2)", lineHeight: 1.45, minHeight: 32, marginTop: 4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden"}}>{item.summary}</div>
-                <div className="flex items-center gap-2 mt-3" onClick={e => e.stopPropagation()}>
-                    <span className="flex items-center gap-1 text-ink-3 font-mono" style={{fontSize: 11}}><I.download size={11}/> {formatCount(item.downloads)}</span>
-                    <div className="flex-1"/>
-                    <InstallButton installing={installing} installed={installed} onInstall={onInstall}/>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function InstallableCompact({item, installing, installed, onInstall, onClick}: { item: ContentItem; installing: boolean; installed: boolean; onInstall: () => void; onClick: () => void }) {
-    return (
-        <div className={`border border-line rounded-xl px-3.5 py-3 flex items-center gap-3 cursor-pointer ${cardHoverClass}`} style={cardSurfaceStyle} onClick={onClick}>
-            {item.icon_url ? <img src={item.icon_url} alt="" className="w-9 h-9 rounded-lg flex-shrink-0 object-cover"/> : <div className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center border border-line bg-[rgba(255,255,255,0.04)] text-ink-3"><I.box size={16}/></div>}
-            <div className="min-w-0 flex-1"><div className="text-xs font-bold truncate">{item.title}</div><div className="text-[0.625rem] text-ink-3 truncate">{item.summary}</div></div>
-            <div onClick={e => e.stopPropagation()}><InstallButton installing={installing} installed={installed} onInstall={onInstall}/></div>
-        </div>
-    );
-}
-
-function InstallableRow({item, isLast, installing, installed, onInstall, onClick}: { item: ContentItem; isLast: boolean; installing: boolean; installed: boolean; onInstall: () => void; onClick: () => void }) {
-    return (
-        <div className={`flex items-center gap-3.5 px-4 py-3 transition-colors hover:bg-[rgba(255,255,255,0.02)] cursor-pointer ${isLast ? "" : "border-b border-line"}`} onClick={onClick}>
-            {item.icon_url ? <img src={item.icon_url} alt="" className="w-9 h-9 rounded-lg flex-shrink-0 object-cover"/> : <div className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center border border-line bg-[rgba(255,255,255,0.04)] text-ink-3"><I.box size={16}/></div>}
-            <div className="min-w-0 flex-1"><div className="text-[0.8125rem] font-semibold truncate">{item.title}</div><div className="text-[0.6875rem] text-ink-3 mt-0.5 truncate">{item.summary}</div></div>
-            <span className="text-ink-3 font-mono text-[0.6875rem] flex items-center gap-1 flex-shrink-0"><I.download size={10}/> {formatCount(item.downloads)}</span>
-            <span className="text-ink-4 font-mono text-[0.6875rem] flex-shrink-0">{timeAgo(item.updated)}</span>
-            <div onClick={e => e.stopPropagation()}><InstallButton installing={installing} installed={installed} onInstall={onInstall}/></div>
-        </div>
-    );
-}

@@ -1,19 +1,26 @@
-import {useNavigate} from "react-router-dom";
+import {Button} from "@heroui/react";
 import {cardSurfaceStyle, cardHoverClass} from "../surfaces";
 import SourceBadge from "./SourceBadge";
 import {I} from "../shell/icons";
 import type {ContentItem} from "../../types/content";
 import {formatCount, timeAgo} from "../../types/content";
 
-export default function BrowseCard({item}: {item: ContentItem}) {
-    const navigate = useNavigate();
+interface BrowseCardProps {
+    item: ContentItem;
+    onClick?: () => void;
+    onInstall?: () => void;
+    installing?: boolean;
+    installed?: boolean;
+}
+
+export default function BrowseCard({item, onClick, onInstall, installing, installed}: BrowseCardProps) {
     const loaders = "loaders" in item ? (item as {loaders: string[]}).loaders : [];
 
     return (
         <div
             className={`border border-line rounded-xl overflow-hidden cursor-pointer ${cardHoverClass}`}
             style={cardSurfaceStyle}
-            onClick={() => navigate(`/discover/${item.platform.toLowerCase()}/${item.slug || item.id}`)}
+            onClick={onClick}
         >
             {/* Image / icon area */}
             <div
@@ -66,10 +73,7 @@ export default function BrowseCard({item}: {item: ContentItem}) {
                 >
                     {item.summary}
                 </div>
-                <div
-                    className="flex gap-2 mt-2"
-                    style={{fontSize: 11, color: "var(--ink-3)", fontFamily: "var(--mono)"}}
-                >
+                <div className="flex items-center gap-2 mt-2" style={{fontSize: 11, color: "var(--ink-3)", fontFamily: "var(--mono)"}}>
                     <span className="flex items-center gap-1">
                         <I.download size={11}/> {formatCount(item.downloads)}
                     </span>
@@ -81,9 +85,21 @@ export default function BrowseCard({item}: {item: ContentItem}) {
                             <I.cpu size={11}/> {loaders.slice(0, 2).join(", ")}
                         </span>
                     )}
-                    <span className="ml-auto">{timeAgo(item.updated)}</span>
+                    {!onInstall && <span className="ml-auto">{timeAgo(item.updated)}</span>}
+                    {onInstall && (
+                        <div className="ml-auto" onClick={e => e.stopPropagation()}>
+                            <InstallBtn installing={installing} installed={installed} onInstall={onInstall}/>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
     );
+}
+
+/** Shared install button used in grid, compact, and list views. */
+export function InstallBtn({installing, installed, onInstall}: {installing?: boolean; installed?: boolean; onInstall: () => void}) {
+    if (installed) return <Button size="sm" variant="flat" className="font-bold text-mc-green" isDisabled startContent={<I.check size={12}/>}>Installed</Button>;
+    if (installing) return <Button size="sm" variant="bordered" isDisabled startContent={<div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"/>}>Installing</Button>;
+    return <Button color="success" size="sm" className="font-bold" startContent={<I.download size={12}/>} onPress={onInstall}>Install</Button>;
 }

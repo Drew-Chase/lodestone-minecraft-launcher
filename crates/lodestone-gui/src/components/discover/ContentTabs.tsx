@@ -1,6 +1,6 @@
 import type {ContentTypeKey} from "../../types/content";
 
-const tabs: {key: ContentTypeKey; label: string}[] = [
+const allTabs: {key: ContentTypeKey; label: string}[] = [
     {key: "modpack", label: "Modpacks"},
     {key: "mod", label: "Mods"},
     {key: "resourcepack", label: "Resource Packs"},
@@ -12,9 +12,12 @@ const tabs: {key: ContentTypeKey; label: string}[] = [
 interface ContentTabsProps {
     active: ContentTypeKey;
     onChange: (key: ContentTypeKey) => void;
+    hideModpacks?: boolean;
 }
 
-export default function ContentTabs({active, onChange}: ContentTabsProps) {
+export default function ContentTabs({active, onChange, hideModpacks}: ContentTabsProps) {
+    const tabs = hideModpacks ? allTabs.filter(t => t.key !== "modpack") : allTabs;
+
     return (
         <div className="flex gap-0 border-b border-line" style={{padding: "0 28px"}}>
             {tabs.map(t => {
