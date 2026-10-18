@@ -19,7 +19,20 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/emerald-auth/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/emerald-auth/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/emerald-auth/tests" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/crates/lodestone-website/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/atlauncher_platform/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/auth/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/core/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/curseforge_platform/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/fabric_loader/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/forge_loader/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/ftb_platform/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/gui/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/modrinth_platform/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/neoforge_loader/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/quilt_loader/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/technic_platform/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/vanilla_loader/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/website/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/crates/lodestone-gui/src-tauri/gen/schemas" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
