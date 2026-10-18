@@ -27,6 +27,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/forge_loader/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/ftb_platform/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/gui/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lodestone_resources/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/modrinth_platform/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/neoforge_loader/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/quilt_loader/src" isTestSource="false" />
