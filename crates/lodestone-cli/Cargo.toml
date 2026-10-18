@@ -1,6 +1,0 @@
-[package]
-name = "lodestone-cli"
-version="0.0.1-alpha"
-edition = "2024"
-
-[dependencies]
