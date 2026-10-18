@@ -23,7 +23,7 @@ fn generate_icon() {
 	#[cfg(windows)]
 	{
 		let mut res = winres::WindowsResource::new();
-		res.set_icon("../../res/icons/icon.ico");
+		res.set_icon("../../res/icon/icon.ico");
 		res.set("ProductName", "Lodestone Minecraft Launcher");
 		res.compile().expect("Failed to compile resource");
 	}
