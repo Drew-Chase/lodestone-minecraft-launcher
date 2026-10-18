@@ -20,6 +20,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/emerald-auth/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/emerald-auth/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/atlauncher_platform/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/aurora_leaf/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/auth/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/core/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/curseforge_platform/src" isTestSource="false" />
