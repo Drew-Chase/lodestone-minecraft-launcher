@@ -137,6 +137,7 @@ Lodestone is a pure-Rust Cargo workspace — the UI included. There is no JavaSc
 | **lodestone_launcher** | `crates/gui` | Desktop application — the full launcher UI, built with iced |
 | **lodestone_launcher_core** | `crates/core` | Headless launcher core — calls Java, handles game arguments, starts the Minecraft client |
 | **lodestone_minecraft_authentication** | `crates/auth` | Microsoft / Xbox Live authentication for Minecraft |
+| **lodestone_resources** | `crates/lodestone_resources` | Resource management — automatically downloads Minecraft assets, libraries, version jars, and Java runtimes |
 | **lodestone_vanilla_loader** | `crates/vanilla_loader` | Vanilla Minecraft installation and management — the baseline every instance starts from |
 | **lodestone_fabric_loader** | `crates/fabric_loader` | Fabric loader installation and management |
 | **lodestone_forge_loader** | `crates/forge_loader` | Forge loader installation and management |
