@@ -4,3 +4,24 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+piston-mc = { version = "0.1.5-beta", features = ["assets", "downloads", "java"] }
+aurora_leaf = {path="../aurora_leaf"}
+iced = { version = "0.14", default-features = false, features = ["canvas", "advanced", "svg", "lazy", "sipper", "advanced-shaping", "web-colors", "crisp", "wgpu", "thread-pool", "x11", "wayland"] }
+iced_borderless_window_resize_handle_widget = { version = "0.1" }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+
+color-eyre = { version = "0.6.5", features = ["tracing-error", "track-caller"] }
+chrono = { version = "0.4.45" }
+tar = { version = "0.4.43" }
+xz2 = { version = "0.1.7" }
+
+[build-dependencies]
+chrono = { version = "0.4.45" }
+walkdir = { version = "2.5.0" }
+
+[target.'cfg(windows)'.build-dependencies]
+winres = { version = "0.1.12" }
