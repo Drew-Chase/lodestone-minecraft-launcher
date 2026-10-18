@@ -135,9 +135,9 @@ Lodestone is a pure-Rust Cargo workspace — the UI included. There is no JavaSc
 | Crate | Directory | Description |
 |-------|-----------|-------------|
 | **lodestone_launcher** | `crates/gui` | Desktop application — the full launcher UI, built with iced |
+| **aurora_leaf** | `crates/aurora_leaf` | Pins the launcher's icon sets (Lucide, Material Symbols) and Roboto font family as iced-ready types |
 | **lodestone_launcher_core** | `crates/core` | Headless launcher core — calls Java, handles game arguments, starts the Minecraft client |
 | **lodestone_minecraft_authentication** | `crates/auth` | Microsoft / Xbox Live authentication for Minecraft |
-| **lodestone_resources** | `crates/lodestone_resources` | Resource management — automatically downloads Minecraft assets, libraries, version jars, and Java runtimes |
 | **lodestone_vanilla_loader** | `crates/vanilla_loader` | Vanilla Minecraft installation and management — the baseline every instance starts from |
 | **lodestone_fabric_loader** | `crates/fabric_loader` | Fabric loader installation and management |
 | **lodestone_forge_loader** | `crates/forge_loader` | Forge loader installation and management |
@@ -155,6 +155,7 @@ Each platform crate speaks its own API behind a consistent surface, and each loa
 
 - **Language**: Rust (2024 edition) — the entire project, UI included
 - **UI**: [iced](https://github.com/iced-rs/iced) — Elm-style GUI in Rust
+- **Minecraft plumbing**: [piston-mc](https://crates.io/crates/piston-mc) — Minecraft assets, downloads, and Java runtimes
 - **Build**: Cargo workspace, [`just`](https://github.com/casey/just) recipes, Docker-based builds
 - **Formatting**: `rustfmt.toml`
 
