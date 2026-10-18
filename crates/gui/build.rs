@@ -24,7 +24,7 @@ fn generate_icon() {
 	{
 		let mut res = winres::WindowsResource::new();
 		res.set_icon("../../res/icons/icon.ico");
-		res.set("ProductName", "Iced Todo App");
+		res.set("ProductName", "Lodestone Minecraft Launcher");
 		res.compile().expect("Failed to compile resource");
 	}
 }
