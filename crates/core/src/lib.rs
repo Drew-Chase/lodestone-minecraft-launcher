@@ -1,14 +1,8 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+pub struct Launcher {
+    java_path: String,
+    java_args: String,
+    minecraft_args: String,
+    working_directory: String,
+    library_directory: String,
+    assets_directory: String,
 }
