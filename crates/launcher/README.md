@@ -1,4 +1,4 @@
-# Lodestone Launcher Core
+# Lodestone Launch
 This crate will handle starting the minecraft client, calling java, handling arguments, etc.  
 ## What this crate will do:
 - Take arguments
@@ -11,3 +11,5 @@ This crate will handle starting the minecraft client, calling java, handling arg
 - Handle authentication
 
 This is a dumb headless launcher module.
+
+The module layout and public API contract are specified in [DESIGN.md](DESIGN.md).

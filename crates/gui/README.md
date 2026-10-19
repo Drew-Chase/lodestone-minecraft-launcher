@@ -7,7 +7,7 @@ This is the full launcher gui interface for windows, mac and linux.  This is bui
 - Set up logging (tracing + color-eyre) and generate the build number and Windows icon at compile time
 
 ## What this crate will **NOT** do:
-- Launch the game (see `lodestone_launcher_core`)
+- Launch the game (see `lodestone_launch`)
 - Handle authentication (see `lodestone_minecraft_authentication`)
 - Install mod loaders or query content platforms
 

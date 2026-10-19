@@ -6,3 +6,7 @@ pub struct Launcher {
     library_directory: String,
     assets_directory: String,
 }
+
+impl Launcher {
+    
+}
