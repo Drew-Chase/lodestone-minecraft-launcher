@@ -138,13 +138,13 @@ spaces (`C:\Program Files\...`).
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `java_path` | `PathBuf` | yes | Validated absolute, exists, is a file. No `PATH` lookup is performed. |
-| `working_directory` | `PathBuf` | yes | Validated exists. Never created by this crate. |
-| `library_directory` | `PathBuf` | yes | Feeds `${library_directory}`. |
+| `working_directory` | `PathBuf` | yes | Validated to exist and be a directory. Never created by this crate. |
+| `library_directory` | `PathBuf` | yes | Feeds `${library_directory}`. Defaults to empty (unset); no build-time validation. |
 | `natives_directory` | `Option<PathBuf>` | no | Drives `-Djava.library.path=...` and `${natives_directory}`. |
 | `assets_directory` | `Option<PathBuf>` | no | Feeds `${assets_root}`. |
 | `jvm_args` | `Vec<String>` | no | Emitted before `-cp`. |
-| `main_class` | `String` | yes | Emitted immediately after `-cp`. |
-| `classpath` | `Vec<PathBuf>` | yes* | Non-empty when `main_class` is set. Joined via `std::env::join_paths`. |
+| `main_class` | `String` | yes | Emitted immediately after `-cp`. Defaults to empty (unset); no build-time validation — the crate stays dumb about Minecraft and java reports a missing main class itself. |
+| `classpath` | `Vec<PathBuf>` | yes* | Non-empty when `main_class` is set (empty `main_class` = unset, e.g. a future `-jar` mode). Joined via `std::env::join_paths`. |
 | `game_args` | `Vec<String>` | no | `${...}` placeholders expanded by `command.rs`. |
 | `env` | `BTreeMap<String, OsString>` | no | BTreeMap for deterministic env ordering. |
 | `launcher_name` | `String` | no | Feeds `${launcher_name}`. |
@@ -180,7 +180,9 @@ Scope is **environmental only**: `${natives_directory}`, `${library_directory}`,
 
 - Unknown placeholders: `tracing::warn!` and pass through **untouched**. Loaders may add
   custom placeholders for their own args; strict erroring would make the crate refuse
-  legitimate future input.
+  legitimate future input. A known placeholder whose value is unset (`${natives_directory}`
+  / `${assets_root}` with no directory configured, or `${library_directory}` with nothing
+  set) behaves the same way: warn and pass through.
 - Expansion operates on whole tokens (an argument that is exactly a placeholder), not on
   substring substitution inside arbitrary args — substring templating of game args is a
   loader concern.
@@ -197,10 +199,15 @@ Scope is **environmental only**: `${natives_directory}`, `${library_directory}`,
   is mandatory: an undrained pipe fills (~64 KB) and the JVM blocks on write — the
   classic launcher deadlock. Nobody may call `wait()` without drains running.
 - Each line is decoded with `from_utf8_lossy` (Windows console code pages are not
-  guaranteed UTF-8) and sent as `LaunchEvent::Log`.
-- When the process exits and both pipes hit EOF, the drain threads send
-  `LaunchEvent::Exited { status }` and drop their senders; the receiver then reports
-  `Disconnected`. That is the gui's "game is gone" signal.
+  guaranteed UTF-8) — read via `read_until`, not `BufRead::lines`, which errors on
+  non-UTF-8 bytes — stripped of its line terminator, and sent as `LaunchEvent::Log`.
+- When the process exits and both pipes hit EOF, a finalizer thread sends exactly one
+  `LaunchEvent::Exited { status }` and drops its senders; the receiver then reports
+  `Disconnected`. That is the gui's "game is gone" signal. `Exited` always lands after
+  the last log line: each drain thread signals its pipe's EOF only after forwarding its
+  final line, and the finalizer waits for both signals before polling the child's status.
+  The finalizer also reaps the child, so dropping `GameProcess` without `wait()` leaves
+  no zombie on Unix.
 - Channel is **bounded** (~1024) with **blocking send**: a stalled consumer applies
   backpressure to the game instead of ballooning launcher memory. Minecraft logs can be
   chatty; unbounded is a memory leak waiting for a slow UI frame.
@@ -224,7 +231,8 @@ Scope is **environmental only**: `${natives_directory}`, `${library_directory}`,
   `wait(self) -> Result<ExitStatus, LaunchError>`, `kill() -> Result<(), LaunchError>`
 - `take_events() -> Receiver<LaunchEvent>` — consuming move, not a clone: one owner pumps
   the stream (std mpsc receivers are not `Clone`), which matches gui's one-subscription
-  model exactly.
+  model exactly. Calling it twice panics (documented): there is exactly one owner, so a
+  second take is a caller bug.
 
 ---
 
@@ -237,25 +245,33 @@ to a user verbatim:
 |---|---|---|
 | `JavaNotFound` | build-time validation or pre-spawn re-check | the path |
 | `WorkingDirectoryMissing` | validation | the path |
-| `InvalidClasspath` | `join_paths` failure (entry contains the platform separator) | source error |
+| `EmptyClasspath` | build-time validation: `main_class` set with an empty classpath | the configured main class |
+| `InvalidClasspath` | `join_paths` failure | source error |
 | `SpawnFailed` | `Command::spawn` failed | java path + source `io::Error` |
 | `KillFailed` | `kill()` failed | source `io::Error` |
 | `WaitFailed` | `wait()` / `try_wait()` failed | source `io::Error` |
 
 Validation errors are attached to the offending path — never a bare "failed to launch".
 
+Note on `InvalidClasspath`: the crate defers entirely to `std::env::join_paths` and maps
+its failure. Modern std rejects `"`-bearing entries on Windows (quoting separator-bearing
+entries into the join instead of rejecting them) and `:`-bearing entries on Unix — the
+older "separator is rejected" contract only holds on Unix now.
+
 ---
 
-## 8. Open decisions (ratify before or during implementation)
+## 8. Ratified decisions (2026-10-19)
 
-1. **Channel bound** — proposed 1024, blocking send. Any lower risks stalling chatty
+1. **Channel bound** — ratified: 1024 with blocking send. Any lower risks stalling chatty
    mods; any higher only delays memory pressure.
-2. **Job Objects / breakaway on Windows** — does closing Lodestone kill Minecraft?
-   Deferred; shapes `process.rs` and could relax `forbid(unsafe_code)`.
-3. **Absolute `java_path` enforced** — proposed strict. piston-mc supplies managed JRE
+2. **Job Objects / breakaway on Windows** — ratified: deferred. `Drop` stays
+   warn-and-orphan and `forbid(unsafe_code)` holds. Revisit as a product decision later.
+3. **Absolute `java_path` enforced** — ratified: strict. piston-mc supplies managed JRE
    paths, so nothing legitimate needs `PATH` lookup.
-4. **Drop semantics** — proposed warn-and-orphan. Alternative: `detach()` explicitness.
-5. **Placeholder strictness** — proposed warn-and-pass-through.
+4. **Drop semantics** — ratified: warn-and-orphan. No `detach()` until a caller asks for
+   it; the API surface stays minimal.
+5. **Placeholder strictness** — ratified: warn-and-pass-through, including known
+   placeholders whose value is unset.
 
 ## 9. Testing strategy
 
@@ -267,7 +283,10 @@ No Java installation and no Minecraft assets are required:
   expansion end-to-end without a JVM.
 - `tests/config.rs`: builder validation table (missing java, missing working dir, empty
   classpath with main class set, relative java path rejected).
-- `tests/command.rs`: pure assembly assertions.
+- `tests/command.rs`: argument ordering, classpath separator, and `${...}` expansion,
+  asserted end-to-end through the stub. (The pure, no-process assertions for
+  `src/command.rs` live in `#[cfg(test)] mod tests` inside that module — it is
+  `pub(crate)`, invisible to integration tests.)
 - `tests/process.rs`: stub-emitted stdout/stderr lines arrive as `LaunchEvent::Log`;
   process exit produces exactly one `Exited`; `kill()` on a long-running stub returns and
   the receiver eventually disconnects.
