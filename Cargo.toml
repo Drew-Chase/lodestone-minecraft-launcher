@@ -8,6 +8,12 @@ thiserror = { version = "2.0.21" }
 reqwest = { version = "0.13.5", features = ["rustls", "json"] }
 serde = { version = "1.0.229", features = ["derive", "serde_derive"] }
 serde_json = { version = "1.0.154" }
+anyhow = { version = "1.0.100" }
+tokio = { version = "1.48.0", default-features = false, features = ["sync"] }
+piston-mc = { version = "0.1.5-beta", default-features = false, features = ["downloads"] }
+simple_download_utility = { version = "0.1.1" }
+modcrawl = { version = "0.7.0", default-features = false }
+zipcrawl = { version = "2.5.0", default-features = false }
 
 [profile.release]
 lto = true
