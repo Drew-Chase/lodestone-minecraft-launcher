@@ -1,0 +1,417 @@
+//! CurseForge — hand-rolled binding for `api.curseforge.com/v1`.
+//!
+//! `furse` was considered for this kind but wraps no search, which would have
+//! split the kind across furse (reqwest 0.12) and hand-rolled search anyway;
+//! a coherent thin binding on the workspace's reqwest 0.13 was chosen instead
+//! (DESIGN.md §2).
+//!
+//! Requires an API key: use `Platform::<CurseForge>::with_api_key`.
+
+use std::path::{Path, PathBuf};
+
+use serde::Deserialize;
+use simple_download_utility::DownloadProgress;
+use tokio::sync::mpsc::Sender;
+
+use crate::PlatformKind;
+use crate::error::PlatformError;
+use crate::http::{download_files, get_json, with_query};
+use crate::meta::{ContentDetails, ContentFile, ContentType, ContentVersion, SearchResult};
+use crate::sealed;
+
+/// Marker for CurseForge (https://www.curseforge.com). Requires an API key —
+/// see [`Platform::<CurseForge>::with_api_key`](crate::Platform::with_api_key).
+pub struct CurseForge;
+
+const BASE: &str = "https://api.curseforge.com/v1";
+/// CurseForge's game id for Minecraft.
+const MINECRAFT_GAME_ID: u32 = 432;
+
+/// CurseForge's top-level content classes that map onto [`ContentType`]s.
+fn class_id(content: ContentType) -> Option<u32> {
+    match content {
+        ContentType::Mod => Some(6),
+        ContentType::Modpack => Some(4471),
+        ContentType::ResourcePack => Some(12),
+        ContentType::World => Some(17),
+        ContentType::Shader | ContentType::DataPack => None,
+    }
+}
+
+/// CurseForge's `modLoader` int values → loader names.
+fn loader_name(mod_loader: Option<i64>) -> Vec<String> {
+    match mod_loader {
+        Some(1) => vec!["forge".to_string()],
+        Some(4) => vec!["neoforge".to_string()],
+        Some(5) => vec!["fabric".to_string()],
+        Some(6) => vec!["quilt".to_string()],
+        _ => Vec::new(),
+    }
+}
+
+/// Builds a client carrying the API key header plus the full url for `path`.
+/// Fails up front when the handle has no credential.
+fn request(credential: Option<&str>, path: &str) -> Result<(String, reqwest::Client), PlatformError> {
+    let Some(key) = credential else {
+        return Err(PlatformError::UnexpectedResponse {
+            url: format!("{BASE}{path}"),
+            status: 401,
+        });
+    };
+    let mut headers = reqwest::header::HeaderMap::new();
+    let value = reqwest::header::HeaderValue::from_str(key).map_err(|_| PlatformError::Download {
+        url: format!("{BASE}{path}"),
+        source: "the CurseForge API key contains invalid header characters".into(),
+    })?;
+    headers.insert(reqwest::header::HeaderName::from_static("x-api-key"), value);
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .map_err(|source| PlatformError::Download {
+            url: BASE.to_string(),
+            source: Box::new(source),
+        })?;
+    Ok((format!("{BASE}{path}"), client))
+}
+
+/// A CurseForge project (mod, modpack, resource pack, world).
+#[derive(Debug, Deserialize)]
+struct CfMod {
+    id: i64,
+    name: String,
+    slug: String,
+    summary: String,
+    #[serde(rename = "downloadCount", default)]
+    download_count: u64,
+    #[serde(default)]
+    authors: Vec<CfAuthor>,
+    #[serde(default)]
+    logo: Option<CfLogo>,
+    #[serde(default)]
+    links: Option<CfLinks>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CfAuthor {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CfLogo {
+    #[serde(rename = "thumbnailUrl", default)]
+    thumbnail_url: Option<String>,
+    #[serde(default)]
+    url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CfLinks {
+    #[serde(rename = "websiteUrl", default)]
+    website_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CfModList {
+    data: Vec<CfMod>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CfModEnvelope {
+    data: CfMod,
+}
+
+#[derive(Debug, Deserialize)]
+struct CfDescription {
+    data: String,
+}
+
+/// A CurseForge file — one release of a project.
+#[derive(Debug, Deserialize)]
+struct CfFile {
+    id: i64,
+    #[serde(rename = "displayName", default)]
+    display_name: Option<String>,
+    #[serde(rename = "fileName")]
+    file_name: String,
+    #[serde(rename = "downloadUrl", default)]
+    download_url: Option<String>,
+    #[serde(rename = "fileLength", default)]
+    file_length: u64,
+    #[serde(default)]
+    hashes: Vec<CfHash>,
+    #[serde(rename = "gameVersions", default)]
+    game_versions: Vec<String>,
+    #[serde(rename = "modLoader", default)]
+    mod_loader: Option<i64>,
+    #[serde(rename = "fileDate", default)]
+    file_date: Option<String>,
+}
+
+/// One entry of `File.hashes`; `algo` 1 is sha1, 2 is md5.
+#[derive(Debug, Deserialize)]
+struct CfHash {
+    #[serde(default)]
+    value: Option<String>,
+    #[serde(default)]
+    algo: Option<i64>,
+}
+
+fn sha1_of(hashes: &[CfHash]) -> Option<String> {
+    hashes.iter().find(|hash| hash.algo == Some(1)).and_then(|hash| hash.value.clone())
+}
+
+#[derive(Debug, Deserialize)]
+struct CfFileList {
+    data: Vec<CfFile>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CfDownloadLink {
+    data: String,
+}
+
+fn mod_to_search_result(mod_: CfMod, content: ContentType) -> SearchResult {
+    SearchResult {
+        id: mod_.id.to_string(),
+        slug: Some(mod_.slug),
+        name: mod_.name,
+        author: mod_.authors.into_iter().next().map(|author| author.name),
+        description: mod_.summary,
+        downloads: mod_.download_count,
+        icon_url: mod_.logo.and_then(|logo| logo.thumbnail_url.or(logo.url)),
+        web_url: mod_.links.and_then(|links| links.website_url),
+        content_type: content,
+    }
+}
+
+fn file_to_content_version(project_id: &str, file: CfFile, content: ContentType) -> ContentVersion {
+    ContentVersion {
+        id: file.id.to_string(),
+        project_id: Some(project_id.to_string()),
+        name: file.display_name.clone(),
+        version_number: file.display_name.unwrap_or(file.file_name.clone()),
+        content_type: content,
+        minecraft_versions: file.game_versions,
+        loaders: loader_name(file.mod_loader),
+        downloads: 0,
+        date: file.file_date,
+        changelog_url: None,
+        files: vec![ContentFile {
+            name: file.file_name,
+            url: file.download_url.unwrap_or_default(),
+            sha1: sha1_of(&file.hashes),
+            size: Some(file.file_length),
+            primary: true,
+        }],
+    }
+}
+
+impl sealed::Sealed for CurseForge {}
+impl PlatformKind for CurseForge {
+    const NAME: &'static str = "curseforge";
+    const CONTENT_TYPES: &'static [ContentType] = &[ContentType::Mod, ContentType::Modpack, ContentType::ResourcePack, ContentType::World];
+    const SUPPORTS_MODPACK_ARCHIVE: bool = true;
+
+    async fn search(
+        _http: &reqwest::Client,
+        credential: Option<&str>,
+        query: &str,
+        content: ContentType,
+    ) -> Result<Vec<SearchResult>, PlatformError> {
+        let Some(class_id) = class_id(content) else { return Ok(Vec::new()) };
+        let mut path = format!("/mods/search?gameId={MINECRAFT_GAME_ID}&classId={class_id}&pageSize=50&sortField=2&sortOrder=desc");
+        if !query.is_empty() {
+            path = with_query(&path, "searchFilter", query);
+        }
+        let (url, client) = request(credential, &path)?;
+        let response = get_json(&client, &url).await?;
+        let list: CfModList = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
+        Ok(list.data.into_iter().map(|cf_mod| mod_to_search_result(cf_mod, content)).collect())
+    }
+
+    async fn details(_http: &reqwest::Client, credential: Option<&str>, id: &str, content: ContentType) -> Result<ContentDetails, PlatformError> {
+        let (url, client) = request(credential, &format!("/mods/{id}"))?;
+        let response = get_json(&client, &url).await?;
+        let envelope: CfModEnvelope = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
+
+        // Long-form descriptions come from a separate endpoint; a failure there
+        // is not worth failing the whole call over.
+        let description = match request(credential, &format!("/mods/{id}/description")) {
+            Ok((url, client)) => get_json(&client, &url)
+                .await
+                .ok()
+                .and_then(|response| serde_json::from_value::<CfDescription>(response).ok().map(|envelope| envelope.data)),
+            Err(_) => None,
+        };
+
+        Ok(ContentDetails {
+            id: envelope.data.id.to_string(),
+            slug: Some(envelope.data.slug),
+            name: envelope.data.name,
+            author: envelope.data.authors.into_iter().next().map(|author| author.name),
+            summary: envelope.data.summary,
+            description,
+            downloads: envelope.data.download_count,
+            icon_url: envelope.data.logo.and_then(|logo| logo.thumbnail_url.or(logo.url)),
+            web_url: envelope.data.links.and_then(|links| links.website_url),
+            content_type: content,
+        })
+    }
+
+    async fn versions(
+        _http: &reqwest::Client,
+        credential: Option<&str>,
+        id: &str,
+        content: ContentType,
+    ) -> Result<Vec<ContentVersion>, PlatformError> {
+        let (url, client) = request(credential, &format!("/mods/{id}/files"))?;
+        let response = get_json(&client, &url).await?;
+        let list: CfFileList = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
+        Ok(list.data.into_iter().map(|file| file_to_content_version(id, file, content)).collect())
+    }
+
+    async fn download(
+        _http: &reqwest::Client,
+        credential: Option<&str>,
+        version: &ContentVersion,
+        into: &Path,
+        progress: Option<&Sender<DownloadProgress>>,
+    ) -> Result<Vec<PathBuf>, PlatformError> {
+        let mut files = Vec::new();
+        for file in &version.files {
+            let url = if file.url.is_empty() {
+                // Some files hide their download url; the download-link
+                // endpoint resolves the CDN url. That needs the project id,
+                // which `versions()` always attaches for CurseForge.
+                let Some(project_id) = version.project_id.as_deref() else {
+                    return Err(PlatformError::Download {
+                        url: file.name.clone(),
+                        source: "the download url is hidden and the version carries no project id to resolve it".into(),
+                    });
+                };
+                let (url, client) = request(credential, &format!("/mods/{project_id}/files/{}/download-link", version.id))?;
+                let response = get_json(&client, &url).await?;
+                let link: CfDownloadLink = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
+                link.data
+            } else {
+                file.url.clone()
+            };
+            files.push((url, into.join(&file.name)));
+        }
+        download_files(files, progress).await
+    }
+
+    fn parse_modpack(archive: &Path) -> Result<crate::meta::Modpack, PlatformError> {
+        crate::modpack::parse(archive)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Recorded slice of the real `/v1/mods/search` response.
+    const SEARCH: &str = r#"{
+        "data": [
+            {
+                "id": 306612,
+                "name": "JarMods",
+                "slug": "jarmods",
+                "summary": "A test mod",
+                "downloadCount": 123456,
+                "authors": [{ "id": 1, "name": "Alice" }],
+                "logo": { "thumbnailUrl": "https://logo.test/thumb.png", "url": "https://logo.test/full.png" },
+                "links": { "websiteUrl": "https://example.com" },
+                "dateModified": "2026-01-01T00:00:00Z"
+            }
+        ],
+        "pagination": { "index": 0, "pageSize": 50, "resultCount": 1, "totalCount": 1 }
+    }"#;
+
+    /// Recorded slice of the real `/v1/mods/{id}/files` response.
+    const FILES: &str = r#"{
+        "data": [
+            {
+                "id": 4838285,
+                "displayName": "Test Mod 1.0.0",
+                "fileName": "testmod-1.0.0.jar",
+                "downloadUrl": "https://mediafilez.forgecdn.net/files/testmod-1.0.0.jar",
+                "fileLength": 123456,
+                "hashes": [{ "value": "abc", "algo": 1 }],
+                "gameVersions": ["1.20.1", "Forge"],
+                "modLoader": 1,
+                "fileDate": "2026-01-01T00:00:00Z"
+            },
+            {
+                "id": 4838286,
+                "displayName": "Test Mod 1.0.0 NeoForge",
+                "fileName": "testmod-1.0.0-neo.jar",
+                "downloadUrl": "",
+                "fileLength": 234567,
+                "gameVersions": ["1.20.1"],
+                "modLoader": 4,
+                "fileDate": "2026-01-02T00:00:00Z"
+            }
+        ],
+        "pagination": { "index": 0, "pageSize": 50, "resultCount": 2, "totalCount": 2 }
+    }"#;
+
+    #[test]
+    fn class_ids_cover_the_curseforge_classes() {
+        assert_eq!(class_id(ContentType::Mod), Some(6));
+        assert_eq!(class_id(ContentType::Modpack), Some(4471));
+        assert_eq!(class_id(ContentType::ResourcePack), Some(12));
+        assert_eq!(class_id(ContentType::World), Some(17));
+        assert_eq!(class_id(ContentType::Shader), None);
+        assert_eq!(class_id(ContentType::DataPack), None);
+    }
+
+    #[test]
+    fn loader_ints_map_to_loader_names() {
+        assert_eq!(loader_name(Some(1)), ["forge"]);
+        assert_eq!(loader_name(Some(4)), ["neoforge"]);
+        assert_eq!(loader_name(Some(5)), ["fabric"]);
+        assert_eq!(loader_name(Some(6)), ["quilt"]);
+        assert!(loader_name(Some(0)).is_empty(), "Any");
+        assert!(loader_name(None).is_empty());
+    }
+
+    #[test]
+    fn the_search_payload_maps_onto_search_results() {
+        let list: CfModList = serde_json::from_str(SEARCH).expect("recorded payload parses");
+        let results: Vec<SearchResult> = list
+            .data
+            .into_iter()
+            .map(|cf_mod| mod_to_search_result(cf_mod, ContentType::Mod))
+            .collect();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "306612");
+        assert_eq!(results[0].slug.as_deref(), Some("jarmods"));
+        assert_eq!(results[0].name, "JarMods");
+        assert_eq!(results[0].author.as_deref(), Some("Alice"));
+        assert_eq!(results[0].downloads, 123456);
+        assert_eq!(results[0].icon_url.as_deref(), Some("https://logo.test/thumb.png"));
+        assert_eq!(results[0].web_url.as_deref(), Some("https://example.com"));
+    }
+
+    #[test]
+    fn the_files_payload_maps_onto_versions() {
+        let list: CfFileList = serde_json::from_str(FILES).expect("recorded payload parses");
+        let versions: Vec<ContentVersion> = list
+            .data
+            .into_iter()
+            .map(|file| file_to_content_version("306612", file, ContentType::Mod))
+            .collect();
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].id, "4838285");
+        assert_eq!(versions[0].project_id.as_deref(), Some("306612"));
+        assert_eq!(versions[0].version_number, "Test Mod 1.0.0");
+        assert_eq!(versions[0].loaders, ["forge"]);
+        assert!(versions[0].minecraft_versions.contains(&"1.20.1".to_string()));
+        assert_eq!(versions[0].files[0].sha1.as_deref(), Some("abc"));
+        assert_eq!(versions[0].files[0].size, Some(123456));
+        // NeoForge file with a hidden download url: url empty, loader mapped.
+        assert_eq!(versions[1].loaders, ["neoforge"]);
+        assert_eq!(versions[1].files[0].url, "");
+    }
+}

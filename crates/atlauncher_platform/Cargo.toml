@@ -1,6 +1,0 @@
-[package]
-name = "lodestone_atlauncher_platform"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
