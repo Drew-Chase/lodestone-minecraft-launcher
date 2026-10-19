@@ -20,8 +20,10 @@
 - Naming family: `lodestone_<subject>_<role>` with underscores (e.g. `lodestone_minecraft_authentication`, `lodestone_vanilla_loader`). gui binary crate = `lodestone_launcher`.
 
 ## Status (as of Oct 2026)
-- Whole workspace is greenfield scaffolding: empty manifests, stub READMEs, `examples/vanilla.rs` and `impl Launcher` are placeholders.
-- Core has no consumers wired yet; proposed contract: loaders build a resolved launch config -> core assembles command line + spawns java + supervises process.
+- `lodestone_launch` IMPLEMENTED (2026-10-19) per `crates/launcher/DESIGN.md`; §8 decisions ratified (see §8 of the doc): sync_channel(1024) blocking send, no Job Objects (warn-and-orphan Drop), strict absolute java_path, warn-and-pass-through placeholders. Still no consumers (gui not wired).
+- Implementation shape: `config.rs` (Launcher w/ getters only + LauncherBuilder, eager validation in build()); `command.rs` pure `pub(crate) build_command` + whole-token `${...}` expansion, unit tests in-module (integration tests can't see pub(crate)); `process.rs` launch() + GameProcess: 2 drain threads (`read_until`+`from_utf8_lossy`, NOT BufRead::lines) + finalizer thread (Arc<Mutex<Child>>, emits exactly one Exited after both pipe EOFs, reaps child -> no unix zombie), bounded sync_channel backpressure, `#[cfg(windows)]` CREATE_NO_WINDOW only platform code; `events.rs`; `error.rs` (8 variants; `EmptyClasspath` added beyond the §7 table).
+- std gotcha discovered: `std::env::join_paths` on Windows (rustc 1.98) no longer REJECTS `;`-bearing entries — it QUOTES them; only `"` entries error (Unix still rejects `:`). InvalidClasspath maps std's failure; see note added to DESIGN.md §7.
+- Test stub gotchas (tests/common/mod.rs): Windows `.cmd` stub MUST start with `@echo off` or cmd echoes its prompt into stdout (empty first line); std quotes args with `;` for batch files (strip `"` in assertions); sleeper stub must redirect the grandchild's streams off the pipes (`ping >nul 2>&1` / `sleep >/dev/null 2>&1`) or killing the parent leaves the pipe open; spawning `.cmd` directly works (CreateProcess runs it via cmd.exe).
 
 ## Tooling
 - `justfile`: powershell shell on Windows (`set windows-shell`), bash otherwise; only `just --list` recipe so far.
