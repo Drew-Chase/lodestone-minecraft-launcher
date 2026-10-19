@@ -36,6 +36,7 @@
       <sourceFolder url="file://$MODULE_DIR$/website/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/launcher/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/launcher/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/launcher/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/crates/lodestone-gui/src-tauri/gen/schemas" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
