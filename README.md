@@ -138,11 +138,7 @@ Lodestone is a pure-Rust Cargo workspace — the UI included. There is no JavaSc
 | **aurora_leaf** | `crates/aurora_leaf` | Pins the launcher's icon sets (Lucide, Material Symbols) and Roboto font family as iced-ready types |
 | **lodestone_launch** | `crates/launcher` | Headless launch module — calls Java, handles game arguments, starts the Minecraft client |
 | **lodestone_minecraft_authentication** | `crates/auth` | Microsoft / Xbox Live authentication for Minecraft |
-| **lodestone_vanilla_loader** | `crates/vanilla_loader` | Vanilla Minecraft installation and management — the baseline every instance starts from |
-| **lodestone_fabric_loader** | `crates/fabric_loader` | Fabric loader installation and management |
-| **lodestone_forge_loader** | `crates/forge_loader` | Forge loader installation and management |
-| **lodestone_neoforge_loader** | `crates/neoforge_loader` | NeoForge loader installation and management |
-| **lodestone_quilt_loader** | `crates/quilt_loader` | Quilt loader installation and management |
+| **lodestone_loaders** | `crates/loaders` | Unified loader module — `Loader<Fabric>` / `Forge` / `NeoForge` / `Quilt` / `Vanilla`: version listing, client library downloads, mod metadata extraction |
 | **lodestone_modrinth_platform** | `crates/modrinth_platform` | Modrinth API — search, downloads, `.mrpack` modpack imports |
 | **lodestone_curseforge_platform** | `crates/curseforge_platform` | CurseForge API — search, downloads, modpack imports |
 | **lodestone_atlauncher_platform** | `crates/atlauncher_platform` | ATLauncher API — packs and mods |
