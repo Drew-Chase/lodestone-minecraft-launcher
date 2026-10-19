@@ -10,6 +10,9 @@ serde = { version = "1.0.229", features = ["derive", "serde_derive"] }
 serde_json = { version = "1.0.154" }
 anyhow = { version = "1.0.100" }
 ferinth = { version = "2.13.1" }
+oauth2 = { version = "5.0.0", default-features = false }
+minecraft-msa-auth = { version = "0.5" }
+http = { version = "1", default-features = false }
 tokio = { version = "1.48.0", default-features = false, features = ["sync"] }
 piston-mc = { version = "0.1.5-beta", default-features = false, features = ["downloads"] }
 simple_download_utility = { version = "0.1.1" }
