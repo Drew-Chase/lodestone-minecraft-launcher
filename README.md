@@ -139,11 +139,7 @@ Lodestone is a pure-Rust Cargo workspace — the UI included. There is no JavaSc
 | **lodestone_launch** | `crates/launcher` | Headless launch module — calls Java, handles game arguments, starts the Minecraft client |
 | **lodestone_minecraft_authentication** | `crates/auth` | Microsoft / Xbox Live authentication for Minecraft |
 | **lodestone_loaders** | `crates/loaders` | Unified loader module — `Loader<Fabric>` / `Forge` / `NeoForge` / `Quilt` / `Vanilla`: version listing, client library downloads, mod metadata extraction |
-| **lodestone_modrinth_platform** | `crates/modrinth_platform` | Modrinth API — search, downloads, `.mrpack` modpack imports |
-| **lodestone_curseforge_platform** | `crates/curseforge_platform` | CurseForge API — search, downloads, modpack imports |
-| **lodestone_atlauncher_platform** | `crates/atlauncher_platform` | ATLauncher API — packs and mods |
-| **lodestone_ftb_platform** | `crates/ftb_platform` | FTB modpack API — packs and mods |
-| **lodestone_technic_platform** | `crates/technic_platform` | Technic / Solder API — packs and mods |
+| **lodestone_platforms** | `crates/platforms` | Unified content-platform module — `Platform<Modrinth>` / `CurseForge` / `AtLauncher` / `Ftb` / `Technic`: search, details, versions, downloads, modpack archive parsing |
 
 Each platform crate speaks its own API behind a consistent surface, and each loader crate installs a playable client for an instance — see the individual crate READMEs for exact boundaries.
 
