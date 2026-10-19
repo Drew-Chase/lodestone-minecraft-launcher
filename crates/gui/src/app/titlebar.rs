@@ -29,6 +29,7 @@ pub enum TitlebarMessage {
     StartDragWindow,
 }
 
+#[cfg(not(windows))]
 #[derive(Debug, Clone)]
 pub enum TitlebarMessage {}
 
