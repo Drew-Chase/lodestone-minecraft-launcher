@@ -5,10 +5,7 @@ use iced::advanced::widget::{Tree, tree};
 use iced::advanced::{Clipboard, Layout, Renderer, Shell, Widget, layout, renderer};
 use iced::border::Radius;
 use iced::mouse::{Cursor, Interaction};
-use iced::{
-    Border, Color, Element, Event, Length, Point, Radians, Rectangle, Renderer as BaseRenderer,
-    Size, Theme, mouse,
-};
+use iced::{Border, Color, Element, Event, Length, Point, Radians, Rectangle, Renderer as BaseRenderer, Size, Theme, mouse};
 
 pub const PRIMARY_BUTTON_STYLE: IconButtonStyle = IconButtonStyle {
     foreground: color::buttons::Primary::FOREGROUND,
@@ -156,10 +153,7 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for IconButton<Message
     ) {
         let state = tree.state.downcast_ref::<IconButtonState>();
         let (fg, bg) = if self.disabled || self.on_press.is_none() {
-            (
-                self.style.foreground_disabled,
-                self.style.background_disabled,
-            )
+            (self.style.foreground_disabled, self.style.background_disabled)
         } else if state.is_pressed && state.is_hovered {
             (self.style.foreground_pressed, self.style.background_pressed)
         } else if state.is_hovered {
@@ -192,10 +186,7 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for IconButton<Message
             Length::Fixed(size) => size,
             _ => 16.0, // Provide a default fallback value.
         };
-        let icon_position = Point::new(
-            bounds.center_x() - icon_size / 2.0,
-            bounds.center_y() - icon_size / 2.0,
-        );
+        let icon_position = Point::new(bounds.center_x() - icon_size / 2.0, bounds.center_y() - icon_size / 2.0);
         let icon_bounds: Rectangle = Rectangle::new(icon_position, Size::new(icon_size, icon_size));
         renderer.draw_svg(icon_svg, icon_bounds, bounds);
     }
@@ -246,14 +237,7 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for IconButton<Message
         }
     }
 
-    fn mouse_interaction(
-        &self,
-        _tree: &Tree,
-        layout: Layout<'_>,
-        cursor: Cursor,
-        _viewport: &Rectangle,
-        _renderer: &BaseRenderer,
-    ) -> Interaction {
+    fn mouse_interaction(&self, _tree: &Tree, layout: Layout<'_>, cursor: Cursor, _viewport: &Rectangle, _renderer: &BaseRenderer) -> Interaction {
         if cursor.is_over(layout.bounds()) {
             Interaction::Pointer
         } else {
@@ -262,9 +246,7 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for IconButton<Message
     }
 }
 
-impl<'a, Message: Clone + 'a> From<IconButton<Message>>
-    for Element<'a, Message, Theme, BaseRenderer>
-{
+impl<'a, Message: Clone + 'a> From<IconButton<Message>> for Element<'a, Message, Theme, BaseRenderer> {
     fn from(button: IconButton<Message>) -> Self {
         Element::new(button)
     }

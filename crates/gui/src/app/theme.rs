@@ -128,7 +128,6 @@ pub mod color {
             pub const BACKGROUND: Color = rgb!(255, 255, 255, 4%);
             /// Hover — `--pink`.
             pub const BACKGROUND_HOVER: Color = hsl!(356, 86%, 49%);
-
         }
     }
 }
