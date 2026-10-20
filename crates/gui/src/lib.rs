@@ -1,6 +1,6 @@
 mod app;
 use crate::app::LodestoneLauncher;
-use app::theme::color;
+use app::theme::{color, fonts};
 use aurora_leaf::FontFamily;
 use color_eyre::Result;
 use tracing::info;
@@ -11,10 +11,15 @@ pub fn run() -> Result<()> {
 		.title(LodestoneLauncher::TITLE)
 		.window(LodestoneLauncher::window_settings())
 		.centered()
-		.theme(iced::Theme::Light)
-		.font(FontFamily::roboto().bold())
-		.font(FontFamily::roboto().medium())
-		.font(FontFamily::roboto().regular())
+		.theme(iced::Theme::Dark)
+		.default_font(fonts::Inter::REGULAR)
+		.font(FontFamily::inter().regular())
+		.font(FontFamily::inter().medium())
+		.font(FontFamily::inter().semi_bold())
+		.font(FontFamily::inter().bold())
+		.font(FontFamily::inter().extra_bold())
+		.font(FontFamily::jetbrains_mono().regular())
+		.font(FontFamily::jetbrains_mono().semi_bold())
 		.subscription(LodestoneLauncher::subscription)
 		.style(|_app, _theme| iced::theme::Style {
 			text_color: color::Text::DEFAULT,

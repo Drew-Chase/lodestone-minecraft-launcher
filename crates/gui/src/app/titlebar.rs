@@ -76,7 +76,7 @@ impl Titlebar {
                 container(
                     Text::new(LodestoneLauncher::TITLE)
                         .size(18)
-                        .font(crate::app::theme::fonts::Roboto::BOLD)
+                        .font(crate::app::theme::fonts::Inter::EXTRA_BOLD)
                 )
                 .padding(Padding::new(0.0).left(8).right(8).top(4))
                 .width(Fill)

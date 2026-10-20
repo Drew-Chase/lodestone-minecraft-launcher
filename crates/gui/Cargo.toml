@@ -8,6 +8,7 @@ piston-mc = { version = "0.1.5-beta", features = ["assets", "downloads", "java"]
 aurora_leaf = {path="../aurora_leaf"}
 iced = { version = "0.14", default-features = false, features = ["canvas", "advanced", "svg", "lazy", "sipper", "advanced-shaping", "web-colors", "crisp", "wgpu", "thread-pool", "x11", "wayland"] }
 iced_borderless_window_resize_handle_widget = { version = "0.1" }
+iced_color_extension = {version = "0.1.1"}
 
 # Logging
 tracing = { workspace = true }
