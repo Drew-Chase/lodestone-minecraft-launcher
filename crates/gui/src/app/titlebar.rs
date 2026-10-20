@@ -1,6 +1,6 @@
+use crate::app::LodestoneAppMessage;
 #[cfg(windows)]
 use crate::app::LodestoneLauncher;
-use crate::app::LodestoneAppMessage;
 #[cfg(windows)]
 use crate::app::components::icon_button;
 #[cfg(windows)]
@@ -9,9 +9,9 @@ use crate::app::components::icon_button::IconButton;
 use crate::app::theme::color;
 #[cfg(windows)]
 use aurora_leaf::Icon;
-use iced::widget::row;
 #[cfg(windows)]
 use iced::widget::{Text, container, mouse_area};
+use iced::widget::{row, text};
 #[cfg(windows)]
 use iced::{Background, Fill, Padding};
 use iced::{Element, Task, window};
@@ -35,11 +35,7 @@ pub enum TitlebarMessage {}
 
 impl Titlebar {
     #[cfg(windows)]
-    pub fn update(
-        &mut self,
-        message: TitlebarMessage,
-        window_id: window::Id,
-    ) -> Task<LodestoneAppMessage> {
+    pub fn update(&mut self, message: TitlebarMessage, window_id: window::Id) -> Task<LodestoneAppMessage> {
         match message {
             TitlebarMessage::ToggleMaximized => {
                 info!("Toggling maximize on window {window_id}");
@@ -60,14 +56,9 @@ impl Titlebar {
         }
     }
     #[cfg(not(target_os = "windows"))]
-    pub fn update(
-        &mut self,
-        _message: TitlebarMessage,
-        _window_id: window::Id,
-    ) -> Task<LodestoneAppMessage> {
+    pub fn update(&mut self, _message: TitlebarMessage, _window_id: window::Id) -> Task<LodestoneAppMessage> {
         Task::none()
     }
-
 
     #[cfg(windows)]
     pub fn view(&self) -> Element<'_, TitlebarMessage> {
@@ -99,7 +90,7 @@ impl Titlebar {
                 .width(47)
                 .height(Fill)
                 .style(icon_button::DANGER_BUTTON_STYLE)
-                .on_press(TitlebarMessage::Close)
+                .on_press(TitlebarMessage::Close),
         ])
         .width(Fill)
         .height(32)

@@ -93,7 +93,7 @@ pub mod color {
     /// style guide's component specs.
     pub mod buttons {
         use iced::{Color, color};
-        use iced_color_extension::rgb;
+        use iced_color_extension::{hsl, rgb};
 
         /// `.btn-primary` — green fill, on-green ink.
         pub struct Primary;
@@ -127,7 +127,8 @@ pub mod color {
             pub const FOREGROUND_HOVER: Color = super::Text::HEADLINE;
             pub const BACKGROUND: Color = rgb!(255, 255, 255, 4%);
             /// Hover — `--pink`.
-            pub const BACKGROUND_HOVER: Color = super::Accents::PINK;
+            pub const BACKGROUND_HOVER: Color = hsl!(356, 86%, 49%);
+
         }
     }
 }
