@@ -2,8 +2,12 @@
 //!
 //! Inactive tabs are quiet (`--ink-2` on transparent); the active tab is a
 //! Lode Green pill with near-black ink. The pill *glides* between tabs on a
-//! spring rather than teleporting, and a faint white highlight slides under
-//! the hovered tab — the guide's lift-family motion (§08).
+//! 300ms ease rather than teleporting, and a faint white highlight slides
+//! under the hovered tab — the guide's lift-family motion (§08).
+//!
+//! Labels are real [`Text`] children: iced measures and anchors them, so the
+//! pill geometry comes straight from the child layout nodes and can never
+//! drift from the glyphs.
 //!
 //! ```text
 //! Tabs::new(vec!["Mods", "Resource packs", "Worlds"])
@@ -15,13 +19,12 @@ use crate::app::theme::{color, fonts};
 use iced::advanced::Renderer as _;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer;
-use iced::advanced::text::Renderer as _;
-use iced::advanced::text::{self, Paragraph};
 use iced::advanced::widget::{Tree, tree};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::border::Radius;
 use iced::mouse::{Cursor, Interaction};
-use iced::{Border, Color, Element, Event, Length, Pixels, Point, Rectangle, Renderer as BaseRenderer, Size, Theme, alignment, mouse, window};
+use iced::widget::Text;
+use iced::{Border, Color, Element, Event, Length, Point, Rectangle, Renderer as BaseRenderer, Size, Theme, mouse, window};
 use iced_anim::Animated;
 use iced_color_extension::rgb;
 
@@ -31,7 +34,7 @@ use super::anim;
 const H_PADDING: f32 = 14.0;
 /// Gap between adjacent tabs.
 const SPACING: f32 = 4.0;
-/// The `.tab` line height — 13px text at 1.4 plus the 8px vertical padding.
+/// The `.tab` line height — 13px text plus the 8px vertical padding.
 const TAB_HEIGHT: f32 = 34.0;
 
 /// An animated tab row (`.tab`).
@@ -46,7 +49,7 @@ pub struct Tabs<Message> {
 
 #[derive(Debug)]
 struct State {
-    /// Tab bounds relative to the row, recorded during layout.
+    /// Tab slot bounds relative to the row, recorded during layout.
     tab_bounds: Vec<Rectangle>,
     /// Animated active-pill geometry, relative to the row.
     pill_x: Animated<f32>,
@@ -102,16 +105,34 @@ impl<Message> Tabs<Message> {
         self
     }
 
+    /// Whether the tabs can be interacted with at all.
+    fn interactive(&self) -> bool {
+        !self.disabled && self.on_select.is_some()
+    }
+
+    /// The label widgets — rebuilt identically for `children`, `diff`,
+    /// `layout` and `draw`; the per-instance state (paragraph caches) lives in
+    /// the tree children, which stay diffed against these.
+    fn label_widgets(&self) -> Vec<Element<'static, Message, Theme, BaseRenderer>> {
+        self.labels
+            .iter()
+            .map(|label| {
+                Text::new(label.clone())
+                    .size(13.0)
+                    .line_height(1.0)
+                    .font(fonts::Inter::MEDIUM)
+                    .width(Length::Shrink)
+                    .height(Length::Shrink)
+                    .into()
+            })
+            .collect()
+    }
+
     /// The index of the tab under the cursor, if any.
     fn tab_at(state: &State, cursor: Cursor, bounds: Rectangle) -> Option<usize> {
         let position = cursor.position_in(bounds)?;
         let x = position.x - bounds.x;
         state.tab_bounds.iter().position(|tab| x >= tab.x && x <= tab.x + tab.width)
-    }
-
-    /// Whether the tabs can be interacted with at all.
-    fn interactive(&self) -> bool {
-        !self.disabled && self.on_select.is_some()
     }
 
     /// Ink color for a tab — active reads on the green pill, hover brightens.
@@ -126,22 +147,6 @@ impl<Message> Tabs<Message> {
         } else {
             color::Text::MUTED
         }
-    }
-
-    /// Measures a label with the renderer's paragraph engine.
-    fn measure(_renderer: &BaseRenderer, label: &str, size: f32) -> f32 {
-        let paragraph = <BaseRenderer as text::Renderer>::Paragraph::with_text(text::Text {
-            content: label,
-            bounds: Size::new(f32::INFINITY, size),
-            size: Pixels::from(size),
-            line_height: text::LineHeight::Relative(1.0),
-            font: fonts::Inter::MEDIUM,
-            align_x: text::Alignment::Default,
-            align_y: alignment::Vertical::Center,
-            shaping: text::Shaping::Basic,
-            wrapping: text::Wrapping::default(),
-        });
-        paragraph.min_width()
     }
 
     /// Syncs the animated pill/hover targets against the recorded bounds.
@@ -186,10 +191,7 @@ impl<Message> Tabs<Message> {
     }
 }
 
-impl<Message> Widget<Message, Theme, BaseRenderer> for Tabs<Message>
-where
-    Message: 'static,
-{
+impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
     fn size(&self) -> Size<Length> {
         Size {
             width: self.width,
@@ -214,7 +216,17 @@ where
         })
     }
 
+    fn children(&self) -> Vec<Tree> {
+        self.label_widgets().into_iter().map(Tree::new).collect()
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        let widgets = self.label_widgets();
+        tree.diff_children(&widgets);
+    }
+
     fn layout(&mut self, tree: &mut Tree, renderer: &BaseRenderer, limits: &Limits) -> Node {
+        let mut widgets = self.label_widgets();
         let state = tree.state.downcast_mut::<State>();
 
         let mut children = Vec::with_capacity(self.labels.len());
@@ -222,13 +234,18 @@ where
         let mut x = 0.0;
         let mut total_width = 0.0;
 
-        for label in &self.labels {
-            let text_width = Self::measure(renderer, label, 13.0);
-            let width = text_width + H_PADDING * 2.0;
-            let node = Node::new(Size::new(width, TAB_HEIGHT)).move_to(Point::new(x, 0.0));
-            tab_bounds.push(Rectangle::new(Point::new(x, 0.0), Size::new(width, TAB_HEIGHT)));
-            children.push(node);
-            x += width + SPACING;
+        for (index, widget) in widgets.iter_mut().enumerate() {
+            // Shrink-resolve the label to its natural size.
+            let node = widget.as_widget_mut().layout(&mut tree.children[index], renderer, limits);
+            let text_size = node.size();
+            let tab_width = text_size.width + H_PADDING * 2.0;
+
+            // Center the label inside its tab slot.
+            let positioned = node.move_to(Point::new(x + H_PADDING, (TAB_HEIGHT - text_size.height) / 2.0));
+
+            tab_bounds.push(Rectangle::new(Point::new(x, 0.0), Size::new(tab_width, TAB_HEIGHT)));
+            children.push(positioned);
+            x += tab_width + SPACING;
         }
         if let Some(last) = tab_bounds.last() {
             total_width = last.x + last.width;
@@ -301,13 +318,14 @@ where
         &self,
         tree: &Tree,
         renderer: &mut BaseRenderer,
-        _theme: &Theme,
+        theme: &Theme,
         _style: &renderer::Style,
         layout: Layout<'_>,
-        _cursor: Cursor,
+        cursor: Cursor,
         viewport: &Rectangle,
     ) {
         let state = tree.state.downcast_ref::<State>();
+        let widgets = self.label_widgets();
         let bounds = layout.bounds();
         let radius = Radius::from(12.0);
 
@@ -350,30 +368,27 @@ where
             color::Primary::DEFAULT,
         );
 
-        // Labels.
-        for (index, label) in self.labels.iter().enumerate() {
-            let Some(tab) = state.tab_bounds.get(index) else {
-                continue;
+        // Labels — real Text children, so measurement/anchoring is iced's job.
+        let mut children = layout.children();
+        for (index, widget) in widgets.iter().enumerate() {
+            let Some(node) = children.next() else {
+                break;
             };
-            let tab_bounds = Rectangle::new(Point::new(bounds.x + tab.x, bounds.y), tab.size());
-            if tab_bounds.intersection(viewport).is_none() {
+            if node.bounds().intersection(viewport).is_none() {
                 continue;
             }
-            renderer.fill_text(
-                text::Text {
-                    content: label.clone(),
-                    bounds: tab.size(),
-                    size: Pixels::from(13.0),
-                    line_height: text::LineHeight::Relative(1.0),
-                    font: fonts::Inter::MEDIUM,
-                    align_x: text::Alignment::Center,
-                    align_y: alignment::Vertical::Center,
-                    shaping: text::Shaping::Basic,
-                    wrapping: text::Wrapping::default(),
+            widget.as_widget().draw(
+                &tree.children[index],
+                renderer,
+                theme,
+                // The labels carry no explicit color; the ink flows in here so
+                // the active/hovered states restyle without a view rebuild.
+                &renderer::Style {
+                    text_color: self.ink(index, state.hovered),
                 },
-                tab_bounds.position(),
-                self.ink(index, state.hovered),
-                *viewport,
+                node,
+                cursor,
+                viewport,
             );
         }
     }
@@ -423,5 +438,12 @@ mod tests {
         let no_callback: Tabs<()> = Tabs::new(["A", "B"]);
         assert!(!no_callback.interactive());
         assert!(tabs().interactive());
+    }
+
+    #[test]
+    fn one_child_per_label() {
+        let tabs = tabs();
+        assert_eq!(tabs.label_widgets().len(), 3);
+        assert_eq!(tabs.children().len(), 3);
     }
 }

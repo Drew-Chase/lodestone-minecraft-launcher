@@ -1,7 +1,7 @@
 //! Progress bar — the style guide's `.progress` control (§07).
 //!
 //! A 6px pill track with a Lode Green gradient fill (`--mc-green-dim →
-//! --mc-green`). The fill width rides a spring so value changes read as motion
+//! --mc-green`). The fill width eases so value changes read as motion
 //! rather than jumps, and an [`ProgressBar::indeterminate`] mode sweeps a
 //! highlight band for operations with unknown duration (the guide's shimmer,
 //! repurposed as an honest spinner).
@@ -118,6 +118,16 @@ impl<Message> Widget<Message, Theme, BaseRenderer> for ProgressBar {
         })
     }
 
+    fn diff(&self, tree: &mut Tree) {
+        // Sync the fill target with the (possibly changed) fraction so
+        // progress updates animate even when they arrive without events.
+        let state = tree.state.downcast_mut::<State>();
+        let target = self.fraction.clamp(0.0, 1.0);
+        if state.fill.target() != &target {
+            state.fill.set_target(target);
+        }
+    }
+
     fn layout(&mut self, _tree: &mut Tree, _renderer: &BaseRenderer, limits: &Limits) -> Node {
         layout::atomic(limits, self.width, self.height)
     }
@@ -182,41 +192,45 @@ impl<Message> Widget<Message, Theme, BaseRenderer> for ProgressBar {
             rgb!(255, 255, 255, 6%),
         );
 
-        if self.indeterminate {
-            // Band enters from the left and exits on the right.
-            let band_width = bounds.width * SWEEP_BAND;
-            let travel = bounds.width + band_width;
-            let x = bounds.x + (travel * state.sweep) - band_width;
-            let band = Rectangle::new(iced::Point::new(x, bounds.y), Size::new(band_width, bounds.height));
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: band,
-                    border: iced::Border {
-                        radius,
-                        ..iced::Border::default()
+        // The fill/band are clipped to the track — the indeterminate sweep
+        // travels past both ends and must never paint outside the pill.
+        renderer.with_layer(bounds, |renderer| {
+            if self.indeterminate {
+                // Band enters from the left and exits on the right.
+                let band_width = bounds.width * SWEEP_BAND;
+                let travel = bounds.width + band_width;
+                let x = bounds.x + (travel * state.sweep) - band_width;
+                let band = Rectangle::new(iced::Point::new(x, bounds.y), Size::new(band_width, bounds.height));
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: band,
+                        border: iced::Border {
+                            radius,
+                            ..iced::Border::default()
+                        },
+                        ..renderer::Quad::default()
                     },
-                    ..renderer::Quad::default()
-                },
-                Self::sweep_gradient(),
-            );
-        } else {
-            let fill_width = bounds.width * state.fill.value();
-            if fill_width < 0.5 {
-                return;
+                    Self::sweep_gradient(),
+                );
+            } else {
+                let fill_width = bounds.width * state.fill.value();
+                if fill_width < 0.5 {
+                    return;
+                }
+                let fill = Rectangle::new(bounds.position(), Size::new(fill_width, bounds.height));
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: fill,
+                        border: iced::Border {
+                            radius,
+                            ..iced::Border::default()
+                        },
+                        ..renderer::Quad::default()
+                    },
+                    Self::fill_gradient(),
+                );
             }
-            let fill = Rectangle::new(bounds.position(), Size::new(fill_width, bounds.height));
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: fill,
-                    border: iced::Border {
-                        radius,
-                        ..iced::Border::default()
-                    },
-                    ..renderer::Quad::default()
-                },
-                Self::fill_gradient(),
-            );
-        }
+        });
     }
 
     fn mouse_interaction(&self, _tree: &Tree, _layout: Layout<'_>, _cursor: Cursor, _viewport: &Rectangle, _renderer: &BaseRenderer) -> Interaction {
