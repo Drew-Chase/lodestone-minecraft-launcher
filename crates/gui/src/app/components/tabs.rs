@@ -3,7 +3,9 @@
 //! Inactive tabs are quiet (`--ink-2` on transparent); the active tab is a
 //! Lode Green pill with near-black ink. The pill *glides* between tabs on a
 //! 300ms ease rather than teleporting, and a faint white highlight slides
-//! under the hovered tab — the guide's lift-family motion (§08).
+//! under the hovered tab — the guide's lift-family motion (§08). The hover
+//! tint is 8% white rather than the spec's 4%, which is imperceptible on
+//! this panel.
 //!
 //! Labels are real [`Text`] children: iced measures and anchors them, so the
 //! pill geometry comes straight from the child layout nodes and can never
@@ -340,6 +342,15 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
                 state.hover_x.tick(*now);
                 state.hover_width.tick(*now);
                 state.hover_alpha.tick(*now);
+
+                // Redraw frames receive the freshest cursor but dispatch no
+                // CursorMoved events, so the hover must be re-derived here —
+                // otherwise it trails fast mouse motion by a frame while the
+                // row is animating.
+                let hovered = if self.interactive() { Self::tab_at(state, cursor, bounds) } else { None };
+                if state.hovered != hovered {
+                    state.hovered = hovered;
+                }
             }
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
                 if self.interactive() && Self::tab_at(state, cursor, bounds).is_some() {
@@ -392,8 +403,10 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
         let bounds = layout.bounds();
         let radius = Radius::from(12.0);
 
-        // Sliding hover highlight — white 4%, covering exactly the hit region
-        // of the hovered tab (both position and width ease toward it).
+        // Sliding hover highlight — white 8% (the guide's ghost-hover level;
+        // the spec's 4% is imperceptible on this panel), covering exactly the
+        // hit region of the hovered tab (both position and width ease toward
+        // it).
         let hover_alpha = *state.hover_alpha.value();
         if hover_alpha > 0.01
             && let Some(hovered) = state.hovered
@@ -409,7 +422,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
                     border: Border { radius, ..Border::default() },
                     ..renderer::Quad::default()
                 },
-                anim::fade(rgb!(255, 255, 255, 4%), hover_alpha),
+                anim::fade(rgb!(255, 255, 255, 8%), hover_alpha),
             );
         }
 
@@ -491,11 +504,12 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
                 );
             }
 
-            // The exact values the hit test sees: the cursor x in the widget
-            // frame (same call as `tab_at`), the hovered index, the widget
-            // origin, and every region span — rendered above the row so a
-            // screenshot pins down any coordinate mismatch exactly.
-            let cursor_x = cursor.position_in(bounds).map(|p| (p.x - bounds.x) as i32);
+            // The exact values the hit test sees: the cursor x relative to
+            // this widget (same call as `tab_at` — `position_in` is already
+            // bounds-relative), the hovered index, the widget origin, and
+            // every region span — rendered above the row so a screenshot
+            // pins down any coordinate mismatch exactly.
+            let cursor_x = cursor.position_in(bounds).map(|p| p.x as i32);
             let regions = state
                 .text_bounds
                 .iter()
@@ -506,7 +520,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
                 })
                 .collect::<String>();
             let summary = format!(
-                "cursor={:?} hover={:?} origin={:.0} {regions}",
+                "rel={:?} hover={:?} origin={:.0} {regions}",
                 cursor_x,
                 state.hovered.map(|i| i as i32),
                 bounds.x,
