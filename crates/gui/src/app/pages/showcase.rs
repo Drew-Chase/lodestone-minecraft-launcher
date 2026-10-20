@@ -122,6 +122,9 @@ impl Showcase {
         Tabs::new(["Mods", "Resource packs", "Worlds", "Logs"])
             .active(self.tab_active)
             .on_select(Message::TabSelected)
+            // Diagnostic: outlines the hover/hit regions (red) and label
+            // bounds (cyan) until alignment is confirmed.
+            .debug_hits(true)
             .into()
     }
 

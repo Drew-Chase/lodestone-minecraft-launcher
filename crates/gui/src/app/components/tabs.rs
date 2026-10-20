@@ -7,7 +7,10 @@
 //!
 //! Labels are real [`Text`] children: iced measures and anchors them, so the
 //! pill geometry comes straight from the child layout nodes and can never
-//! drift from the glyphs.
+//! drift from the glyphs. Hover and hit regions are derived from the same
+//! child bounds — each tab owns the span from the midpoint between it and its
+//! previous label to the midpoint between it and the next — so what you see
+//! highlighted is exactly what you hit.
 //!
 //! ```text
 //! Tabs::new(vec!["Mods", "Resource packs", "Worlds"])
@@ -45,11 +48,17 @@ pub struct Tabs<Message> {
     width: Length,
     height: Length,
     disabled: bool,
+    /// Draws the hit/hover regions — a diagnostic aid, off by default.
+    debug_hits: bool,
 }
 
 #[derive(Debug)]
 struct State {
-    /// Tab slot bounds relative to the row, recorded during layout.
+    /// Label bounds relative to the row, recorded during layout. These are
+    /// where the glyphs actually are — the source of truth for hover and
+    /// hit testing.
+    text_bounds: Vec<Rectangle>,
+    /// Pill slot bounds relative to the row (label + horizontal padding).
     tab_bounds: Vec<Rectangle>,
     /// Animated active-pill geometry, relative to the row.
     pill_x: Animated<f32>,
@@ -57,10 +66,34 @@ struct State {
     /// Hovered tab, if any.
     hovered: Option<usize>,
     hover_x: Animated<f32>,
+    hover_width: Animated<f32>,
     hover_alpha: Animated<f32>,
     is_pressed: bool,
     /// True until the first layout, so the pill settles instead of flying in.
     first_layout: bool,
+}
+
+/// The contiguous hover/hit span of the tab at `index`: bounded by the
+/// midpoints between adjacent labels (the outer tabs extend to the row's
+/// padding). Every point of the row belongs to exactly one tab.
+fn region_span(text_bounds: &[Rectangle], index: usize) -> (f32, f32) {
+    let text = &text_bounds[index];
+
+    let start = if index == 0 {
+        text.x - H_PADDING
+    } else {
+        let previous = &text_bounds[index - 1];
+        (previous.x + previous.width + text.x) / 2.0
+    };
+
+    let end = if index + 1 == text_bounds.len() {
+        text.x + text.width + H_PADDING
+    } else {
+        let next = &text_bounds[index + 1];
+        (text.x + text.width + next.x) / 2.0
+    };
+
+    (start, end)
 }
 
 impl<Message> Tabs<Message> {
@@ -73,6 +106,7 @@ impl<Message> Tabs<Message> {
             width: Length::Shrink,
             height: Length::Fixed(TAB_HEIGHT),
             disabled: false,
+            debug_hits: false,
         }
     }
 
@@ -105,6 +139,12 @@ impl<Message> Tabs<Message> {
         self
     }
 
+    /// Draws the hover/hit regions — a diagnostic aid for verifying alignment.
+    pub fn debug_hits(mut self, debug_hits: bool) -> Self {
+        self.debug_hits = debug_hits;
+        self
+    }
+
     /// Whether the tabs can be interacted with at all.
     fn interactive(&self) -> bool {
         !self.disabled && self.on_select.is_some()
@@ -129,28 +169,18 @@ impl<Message> Tabs<Message> {
     }
 
     /// The index of the tab under the cursor, if any.
-    /// The index of the tab under the cursor, if any.
     ///
-    /// Hit regions are contiguous: each tab owns the row from its slot's
-    /// left edge to the next slot's left edge, so the padding between the
-    /// labels never dead-zones and every boundary lines up with a pill edge.
+    /// Hit regions are contiguous and derived from the label bounds — the
+    /// boundary between two tabs is the midpoint between their glyphs, so the
+    /// region you hit is the region you see highlighted.
     fn tab_at(state: &State, cursor: Cursor, bounds: Rectangle) -> Option<usize> {
         let position = cursor.position_in(bounds)?;
         let x = position.x - bounds.x;
 
-        // The last slot whose left edge is at or before the cursor wins; the
-        // widget's own width ends at the final slot's trailing padding, so
-        // nothing past the last tab can match.
-        let mut index = None;
-        for (i, tab) in state.tab_bounds.iter().enumerate() {
-            if x >= tab.x {
-                index = Some(i);
-            } else {
-                break;
-            }
-        }
-
-        index
+        (0..state.text_bounds.len()).find(|&index| {
+            let (start, end) = region_span(&state.text_bounds, index);
+            x >= start && x < end
+        })
     }
 
     /// Ink color for a tab — active reads on the green pill, hover brightens.
@@ -168,9 +198,9 @@ impl<Message> Tabs<Message> {
     }
 
     /// Syncs the animated pill/hover targets against the recorded bounds.
-    /// Returns whether anything changed. Must run after `tab_bounds` exists.
+    /// Returns whether anything changed. Must run after the bounds exist.
     fn sync_targets(&self, state: &mut State) -> bool {
-        if state.tab_bounds.is_empty() {
+        if state.text_bounds.is_empty() {
             return false;
         }
 
@@ -190,16 +220,19 @@ impl<Message> Tabs<Message> {
             changed = true;
         }
 
-        let hover_target_x = state
-            .hovered
-            .and_then(|i| state.tab_bounds.get(i))
-            .map(|tab| tab.x)
-            .unwrap_or_else(|| *state.hover_x.target());
-        let hover_alpha_target = if state.hovered.is_some() { 1.0 } else { 0.0 };
-        if state.hover_x.target() != &hover_target_x {
-            state.hover_x.set_target(hover_target_x);
-            changed = true;
+        if let Some(index) = state.hovered
+            && index < state.text_bounds.len()
+        {
+            let (start, end) = region_span(&state.text_bounds, index);
+            let width = end - start;
+            if state.hover_x.target() != &start || state.hover_width.target() != &width {
+                state.hover_x.set_target(start);
+                state.hover_width.set_target(width);
+                changed = true;
+            }
         }
+
+        let hover_alpha_target = if state.hovered.is_some() { 1.0 } else { 0.0 };
         if state.hover_alpha.target() != &hover_alpha_target {
             state.hover_alpha.set_target(hover_alpha_target);
             changed = true;
@@ -223,11 +256,13 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
 
     fn state(&self) -> tree::State {
         tree::State::new(State {
+            text_bounds: Vec::new(),
             tab_bounds: Vec::new(),
             pill_x: Animated::new(0.0, anim::glide()),
             pill_width: Animated::new(0.0, anim::glide()),
             hovered: None,
             hover_x: Animated::new(0.0, anim::micro()),
+            hover_width: Animated::new(0.0, anim::micro()),
             hover_alpha: Animated::new(0.0, anim::micro()),
             is_pressed: false,
             first_layout: true,
@@ -248,6 +283,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
         let state = tree.state.downcast_mut::<State>();
 
         let mut children = Vec::with_capacity(self.labels.len());
+        let mut text_bounds = Vec::with_capacity(self.labels.len());
         let mut tab_bounds = Vec::with_capacity(self.labels.len());
         let mut x = 0.0;
         let mut total_width = 0.0;
@@ -261,6 +297,10 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
             // Center the label inside its tab slot.
             let positioned = node.move_to(Point::new(x + H_PADDING, (TAB_HEIGHT - text_size.height) / 2.0));
 
+            text_bounds.push(Rectangle::new(
+                Point::new(x + H_PADDING, (TAB_HEIGHT - text_size.height) / 2.0),
+                text_size,
+            ));
             tab_bounds.push(Rectangle::new(Point::new(x, 0.0), Size::new(tab_width, TAB_HEIGHT)));
             children.push(positioned);
             x += tab_width + SPACING;
@@ -269,6 +309,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
             total_width = last.x + last.width;
         }
 
+        state.text_bounds = text_bounds;
         state.tab_bounds = tab_bounds;
         let _ = self.sync_targets(state);
 
@@ -295,6 +336,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
                 state.pill_x.tick(*now);
                 state.pill_width.tick(*now);
                 state.hover_x.tick(*now);
+                state.hover_width.tick(*now);
                 state.hover_alpha.tick(*now);
             }
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
@@ -325,6 +367,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
         needs_redraw |= state.pill_x.is_animating();
         needs_redraw |= state.pill_width.is_animating();
         needs_redraw |= state.hover_x.is_animating();
+        needs_redraw |= state.hover_width.is_animating();
         needs_redraw |= state.hover_alpha.is_animating();
 
         if needs_redraw {
@@ -347,15 +390,16 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
         let bounds = layout.bounds();
         let radius = Radius::from(12.0);
 
-        // Sliding hover highlight — white 4% under the hovered tab.
+        // Sliding hover highlight — white 4%, covering exactly the hit region
+        // of the hovered tab (both position and width ease toward it).
         let hover_alpha = *state.hover_alpha.value();
         if hover_alpha > 0.01
             && let Some(hovered) = state.hovered
-            && let Some(tab) = state.tab_bounds.get(hovered)
+            && hovered < state.text_bounds.len()
         {
             let hover_bounds = Rectangle::new(
                 Point::new(bounds.x + *state.hover_x.value(), bounds.y),
-                Size::new(tab.width, bounds.height),
+                Size::new(*state.hover_width.value(), bounds.height),
             );
             renderer.fill_quad(
                 renderer::Quad {
@@ -409,6 +453,42 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
                 viewport,
             );
         }
+
+        // Diagnostic outlines — the hover/hit regions in red, the label bounds
+        // in cyan. Gated behind the builder flag.
+        if self.debug_hits {
+            for index in 0..state.text_bounds.len() {
+                let (start, end) = region_span(&state.text_bounds, index);
+                let region = Rectangle::new(Point::new(bounds.x + start, bounds.y), Size::new(end - start, bounds.height));
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: region,
+                        border: Border {
+                            radius,
+                            width: 1.0,
+                            color: iced::color!(0xFF3B30),
+                        },
+                        ..renderer::Quad::default()
+                    },
+                    Color::TRANSPARENT,
+                );
+            }
+            for text in &state.text_bounds {
+                let node_bounds = Rectangle::new(Point::new(bounds.x + text.x, bounds.y + text.y), text.size());
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: node_bounds,
+                        border: Border {
+                            radius: Radius::from(2.0),
+                            width: 1.0,
+                            color: iced::color!(0x30D5C8),
+                        },
+                        ..renderer::Quad::default()
+                    },
+                    Color::TRANSPARENT,
+                );
+            }
+        }
     }
 
     fn mouse_interaction(&self, tree: &Tree, layout: Layout<'_>, cursor: Cursor, _viewport: &Rectangle, _renderer: &BaseRenderer) -> Interaction {
@@ -433,6 +513,16 @@ mod tests {
 
     fn tabs() -> Tabs<()> {
         Tabs::new(["Mods", "Resource packs", "Worlds"]).on_select(|_| ())
+    }
+
+    fn sample_bounds() -> Vec<Rectangle> {
+        // Labels at 13px Inter, laid out as the widget would: each starts
+        // 14px after its slot, slots separated by a 4px gap.
+        vec![
+            Rectangle::new(Point::new(14.0, 10.0), Size::new(33.0, 13.0)),
+            Rectangle::new(Point::new(79.0, 10.0), Size::new(95.0, 13.0)),
+            Rectangle::new(Point::new(206.0, 10.0), Size::new(44.0, 13.0)),
+        ]
     }
 
     #[test]
@@ -463,5 +553,35 @@ mod tests {
         let tabs = tabs();
         assert_eq!(tabs.label_widgets().len(), 3);
         assert_eq!(tabs.children().len(), 3);
+    }
+
+    #[test]
+    fn regions_are_contiguous_and_contain_their_label() {
+        let bounds = sample_bounds();
+        let (start, end) = region_span(&bounds, 0);
+        assert!(start <= bounds[0].x && end >= bounds[0].x + bounds[0].width);
+
+        // The boundary between two regions is the midpoint between the
+        // previous label's right edge and the next label's left edge.
+        let (next_start, _) = region_span(&bounds, 1);
+        let expected = (bounds[0].x + bounds[0].width + bounds[1].x) / 2.0;
+        assert_eq!(next_start, expected);
+
+        // Contiguity: each region starts where the previous one ends.
+        let (_, first_end) = region_span(&bounds, 0);
+        let (second_start, _) = region_span(&bounds, 1);
+        assert_eq!(first_end, second_start);
+    }
+
+    #[test]
+    fn outer_regions_cover_the_row_padding() {
+        let bounds = sample_bounds();
+        let (first_start, _) = region_span(&bounds, 0);
+        assert_eq!(first_start, bounds[0].x - 14.0);
+
+        let last = bounds.len() - 1;
+        let (_, last_end) = region_span(&bounds, last);
+        let last_text = &bounds[last];
+        assert_eq!(last_end, last_text.x + last_text.width + 14.0);
     }
 }
