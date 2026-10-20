@@ -22,12 +22,14 @@ use crate::app::theme::{color, fonts};
 use iced::advanced::Renderer as _;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer;
+use iced::advanced::text;
+use iced::advanced::text::Renderer as _;
 use iced::advanced::widget::{Tree, tree};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::border::Radius;
 use iced::mouse::{Cursor, Interaction};
 use iced::widget::Text;
-use iced::{Border, Color, Element, Event, Length, Point, Rectangle, Renderer as BaseRenderer, Size, Theme, mouse, window};
+use iced::{Border, Color, Element, Event, Length, Point, Rectangle, Renderer as BaseRenderer, Size, Theme, alignment, mouse, window};
 use iced_anim::Animated;
 use iced_color_extension::rgb;
 
@@ -488,6 +490,43 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
                     Color::TRANSPARENT,
                 );
             }
+
+            // The exact values the hit test sees: the cursor x in the widget
+            // frame (same call as `tab_at`), the hovered index, the widget
+            // origin, and every region span — rendered above the row so a
+            // screenshot pins down any coordinate mismatch exactly.
+            let cursor_x = cursor.position_in(bounds).map(|p| (p.x - bounds.x) as i32);
+            let regions = state
+                .text_bounds
+                .iter()
+                .enumerate()
+                .map(|(i, _)| {
+                    let (start, end) = region_span(&state.text_bounds, i);
+                    format!("[{start:.0}..{end:.0}]")
+                })
+                .collect::<String>();
+            let summary = format!(
+                "cursor={:?} hover={:?} origin={:.0} {regions}",
+                cursor_x,
+                state.hovered.map(|i| i as i32),
+                bounds.x,
+            );
+            renderer.fill_text(
+                text::Text {
+                    content: summary,
+                    bounds: Size::new(f32::INFINITY, 14.0),
+                    size: iced::Pixels::from(11.0),
+                    line_height: text::LineHeight::Relative(1.0),
+                    font: fonts::JetBrainsMono::REGULAR,
+                    align_x: text::Alignment::Default,
+                    align_y: alignment::Vertical::Top,
+                    shaping: text::Shaping::Basic,
+                    wrapping: text::Wrapping::default(),
+                },
+                Point::new(bounds.x, bounds.y - 18.0),
+                iced::color!(0xFF3B30),
+                *viewport,
+            );
         }
     }
 
