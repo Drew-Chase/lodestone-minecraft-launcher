@@ -129,10 +129,28 @@ impl<Message> Tabs<Message> {
     }
 
     /// The index of the tab under the cursor, if any.
+    /// The index of the tab under the cursor, if any.
+    ///
+    /// Hit regions are contiguous: each tab owns the row from its slot's
+    /// left edge to the next slot's left edge, so the padding between the
+    /// labels never dead-zones and every boundary lines up with a pill edge.
     fn tab_at(state: &State, cursor: Cursor, bounds: Rectangle) -> Option<usize> {
         let position = cursor.position_in(bounds)?;
         let x = position.x - bounds.x;
-        state.tab_bounds.iter().position(|tab| x >= tab.x && x <= tab.x + tab.width)
+
+        // The last slot whose left edge is at or before the cursor wins; the
+        // widget's own width ends at the final slot's trailing padding, so
+        // nothing past the last tab can match.
+        let mut index = None;
+        for (i, tab) in state.tab_bounds.iter().enumerate() {
+            if x >= tab.x {
+                index = Some(i);
+            } else {
+                break;
+            }
+        }
+
+        index
     }
 
     /// Ink color for a tab — active reads on the green pill, hover brightens.

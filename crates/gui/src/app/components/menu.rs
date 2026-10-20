@@ -15,8 +15,8 @@ use iced::advanced::overlay::Element as OverlayElement;
 use iced::advanced::renderer;
 use iced::advanced::svg::Renderer as _;
 use iced::advanced::svg::{Handle, Svg};
+use iced::advanced::text;
 use iced::advanced::text::Renderer as _;
-use iced::advanced::text::{self, Paragraph};
 use iced::advanced::{Clipboard, Layout, Overlay, Renderer as _, Shell};
 use iced::border::Radius;
 use iced::mouse::{Cursor, Interaction};
@@ -397,21 +397,28 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
                             renderer.draw_svg(icon_svg, icon_bounds, row);
                         }
 
-                        // Label.
-                        let text_bounds = Size::new(row.width - H_PADDING * 2.0 - 18.0, row.height);
-                        let paragraph = <BaseRenderer as text::Renderer>::Paragraph::with_text(text::Text {
-                            content: label.as_str(),
-                            bounds: text_bounds,
-                            size: Pixels::from(13.0),
-                            line_height: text::LineHeight::Relative(1.4),
-                            font: fonts::Inter::MEDIUM,
-                            align_x: text::Alignment::Default,
-                            align_y: alignment::Vertical::Center,
-                            shaping: text::Shaping::Basic,
-                            wrapping: text::Wrapping::default(),
-                        });
-                        let position = Point::new(text_x + if icon.is_some() { 18.0 + 8.0 } else { 0.0 }, row.center_y());
-                        renderer.fill_paragraph(&paragraph, position, anim::fade(ink, alpha), menu_bounds);
+                        // Label — drawn via `fill_text` with owned content.
+                        // A paragraph built locally during draw only downgrades
+                        // to a weak reference in the render pass and is silently
+                        // skipped once dropped; the cached path keys the buffer
+                        // on the content instead (the same reason iced's own
+                        // combo-box menu uses `fill_text`).
+                        renderer.fill_text(
+                            text::Text {
+                                content: label.clone(),
+                                bounds: Size::new(f32::INFINITY, row.height),
+                                size: Pixels::from(13.0),
+                                line_height: text::LineHeight::Relative(1.4),
+                                font: fonts::Inter::MEDIUM,
+                                align_x: text::Alignment::Default,
+                                align_y: alignment::Vertical::Center,
+                                shaping: text::Shaping::Basic,
+                                wrapping: text::Wrapping::default(),
+                            },
+                            Point::new(text_x + if icon.is_some() { 18.0 + 8.0 } else { 0.0 }, row.center_y()),
+                            anim::fade(ink, alpha),
+                            menu_bounds,
+                        );
                     }
                 }
             }

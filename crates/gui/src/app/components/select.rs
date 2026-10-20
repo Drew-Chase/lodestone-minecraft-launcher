@@ -18,8 +18,8 @@ use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer;
 use iced::advanced::svg::Renderer as _;
 use iced::advanced::svg::{Handle, Svg};
+use iced::advanced::text;
 use iced::advanced::text::Renderer as _;
-use iced::advanced::text::{self, Paragraph};
 use iced::advanced::widget::{Tree, tree};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::border::Radius;
@@ -265,21 +265,22 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
             background,
         );
 
-        // Label.
+        // Label — `fill_text` with owned content: a paragraph built locally
+        // during draw is only weakly held by the render pass and is silently
+        // skipped once dropped (see the menu engine note).
         let label = self.label();
-        let paragraph = <BaseRenderer as text::Renderer>::Paragraph::with_text(text::Text {
-            content: label,
-            bounds: Size::new(bounds.width - H_PADDING * 2.0 - CHEVRON_SIZE - CHEVRON_GAP, bounds.height),
-            size: Pixels::from(13.0),
-            line_height: text::LineHeight::Relative(1.4),
-            font: fonts::Inter::MEDIUM,
-            align_x: text::Alignment::Default,
-            align_y: alignment::Vertical::Center,
-            shaping: text::Shaping::Basic,
-            wrapping: text::Wrapping::default(),
-        });
-        renderer.fill_paragraph(
-            &paragraph,
+        renderer.fill_text(
+            text::Text {
+                content: label.to_owned(),
+                bounds: Size::new(bounds.width - H_PADDING * 2.0 - CHEVRON_SIZE - CHEVRON_GAP, bounds.height),
+                size: Pixels::from(13.0),
+                line_height: text::LineHeight::Relative(1.4),
+                font: fonts::Inter::MEDIUM,
+                align_x: text::Alignment::Default,
+                align_y: alignment::Vertical::Center,
+                shaping: text::Shaping::Basic,
+                wrapping: text::Wrapping::default(),
+            },
             Point::new(bounds.x + H_PADDING, bounds.center_y()),
             if self.has_value() {
                 color::Text::DEFAULT
