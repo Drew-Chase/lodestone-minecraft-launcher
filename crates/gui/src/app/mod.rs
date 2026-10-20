@@ -3,11 +3,12 @@ pub mod pages;
 pub mod theme;
 mod titlebar;
 
+use crate::app::pages::showcase::{Message as ShowcaseMessage, Showcase};
 use crate::app::theme::color::Surface;
 use crate::app::titlebar::{Titlebar, TitlebarMessage};
-use iced::widget::{column, container, row, scrollable, stack};
+use iced::widget::{column, container, stack};
 use iced::window::{Direction, Id, Level, Position};
-use iced::{Element, Fill, Padding, Size, Subscription, Task, window};
+use iced::{Element, Fill, Size, Subscription, Task, window};
 use iced_borderless_window_resize_handle_widget::{ResizeHandles, drag_resize};
 use tracing::{debug, info};
 
@@ -16,6 +17,7 @@ pub struct LodestoneLauncher {
     id: Option<Id>,
     titlebar: Titlebar,
     maximized: bool,
+    showcase: Showcase,
 }
 
 #[derive(Debug)]
@@ -25,6 +27,7 @@ pub enum LodestoneAppMessage {
     WindowSizeChanged(Id, Size),
     TitlebarMessage(TitlebarMessage),
     WindowMaximized(bool),
+    Showcase(ShowcaseMessage),
 }
 
 impl LodestoneLauncher {
@@ -71,6 +74,10 @@ impl LodestoneLauncher {
                 self.maximized = maximized;
                 Task::none()
             }
+            LodestoneAppMessage::Showcase(message) => {
+                self.showcase.update(message);
+                Task::none()
+            }
         }
     }
 
@@ -78,21 +85,17 @@ impl LodestoneLauncher {
         stack![
             column![
                 self.titlebar.view().map(LodestoneAppMessage::TitlebarMessage),
-                scrollable(
-                    container(container(row![]).width(Fill).max_width(576).height(Fill).padding(Padding {
-                        left: 16.0,
-                        right: 16.0,
-                        top: 32.0,
-                        bottom: 32.0
-                    }))
-                    .style(|_| container::Style {
-                        background: Some(iced::Background::Color(Surface::APPLICATION)),
-                        ..Default::default()
-                    })
-                    .center_x(Fill)
+                container(
+                    container(self.showcase.view().map(LodestoneAppMessage::Showcase))
+                        .width(Fill)
+                        .height(Fill)
                 )
                 .width(Fill)
                 .height(Fill)
+                .style(|_| container::Style {
+                    background: Some(iced::Background::Color(Surface::APPLICATION)),
+                    ..Default::default()
+                })
             ],
             ResizeHandles::new(LodestoneAppMessage::WindowStartResize)
                 .gutter(4.0)
