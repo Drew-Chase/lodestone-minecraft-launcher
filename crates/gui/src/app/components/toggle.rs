@@ -3,11 +3,15 @@
 //! A 34×20 pill track with a circular knob. Off is the guide's neutral track
 //! with a white knob; on is Lode Green with the on-green ink knob (`#062814`).
 //! Hover brightens the track, press settles toward the dim gradient stop
-//! (§02 — "Gradient stops, pressed states"), and the knob rides a spring so
-//! the flip feels physical (§08 — Micro).
+//! (§02 — "Gradient stops, pressed states"), and the knob slides on a 120ms
+//! ease (§08 — Micro).
 //!
-//! All state — hover, press and the knob/track animation — is self-contained
-//! in the widget's tree state, exactly like a standard iced widget:
+//! Animation is driven by iced_anim's `AnimatedState`, the same pattern the
+//! library's own animated button uses: the widget-local [`Status`] carries
+//! *everything* the visual depends on (including the on/off state, so a
+//! programmatic flip retargets exactly like a click), `current_value`
+//! retargets lazily during draw, and `needs_redraw` + `tick` run the frames.
+//! All state is self-contained in the widget's tree state:
 //!
 //! ```text
 //! Toggle::new(settings.auto_update).on_toggle(Message::AutoUpdateToggled)
@@ -22,7 +26,7 @@ use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::border::Radius;
 use iced::mouse::{Cursor, Interaction};
 use iced::{Border, Color, Element, Event, Length, Point, Rectangle, Renderer as BaseRenderer, Size, Theme, mouse, window};
-use iced_anim::Animated;
+use iced_anim::AnimatedState;
 use iced_color_extension::rgb;
 
 use super::anim;
@@ -55,13 +59,26 @@ impl<Message: Clone> OnToggle<Message> {
     }
 }
 
-/// Widget-local interaction status.
+/// Widget-local interaction status. The on/off state is folded in so any
+/// programmatic flip changes the status — which is what triggers the
+/// retarget-and-redraw loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
-    Idle,
-    Hovered,
-    Pressed,
-    Disabled,
+    OnIdle,
+    OnHovered,
+    OnPressed,
+    OffIdle,
+    OffHovered,
+    OffPressed,
+    /// Carries the on/off state: disabled controls ignore hover/press, but a
+    /// bound value can still change underneath them.
+    Disabled(bool),
+}
+
+impl Status {
+    fn is_on(self) -> bool {
+        matches!(self, Status::OnIdle | Status::OnHovered | Status::OnPressed) || matches!(self, Status::Disabled(true))
+    }
 }
 
 /// The animated appearance of a [`Toggle`].
@@ -78,8 +95,7 @@ struct Visual {
 #[derive(Debug)]
 struct State {
     is_pressed: bool,
-    status: Status,
-    anim: Animated<Visual>,
+    animated_state: AnimatedState<Status, Visual>,
 }
 
 impl<Message> Toggle<Message> {
@@ -126,50 +142,42 @@ impl<Message> Toggle<Message> {
 
     fn status_for(&self, is_pressed: bool, is_over: bool) -> Status {
         if self.disabled {
-            Status::Disabled
-        } else if is_pressed && is_over {
-            Status::Pressed
-        } else if is_over {
-            Status::Hovered
-        } else {
-            Status::Idle
+            return Status::Disabled(self.is_on);
+        }
+
+        match (self.is_on, is_pressed && is_over, is_over) {
+            (true, true, _) => Status::OnPressed,
+            (true, _, true) => Status::OnHovered,
+            (true, _, _) => Status::OnIdle,
+            (false, true, _) => Status::OffPressed,
+            (false, _, true) => Status::OffHovered,
+            (false, _, _) => Status::OffIdle,
         }
     }
 
-    /// The target appearance for the given status. `is_on` is folded into the
-    /// visual so a programmatic flip animates exactly like a click.
+    /// The status the toggle mounts in — settled, no fly-in.
+    fn initial_status(&self) -> Status {
+        self.status_for(false, false)
+    }
+
+    /// The target appearance for the given status.
     fn visual(&self, status: Status) -> Visual {
-        let knob = if self.is_on { 1.0 } else { 0.0 };
-        let (track, knob_color) = if self.is_on {
-            match status {
-                Status::Disabled => (anim::fade(color::Primary::DEFAULT, 0.4), anim::fade(color::Primary::ON, 0.7)),
-                Status::Pressed => (color::Primary::DIM, color::Primary::ON),
-                // `.btn-primary:hover` — brightness(1.06) ≈ `#2aff8c`.
-                Status::Hovered => (iced::color!(0x2AFF8C), color::Primary::ON),
-                Status::Idle => (color::Primary::DEFAULT, color::Primary::ON),
-            }
-        } else {
-            match status {
-                Status::Disabled => (rgb!(255, 255, 255, 5%), color::Text::DISABLED),
-                Status::Pressed => (rgb!(255, 255, 255, 6%), rgb!(255, 255, 255, 80%)),
-                Status::Hovered => (rgb!(255, 255, 255, 14%), Color::WHITE),
-                Status::Idle => (rgb!(255, 255, 255, 10%), Color::WHITE),
-            }
+        let knob = if status.is_on() { 1.0 } else { 0.0 };
+
+        let (track, knob_color) = match status {
+            // The guide fades the whole control when disabled.
+            Status::Disabled(_) if self.is_on => (anim::fade(color::Primary::DEFAULT, 0.4), anim::fade(color::Primary::ON, 0.7)),
+            Status::Disabled(_) => (rgb!(255, 255, 255, 5%), color::Text::DISABLED),
+            Status::OnPressed => (color::Primary::DIM, color::Primary::ON),
+            // `.btn-primary:hover` — brightness(1.06) ≈ `#2aff8c`.
+            Status::OnHovered => (iced::color!(0x2AFF8C), color::Primary::ON),
+            Status::OnIdle => (color::Primary::DEFAULT, color::Primary::ON),
+            Status::OffPressed => (rgb!(255, 255, 255, 6%), rgb!(255, 255, 255, 80%)),
+            Status::OffHovered => (rgb!(255, 255, 255, 14%), Color::WHITE),
+            Status::OffIdle => (rgb!(255, 255, 255, 10%), Color::WHITE),
         };
 
         Visual { knob, track, knob_color }
-    }
-
-    /// Pushes the animated target to match the current app state and status.
-    /// Returns whether the target changed.
-    fn sync_target(&self, state: &mut State) -> bool {
-        let target = self.visual(state.status);
-        if state.anim.target() != &target {
-            state.anim.set_target(target);
-            true
-        } else {
-            false
-        }
     }
 }
 
@@ -186,13 +194,17 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for Toggle<Message> {
     }
 
     fn state(&self) -> tree::State {
-        // The animation starts settled at the initial value — no fly-in on mount.
-        let status = if self.disabled { Status::Disabled } else { Status::Idle };
+        // The animated value is created lazily at the current status, so the
+        // toggle mounts settled — no fly-in.
         tree::State::new(State {
             is_pressed: false,
-            status,
-            anim: Animated::new(self.visual(status), anim::micro()),
+            animated_state: AnimatedState::new(self.initial_status(), anim::micro()),
         })
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        let state = tree.state.downcast_mut::<State>();
+        state.animated_state.diff(anim::micro());
     }
 
     fn layout(&mut self, _tree: &mut Tree, _renderer: &BaseRenderer, limits: &Limits) -> Node {
@@ -217,33 +229,32 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for Toggle<Message> {
         let is_over = cursor.is_over(layout.bounds());
         let state = tree.state.downcast_mut::<State>();
 
+        // Redraw whenever the status changes or an animation is in flight.
+        let status = self.status_for(state.is_pressed, is_over);
+        if state.animated_state.needs_redraw(status) {
+            shell.request_redraw();
+        }
+
         match event {
             Event::Window(window::Event::RedrawRequested(now)) => {
-                state.anim.tick(*now);
+                state.animated_state.tick(*now);
             }
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
                 if is_over && self.on_toggle.is_some() && !self.disabled {
                     state.is_pressed = true;
+                    shell.request_redraw();
                     shell.capture_event();
                 }
             }
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) if state.is_pressed => {
                 state.is_pressed = false;
+                shell.request_redraw();
                 if is_over && let Some(on_toggle) = self.on_toggle.as_ref() {
                     shell.publish(on_toggle.get(self.is_on));
                 }
                 shell.capture_event();
             }
             _ => {}
-        }
-
-        let status = self.status_for(state.is_pressed, is_over);
-        if state.status != status {
-            state.status = status;
-        }
-
-        if self.sync_target(state) || state.anim.is_animating() {
-            shell.request_redraw();
         }
     }
 
@@ -258,7 +269,9 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for Toggle<Message> {
         _viewport: &Rectangle,
     ) {
         let state = tree.state.downcast_ref::<State>();
-        let visual = state.anim.value();
+        // Lazily retargets the animation when the computed visual differs —
+        // this is what makes both click-driven and programmatic flips animate.
+        let visual = state.animated_state.current_value(|status| self.visual(*status));
         let bounds = layout.bounds();
 
         // Track — fully rounded pill.
@@ -312,8 +325,8 @@ mod tests {
 
     #[test]
     fn visual_tracks_knob_position() {
-        let off = Toggle::<()>::new(false).visual(Status::Idle);
-        let on = Toggle::<()>::new(true).visual(Status::Idle);
+        let off = Toggle::<()>::new(false).visual(Status::OffIdle);
+        let on = Toggle::<()>::new(true).visual(Status::OnIdle);
         assert_eq!(off.knob, 0.0);
         assert_eq!(on.knob, 1.0);
         assert_ne!(off.track, on.track);
@@ -321,17 +334,37 @@ mod tests {
     }
 
     #[test]
-    fn disabled_status_ignores_hover() {
-        let toggle = Toggle::<()>::new(false).disabled(true);
-        assert_eq!(toggle.status_for(false, true), Status::Disabled);
-        assert_eq!(toggle.status_for(true, true), Status::Disabled);
+    fn status_tracks_the_on_state() {
+        let on = Toggle::<()>::new(true);
+        let off = Toggle::<()>::new(false);
+        assert_eq!(on.status_for(false, false), Status::OnIdle);
+        assert_eq!(off.status_for(false, false), Status::OffIdle);
+        assert_eq!(on.status_for(true, true), Status::OnPressed);
+        assert_eq!(on.status_for(false, true), Status::OnHovered);
+        assert_eq!(off.status_for(false, true), Status::OffHovered);
+    }
+
+    #[test]
+    fn disabled_status_ignores_hover_but_keeps_the_value() {
+        let on = Toggle::<()>::new(true).disabled(true);
+        let off = Toggle::<()>::new(false).disabled(true);
+        assert_eq!(on.status_for(false, true), Status::Disabled(true));
+        assert_eq!(off.status_for(true, true), Status::Disabled(false));
     }
 
     #[test]
     fn hover_brightens_and_press_dims() {
-        let hovered = Toggle::<()>::new(true).visual(Status::Hovered);
-        let pressed = Toggle::<()>::new(true).visual(Status::Pressed);
+        let hovered = Toggle::<()>::new(true).visual(Status::OnHovered);
+        let pressed = Toggle::<()>::new(true).visual(Status::OnPressed);
         assert_eq!(hovered.track, iced::color!(0x2AFF8C));
         assert_eq!(pressed.track, color::Primary::DIM);
+    }
+
+    #[test]
+    fn disabled_flips_still_change_the_visual() {
+        let on = Toggle::<()>::new(true).disabled(true).visual(Status::Disabled(true));
+        let off = Toggle::<()>::new(false).disabled(true).visual(Status::Disabled(false));
+        assert_ne!(on.track, off.track);
+        assert_ne!(on.knob, off.knob);
     }
 }

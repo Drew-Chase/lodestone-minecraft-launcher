@@ -4,7 +4,7 @@
 //! A hand-rolled `Overlay` in the spirit of iced's own `combo_box` menu, but
 //! styled straight from the guide: `bg-3` surface with a hairline border and
 //! the elevation-3 shadow (§06), `bg-4` hover rows, Lode Green selected rows,
-//! and an open/close spring — fade plus a 6px slide (§08 Lift).
+//! and an open/close ease — fade plus a 6px slide (§08 Lift).
 //!
 //! The engine is deliberately internal; the public surface lives in
 //! [`select`](super::select) and [`dropdown`](super::dropdown).
@@ -290,7 +290,9 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
 
     fn draw(&self, renderer: &mut BaseRenderer, _theme: &Theme, _style: &renderer::Style, layout: Layout<'_>, cursor: Cursor) {
         let menu_bounds = layout.bounds();
-        let alpha = *self.state.open.value();
+        // The transition keeps the value in [0, 1]; the clamp is belt and
+        // braces so a stray value can never produce out-of-range alphas.
+        let alpha = self.state.open.value().clamp(0.0, 1.0);
         if alpha <= 0.001 {
             return;
         }

@@ -3,7 +3,7 @@
 //! Primary is the one loud thing on screen: a Lode Green fill with on-green
 //! ink and a glow shadow. Ghost is the quiet counterpart — white 4% fill with
 //! a hairline border. Hover lifts the button 1px and brightens it; press
-//! settles it back down. All of it animates on a spring (§08 — Micro/Lift).
+//! settles it back down. All of it eases on the §08 timings (Micro/Lift).
 //!
 //! ```text
 //! TextButton::primary("Play").on_press(Message::Play)
@@ -164,7 +164,7 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
         self
     }
 
-    /// Overrides the spring driving the hover lift (§08 motion presets).
+    /// Overrides the easing driving the hover lift (§08 motion presets).
     pub fn animation(mut self, motion: impl Into<Mode>) -> Self {
         self.animation = motion.into();
         self

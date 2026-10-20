@@ -2,39 +2,51 @@
 //!
 //! The guide defines two interaction speeds — *micro* (120ms ease) and *lift*
 //! (200ms cubic-bezier(.2,.7,.3,1)) — plus long ambient loops that "never
-//! compete with content". These map onto [`iced_anim`] spring motions so every
-//! control in this module settles with the same feel:
+//! compete with content". Every preset is a time-based [`Easing`] transition:
 //!
-//! | Preset    | Guide reference                  | Used by                          |
-//! |-----------|----------------------------------|----------------------------------|
-//! | [`micro`] | §08 Micro · 120ms ease           | toggles, hover tints, chevrons   |
-//! | [`lift`]  | §08 Lift · 200ms                 | buttons, cards, menus            |
-//! | [`glide`] | §08 lift family, longer travel   | tab pills, nav indicator, fills  |
+//! **Why not springs?** `iced_anim`'s spring integrator is a semi-implicit
+//! Euler step with the delta-time clamped at 33ms (`MAX_DURATION`). That clamp
+//! makes springs numerically unstable for fast responses — the damping term
+//! `|1 − ζω·dt|` crosses 1 at dt ≈ 22ms for a 120ms response, so any slow
+//! frame amplifies the velocity and the animation oscillates forever. The
+//! library's own 500ms default sits safely inside the stable envelope; the
+//! guide's 120–200ms timings do not. Transitions integrate `progress` against
+//! a fixed duration (clamped to [0, 1] and lerped between endpoints), so they
+//! terminate exactly at any frame rate — the correct primitive for these
+//! CSS-style timings.
+//!
+//! | Preset    | Guide reference                        | Used by                          |
+//! |-----------|----------------------------------------|----------------------------------|
+//! | [`micro`] | §08 Micro · 120ms ease                 | toggles, hover tints, chevrons   |
+//! | [`lift`]  | §08 Lift · 200ms cubic-bezier(.2,.7,.3,1) | buttons, cards, menus        |
+//! | [`glide`] | §08 lift family, longer travel         | tab pills, nav indicator, fills  |
 
 use std::time::Duration;
 
 use iced::Color;
-use iced_anim::spring::Motion;
+use iced_anim::transition::bezier::Bezier;
+use iced_anim::transition::{Curve, Easing};
 
 /// Micro interactions — near-instant response, tiny travel (§08 "Micro").
-pub fn micro() -> Motion {
-    Motion::SNAPPY.with_duration(Duration::from_millis(120))
+pub fn micro() -> Easing {
+    Easing::EASE_OUT.with_duration(Duration::from_millis(120))
 }
 
-/// Lift — hover elevation and popover entrances (§08 "Lift · 200ms").
-pub fn lift() -> Motion {
-    Motion::SMOOTH.with_duration(Duration::from_millis(200))
+/// Lift — hover elevation and popover entrances (§08 "Lift · 200ms
+/// cubic-bezier(.2,.7,.3,1)"). The guide's exact curve.
+pub fn lift() -> Easing {
+    Easing::new(Curve::Bezier(Bezier::new(0.2, 0.7, 0.3, 1.0))).with_duration(Duration::from_millis(200))
 }
 
 /// Glide — longer travels: the tab pill, nav indicator and progress fill.
-pub fn glide() -> Motion {
-    Motion::SMOOTH.with_duration(Duration::from_millis(300))
+pub fn glide() -> Easing {
+    Easing::EASE_IN_OUT.with_duration(Duration::from_millis(300))
 }
 
-/// Menus — dropdown/select open and close. Fast and critically damped:
-/// overshoot on a floating surface reads as a glitch, not as playfulness.
-pub fn menu() -> Motion {
-    Motion::SMOOTH.with_duration(Duration::from_millis(180)).with_damping(0.9)
+/// Menus — dropdown/select open and close (§08 Lift family). Fast fade and
+/// slide; time-based so a popover always lands exactly, at any frame rate.
+pub fn menu() -> Easing {
+    Easing::EASE_OUT.with_duration(Duration::from_millis(180))
 }
 
 /// Multiplies a color's alpha — used for fades (menu open/close, pulse rings).
@@ -57,6 +69,28 @@ pub fn mix(from: Color, to: Color, t: f32) -> Color {
 mod tests {
     use super::*;
     use iced::color;
+
+    #[test]
+    fn presets_are_time_based_transitions() {
+        // All presets must be easings — springs are numerically unstable at
+        // these durations (see the module docs).
+        let micro = micro();
+        let lift = lift();
+        let glide = glide();
+        let menu = menu();
+
+        assert_eq!(micro.duration, Duration::from_millis(120));
+        assert_eq!(lift.duration, Duration::from_millis(200));
+        assert_eq!(glide.duration, Duration::from_millis(300));
+        assert_eq!(menu.duration, Duration::from_millis(180));
+    }
+
+    #[test]
+    fn lift_matches_the_guide_curve() {
+        // §08 — cubic-bezier(.2,.7,.3,1).
+        let lift = lift();
+        assert!(matches!(lift.curve, Curve::Bezier(_)));
+    }
 
     #[test]
     fn fade_multiplies_alpha() {

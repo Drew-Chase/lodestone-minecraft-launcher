@@ -3,7 +3,7 @@
 //! A vertical rail of 44×44 rounded icon slots. The active item wears a green
 //! 8% tint and the signature 3px left indicator bar with a green glow; a faint
 //! white highlight glides under the hovered item. The indicator *slides*
-//! between items on a spring — the rail should feel like a compass needle
+//! between items on an ease — the rail should feel like a compass needle
 //! swinging home (§01, §08).
 //!
 //! ```text
