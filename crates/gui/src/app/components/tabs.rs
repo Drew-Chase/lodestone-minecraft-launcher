@@ -24,14 +24,12 @@ use crate::app::theme::{color, fonts};
 use iced::advanced::Renderer as _;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer;
-use iced::advanced::text;
-use iced::advanced::text::Renderer as _;
 use iced::advanced::widget::{Tree, tree};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::border::Radius;
 use iced::mouse::{Cursor, Interaction};
 use iced::widget::Text;
-use iced::{Border, Color, Element, Event, Length, Point, Rectangle, Renderer as BaseRenderer, Size, Theme, alignment, mouse, window};
+use iced::{Border, Color, Element, Event, Length, Point, Rectangle, Renderer as BaseRenderer, Size, Theme, mouse, window};
 use iced_anim::Animated;
 use iced_color_extension::rgb;
 
@@ -52,8 +50,6 @@ pub struct Tabs<Message> {
     width: Length,
     height: Length,
     disabled: bool,
-    /// Draws the hit/hover regions — a diagnostic aid, off by default.
-    debug_hits: bool,
 }
 
 #[derive(Debug)]
@@ -110,7 +106,6 @@ impl<Message> Tabs<Message> {
             width: Length::Shrink,
             height: Length::Fixed(TAB_HEIGHT),
             disabled: false,
-            debug_hits: false,
         }
     }
 
@@ -140,12 +135,6 @@ impl<Message> Tabs<Message> {
 
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
-        self
-    }
-
-    /// Draws the hover/hit regions — a diagnostic aid for verifying alignment.
-    pub fn debug_hits(mut self, debug_hits: bool) -> Self {
-        self.debug_hits = debug_hits;
         self
     }
 
@@ -469,80 +458,6 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
                 node,
                 cursor,
                 viewport,
-            );
-        }
-
-        // Diagnostic outlines — the hover/hit regions in red, the label bounds
-        // in cyan. Gated behind the builder flag.
-        if self.debug_hits {
-            for index in 0..state.text_bounds.len() {
-                let (start, end) = region_span(&state.text_bounds, index);
-                let region = Rectangle::new(Point::new(bounds.x + start, bounds.y), Size::new(end - start, bounds.height));
-                renderer.fill_quad(
-                    renderer::Quad {
-                        bounds: region,
-                        border: Border {
-                            radius,
-                            width: 1.0,
-                            color: iced::color!(0xFF3B30),
-                        },
-                        ..renderer::Quad::default()
-                    },
-                    Color::TRANSPARENT,
-                );
-            }
-            for text in &state.text_bounds {
-                let node_bounds = Rectangle::new(Point::new(bounds.x + text.x, bounds.y + text.y), text.size());
-                renderer.fill_quad(
-                    renderer::Quad {
-                        bounds: node_bounds,
-                        border: Border {
-                            radius: Radius::from(2.0),
-                            width: 1.0,
-                            color: iced::color!(0x30D5C8),
-                        },
-                        ..renderer::Quad::default()
-                    },
-                    Color::TRANSPARENT,
-                );
-            }
-
-            // The exact values the hit test sees: the cursor x relative to
-            // this widget (same call as `tab_at` — `position_in` is already
-            // bounds-relative), the hovered index, the widget origin, and
-            // every region span — rendered above the row so a screenshot
-            // pins down any coordinate mismatch exactly.
-            let cursor_x = cursor.position_in(bounds).map(|p| p.x as i32);
-            let regions = state
-                .text_bounds
-                .iter()
-                .enumerate()
-                .map(|(i, _)| {
-                    let (start, end) = region_span(&state.text_bounds, i);
-                    format!("[{start:.0}..{end:.0}]")
-                })
-                .collect::<String>();
-            let summary = format!(
-                "rel={:?} hover={:?} origin={:.0} {regions}",
-                cursor_x,
-                state.hovered.map(|i| i as i32),
-                bounds.x,
-            );
-            renderer.fill_text(
-                text::Text {
-                    content: summary,
-                    bounds: Size::new(f32::INFINITY, 14.0),
-                    size: iced::Pixels::from(11.0),
-                    line_height: text::LineHeight::Relative(1.0),
-                    font: fonts::JetBrainsMono::REGULAR,
-                    align_x: text::Alignment::Default,
-                    align_y: alignment::Vertical::Top,
-                    shaping: text::Shaping::Basic,
-                    wrapping: text::Wrapping::default(),
-                },
-                Point::new(bounds.x, bounds.y - 18.0),
-                iced::color!(0xFF3B30),
-                *viewport,
             );
         }
     }
