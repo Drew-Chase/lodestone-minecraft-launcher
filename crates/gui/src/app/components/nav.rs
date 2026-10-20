@@ -120,8 +120,10 @@ impl<Message> NavRail<Message> {
 
     /// The index of the item under the cursor, if any.
     fn item_at(state: &State, cursor: Cursor, bounds: Rectangle) -> Option<usize> {
+        // `position_in` is already relative to `bounds` — subtracting the
+        // origin again shifts the whole hit test by the rail's position.
         let position = cursor.position_in(bounds)?;
-        let y = position.y - bounds.y;
+        let y = position.y;
         state.item_bounds.iter().position(|item| y >= item.y && y <= item.y + item.height)
     }
 

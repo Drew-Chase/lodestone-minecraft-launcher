@@ -178,8 +178,11 @@ impl<Message> Tabs<Message> {
     /// boundary between two tabs is the midpoint between their glyphs, so the
     /// region you hit is the region you see highlighted.
     fn tab_at(state: &State, cursor: Cursor, bounds: Rectangle) -> Option<usize> {
+        // `position_in` is already relative to `bounds` — subtracting the
+        // origin again shifts the whole hit test by the widget's position
+        // (hovering a tab's left half registered the previous tab).
         let position = cursor.position_in(bounds)?;
-        let x = position.x - bounds.x;
+        let x = position.x;
 
         (0..state.text_bounds.len()).find(|&index| {
             let (start, end) = region_span(&state.text_bounds, index);
@@ -606,6 +609,40 @@ mod tests {
         let tabs = tabs();
         assert_eq!(tabs.label_widgets().len(), 3);
         assert_eq!(tabs.children().len(), 3);
+    }
+
+    #[test]
+    fn hit_test_is_relative_to_the_widget_origin() {
+        let state = State {
+            text_bounds: sample_bounds(),
+            tab_bounds: Vec::new(),
+            pill_x: Animated::new(0.0, anim::glide()),
+            pill_width: Animated::new(0.0, anim::glide()),
+            hovered: None,
+            hover_x: Animated::new(0.0, anim::micro()),
+            hover_width: Animated::new(0.0, anim::micro()),
+            hover_alpha: Animated::new(0.0, anim::micro()),
+            is_pressed: false,
+            first_layout: true,
+        };
+
+        // A widget parked at origin (44, 100) — the cursor is given in window
+        // coordinates while `position_in` resolves it against these bounds.
+        // Regression: subtracting the origin a second time shifted the whole
+        // hit test left by 44px (the left half of every tab hit its
+        // predecessor, or nothing).
+        let bounds = Rectangle::new(Point::new(44.0, 100.0), Size::new(264.0, TAB_HEIGHT));
+        let at = |rel_x: f32| Cursor::Available(Point::new(44.0 + rel_x, 100.0 + 16.0));
+
+        // Deep inside the first tab's region...
+        assert_eq!(Tabs::<()>::tab_at(&state, at(34.0), bounds), Some(0));
+        // ...its far-left padding edge (one pixel in)...
+        assert_eq!(Tabs::<()>::tab_at(&state, at(1.0), bounds), Some(0));
+        // ...and the left half of the second tab, which used to hit the first.
+        assert_eq!(Tabs::<()>::tab_at(&state, at(70.0), bounds), Some(1));
+
+        // Just past the row's right edge: nothing.
+        assert_eq!(Tabs::<()>::tab_at(&state, at(265.0), bounds), None);
     }
 
     #[test]
