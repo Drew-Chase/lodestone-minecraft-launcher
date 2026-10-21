@@ -419,8 +419,8 @@ impl LodestoneLauncher {
 
     pub fn window_settings() -> window::Settings {
         window::Settings {
-            size: Size::new(1920.0, 1080.0),
-            min_size: Some(Size::new(680f32, 440f32)),
+            size: Size::new(1280.0, 720.0),
+            min_size: Some(Size::new(800f32, 600f32)),
             decorations: !cfg!(target_os = "windows"),
             resizable: true,
             #[cfg(target_os = "windows")]
