@@ -13,7 +13,6 @@
 //! The widget redraws continuously while mounted (the design's loops are
 //! infinite) and unmounts the moment the router leaves `Page::Login`.
 
-use std::f32::consts::FRAC_PI_2;
 use std::sync::OnceLock;
 use std::time::Instant;
 
@@ -25,68 +24,16 @@ use iced::advanced::widget::{Tree, tree};
 use iced::advanced::{Clipboard, Layout, Renderer as _, Shell, Widget};
 use iced::border::Radius;
 use iced::mouse::{Cursor, Interaction};
-use iced::{Background, Border, Element, Event, Length, Point, Radians, Rectangle, Renderer as BaseRenderer, Size, Theme, gradient};
-use iced_color_extension::rgb;
+use iced::{Border, Element, Event, Length, Point, Radians, Rectangle, Renderer as BaseRenderer, Size, Theme};
 
 use crate::app::theme::color;
 
-/// The reference artboard's scene seed (`Scene biome="forest" seed={7}`).
-const SCENE_SEED: f64 = 7.0;
 /// CSS `aurora-float` — 18s ease-in-out infinite.
 const AURORA_PERIOD: f32 = 18.0;
 /// `.aurora::after` starts mid-cycle (`animation-delay: -9s`).
 const VIOLET_DELAY: f32 = 9.0;
 /// `Particles count={24}`.
 const EMBER_COUNT: usize = 24;
-/// The reference scene is inset −40px before blurring so the blur never
-/// pulls transparent edges into view.
-const SCENE_BLEED: f32 = 40.0;
-
-/// One aurora blob — `.aurora::before` (green) or `.aurora::after` (violet).
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Blob {
-    Green,
-    Violet,
-}
-
-impl Blob {
-    /// Sprite size in px (`::before` 600, `::after` 500).
-    fn size(self) -> f32 {
-        match self {
-            Blob::Green => 600.0,
-            Blob::Violet => 500.0,
-        }
-    }
-
-    /// Untransformed top-left within `bounds` (CSS offsets: green
-    /// `top:-200 left:-100`, violet `bottom:-150 right:-100`).
-    fn base(self, bounds: Rectangle) -> Point {
-        match self {
-            Blob::Green => Point::new(bounds.x - 100.0, bounds.y - 200.0),
-            Blob::Violet => Point::new(
-                bounds.x + bounds.width - self.size() + 100.0,
-                bounds.y + bounds.height - self.size() + 150.0,
-            ),
-        }
-    }
-
-    /// Glow tint, from the guide's `--mc-green` / `--violet`.
-    fn hex(self) -> &'static str {
-        match self {
-            Blob::Green => "#22ff84",
-            Blob::Violet => "#9747ff",
-        }
-    }
-
-    fn sprite(self) -> &'static Handle {
-        static GREEN: OnceLock<Handle> = OnceLock::new();
-        static VIOLET: OnceLock<Handle> = OnceLock::new();
-        match self {
-            Blob::Green => GREEN.get_or_init(|| glow_sprite_handle(self.hex(), self.size() as u32)),
-            Blob::Violet => VIOLET.get_or_init(|| glow_sprite_handle(self.hex(), self.size() as u32)),
-        }
-    }
-}
 
 /// Per-instance animation state.
 struct State {
@@ -170,8 +117,11 @@ where
             return;
         }
         let t = state.start.elapsed().as_secs_f32();
+        // The reference artboard is 1280×820 — washes and embers scale with
+        // the window so proportions hold at any size.
+        let factor = (bounds.width / 1280.0).clamp(0.75, 2.0);
 
-        // 1 — the blurred forest scene, rebuilt in `layout` on resize.
+        // 1 — the static ambient field, rebuilt in `layout` on resize.
         let Some((_, scene)) = state.scene.as_ref() else {
             return;
         };
@@ -186,28 +136,29 @@ where
             bounds,
         );
 
-        // 2 — the dim overlay sits UNDER the glows (reference order: scene →
-        // dim → aurora → particles), so they punch through the darkness.
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds,
-                ..renderer::Quad::default()
-            },
-            Background::Gradient(
-                gradient::Linear::new(Radians(FRAC_PI_2))
-                    .add_stop(0.0, rgb!(0, 0, 0, 35%))
-                    .add_stop(1.0, rgb!(0, 0, 0, 75%))
-                    .into(),
-            ),
+        // 2 — aurora washes riding their 18s float cycles. The dim overlay
+        // of the reference is baked into the field, so the washes read at
+        // full strength, like the export.
+        draw_wash(
+            renderer,
+            bounds,
+            green_wash_handle(),
+            Point::new(bounds.x + bounds.width * 0.39, bounds.y + bounds.height * 0.21),
+            1300.0 * factor,
+            (t / AURORA_PERIOD) % 1.0,
+        );
+        draw_wash(
+            renderer,
+            bounds,
+            violet_wash_handle(),
+            Point::new(bounds.x + bounds.width * 0.9, bounds.y + bounds.height * 0.8),
+            1000.0 * factor,
+            ((t + VIOLET_DELAY) / AURORA_PERIOD) % 1.0,
         );
 
-        // 3 — aurora blobs riding their 18s float cycles.
-        draw_blob(renderer, bounds, Blob::Green, (t / AURORA_PERIOD) % 1.0);
-        draw_blob(renderer, bounds, Blob::Violet, ((t + VIOLET_DELAY) / AURORA_PERIOD) % 1.0);
-
-        // 4 — embers drifting bottom → top.
+        // 3 — embers drifting bottom → top.
         for i in 0..EMBER_COUNT {
-            draw_ember(renderer, bounds, i, t);
+            draw_ember(renderer, bounds, i, t, factor);
         }
     }
 
@@ -225,7 +176,7 @@ impl LoginBackdrop {
         {
             return handle.clone();
         }
-        let handle = Handle::from_memory(scene_svg(size.width, size.height, SCENE_SEED).into_bytes());
+        let handle = Handle::from_memory(scene_svg(size.width, size.height).into_bytes());
         state.scene = Some((size, handle.clone()));
         handle
     }
@@ -237,18 +188,16 @@ impl<'a, Message: 'static> From<LoginBackdrop> for Element<'a, Message, Theme, B
     }
 }
 
-/// Draws one aurora blob at its cycle position.
-fn draw_blob(renderer: &mut BaseRenderer, bounds: Rectangle, blob: Blob, phase: f32) {
+/// Draws one aurora wash at its cycle position.
+fn draw_wash(renderer: &mut BaseRenderer, bounds: Rectangle, sprite: &Handle, center: Point, size: f32, phase: f32) {
     let (dx, dy, scale) = aurora_offset(phase);
-    let size = blob.size() * scale;
-    let center = blob.base(bounds) + Vector::new(blob.size() / 2.0 + dx, blob.size() / 2.0 + dy);
+    let size = size * scale;
+    let center = center + Vector::new(dx * size / 1300.0, dy * size / 1300.0);
     let sprite_bounds = Rectangle::new(center - Vector::new(size / 2.0, size / 2.0), Size::new(size, size));
     renderer.draw_svg(
         Svg {
-            handle: blob.sprite().clone(),
-            // CSS: `.aurora { opacity: 0.7 }` over `::before/::after { opacity: 0.55 }`
-            // — the 0.55 is baked into the sprite's gradient stops.
-            opacity: 0.7,
+            handle: sprite.clone(),
+            opacity: 1.0,
             rotation: Radians(0.0),
             color: None,
         },
@@ -259,15 +208,16 @@ fn draw_blob(renderer: &mut BaseRenderer, bounds: Rectangle, blob: Blob, phase: 
 
 use iced::Vector;
 
-/// Draws one ember (`Particles` + CSS `drift`).
-fn draw_ember(renderer: &mut BaseRenderer, bounds: Rectangle, i: usize, t: f32) {
-    let (left_pct, size, delay, dur) = ember_layout(i);
+/// Draws one ember (`Particles` + CSS `drift`) — a sprite, so it layers
+/// above the scene and wash textures.
+fn draw_ember(renderer: &mut BaseRenderer, bounds: Rectangle, i: usize, t: f32, factor: f32) {
+    let (left_pct, base_size, delay, dur) = ember_layout(i);
     let p = ((t + delay) / dur) % 1.0;
 
     // 0% → 100%: translateY(-110vh) translateX(30px), fading in over the
     // first 10% and out over the last 10%.
     let progress = p * 1.1;
-    let x = bounds.x + (left_pct / 100.0) * bounds.width + 30.0 * p;
+    let x = bounds.x + (left_pct / 100.0) * bounds.width + 30.0 * factor * p;
     let y = bounds.y + bounds.height + 10.0 - progress * bounds.height;
     let alpha = if p < 0.1 {
         p / 0.1
@@ -275,36 +225,25 @@ fn draw_ember(renderer: &mut BaseRenderer, bounds: Rectangle, i: usize, t: f32) 
         (1.0 - p) / 0.1
     } else {
         1.0
-    } * 0.7;
+    };
 
-    // Core dot with a soft halo approximating `box-shadow: 0 0 4+size px`.
-    let core = Rectangle::new(Point::new(x, y) - Vector::new(size / 2.0, size / 2.0), Size::new(size, size));
-    let halo_size = size + 8.0;
-    let halo = Rectangle::new(
-        Point::new(x, y) - Vector::new(halo_size / 2.0, halo_size / 2.0),
-        Size::new(halo_size, halo_size),
+    // The sprite's bright core is 8% of its radius; scale so the core lands
+    // on the reference's 2–4px dots, glow spilling out around it.
+    let core = (base_size * factor).clamp(2.0, 6.0);
+    let sprite_size = core / 0.08;
+    let sprite_bounds = Rectangle::new(
+        Point::new(x, y) - Vector::new(sprite_size / 2.0, sprite_size / 2.0),
+        Size::new(sprite_size, sprite_size),
     );
-    renderer.fill_quad(
-        renderer::Quad {
-            bounds: halo,
-            border: Border {
-                radius: Radius::from(halo_size / 2.0),
-                ..Border::default()
-            },
-            ..renderer::Quad::default()
+    renderer.draw_svg(
+        Svg {
+            handle: ember_sprite_handle().clone(),
+            opacity: alpha,
+            rotation: Radians(0.0),
+            color: None,
         },
-        anim_fade(color::Primary::DEFAULT, alpha * 0.2),
-    );
-    renderer.fill_quad(
-        renderer::Quad {
-            bounds: core,
-            border: Border {
-                radius: Radius::from(size / 2.0),
-                ..Border::default()
-            },
-            ..renderer::Quad::default()
-        },
-        anim_fade(color::Primary::DEFAULT, alpha),
+        sprite_bounds,
+        bounds,
     );
 }
 
@@ -341,99 +280,35 @@ fn aurora_offset(phase: f32) -> (f32, f32, f32) {
     (a.1 + (b.1 - a.1) * t, a.2 + (b.2 - a.2) * t, a.3 + (b.3 - a.3) * t)
 }
 
-/// The scene's deterministic pseudo-random — `Scene.jsx`'s
-/// `fract(sin((seed+1)·9301 + i·49297)·233280)`, always in `[0, 1)`.
-fn prng(seed: f64, i: usize) -> f64 {
-    let x = ((seed + 1.0) * 9301.0 + i as f64 * 49297.0).sin() * 233280.0;
-    x - x.floor()
-}
-
-/// Generates the blurred forest scene: sky, sun glow, back hills, terrain
-/// with a grass ridge, voxel grid, and vignette — all under
-/// `blur(24px) saturate(1.2)`, exactly like the reference wrapper.
-pub fn scene_svg(w: f32, h: f32, seed: f64) -> String {
-    // Sun/moon position — `sunX = 15 + r(99)·70 %`, `sunY = 18 + r(100)·20 %`.
-    let sun_x = 15.0 + prng(seed, 99) * 70.0;
-    let sun_y = 18.0 + prng(seed, 100) * 20.0;
-    let sun_r = 400.0; // glow radius — the disc + its halo in one radial falloff
-
-    // Jagged terrain silhouette — 18 columns, heights 30–85% (`Scene.jsx`).
-    let cols = 18usize;
-    let ridge: Vec<String> = (0..cols)
-        .map(|i| {
-            let height_pct = 30.0 + prng(seed, i) * 55.0;
-            let x = i as f64 / (cols - 1) as f64;
-            format!("{:.1},{:.1}", x * w as f64, (1.0 - height_pct / 100.0) * h as f64)
-        })
-        .collect();
-
-    // Back hills — the fixed clip-path silhouette from `Scene.jsx`, as px.
-    let back: [&str; 9] = ["0,60", "12,58", "22,65", "34,52", "48,58", "62,50", "76,56", "88,48", "100,54"];
-    let back_points: Vec<String> = std::iter::once(format!("{:.1},{:.1}", -SCENE_BLEED, h + SCENE_BLEED))
-        .chain(back.iter().map(|p| {
-            let (x, y) = p.split_once(',').unwrap();
-            format!(
-                "{:.1},{:.1}",
-                x.parse::<f64>().unwrap() / 100.0 * w as f64,
-                y.parse::<f64>().unwrap() / 100.0 * h as f64
-            )
-        }))
-        .chain(std::iter::once(format!("{:.1},{:.1}", w + SCENE_BLEED, h + SCENE_BLEED)))
-        .collect();
-
+/// Generates the ambient field: a flat dark-green base with corner falloff
+/// and a fine grain (the reference's `.dust` dither) — the animated washes
+/// and embers ride on top as sprites. The reference's terrain, hills, and
+/// sun blur into nothing visible, so they are not painted; the field is
+/// tuned against pixels sampled from `01-login.png`.
+pub fn scene_svg(w: f32, h: f32) -> String {
     format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">
   <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#060b08"/>
-      <stop offset="0.55" stop-color="#0e2013"/>
-      <stop offset="1" stop-color="#1a3f24"/>
-    </linearGradient>
-    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#fff2b8" stop-opacity="0.55"/>
-      <stop offset="0.2" stop-color="#ffe9a0" stop-opacity="0.35"/>
-      <stop offset="0.5" stop-color="#ffd98a" stop-opacity="0.12"/>
-      <stop offset="1" stop-color="#ffd98a" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="hills" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#000000" stop-opacity="0.2"/>
-      <stop offset="1" stop-color="#000000" stop-opacity="0.5"/>
-    </linearGradient>
-    <linearGradient id="terrain" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1c3d25"/>
-      <stop offset="1" stop-color="#081509"/>
+    <linearGradient id="base" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b2b14"/>
+      <stop offset="0.5" stop-color="#082010"/>
+      <stop offset="1" stop-color="#07160d"/>
     </linearGradient>
     <radialGradient id="vignette" cx="0.5" cy="0.5" r="0.75">
-      <stop offset="0.4" stop-color="#000000" stop-opacity="0"/>
-      <stop offset="1" stop-color="#000000" stop-opacity="0.5"/>
+      <stop offset="0.55" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.32"/>
     </radialGradient>
-    <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
-      <path d="M 16 0 L 0 0 0 16" fill="none" stroke="#000000" stroke-opacity="0.15" stroke-width="1"/>
-    </pattern>
-    <filter id="soften" x="-15%" y="-15%" width="130%" height="130%">
-      <feGaussianBlur stdDeviation="36"/>
-      <feColorMatrix type="saturate" values="1.1"/>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.05 0"/>
     </filter>
   </defs>
-  <g filter="url(#soften)">
-    <rect x="-{bleed}" y="-{bleed}" width="{wide}" height="{tall}" fill="url(#sky)"/>
-    <rect x="{sun_left:.1}" y="{sun_top:.1}" width="{sun_d}" height="{sun_d}" fill="url(#sun)"/>
-    <polygon points="{back}" fill="url(#hills)" opacity="0.4"/>
-    <polygon points="{terrain}" fill="url(#terrain)" stroke="#2c7a42" stroke-opacity="0.5" stroke-width="4"/>
-    <rect x="-{bleed}" y="-{bleed}" width="{wide}" height="{tall}" fill="url(#grid)" opacity="0.35"/>
-  </g>
+  <rect width="{w}" height="{h}" fill="url(#base)"/>
   <rect width="{w}" height="{h}" fill="url(#vignette)"/>
+  <rect width="{w}" height="{h}" filter="url(#grain)"/>
 </svg>"##,
         w = w,
         h = h,
-        bleed = SCENE_BLEED,
-        wide = w + SCENE_BLEED * 2.0,
-        tall = h + SCENE_BLEED * 2.0,
-        sun_left = sun_x / 100.0 * w as f64 - sun_r,
-        sun_top = sun_y / 100.0 * h as f64 - sun_r,
-        sun_d = sun_r * 2.0,
-        back = back_points.join(" "),
-        terrain = ridge.join(" "),
     )
 }
 
@@ -458,6 +333,66 @@ fn glow_sprite_handle(hex: &str, size: u32) -> Handle {
     Handle::from_memory(svg.into_bytes())
 }
 
+/// The aurora wash sprite — a broad radial matched to the sampled
+/// brightness field of the reference export (`01-login.png`). Drawn scaled
+/// to the window and drifted by [`aurora_offset`].
+///
+/// Stop alphas are authored pre-compensation: the svg texture pipeline
+/// renders translucent stops weaker than authored (≈ squared), so callers
+/// pass `sqrt(target)` values — see the sampling notes in this module's
+/// history.
+fn wash_svg(hex: &str, peak: f32, mid: f32) -> String {
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000">
+  <defs>
+    <radialGradient id="w" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="{hex}" stop-opacity="{peak:.2}"/>
+      <stop offset="0.35" stop-color="{hex}" stop-opacity="{mid:.2}"/>
+      <stop offset="0.65" stop-color="{hex}" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="{hex}" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1000" height="1000" fill="url(#w)"/>
+</svg>"##
+    )
+}
+
+fn wash_sprite(hex: &str, peak: f32, mid: f32) -> Handle {
+    Handle::from_memory(wash_svg(hex, peak, mid).into_bytes())
+}
+
+fn green_wash_handle() -> &'static Handle {
+    static WASH: OnceLock<Handle> = OnceLock::new();
+    WASH.get_or_init(|| wash_sprite("#22ff84", 0.55, 0.51))
+}
+
+fn violet_wash_handle() -> &'static Handle {
+    static WASH: OnceLock<Handle> = OnceLock::new();
+    WASH.get_or_init(|| wash_sprite("#9747ff", 0.28, 0.19))
+}
+
+/// One ember — a glowing green speck. SVG, not a quad: iced_wgpu renders a
+/// layer's quads *before* its textures, so quad embers would sink beneath
+/// the scene and wash sprites.
+fn ember_sprite_handle() -> &'static Handle {
+    static EMBER: OnceLock<Handle> = OnceLock::new();
+    EMBER.get_or_init(|| {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="e" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#22ff84" stop-opacity="1"/>
+      <stop offset="0.08" stop-color="#22ff84" stop-opacity="0.92"/>
+      <stop offset="0.2" stop-color="#22ff84" stop-opacity="0.35"/>
+      <stop offset="0.35" stop-color="#22ff84" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#22ff84" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" fill="url(#e)"/>
+</svg>"##;
+        Handle::from_memory(svg.as_bytes().to_vec())
+    })
+}
+
 /// Glow halo behind the login card's logo mark — [`glow_sprite_handle`] at
 /// card scale, exposed for `pages/login.rs`.
 pub(crate) fn logo_glow_handle() -> &'static Handle {
@@ -468,17 +403,6 @@ pub(crate) fn logo_glow_handle() -> &'static Handle {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn prng_is_deterministic_and_bounded() {
-        for i in 0..64 {
-            let a = prng(SCENE_SEED, i);
-            let b = prng(SCENE_SEED, i);
-            assert_eq!(a, b, "prng must be deterministic");
-            assert!((0.0..1.0).contains(&a), "prng({i}) = {a} out of range");
-        }
-        assert_ne!(prng(SCENE_SEED, 1), prng(SCENE_SEED, 2), "values must vary");
-    }
 
     #[test]
     fn aurora_offset_hits_the_css_keyframes() {
@@ -506,15 +430,23 @@ mod tests {
 
     #[test]
     fn scene_svg_carries_every_layer() {
-        let svg = scene_svg(1280.0, 820.0, SCENE_SEED);
-        assert!(svg.contains("feGaussianBlur"), "scene must be blurred");
-        assert!(svg.contains("feColorMatrix"), "scene must be saturated");
-        assert!(svg.contains("radialGradient"), "sun glow needs a radial falloff");
-        assert!(svg.contains("<polygon"), "hills and terrain are silhouettes");
-        assert!(svg.contains("url(#grid)"), "voxel grid overlay");
-        assert!(svg.contains("url(#vignette)"));
-        // The blur bleeds in from outside, so the painted content must
-        // extend past the viewBox by the bleed amount.
-        assert!(svg.contains(&format!("x=\"-{SCENE_BLEED}\"")));
+        let svg = scene_svg(1280.0, 820.0);
+        assert!(svg.contains("url(#base)"), "flat dark-green base");
+        assert!(svg.contains("url(#vignette)"), "corner falloff");
+        assert!(svg.contains("feTurbulence"), "grain dithers the dark gradients");
+        // The heavy scene features blurred into nothing in the reference —
+        // they must not come back.
+        assert!(!svg.contains("<polygon"), "no terrain silhouettes");
+        assert!(!svg.contains("feGaussianBlur"), "no per-scene blur needed for smooth fields");
+    }
+
+    #[test]
+    fn washes_are_baked_at_their_layer_opacities() {
+        let green = wash_svg("#22ff84", 0.55, 0.51);
+        assert!(green.contains("stop-color=\"#22ff84\""));
+        assert!(green.contains("stop-opacity=\"0.55\""));
+        let violet = wash_svg("#9747ff", 0.28, 0.19);
+        assert!(violet.contains("stop-color=\"#9747ff\""));
+        assert!(violet.contains("stop-opacity=\"0.28\""));
     }
 }
