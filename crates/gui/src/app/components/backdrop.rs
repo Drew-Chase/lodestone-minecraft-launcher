@@ -260,10 +260,10 @@ fn draw_ember(renderer: &mut BaseRenderer, bounds: Rectangle, i: usize, t: f32, 
         1.0
     };
 
-    // The sprite's solid core reaches half its radius; draw at 4× the core
-    // so the dot is `core` px with a tight 1-core-wide glow falloff.
+    // The sprite's solid core reaches half its radius; draw at 2× the core
+    // so the glow dies within ~1 core-width — a hot spark, not a flake.
     let core = (base_size * factor).clamp(1.5, 3.5);
-    let sprite_size = core * 4.0;
+    let sprite_size = core * 2.0;
     let sprite_bounds = Rectangle::new(
         Point::new(x, y) - Vector::new(sprite_size / 2.0, sprite_size / 2.0),
         Size::new(sprite_size, sprite_size),
@@ -416,9 +416,9 @@ fn ember_sprite_handle() -> &'static Handle {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <defs>
     <radialGradient id="e" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#22ff84" stop-opacity="1"/>
-      <stop offset="0.5" stop-color="#22ff84" stop-opacity="0.85"/>
-      <stop offset="0.75" stop-color="#22ff84" stop-opacity="0.3"/>
+      <stop offset="0" stop-color="#d8ffe9" stop-opacity="1"/>
+      <stop offset="0.4" stop-color="#22ff84" stop-opacity="0.95"/>
+      <stop offset="0.7" stop-color="#22ff84" stop-opacity="0.3"/>
       <stop offset="1" stop-color="#22ff84" stop-opacity="0"/>
     </radialGradient>
   </defs>
