@@ -127,6 +127,18 @@ impl LodestoneLauncher {
                 |_| LodestoneAppMessage::ResizeProbe,
             ));
         }
+        // TEMPORARY auth-path verification — env-gated: auto-presses the
+        // Microsoft button after 2s so the network flow can be measured
+        // without interaction.
+        if std::env::var_os("LODESTONE_AUTH_TEST").is_some() {
+            info!("PROBE auth verification active");
+            tasks.push(Task::perform(
+                async {
+                    std::thread::sleep(std::time::Duration::from_millis(2000));
+                },
+                |_| LodestoneAppMessage::Login(LoginMessage::SignInMicrosoft),
+            ));
+        }
         (Self { ..Self::default() }, Task::batch(tasks))
     }
 
@@ -246,11 +258,9 @@ impl LodestoneLauncher {
                     Some(id) => window::resize(id, Size::new(w, h)),
                     None => Task::none(),
                 };
-                // TEMPORARY probe cadence — a blocked pool thread per tick
-                // is fine for a measurement run.
                 let tick = Task::perform(
                     async {
-                        std::thread::sleep(std::time::Duration::from_millis(1000));
+                        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
                     },
                     |_| LodestoneAppMessage::ResizeProbe,
                 );
