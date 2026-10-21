@@ -7,6 +7,7 @@ edition = "2024"
 piston-mc = { version = "0.1.5-beta", features = ["assets", "downloads", "java"] }
 aurora_leaf = {path="../aurora_leaf"}
 lodestone_minecraft_authentication = { path = "../auth" }
+open = "5"
 tokio = { workspace = true, features = ["rt", "time"] }
 iced = { version = "0.14", default-features = false, features = ["canvas", "advanced", "svg", "lazy", "sipper", "advanced-shaping", "web-colors", "crisp", "wgpu", "thread-pool", "tokio", "x11", "wayland"] }
 iced_borderless_window_resize_handle_widget = { version = "0.1" }

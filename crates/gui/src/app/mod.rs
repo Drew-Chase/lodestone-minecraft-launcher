@@ -6,8 +6,6 @@ mod titlebar;
 
 #[cfg(not(windows))]
 use crate::app::components::IconButton;
-use std::sync::OnceLock;
-
 use crate::app::components::backdrop::LoginBackdrop;
 use crate::app::components::{NavItem, NavRail};
 use crate::app::pages::Page;
@@ -27,6 +25,7 @@ use iced::window::{Direction, Id, Level, Position};
 use iced::{Element, Fill, Padding, Size, Subscription, Task, event, mouse, window};
 use iced_borderless_window_resize_handle_widget::{ResizeHandles, drag_resize};
 use lodestone_minecraft_authentication::{Authentication, Session};
+use std::sync::OnceLock;
 use tracing::{debug, info, warn};
 
 /// TEMPORARY resize-latency probe — active only with
@@ -59,6 +58,9 @@ pub struct LodestoneLauncher {
     /// contract — a real store lands with the account page.
     session: Option<Session>,
     auth: Authentication,
+    /// Bumped on every new/abandoned sign-in so results from stale polls
+    /// (cancelled or superseded) are dropped when they arrive.
+    auth_generation: u64,
     /// TEMPORARY resize-latency probe counter (env-gated).
     probe_step: u32,
 }
@@ -76,6 +78,7 @@ impl Default for LodestoneLauncher {
             login: Login::default(),
             session: None,
             auth: Authentication::new(AZURE_CLIENT_ID),
+            auth_generation: 0,
             probe_step: 0,
         }
     }
@@ -196,15 +199,19 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Showcase(ShowcaseMessage::Navigate(page)) => self.navigate(page),
             LodestoneAppMessage::Login(LoginMessage::Navigate(page)) => self.navigate(page),
             LodestoneAppMessage::Login(LoginMessage::SignInMicrosoft) => {
-                info!("Beginning Microsoft device-code sign-in");
+                // Bump the generation so results from any abandoned poll
+                // are dropped when they eventually arrive.
+                self.auth_generation = self.auth_generation.wrapping_add(1);
+                let generation = self.auth_generation;
+                info!("Beginning Microsoft device-code sign-in (generation {generation})");
                 self.login.update(LoginMessage::Opening);
                 let auth = self.auth.clone();
                 Task::perform(
                     async move { auth.begin_device_code_login().await.map_err(|error| error.to_string()) },
-                    |result| LodestoneAppMessage::Login(LoginMessage::DeviceCodeStarted(result)),
+                    move |result| LodestoneAppMessage::Login(LoginMessage::DeviceCodeStarted(generation, result)),
                 )
             }
-            LodestoneAppMessage::Login(LoginMessage::DeviceCodeStarted(Ok(start))) => {
+            LodestoneAppMessage::Login(LoginMessage::DeviceCodeStarted(generation, Ok(start))) if generation == self.auth_generation => {
                 let user_code = start.user_code.clone();
                 let verification_uri = start.verification_uri.clone();
                 info!("Device code ready: {user_code} at {verification_uri}");
@@ -212,24 +219,48 @@ impl LodestoneLauncher {
                 let auth = self.auth.clone();
                 Task::perform(
                     async move { auth.finish_device_code_login(start).await.map_err(|error| error.to_string()) },
-                    |result| LodestoneAppMessage::Login(LoginMessage::SignInFinished(result)),
+                    move |result| LodestoneAppMessage::Login(LoginMessage::SignInFinished(generation, result)),
                 )
             }
-            LodestoneAppMessage::Login(LoginMessage::DeviceCodeStarted(Err(error))) => {
+            LodestoneAppMessage::Login(LoginMessage::DeviceCodeStarted(generation, Err(error))) if generation == self.auth_generation => {
                 warn!("Device-code request failed: {error}");
                 self.login.update(LoginMessage::SignInFailed(error));
                 Task::none()
             }
-            LodestoneAppMessage::Login(LoginMessage::SignInFinished(Ok(session))) => {
+            LodestoneAppMessage::Login(LoginMessage::SignInFinished(generation, Ok(session))) if generation == self.auth_generation => {
                 info!("Signed in as {}", session.profile.name);
                 self.session = Some(session);
                 self.login.update(LoginMessage::Reset);
                 self.router.replace(Page::Home);
                 Task::none()
             }
-            LodestoneAppMessage::Login(LoginMessage::SignInFinished(Err(error))) => {
+            LodestoneAppMessage::Login(LoginMessage::SignInFinished(generation, Err(error))) if generation == self.auth_generation => {
                 warn!("Sign-in failed: {error}");
                 self.login.update(LoginMessage::SignInFailed(error));
+                Task::none()
+            }
+            // Results from cancelled generations — dropped silently.
+            LodestoneAppMessage::Login(LoginMessage::DeviceCodeStarted(generation, _))
+            | LodestoneAppMessage::Login(LoginMessage::SignInFinished(generation, _)) => {
+                debug!("Stale sign-in result from generation {generation} dropped");
+                Task::none()
+            }
+            LodestoneAppMessage::Login(LoginMessage::CopyCode { code }) => {
+                info!("Device code copied to clipboard");
+                self.login.update(LoginMessage::CodeCopied);
+                iced::clipboard::write(code)
+            }
+            LodestoneAppMessage::Login(LoginMessage::OpenVerificationLink { url }) => {
+                match open::that_detached(&url) {
+                    Ok(()) => info!("Opened {url} in the default browser"),
+                    Err(error) => warn!("Failed to open {url}: {error}"),
+                }
+                Task::none()
+            }
+            LodestoneAppMessage::Login(LoginMessage::CancelSignIn) => {
+                info!("Sign-in cancelled");
+                self.auth_generation = self.auth_generation.wrapping_add(1);
+                self.login.update(LoginMessage::Reset);
                 Task::none()
             }
             LodestoneAppMessage::Login(LoginMessage::OfflineMode | LoginMessage::DemoMode) => {
@@ -268,7 +299,13 @@ impl LodestoneLauncher {
             }
             // Display-state messages: pure page state, forwarded as-is.
             LodestoneAppMessage::Login(
-                message @ (LoginMessage::Opening | LoginMessage::CodeReady { .. } | LoginMessage::SignInFailed(_) | LoginMessage::Reset),
+                message @ (LoginMessage::Opening
+                | LoginMessage::CodeReady { .. }
+                | LoginMessage::CodeCopied
+                | LoginMessage::SignInFailed(_)
+                | LoginMessage::Reset
+                | LoginMessage::CodeHover(_)
+                | LoginMessage::LinkHover(_)),
             ) => {
                 self.login.update(message);
                 Task::none()

@@ -37,12 +37,16 @@ enum Flow {
     Idle,
     /// The device-code request is in flight.
     Opening,
-    /// A code is on screen and the sign-in poll is running.
+    /// A code is on screen and the sign-in poll is running. The alternates
+    /// (OR + Offline/Demo) are hidden while signing in; a cancel button
+    /// takes their place.
     Code {
         /// The short code the user types at `verification_uri`.
         user_code: String,
         /// Where to enter it, e.g. `https://www.microsoft.com/link`.
         verification_uri: String,
+        /// The code was clicked and copied to the clipboard.
+        copied: bool,
     },
     /// The last attempt failed with a user-presentable message; the card
     /// offers a retry.
@@ -53,6 +57,10 @@ enum Flow {
 #[derive(Debug, Clone, Default)]
 pub struct Login {
     flow: Flow,
+    /// Hover state of the code (copy) region in the code panel.
+    code_hover: bool,
+    /// Hover state of the verification-link region.
+    link_hover: bool,
 }
 
 /// Messages produced by the login page.
@@ -69,6 +77,16 @@ pub enum Message {
     DemoMode,
     /// "Learn more ↗" — informational link.
     LearnMore,
+    /// The device code was clicked — the root copies it to the clipboard.
+    CopyCode { code: String },
+    /// The verification link was clicked — the root opens the browser.
+    OpenVerificationLink { url: String },
+    /// "Cancel" — the root abandons the in-flight sign-in.
+    CancelSignIn,
+    /// Hover entered/exited the code (copy) region.
+    CodeHover(bool),
+    /// Hover entered/exited the verification-link region.
+    LinkHover(bool),
     /// Internal — the root forwards this when the device code arrives.
     Opening,
     /// Internal — a device code is ready to be shown.
@@ -78,16 +96,19 @@ pub enum Message {
         /// Where to enter it.
         verification_uri: String,
     },
+    /// Internal — the code was copied (updates the panel hint).
+    CodeCopied,
     /// Internal — the sign-in ended in a user-presentable failure.
     SignInFailed(String),
     /// Internal — drop any flow state and return to the standard card.
     Reset,
     /// Internal — phase one of the device flow resolved (or failed with a
-    /// user-presentable message). Root-only: carries the pollable state.
-    DeviceCodeStarted(Result<DeviceCodeStart, String>),
+    /// user-presentable message). Root-only: carries the pollable state and
+    /// the generation that spawned it (stale results are dropped).
+    DeviceCodeStarted(u64, Result<DeviceCodeStart, String>),
     /// Internal — the sign-in poll resolved with a session or a
     /// user-presentable failure. Root-only.
-    SignInFinished(Result<Session, String>),
+    SignInFinished(u64, Result<Session, String>),
 }
 
 impl Login {
@@ -95,20 +116,38 @@ impl Login {
         match message {
             Message::Opening => self.flow = Flow::Opening,
             Message::CodeReady { user_code, verification_uri } => {
-                self.flow = Flow::Code { user_code, verification_uri };
+                self.flow = Flow::Code {
+                    user_code,
+                    verification_uri,
+                    copied: false,
+                };
+            }
+            Message::CodeCopied => {
+                if let Flow::Code { copied, .. } = &mut self.flow {
+                    *copied = true;
+                }
             }
             Message::SignInFailed(error) => self.flow = Flow::Failed(error),
-            Message::Reset => self.flow = Flow::Idle,
+            Message::Reset => {
+                self.flow = Flow::Idle;
+                self.code_hover = false;
+                self.link_hover = false;
+            }
+            Message::CodeHover(hovered) => self.code_hover = hovered,
+            Message::LinkHover(hovered) => self.link_hover = hovered,
             // `Navigate` is intercepted by the root model before reaching the
-            // page; the actions and the task-callback messages are the
-            // root's to handle.
+            // page; the actions, the copy/open effects, and the task-callback
+            // messages are the root's to handle.
             Message::Navigate(_)
             | Message::SignInMicrosoft
             | Message::OfflineMode
             | Message::DemoMode
             | Message::LearnMore
-            | Message::DeviceCodeStarted(_)
-            | Message::SignInFinished(_) => {}
+            | Message::CopyCode { .. }
+            | Message::OpenVerificationLink { .. }
+            | Message::CancelSignIn
+            | Message::DeviceCodeStarted(_, _)
+            | Message::SignInFinished(_, _) => {}
         }
     }
 
@@ -142,12 +181,12 @@ impl Login {
     fn language_chip(&self) -> Element<'_, Message> {
         container(
             row![
-                icon(Icon::lucide().globe(), 14.0, Some(palette::Text::MUTED)),
+                icon(Icon::lucide().globe(), 14.0, palette::Text::MUTED, 0.68),
                 Text::new("English · US")
                     .size(12)
                     .font(fonts::Inter::MEDIUM)
                     .color(palette::Text::DEFAULT),
-                icon(Icon::lucide().chevron_down(), 12.0, Some(palette::Text::MUTED)),
+                icon(Icon::lucide().chevron_down(), 12.0, palette::Text::MUTED, 0.68),
             ]
             .spacing(8)
             .align_y(iced::Alignment::Center),
@@ -280,8 +319,13 @@ impl Login {
             );
         }
         match &self.flow {
-            Flow::Code { user_code, verification_uri } => {
-                body = body.push(self.code_panel(user_code, verification_uri));
+            Flow::Code {
+                user_code,
+                verification_uri,
+                copied,
+            } => {
+                body = body.push(self.code_panel(user_code, verification_uri, *copied));
+                body = body.push(self.cancel_button());
             }
             Flow::Opening => {
                 body = body.push(self.microsoft_button("Opening Microsoft…", Message::SignInMicrosoft).disabled(true));
@@ -289,9 +333,10 @@ impl Login {
             // Idle and Failed both offer the button (retry after a failure).
             Flow::Idle | Flow::Failed(_) => {
                 body = body.push(self.microsoft_button("Continue with Microsoft", Message::SignInMicrosoft));
+                body = body.push(self.or_divider()).push(self.secondary_row());
             }
         }
-        body.push(self.or_divider()).push(self.secondary_row()).into()
+        body.into()
     }
 
     /// The big "Continue with Microsoft" button.
@@ -305,7 +350,7 @@ impl Login {
                     .font(fonts::Inter::BOLD)
                     .color(palette::Text::HEADLINE),
                 Space::new().width(Fill),
-                icon(Icon::lucide().chevron_right(), 16.0, Some(palette::Text::PLACEHOLDER)),
+                icon(Icon::lucide().chevron_right(), 16.0, palette::Text::HEADLINE, 0.45),
             ]
             .spacing(12)
             .align_y(iced::Alignment::Center)
@@ -317,26 +362,94 @@ impl Login {
     }
 
     /// The device code on screen while the poll runs.
-    fn code_panel(&self, user_code: &str, verification_uri: &str) -> Element<'_, Message> {
+    /// The device code on screen while the poll runs — compact, so the
+    /// fixed-height card never overflows. Clicking the code copies it;
+    /// clicking the link opens the browser.
+    fn code_panel(&self, user_code: &str, verification_uri: &str, copied: bool) -> Element<'_, Message> {
+        let code_ink = if self.code_hover {
+            palette::Text::HEADLINE
+        } else {
+            palette::Primary::DEFAULT
+        };
+        let link_ink = if self.link_hover {
+            palette::Text::HEADLINE
+        } else {
+            palette::Primary::DEFAULT
+        };
         container(
             column![
                 row![
-                    Text::new(user_code.to_string())
-                        .size(20)
-                        .font(fonts::JetBrainsMono::SEMI_BOLD)
-                        .color(palette::Primary::DEFAULT),
+                    mouse_area(
+                        container(
+                            row![
+                                Text::new(user_code.to_string())
+                                    .size(20)
+                                    .font(fonts::JetBrainsMono::SEMI_BOLD)
+                                    .color(code_ink),
+                                icon(
+                                    Icon::lucide().copy(),
+                                    14.0,
+                                    palette::Text::HEADLINE,
+                                    if self.code_hover { 1.0 } else { 0.0 },
+                                ),
+                            ]
+                            .spacing(8)
+                            .align_y(iced::Alignment::Center),
+                        )
+                        .padding(Padding::new(0.0).left(6).right(6).top(2).bottom(2))
+                        .style(move |_| container::Style {
+                            background: Some(Background::Color(if self.code_hover {
+                                rgb!(34, 255, 132, 10%)
+                            } else {
+                                Color::TRANSPARENT
+                            })),
+                            border: Border {
+                                radius: 6.0.into(),
+                                ..Border::default()
+                            },
+                            ..container::Style::default()
+                        }),
+                    )
+                    .on_press(Message::CopyCode { code: user_code.to_string() })
+                    .on_enter(Message::CodeHover(true))
+                    .on_exit(Message::CodeHover(false)),
                     Space::new().width(Fill),
-                    Text::new(verification_uri.replace("https://", "").replace("www.", ""))
-                        .size(11)
-                        .font(fonts::JetBrainsMono::REGULAR)
-                        .color(palette::Text::MUTED),
+                    mouse_area(
+                        column![
+                            row![
+                                Text::new(verification_uri.replace("https://", "").replace("www.", ""))
+                                    .size(11)
+                                    .font(fonts::JetBrainsMono::REGULAR)
+                                    .color(link_ink),
+                                icon(
+                                    Icon::lucide().external_link(),
+                                    12.0,
+                                    palette::Text::HEADLINE,
+                                    if self.link_hover { 1.0 } else { 0.0 },
+                                ),
+                            ]
+                            .spacing(4)
+                            .align_y(iced::Alignment::Center),
+                            rule_under_link(self.link_hover),
+                        ]
+                        .spacing(1),
+                    )
+                    .on_press(Message::OpenVerificationLink {
+                        url: verification_uri.to_string()
+                    })
+                    .on_enter(Message::LinkHover(true))
+                    .on_exit(Message::LinkHover(false)),
                 ]
                 .align_y(iced::Alignment::Center),
                 ProgressBar::new(0.0).indeterminate(true).height(3.0).width(Fill),
-                Text::new("Waiting for you to finish signing in…")
-                    .size(11)
-                    .font(fonts::Inter::REGULAR)
-                    .color(palette::Text::MUTED),
+                Text::new(if copied {
+                    "Copied to clipboard — waiting for you to finish signing in…"
+                } else {
+                    "Click the code to copy it — waiting for you to finish signing in…"
+                })
+                .size(11)
+                .font(fonts::Inter::REGULAR)
+                .color(palette::Text::MUTED),
             ]
             .spacing(6),
         )
@@ -352,6 +465,15 @@ impl Login {
             ..container::Style::default()
         })
         .into()
+    }
+
+    /// Abandons an in-flight sign-in (the root invalidates the poll).
+    fn cancel_button(&self) -> Element<'_, Message> {
+        TextButton::ghost("Cancel")
+            .width(Fill)
+            .padding(Padding::new(0.0).top(12).bottom(12))
+            .on_press(Message::CancelSignIn)
+            .into()
     }
 
     /// The "OR" rule.
@@ -372,7 +494,7 @@ impl Login {
             TextButton::content(
                 row![
                     Space::new().width(Fill),
-                    icon(Icon::lucide().user(), 15.0, Some(palette::Text::MUTED)),
+                    icon(Icon::lucide().user(), 15.0, palette::Text::MUTED, 0.68),
                     Text::new("Offline Mode")
                         .size(13)
                         .font(fonts::Inter::MEDIUM)
@@ -389,7 +511,7 @@ impl Login {
             TextButton::content(
                 row![
                     Space::new().width(Fill),
-                    icon(Icon::lucide().shield(), 15.0, Some(palette::Text::MUTED)),
+                    icon(Icon::lucide().shield(), 15.0, palette::Text::MUTED, 0.68),
                     Text::new("Demo Mode").size(13).font(fonts::Inter::MEDIUM).color(palette::Text::DEFAULT),
                     Space::new().width(Fill),
                 ]
@@ -458,13 +580,17 @@ fn mono(content: impl Into<String>, size: f32) -> Text<'static> {
         .color(palette::Text::PLACEHOLDER)
 }
 
-/// An SVG icon from a lucide markup string, optionally tinted.
-fn icon(markup: &'static str, size: f32, tint: Option<Color>) -> Element<'static, Message> {
-    let base = svg(Handle::from_memory(markup.as_bytes())).width(size).height(size);
-    match tint {
-        Some(tint) => base.style(move |_, _| svg::Style { color: Some(tint) }).into(),
-        None => base.into(),
-    }
+/// An SVG icon from a lucide markup string. The tint supplies the color
+/// (its alpha is ignored by the svg texture pipeline) and `opacity`
+/// controls visibility — 0.0 hides the icon while keeping its layout
+/// space, so hover states never shift the layout.
+fn icon(markup: &'static str, size: f32, tint: Color, opacity: f32) -> Element<'static, Message> {
+    svg(Handle::from_memory(markup.as_bytes()))
+        .width(size)
+        .height(size)
+        .opacity(opacity)
+        .style(move |_, _| svg::Style { color: Some(tint) })
+        .into()
 }
 
 /// The card's hairline border color — `--line` (white 7%) bumped to 9% per
@@ -479,6 +605,19 @@ fn rule() -> Element<'static, Message> {
         .width(Fill)
         .style(|_| container::Style {
             background: Some(Background::Color(palette::Surface::LINE)),
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// A 1px underline for the verification link, exactly the width of its
+/// fixed mono text ("microsoft.com/link" = 18 chars). Always occupies
+/// space; visible only on hover.
+fn rule_under_link(visible: bool) -> Element<'static, Message> {
+    container(Space::new().height(1).width(119))
+        .width(119)
+        .style(move |_| container::Style {
+            background: Some(Background::Color(if visible { palette::Text::HEADLINE } else { Color::TRANSPARENT })),
             ..container::Style::default()
         })
         .into()
@@ -520,7 +659,18 @@ mod tests {
             login.flow,
             Flow::Code {
                 user_code: "ABCD-EFGH".into(),
-                verification_uri: "https://www.microsoft.com/link".into()
+                verification_uri: "https://www.microsoft.com/link".into(),
+                copied: false
+            }
+        );
+
+        login.update(Message::CodeCopied);
+        assert_eq!(
+            login.flow,
+            Flow::Code {
+                user_code: "ABCD-EFGH".into(),
+                verification_uri: "https://www.microsoft.com/link".into(),
+                copied: true
             }
         );
 
@@ -529,6 +679,23 @@ mod tests {
 
         login.update(Message::Reset);
         assert_eq!(login.flow, Flow::Idle);
+    }
+
+    #[test]
+    fn hover_flags_track_their_messages() {
+        let mut login = Login::default();
+        assert!(!login.code_hover && !login.link_hover);
+
+        login.update(Message::CodeHover(true));
+        login.update(Message::LinkHover(true));
+        assert!(login.code_hover && login.link_hover);
+
+        login.update(Message::CodeHover(false));
+        assert!(!login.code_hover && login.link_hover);
+
+        // Resetting the flow clears hover state too.
+        login.update(Message::Reset);
+        assert!(!login.code_hover && !login.link_hover);
     }
 
     #[test]
