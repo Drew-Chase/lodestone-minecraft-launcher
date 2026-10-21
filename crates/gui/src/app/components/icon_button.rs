@@ -22,8 +22,9 @@ pub const SECONDARY_BUTTON_STYLE: IconButtonStyle = IconButtonStyle {
     foreground_hover: color::buttons::Secondary::FOREGROUND,
     background: color::buttons::Secondary::BACKGROUND,
     background_hover: color::buttons::Secondary::BACKGROUND_HOVER,
-    foreground_disabled: color::buttons::Secondary::FOREGROUND,
-    background_disabled: color::buttons::Secondary::BACKGROUND_HOVER,
+    // Disabled — the chip vanishes; only a dimmed icon remains.
+    foreground_disabled: color::Text::DISABLED,
+    background_disabled: Color::TRANSPARENT,
     foreground_pressed: color::buttons::Secondary::FOREGROUND,
     background_pressed: color::buttons::Secondary::BACKGROUND_HOVER,
 };
