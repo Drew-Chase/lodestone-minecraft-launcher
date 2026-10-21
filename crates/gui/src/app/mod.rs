@@ -6,9 +6,11 @@ mod titlebar;
 
 #[cfg(not(windows))]
 use crate::app::components::IconButton;
+use crate::app::components::backdrop::LoginBackdrop;
 use crate::app::components::{NavItem, NavRail};
 use crate::app::pages::Page;
 use crate::app::pages::home::{Home, Message as HomeMessage};
+use crate::app::pages::login::{Login, Message as LoginMessage};
 use crate::app::pages::settings::{Message as SettingsMessage, Settings};
 use crate::app::pages::showcase::{Message as ShowcaseMessage, Showcase};
 use crate::app::router::Router;
@@ -22,9 +24,16 @@ use iced::widget::{column, container, row, stack};
 use iced::window::{Direction, Id, Level, Position};
 use iced::{Element, Fill, Padding, Size, Subscription, Task, event, mouse, window};
 use iced_borderless_window_resize_handle_widget::{ResizeHandles, drag_resize};
-use tracing::{debug, info};
+use lodestone_minecraft_authentication::{Authentication, Session};
+use tracing::{debug, info, warn};
 
-#[derive(Default)]
+/// The Azure app registration backing Microsoft sign-in (public client,
+/// personal accounts, device-code flow).
+const AZURE_CLIENT_ID: &str = "b1156b7e-e0fe-4f86-a835-afed728d093d";
+
+/// The launcher's root state.
+///
+/// Not `#[derive(Default)]` because the auth handle needs the client id.
 pub struct LodestoneLauncher {
     id: Option<Id>,
     titlebar: Titlebar,
@@ -33,6 +42,29 @@ pub struct LodestoneLauncher {
     home: Home,
     settings: Settings,
     showcase: Showcase,
+    login: Login,
+    /// The live Minecraft session, once someone has signed in. Token
+    /// persistence (the refresh token) is gui's job per the auth crate's
+    /// contract — a real store lands with the account page.
+    session: Option<Session>,
+    auth: Authentication,
+}
+
+impl Default for LodestoneLauncher {
+    fn default() -> Self {
+        Self {
+            id: None,
+            titlebar: Titlebar,
+            maximized: false,
+            router: Router::default(),
+            home: Home,
+            settings: Settings,
+            showcase: Showcase::default(),
+            login: Login::default(),
+            session: None,
+            auth: Authentication::new(AZURE_CLIENT_ID),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +81,7 @@ pub enum LodestoneAppMessage {
     NavBack,
     /// Steps forward through the router's history.
     NavForward,
+    Login(LoginMessage),
     Home(HomeMessage),
     Settings(SettingsMessage),
     Showcase(ShowcaseMessage),
@@ -118,6 +151,61 @@ impl LodestoneLauncher {
             // variants, add the delegation arm per the `pages` contract.
             LodestoneAppMessage::Settings(SettingsMessage::Navigate(page)) => self.navigate(page),
             LodestoneAppMessage::Showcase(ShowcaseMessage::Navigate(page)) => self.navigate(page),
+            LodestoneAppMessage::Login(LoginMessage::Navigate(page)) => self.navigate(page),
+            LodestoneAppMessage::Login(LoginMessage::SignInMicrosoft) => {
+                info!("Beginning Microsoft device-code sign-in");
+                self.login.update(LoginMessage::Opening);
+                let auth = self.auth.clone();
+                Task::perform(
+                    async move { auth.begin_device_code_login().await.map_err(|error| error.to_string()) },
+                    |result| LodestoneAppMessage::Login(LoginMessage::DeviceCodeStarted(result)),
+                )
+            }
+            LodestoneAppMessage::Login(LoginMessage::DeviceCodeStarted(Ok(start))) => {
+                let user_code = start.user_code.clone();
+                let verification_uri = start.verification_uri.clone();
+                info!("Device code ready: {user_code} at {verification_uri}");
+                self.login.update(LoginMessage::CodeReady { user_code, verification_uri });
+                let auth = self.auth.clone();
+                Task::perform(
+                    async move { auth.finish_device_code_login(start).await.map_err(|error| error.to_string()) },
+                    |result| LodestoneAppMessage::Login(LoginMessage::SignInFinished(result)),
+                )
+            }
+            LodestoneAppMessage::Login(LoginMessage::DeviceCodeStarted(Err(error))) => {
+                warn!("Device-code request failed: {error}");
+                self.login.update(LoginMessage::SignInFailed(error));
+                Task::none()
+            }
+            LodestoneAppMessage::Login(LoginMessage::SignInFinished(Ok(session))) => {
+                info!("Signed in as {}", session.profile.name);
+                self.session = Some(session);
+                self.login.update(LoginMessage::Reset);
+                self.router.replace(Page::Home);
+                Task::none()
+            }
+            LodestoneAppMessage::Login(LoginMessage::SignInFinished(Err(error))) => {
+                warn!("Sign-in failed: {error}");
+                self.login.update(LoginMessage::SignInFailed(error));
+                Task::none()
+            }
+            LodestoneAppMessage::Login(LoginMessage::OfflineMode | LoginMessage::DemoMode) => {
+                info!("Entering the launcher without a Microsoft account");
+                self.login.update(LoginMessage::Reset);
+                self.router.replace(Page::Home);
+                Task::none()
+            }
+            LodestoneAppMessage::Login(LoginMessage::LearnMore) => {
+                info!("'Learn more' requested — opening a browser is not wired yet");
+                Task::none()
+            }
+            // Display-state messages: pure page state, forwarded as-is.
+            LodestoneAppMessage::Login(
+                message @ (LoginMessage::Opening | LoginMessage::CodeReady { .. } | LoginMessage::SignInFailed(_) | LoginMessage::Reset),
+            ) => {
+                self.login.update(message);
+                Task::none()
+            }
             LodestoneAppMessage::Showcase(message) => {
                 self.showcase.update(message);
                 Task::none()
@@ -137,15 +225,34 @@ impl LodestoneLauncher {
     }
 
     pub fn view(&self) -> Element<'_, LodestoneAppMessage> {
-        stack![
+        let content: Element<'_, LodestoneAppMessage> = if self.router.current() == Page::Login {
+            // The login gate: the backdrop fills the whole window and the
+            // chrome floats over it, transparent. No rail, no history.
+            stack![
+                LoginBackdrop::new(),
+                column![
+                    self.titlebar
+                        .view(self.router.can_go_back(), self.router.can_go_forward(), true)
+                        .map(LodestoneAppMessage::TitlebarMessage),
+                    container(self.login.view().map(LodestoneAppMessage::Login)).width(Fill).height(Fill),
+                ]
+                .width(Fill)
+                .height(Fill),
+            ]
+            .into()
+        } else {
             column![
                 self.titlebar
-                    .view(self.router.can_go_back(), self.router.can_go_forward())
+                    .view(self.router.can_go_back(), self.router.can_go_forward(), false)
                     .map(LodestoneAppMessage::TitlebarMessage),
                 row![self.rail_column(), self.body()].width(Fill).height(Fill),
             ]
             .width(Fill)
-            .height(Fill),
+            .height(Fill)
+            .into()
+        };
+        stack![
+            content,
             ResizeHandles::new(LodestoneAppMessage::WindowStartResize)
                 .gutter(4.0)
                 .enabled(!self.maximized)
@@ -215,9 +322,12 @@ impl LodestoneLauncher {
             .into()
     }
 
-    /// The `<Outlet/>` — whichever page the router points at.
+    /// The `<Outlet/>` — whichever page the router points at. The login gate
+    /// renders through `view`'s dedicated branch, so this arm only serves
+    /// callers that ask for the current page generically.
     fn outlet(&self) -> Element<'_, LodestoneAppMessage> {
         match self.router.current() {
+            Page::Login => self.login.view().map(LodestoneAppMessage::Login),
             Page::Home => self.home.view().map(LodestoneAppMessage::Home),
             Page::Settings => self.settings.view().map(LodestoneAppMessage::Settings),
             Page::Showcase => self.showcase.view().map(LodestoneAppMessage::Showcase),

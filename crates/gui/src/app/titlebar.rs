@@ -10,7 +10,7 @@ use crate::app::theme::color;
 #[cfg(windows)]
 use aurora_leaf::Icon;
 #[cfg(windows)]
-use iced::widget::{Text, container, mouse_area};
+use iced::widget::{Space, Text, container, mouse_area};
 use iced::widget::{row, text};
 #[cfg(windows)]
 use iced::{Background, Fill, Padding};
@@ -67,34 +67,60 @@ impl Titlebar {
     }
 
     #[cfg(windows)]
-    pub fn view(&self, can_go_back: bool, can_go_forward: bool) -> Element<'_, TitlebarMessage> {
+    pub fn view(&self, can_go_back: bool, can_go_forward: bool, transparent: bool) -> Element<'_, TitlebarMessage> {
         container(row![
-            IconButton::new(Icon::lucide().chevron_left())
-                .width(34)
-                .height(Fill)
-                .icon_size(13.0)
-                .style(icon_button::SECONDARY_BUTTON_STYLE)
-                .disabled(!can_go_back)
-                .on_press(TitlebarMessage::NavBack),
-            IconButton::new(Icon::lucide().chevron_right())
-                .width(34)
-                .height(Fill)
-                .icon_size(13.0)
-                .style(icon_button::SECONDARY_BUTTON_STYLE)
-                .disabled(!can_go_forward)
-                .on_press(TitlebarMessage::NavForward),
-            mouse_area(row![
-                container(
-                    Text::new(LodestoneLauncher::TITLE)
-                        .size(18)
-                        .font(crate::app::theme::fonts::Inter::EXTRA_BOLD)
+            if transparent {
+                // Chrome floats over the login backdrop: no nav, no title —
+                // just a drag surface with the brand centered.
+                mouse_area(
+                    row![
+                        Space::new().width(Fill).height(Fill),
+                        Text::new(format!("LODESTONE · v{}", LodestoneLauncher::VERSION))
+                            .size(11)
+                            .font(crate::app::theme::fonts::JetBrainsMono::REGULAR)
+                            .color(color::Text::PLACEHOLDER),
+                        Space::new().width(Fill).height(Fill),
+                    ]
+                    .width(Fill)
+                    .height(Fill)
+                    .align_y(iced::Alignment::Center),
                 )
-                .padding(Padding::new(0.0).left(8).right(8).top(4))
+                .on_double_click(TitlebarMessage::ToggleMaximized)
+                .on_press(TitlebarMessage::StartDragWindow)
                 .width(Fill)
-                .height(Fill),
-            ])
-            .on_double_click(TitlebarMessage::ToggleMaximized)
-            .on_press(TitlebarMessage::StartDragWindow),
+                .height(Fill)
+            } else {
+                row![
+                    IconButton::new(Icon::lucide().chevron_left())
+                        .width(34)
+                        .height(Fill)
+                        .icon_size(13.0)
+                        .style(icon_button::SECONDARY_BUTTON_STYLE)
+                        .disabled(!can_go_back)
+                        .on_press(TitlebarMessage::NavBack),
+                    IconButton::new(Icon::lucide().chevron_right())
+                        .width(34)
+                        .height(Fill)
+                        .icon_size(13.0)
+                        .style(icon_button::SECONDARY_BUTTON_STYLE)
+                        .disabled(!can_go_forward)
+                        .on_press(TitlebarMessage::NavForward),
+                    mouse_area(row![
+                        container(
+                            Text::new(LodestoneLauncher::TITLE)
+                                .size(18)
+                                .font(crate::app::theme::fonts::Inter::EXTRA_BOLD)
+                        )
+                        .padding(Padding::new(0.0).left(8).right(8).top(4))
+                        .width(Fill)
+                        .height(Fill),
+                    ])
+                    .on_double_click(TitlebarMessage::ToggleMaximized)
+                    .on_press(TitlebarMessage::StartDragWindow),
+                ]
+                .width(Fill)
+                .height(Fill)
+            },
             IconButton::new(Icon::material_symbols().minimize_rounded())
                 .width(47)
                 .height(Fill)
@@ -114,14 +140,21 @@ impl Titlebar {
         ])
         .width(Fill)
         .height(32)
-        .style(|_| container::Style {
-            background: Some(Background::from(color::Surface::TITLEBAR)),
-            ..Default::default()
+        .style(move |_| {
+            if transparent {
+                // The login backdrop shows through the chrome.
+                container::Style::default()
+            } else {
+                container::Style {
+                    background: Some(Background::from(color::Surface::TITLEBAR)),
+                    ..Default::default()
+                }
+            }
         })
         .into()
     }
     #[cfg(not(target_os = "windows"))]
-    pub fn view(&self, _can_go_back: bool, _can_go_forward: bool) -> Element<'_, TitlebarMessage> {
+    pub fn view(&self, _can_go_back: bool, _can_go_forward: bool, _transparent: bool) -> Element<'_, TitlebarMessage> {
         row![].into()
     }
 }
