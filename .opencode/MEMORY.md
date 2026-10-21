@@ -56,3 +56,12 @@
 - **Windows PowerShell tooling hazard**: console display mangles non-ASCII (verify file contents with `[System.IO.File]::ReadAllText` + char-code dumps, never the console); and hashtable-of-pairs `foreach` UNROLLS a single-pair `@(@("a","b"))` value into scalars — a string-replace script corrupted two source files (every 'o'→'p'). Source files must only be edited with the edit/write tools, never PowerShell string surgery.
 - `aurora_leaf::Icon` methods are iconify kebab→snake names, and lucide renames apply: `house()` (NOT home), `trash()` (NOT trash_2); `chevron_down()`, `ellipsis_vertical()`, `copy()` exist.
 - `main.rs` duplicates `mod app;` (bin compiles its own copy) → dead-code warnings for app items in the bin target are expected; the real entry is `lib.rs::run()`.
+
+## Page navigation framework (2026-10-21)
+- `crates/gui/src/app/router.rs`: `Router` over `Page` — react-router history semantics (`push` no-ops on same page + clears forward, `replace` keeps both stacks, `go_back`/`go_forward` return bool). Lives on root model; pages never touch it.
+- `pages/mod.rs` owns the route table: `Page` enum (derives Debug/Clone/Copy/Default/Eq, `#[default] Home`) with `title()`, `icon()` (lucide SVG markup), `RAIL_PAGES` const; module doc carries the 6-step "adding a page" contract.
+- Nav contract: every page `Message` enum has a `Navigate(Page)` variant (the `<Link>`); root update intercepts `PageName(Message::Navigate(p)) => self.navigate(p)` BEFORE the delegation arm. Root logs transitions via tracing. `LodestoneAppMessage` derives `Debug, Clone` (buttons/rail need owned messages).
+- Root view = titlebar + `row![nav_rail, body]`; `body()` = history_controls (Back/Forward TextButtons, disabled per `can_go_*`) above `outlet()` (match on `router.current()` — the `<Outlet/>`). NavRail active index via `Page::RAIL_PAGES.iter().position(...)`; **NavRail.active is `usize`, cannot express "no active item"** — widen to `Option<usize>` when a non-rail page (e.g. detail view) exists.
+- Placeholder pages: `pages/home.rs`, `pages/settings.rs` (stateless structs; single `Navigate(Page)` message; root has interception-only arms — compiler enforces adding delegation arms when variants appear).
+- Widget-local state (scroll/focus) resets on nav; page model state persists in root (background work survives navigation).
+- Pre-existing unrelated failure: `cargo test -p lodestone_launch --test command` — 3 tests fail on Linux ("Exec format error" spawning stub.sh), verified pre-existing via git stash 2026-10-21.
