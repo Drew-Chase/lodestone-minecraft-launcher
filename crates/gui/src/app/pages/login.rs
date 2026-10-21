@@ -298,6 +298,7 @@ impl Login {
     fn microsoft_button(&self, label: &str, on_press: Message) -> TextButton<'_, Message> {
         TextButton::content(
             row![
+                Space::new().width(Fill),
                 ms_tiles(),
                 Text::new(label.to_string())
                     .size(14)
@@ -370,25 +371,31 @@ impl Login {
         row![
             TextButton::content(
                 row![
+                    Space::new().width(Fill),
                     icon(Icon::lucide().user(), 15.0, Some(palette::Text::MUTED)),
                     Text::new("Offline Mode")
                         .size(13)
                         .font(fonts::Inter::MEDIUM)
                         .color(palette::Text::DEFAULT),
+                    Space::new().width(Fill),
                 ]
                 .spacing(8)
-                .align_y(iced::Alignment::Center),
+                .align_y(iced::Alignment::Center)
+                .width(Fill),
             )
             .width(Fill)
             .padding(Padding::new(0.0).top(12).bottom(12))
             .on_press(Message::OfflineMode),
             TextButton::content(
                 row![
+                    Space::new().width(Fill),
                     icon(Icon::lucide().shield(), 15.0, Some(palette::Text::MUTED)),
                     Text::new("Demo Mode").size(13).font(fonts::Inter::MEDIUM).color(palette::Text::DEFAULT),
+                    Space::new().width(Fill),
                 ]
                 .spacing(8)
-                .align_y(iced::Alignment::Center),
+                .align_y(iced::Alignment::Center)
+                .width(Fill),
             )
             .width(Fill)
             .padding(Padding::new(0.0).top(12).bottom(12))
