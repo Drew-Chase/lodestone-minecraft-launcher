@@ -23,6 +23,10 @@ pub struct Titlebar;
 #[cfg(windows)]
 #[derive(Debug, Clone)]
 pub enum TitlebarMessage {
+    /// Step the router's history back (mouse chrome or future hotkey).
+    NavBack,
+    /// Step the router's history forward.
+    NavForward,
     Close,
     ToggleMaximized,
     ToggleMinimize,
@@ -37,6 +41,8 @@ impl Titlebar {
     #[cfg(windows)]
     pub fn update(&mut self, message: TitlebarMessage, window_id: window::Id) -> Task<LodestoneAppMessage> {
         match message {
+            TitlebarMessage::NavBack => Task::done(LodestoneAppMessage::NavBack),
+            TitlebarMessage::NavForward => Task::done(LodestoneAppMessage::NavForward),
             TitlebarMessage::ToggleMaximized => {
                 info!("Toggling maximize on window {window_id}");
                 window::toggle_maximize(window_id)
@@ -61,8 +67,22 @@ impl Titlebar {
     }
 
     #[cfg(windows)]
-    pub fn view(&self) -> Element<'_, TitlebarMessage> {
+    pub fn view(&self, can_go_back: bool, can_go_forward: bool) -> Element<'_, TitlebarMessage> {
         container(row![
+            IconButton::new(Icon::lucide().chevron_left())
+                .width(34)
+                .height(Fill)
+                .icon_size(13.0)
+                .style(icon_button::SECONDARY_BUTTON_STYLE)
+                .disabled(!can_go_back)
+                .on_press(TitlebarMessage::NavBack),
+            IconButton::new(Icon::lucide().chevron_right())
+                .width(34)
+                .height(Fill)
+                .icon_size(13.0)
+                .style(icon_button::SECONDARY_BUTTON_STYLE)
+                .disabled(!can_go_forward)
+                .on_press(TitlebarMessage::NavForward),
             mouse_area(row![
                 container(
                     Text::new(LodestoneLauncher::TITLE)
@@ -101,7 +121,7 @@ impl Titlebar {
         .into()
     }
     #[cfg(not(target_os = "windows"))]
-    pub fn view(&self) -> Element<'_, TitlebarMessage> {
+    pub fn view(&self, _can_go_back: bool, _can_go_forward: bool) -> Element<'_, TitlebarMessage> {
         row![].into()
     }
 }

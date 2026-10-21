@@ -16,6 +16,7 @@ pub mod typography;
 pub use button::TextButton;
 pub use card::Card;
 pub use dropdown::Dropdown;
+pub use icon_button::IconButton;
 pub use menu::MenuItem;
 pub use nav::{NavItem, NavRail};
 pub use progress::ProgressBar;

@@ -4,7 +4,9 @@ pub mod router;
 pub mod theme;
 mod titlebar;
 
-use crate::app::components::{NavItem, NavRail, TextButton};
+#[cfg(not(windows))]
+use crate::app::components::IconButton;
+use crate::app::components::{NavItem, NavRail};
 use crate::app::pages::Page;
 use crate::app::pages::home::{Home, Message as HomeMessage};
 use crate::app::pages::settings::{Message as SettingsMessage, Settings};
@@ -12,6 +14,10 @@ use crate::app::pages::showcase::{Message as ShowcaseMessage, Showcase};
 use crate::app::router::Router;
 use crate::app::theme::color::Surface;
 use crate::app::titlebar::{Titlebar, TitlebarMessage};
+#[cfg(not(windows))]
+use aurora_leaf::Icon;
+#[cfg(not(windows))]
+use iced::border::Radius;
 use iced::widget::{column, container, row, stack};
 use iced::window::{Direction, Id, Level, Position};
 use iced::{Element, Fill, Padding, Size, Subscription, Task, event, mouse, window};
@@ -133,8 +139,10 @@ impl LodestoneLauncher {
     pub fn view(&self) -> Element<'_, LodestoneAppMessage> {
         stack![
             column![
-                self.titlebar.view().map(LodestoneAppMessage::TitlebarMessage),
-                row![self.nav_rail(), self.body()].width(Fill).height(Fill),
+                self.titlebar
+                    .view(self.router.can_go_back(), self.router.can_go_forward())
+                    .map(LodestoneAppMessage::TitlebarMessage),
+                row![self.rail_column(), self.body()].width(Fill).height(Fill),
             ]
             .width(Fill)
             .height(Fill),
@@ -144,6 +152,40 @@ impl LodestoneLauncher {
         ]
         .width(Fill)
         .height(Fill)
+        .into()
+    }
+
+    /// Left edge chrome. On Windows the history chevrons live in the
+    /// titlebar; elsewhere they tuck above the nav rail.
+    #[cfg(windows)]
+    fn rail_column(&self) -> Element<'_, LodestoneAppMessage> {
+        self.nav_rail()
+    }
+
+    #[cfg(not(windows))]
+    fn rail_column(&self) -> Element<'_, LodestoneAppMessage> {
+        column![self.history_controls(), self.nav_rail()].height(Fill).into()
+    }
+
+    /// Back/forward chevrons tucked above the nav rail.
+    #[cfg(not(windows))]
+    fn history_controls(&self) -> Element<'_, LodestoneAppMessage> {
+        row![
+            IconButton::new(Icon::lucide().chevron_left())
+                .size(28.0)
+                .icon_size(14.0)
+                .radius(Radius::from(8.0_f32))
+                .disabled(!self.router.can_go_back())
+                .on_press(LodestoneAppMessage::NavBack),
+            IconButton::new(Icon::lucide().chevron_right())
+                .size(28.0)
+                .icon_size(14.0)
+                .radius(Radius::from(8.0_f32))
+                .disabled(!self.router.can_go_forward())
+                .on_press(LodestoneAppMessage::NavForward),
+        ]
+        .spacing(4)
+        .padding(Padding::new(0.0).left(12).top(12))
         .into()
     }
 
@@ -161,33 +203,16 @@ impl LodestoneLauncher {
         .into()
     }
 
-    /// History chrome — back/forward over the router's stacks.
-    fn history_controls(&self) -> Element<'_, LodestoneAppMessage> {
-        row![
-            TextButton::ghost("Back")
-                .disabled(!self.router.can_go_back())
-                .on_press(LodestoneAppMessage::NavBack),
-            TextButton::ghost("Forward")
-                .disabled(!self.router.can_go_forward())
-                .on_press(LodestoneAppMessage::NavForward),
-        ]
-        .spacing(8)
-        .padding(Padding::new(0.0).left(16).top(12))
-        .into()
-    }
-
-    /// The page area: history controls above the router's current page.
+    /// The page area: the router's current page.
     fn body(&self) -> Element<'_, LodestoneAppMessage> {
-        column![
-            self.history_controls(),
-            container(self.outlet()).width(Fill).height(Fill).style(|_| container::Style {
+        container(self.outlet())
+            .width(Fill)
+            .height(Fill)
+            .style(|_| container::Style {
                 background: Some(iced::Background::Color(Surface::APPLICATION)),
                 ..Default::default()
-            }),
-        ]
-        .width(Fill)
-        .height(Fill)
-        .into()
+            })
+            .into()
     }
 
     /// The `<Outlet/>` — whichever page the router points at.
