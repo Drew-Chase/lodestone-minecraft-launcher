@@ -14,7 +14,7 @@ use xz2::stream::{Check, Stream};
 use xz2::write::XzEncoder;
 
 /// Roll a log file once it grows past this many bytes.
-const MAX_BYTES: u64 = 50 * 1024 * 1024;
+const MAX_BYTES: u64 = 1024 * 1024 * 1024; // 1 GB
 
 /// `liblzma` extreme preset flag (`LZMA_PRESET_EXTREME`). OR'd with the
 /// numeric preset (9) this yields 7-zip "Ultra" LZMA2 compression.
