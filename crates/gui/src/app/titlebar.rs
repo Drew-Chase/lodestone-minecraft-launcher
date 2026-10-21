@@ -11,7 +11,7 @@ use crate::app::theme::color;
 use aurora_leaf::Icon;
 #[cfg(windows)]
 use iced::widget::{Space, Text, container, mouse_area};
-use iced::widget::{row, text};
+use iced::widget::row;
 #[cfg(windows)]
 use iced::{Background, Fill, Padding};
 use iced::{Element, Task, window};
@@ -73,11 +73,13 @@ impl Titlebar {
                 // Chrome floats over the login backdrop: a bare drag surface
                 // with the window buttons on the right (the login page owns
                 // the centered brand line).
-                mouse_area(Space::new().width(Fill).height(Fill))
-                    .on_double_click(TitlebarMessage::ToggleMaximized)
-                    .on_press(TitlebarMessage::StartDragWindow)
-                    .width(Fill)
-                    .height(Fill)
+                row![
+                    mouse_area(Space::new().width(Fill).height(Fill))
+                        .on_double_click(TitlebarMessage::ToggleMaximized)
+                        .on_press(TitlebarMessage::StartDragWindow),
+                ]
+                .width(Fill)
+                .height(Fill)
             } else {
                 row![
                     IconButton::new(Icon::lucide().chevron_left())
