@@ -1,14 +1,20 @@
 pub mod components;
 pub mod pages;
+pub mod router;
 pub mod theme;
 mod titlebar;
 
+use crate::app::components::{NavItem, NavRail, TextButton};
+use crate::app::pages::Page;
+use crate::app::pages::home::{Home, Message as HomeMessage};
+use crate::app::pages::settings::{Message as SettingsMessage, Settings};
 use crate::app::pages::showcase::{Message as ShowcaseMessage, Showcase};
+use crate::app::router::Router;
 use crate::app::theme::color::Surface;
 use crate::app::titlebar::{Titlebar, TitlebarMessage};
-use iced::widget::{column, container, stack};
+use iced::widget::{column, container, row, stack};
 use iced::window::{Direction, Id, Level, Position};
-use iced::{Element, Fill, Size, Subscription, Task, window};
+use iced::{Element, Fill, Padding, Size, Subscription, Task, window};
 use iced_borderless_window_resize_handle_widget::{ResizeHandles, drag_resize};
 use tracing::{debug, info};
 
@@ -17,16 +23,28 @@ pub struct LodestoneLauncher {
     id: Option<Id>,
     titlebar: Titlebar,
     maximized: bool,
+    router: Router,
+    home: Home,
+    settings: Settings,
     showcase: Showcase,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LodestoneAppMessage {
     WindowCreation(Option<Id>),
     WindowStartResize(Direction),
     WindowSizeChanged(Id, Size),
     TitlebarMessage(TitlebarMessage),
     WindowMaximized(bool),
+    /// Pushes `page` onto the router's history — the `useNavigate` of this
+    /// framework. Produced by the rail and by any page's `Navigate(Page)`.
+    Navigate(Page),
+    /// Steps back through the router's history.
+    NavBack,
+    /// Steps forward through the router's history.
+    NavForward,
+    Home(HomeMessage),
+    Settings(SettingsMessage),
     Showcase(ShowcaseMessage),
 }
 
@@ -74,6 +92,26 @@ impl LodestoneLauncher {
                 self.maximized = maximized;
                 Task::none()
             }
+            LodestoneAppMessage::Navigate(page) => self.navigate(page),
+            LodestoneAppMessage::NavBack => {
+                if self.router.go_back() {
+                    info!("Navigated back to {}", self.router.current().title());
+                }
+                Task::none()
+            }
+            LodestoneAppMessage::NavForward => {
+                if self.router.go_forward() {
+                    info!("Navigated forward to {}", self.router.current().title());
+                }
+                Task::none()
+            }
+            // Only `Navigate` exists today; when the page grows more
+            // variants, add the delegation arm per the `pages` contract.
+            LodestoneAppMessage::Home(HomeMessage::Navigate(page)) => self.navigate(page),
+            // Only `Navigate` exists today; when the page grows more
+            // variants, add the delegation arm per the `pages` contract.
+            LodestoneAppMessage::Settings(SettingsMessage::Navigate(page)) => self.navigate(page),
+            LodestoneAppMessage::Showcase(ShowcaseMessage::Navigate(page)) => self.navigate(page),
             LodestoneAppMessage::Showcase(message) => {
                 self.showcase.update(message);
                 Task::none()
@@ -81,22 +119,25 @@ impl LodestoneLauncher {
         }
     }
 
+    /// Routes to `page` through the router's history.
+    fn navigate(&mut self, page: Page) -> Task<LodestoneAppMessage> {
+        let from = self.router.current();
+        if self.router.push(page) {
+            info!("Navigated: {} → {}", from.title(), page.title());
+        } else {
+            debug!("Navigation ignored: already on {}", page.title());
+        }
+        Task::none()
+    }
+
     pub fn view(&self) -> Element<'_, LodestoneAppMessage> {
         stack![
             column![
                 self.titlebar.view().map(LodestoneAppMessage::TitlebarMessage),
-                container(
-                    container(self.showcase.view().map(LodestoneAppMessage::Showcase))
-                        .width(Fill)
-                        .height(Fill)
-                )
-                .width(Fill)
-                .height(Fill)
-                .style(|_| container::Style {
-                    background: Some(iced::Background::Color(Surface::APPLICATION)),
-                    ..Default::default()
-                })
-            ],
+                row![self.nav_rail(), self.body()].width(Fill).height(Fill),
+            ]
+            .width(Fill)
+            .height(Fill),
             ResizeHandles::new(LodestoneAppMessage::WindowStartResize)
                 .gutter(4.0)
                 .enabled(!self.maximized)
@@ -104,6 +145,58 @@ impl LodestoneLauncher {
         .width(Fill)
         .height(Fill)
         .into()
+    }
+
+    /// Left edge chrome — one rail slot per [`Page::RAIL_PAGES`] entry.
+    fn nav_rail(&self) -> Element<'_, LodestoneAppMessage> {
+        let active = Page::RAIL_PAGES.iter().position(|page| *page == self.router.current());
+        container(
+            NavRail::new(Page::RAIL_PAGES.map(|page| NavItem::new(page.icon())))
+                .active(active.unwrap_or(0))
+                .on_select(|index| LodestoneAppMessage::Navigate(Page::RAIL_PAGES[index])),
+        )
+        .height(Fill)
+        .align_y(iced::alignment::Vertical::Top)
+        .padding(Padding::new(0.0).left(12).top(12))
+        .into()
+    }
+
+    /// History chrome — back/forward over the router's stacks.
+    fn history_controls(&self) -> Element<'_, LodestoneAppMessage> {
+        row![
+            TextButton::ghost("Back")
+                .disabled(!self.router.can_go_back())
+                .on_press(LodestoneAppMessage::NavBack),
+            TextButton::ghost("Forward")
+                .disabled(!self.router.can_go_forward())
+                .on_press(LodestoneAppMessage::NavForward),
+        ]
+        .spacing(8)
+        .padding(Padding::new(0.0).left(16).top(12))
+        .into()
+    }
+
+    /// The page area: history controls above the router's current page.
+    fn body(&self) -> Element<'_, LodestoneAppMessage> {
+        column![
+            self.history_controls(),
+            container(self.outlet()).width(Fill).height(Fill).style(|_| container::Style {
+                background: Some(iced::Background::Color(Surface::APPLICATION)),
+                ..Default::default()
+            }),
+        ]
+        .width(Fill)
+        .height(Fill)
+        .into()
+    }
+
+    /// The `<Outlet/>` — whichever page the router points at.
+    fn outlet(&self) -> Element<'_, LodestoneAppMessage> {
+        match self.router.current() {
+            Page::Home => self.home.view().map(LodestoneAppMessage::Home),
+            Page::Settings => self.settings.view().map(LodestoneAppMessage::Settings),
+            Page::Showcase => self.showcase.view().map(LodestoneAppMessage::Showcase),
+        }
     }
 
     pub fn subscription(&self) -> Subscription<LodestoneAppMessage> {

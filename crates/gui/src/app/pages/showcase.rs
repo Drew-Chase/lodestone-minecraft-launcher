@@ -5,6 +5,7 @@
 //! be swapped for real pages without touching the components module.
 
 use crate::app::components::{Card, Dropdown, MenuItem, NavItem, NavRail, ProgressBar, PulseDot, Select, Tabs, TextButton, Toggle, input};
+use crate::app::pages::Page;
 use crate::app::theme::color;
 use aurora_leaf::Icon;
 use iced::widget::container::Style;
@@ -35,6 +36,9 @@ pub enum Message {
     TabSelected(usize),
     SearchChanged(String),
     InstanceAction(usize),
+    /// Requests navigation — the root model intercepts this before it
+    /// reaches [`Showcase::update`] (see the contract in `pages/mod.rs`).
+    Navigate(Page),
     /// For controls demonstrated without app behavior.
     Nop,
 }
@@ -55,6 +59,9 @@ impl Showcase {
                     2 => Some("Delete"),
                     _ => None,
                 };
+            }
+            Message::Navigate(_) => {
+                // Intercepted by the root model before reaching the page.
             }
             Message::Nop => {}
         }
