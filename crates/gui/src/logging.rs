@@ -166,7 +166,7 @@ pub fn setup_logging() -> color_eyre::Result<()> {
         .with_writer(LogWriter::new(&logs, target::JSON))
         .with_filter(LevelFilter::TRACE);
 
-    let console_filter = if cfg!(debug_assertions) { LevelFilter::TRACE } else { LevelFilter::INFO };
+    let console_filter = if cfg!(debug_assertions) { LevelFilter::DEBUG } else { LevelFilter::INFO };
     let console_layer = fmt::layer().with_thread_names(true).with_writer(io::stdout).with_filter(console_filter);
 
     tracing_subscriber::registry()
