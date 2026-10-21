@@ -571,7 +571,7 @@ impl Login {
                 TextButton::content(
                     row![
                         Space::new().width(Fill),
-                        icon(Icon::lucide().play(), 14.0, palette::Primary::ON, 1.0),
+                        icon(Icon::mage().play_fill(), 14.0, palette::Primary::ON, 1.0),
                         Text::new("Play offline").size(13).font(fonts::Inter::MEDIUM).color(palette::Primary::ON),
                         Space::new().width(Fill),
                     ]
@@ -586,10 +586,18 @@ impl Login {
                 .on_press(Message::OfflineConfirm {
                     username: username.to_string()
                 }),
-                TextButton::ghost("Cancel")
-                    .width(Fill)
-                    .padding(Padding::new(0.0).top(12).bottom(12))
-                    .on_press(Message::Reset),
+                TextButton::content(
+                    row![
+                        Space::new().width(Fill),
+                        Text::new("Cancel").size(13).font(fonts::Inter::MEDIUM),
+                        Space::new().width(Fill),
+                    ]
+                    .spacing(8)
+                    .align_y(iced::Alignment::Center)
+                    .width(Fill),
+                )
+                .width(Fill)
+                .on_press(Message::Reset),
             ]
             .spacing(10),
         ]
