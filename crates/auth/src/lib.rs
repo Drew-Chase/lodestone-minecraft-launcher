@@ -380,6 +380,16 @@ mod tests {
     }
 
     #[test]
+    fn every_msa_endpoint_targets_the_consumers_tenant() {
+        // The app registration is "Personal Microsoft Account users only" —
+        // /common rejects its token and device-code requests with
+        // AADSTS9002331, so every OAuth endpoint must pin /consumers.
+        for url in [endpoints::MSA_AUTHORIZE_URL, endpoints::MSA_TOKEN_URL, endpoints::DEVICE_CODE_URL] {
+            assert!(url.contains("/consumers/"), "{url} must target /consumers");
+        }
+    }
+
+    #[test]
     fn session_expiry_takes_the_earlier_lifetime() {
         let before = unix_now();
         let expiry = session_expiry(86_400, 3_600);
