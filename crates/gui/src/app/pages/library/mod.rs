@@ -1,19 +1,21 @@
 //! The Library — the launcher's landing page: the most-recent instance
-//! hero, the quick actions, and the instance list over a virtualized
-//! scroll region (Grid / Compact / Table views, filter tabs, search).
+//! hero, the quick actions, and the instance list (Grid / Compact / Table
+//! views, filter tabs, search). The WHOLE page scrolls as one — the
+//! instance list is virtualized against that page scroll, so nothing is
+//! trapped in its own viewport on short windows.
 
 pub mod instance;
 
 use instance::{Instance, InstanceState, Loader};
 
 use crate::app::components::instance_card::{CARD_HEIGHT, COMPACT_ROW_HEIGHT, TABLE_ROW_HEIGHT, compact_row, instance_card, table_header, table_row};
-use crate::app::components::scene_art::scene_handle;
+use crate::app::components::scene_art::hero_handle;
 use crate::app::components::{IconButton, PulseDot, TextButton};
 use crate::app::theme::{color, fonts};
 use aurora_leaf::Icon;
 use chrono::{DateTime, Local};
-use iced::widget::{Space, Text, column, container, responsive, row, scrollable, stack, svg, text_input};
-use iced::{Background, Border, Color, Element, Fill, Length, Padding, alignment};
+use iced::widget::{Space, Text, column, container, row, scrollable, stack, svg, text_input};
+use iced::{Background, Border, Color, Element, Fill, Length, Padding, Size, alignment};
 use iced_color_extension::rgb;
 use tracing::info;
 
@@ -26,7 +28,7 @@ pub enum Message {
     FilterChanged(LibraryFilter),
     /// The view mode changed (Grid / Compact / Table).
     ViewChanged(LibraryView),
-    /// The scroll region moved — drives the virtualized windowing.
+    /// The page scrolled — drives the virtualized windowing.
     Scrolled(f32),
     /// Play was pressed on an instance (dummy until the game launcher).
     Play(String),
@@ -126,6 +128,13 @@ impl LibraryFilter {
     }
 }
 
+/// Vertical distance from the top of the page content down to the first
+/// list row: top padding + header + hero + quick actions + section title,
+/// plus the spacings between them. The virtualized window only needs this
+/// within one row pitch — the overscan absorbs the drift — so it stays a
+/// constant instead of a measurement.
+const LIST_TOP: f32 = 570.0;
+
 /// The Library page state.
 #[derive(Debug, Default)]
 pub struct Library {
@@ -137,27 +146,19 @@ pub struct Library {
     filter: LibraryFilter,
     /// The selected view mode.
     view: LibraryView,
-    /// The scroll region's offset — drives the virtualized windowing.
+    /// The page scroll offset — drives the virtualized windowing.
     scroll_y: f32,
 }
 
 impl Library {
     /// Applies a display-state change. Database effects (`Reload`) are
-    /// intercepted by the root before reaching here.
+    /// intercepted by the root before reaching here. The scroll offset is
+    /// owned by the page scroll alone — filter changes must not jump it.
     pub fn update(&mut self, message: Message) {
         match message {
-            Message::SearchChanged(search) => {
-                self.search = search;
-                self.scroll_y = 0.0;
-            }
-            Message::FilterChanged(filter) => {
-                self.filter = filter;
-                self.scroll_y = 0.0;
-            }
-            Message::ViewChanged(view) => {
-                self.view = view;
-                self.scroll_y = 0.0;
-            }
+            Message::SearchChanged(search) => self.search = search,
+            Message::FilterChanged(filter) => self.filter = filter,
+            Message::ViewChanged(view) => self.view = view,
             Message::Scrolled(offset) => self.scroll_y = offset.max(0.0),
             Message::Play(name) => info!("Play requested for {name} (dummy)"),
             Message::InstanceMenu { instance, action } => info!("Instance '{instance}' menu: {action} (dummy)"),
@@ -169,7 +170,6 @@ impl Library {
     /// Replaces the loaded instances (the root re-queried the database).
     pub fn set_instances(&mut self, instances: Vec<Instance>) {
         self.instances = instances;
-        self.scroll_y = 0.0;
     }
 
     /// Overrides the initial view mode (the `LODESTONE_LIBRARY_VIEW` probe).
@@ -191,13 +191,20 @@ impl Library {
         visible
     }
 
-    pub fn view(&self) -> Element<'_, Message> {
-        column![self.header(), self.hero(), self.quick_actions(), self.instances_section(),]
-            .spacing(24)
-            .padding(Padding::new(0.0).left(28).right(28).top(24).bottom(28))
-            .width(Fill)
-            .height(Fill)
-            .into()
+    /// The whole page as one scroll region — `viewport` is the window's
+    /// inner size, used for the grid's column count and the windowed row
+    /// count.
+    pub fn view(&self, viewport: Size) -> Element<'_, Message> {
+        scrollable(
+            column![self.header(), self.hero(), self.quick_actions(), self.instances_section(viewport),]
+                .spacing(24)
+                .padding(Padding::new(0.0).left(28).right(28).top(24).bottom(28))
+                .width(Fill),
+        )
+        .width(Fill)
+        .height(Fill)
+        .on_scroll(|page| Message::Scrolled(page.absolute_offset().y))
+        .into()
     }
 
     /// The page header — title, stats, search and actions.
@@ -266,7 +273,8 @@ impl Library {
         .into()
     }
 
-    /// The most-recent instance's wide banner card.
+    /// The most-recent instance's wide banner card — rounded with a
+    /// hairline border, scene art behind a left-dark readability gradient.
     fn hero(&self) -> Element<'_, Message> {
         let Some(hero) = self.instances.iter().max_by_key(|instance| instance.recency().timestamp_millis()) else {
             return Space::new().height(0).into();
@@ -306,64 +314,77 @@ impl Library {
             meta.push_str(" · never played");
         }
 
-        stack![
-            // The biome scene fills the banner behind the content.
-            container(
-                svg(scene_handle(hero.biome, hero.art_seed))
-                    .content_fit(iced::ContentFit::Cover)
-                    .width(Fill)
-                    .height(Fill)
-            )
-            .width(Fill)
-            .height(Fill),
-            container(
-                column![
-                    chips,
-                    Text::new(hero.name.clone())
-                        .size(34)
-                        .font(fonts::Inter::EXTRA_BOLD)
-                        .color(color::Text::HEADLINE),
-                    Text::new(meta).size(13).font(fonts::Inter::REGULAR).color(color::Text::DEFAULT),
-                    row![
-                        TextButton::content(
-                            row![
-                                icon(Icon::lucide().play(), 14.0, color::Primary::ON, 1.0),
-                                Text::new(if playing { "Resume Session" } else { "Play" })
-                                    .size(13)
-                                    .font(fonts::Inter::BOLD)
-                                    .color(color::Primary::ON),
-                            ]
-                            .spacing(8)
-                            .align_y(alignment::Vertical::Center)
-                        )
-                        .variant(crate::app::components::button::Variant::Primary)
-                        .padding(Padding::new(0.0).left(22).right(22).top(14).bottom(14))
-                        .on_press(Message::Play(hero.name.clone())),
-                        hero_menu_button(&hero.name, "folder", Icon::lucide().folder()),
-                        hero_menu_button(&hero.name, "settings", Icon::lucide().settings()),
-                        hero_menu_button(&hero.name, "more", Icon::lucide().ellipsis_vertical()),
+        container(
+            stack![
+                // The biome scene fills the banner behind everything — the
+                // hero variant clips the corners and bakes the left fade.
+                container(
+                    svg(hero_handle(hero.biome, hero.art_seed))
+                        .content_fit(iced::ContentFit::Cover)
+                        .width(Fill)
+                        .height(Fill)
+                )
+                .width(Fill)
+                .height(Fill),
+                container(
+                    column![
+                        chips,
+                        Text::new(hero.name.clone())
+                            .size(34)
+                            .font(fonts::Inter::EXTRA_BOLD)
+                            .color(color::Text::HEADLINE),
+                        Text::new(meta).size(13).font(fonts::Inter::REGULAR).color(color::Text::DEFAULT),
+                        row![
+                            TextButton::content(
+                                row![
+                                    icon(Icon::lucide().play(), 14.0, color::Primary::ON, 1.0),
+                                    Text::new(if playing { "Resume Session" } else { "Play" })
+                                        .size(13)
+                                        .font(fonts::Inter::BOLD)
+                                        .color(color::Primary::ON),
+                                ]
+                                .spacing(8)
+                                .align_y(alignment::Vertical::Center)
+                            )
+                            .variant(crate::app::components::button::Variant::Primary)
+                            .padding(Padding::new(0.0).left(22).right(22).top(14).bottom(14))
+                            .on_press(Message::Play(hero.name.clone())),
+                            hero_menu_button(&hero.name, "folder", Icon::lucide().folder()),
+                            hero_menu_button(&hero.name, "settings", Icon::lucide().settings()),
+                            hero_menu_button(&hero.name, "more", Icon::lucide().ellipsis_vertical()),
+                        ]
+                        .spacing(10)
+                        .align_y(alignment::Vertical::Center),
                     ]
-                    .spacing(10)
-                    .align_y(alignment::Vertical::Center),
-                ]
-                .spacing(14)
-                .padding(Padding::new(0.0).left(28).right(28).bottom(28))
-            )
+                    .spacing(14)
+                    .padding(Padding::new(0.0).left(28).right(28).bottom(28))
+                )
+                .width(Fill)
+                .height(Fill)
+                .align_y(alignment::Vertical::Center),
+                // The live session readout sits top-right while playing.
+                container(
+                    container(chip("2.1 GB / 6 GB · 58 FPS".into(), color::Text::DEFAULT, rgb!(0, 0, 0, 45%)))
+                        .padding(Padding::new(0.0).right(16).top(16))
+                )
+                .width(Fill)
+                .height(Fill)
+                .align_x(alignment::Horizontal::Right)
+                .align_y(alignment::Vertical::Top),
+            ]
             .width(Fill)
-            .height(Fill)
-            .align_y(alignment::Vertical::Center),
-            // The live session readout sits top-right while playing.
-            container(
-                container(chip("2.1 GB / 6 GB · 58 FPS".into(), color::Text::DEFAULT, rgb!(0, 0, 0, 45%)))
-                    .padding(Padding::new(0.0).right(16).top(16))
-            )
-            .width(Fill)
-            .height(Fill)
-            .align_x(alignment::Horizontal::Right)
-            .align_y(alignment::Vertical::Top),
-        ]
+            .height(300),
+        )
         .width(Fill)
         .height(300)
+        .style(|_| container::Style {
+            border: Border {
+                radius: 18.0.into(),
+                width: 1.0,
+                color: color::Surface::LINE,
+            },
+            ..container::Style::default()
+        })
         .into()
     }
 
@@ -408,8 +429,8 @@ impl Library {
     }
 
     /// The "Your Instances" section — title, filter tabs, view switcher,
-    /// and the virtualized list.
-    fn instances_section(&self) -> Element<'_, Message> {
+    /// and the virtualized list (which continues the page scroll).
+    fn instances_section(&self, viewport: Size) -> Element<'_, Message> {
         column![
             row![
                 Text::new("Your Instances")
@@ -423,11 +444,10 @@ impl Library {
             ]
             .align_y(alignment::Vertical::Center)
             .width(Fill),
-            container(self.instances_list()).width(Fill).height(Fill),
+            self.instances_list(viewport),
         ]
         .spacing(16)
         .width(Fill)
-        .height(Fill)
         .into()
     }
 
@@ -486,11 +506,11 @@ impl Library {
         .into()
     }
 
-    /// The virtualized instance list. `responsive` measures the section so
-    /// the viewport height and the grid's column count are exact; only the
-    /// rows around the scroll offset are built, with top/bottom spacers
-    /// holding the scroll height stable.
-    fn instances_list(&self) -> Element<'_, Message> {
+    /// The virtualized instance list — plain rows inside the page scroll.
+    /// Only the rows around the scroll offset are built; top/bottom
+    /// spacers hold the page height stable so the scrollbar reflects the
+    /// full list.
+    fn instances_list(&self, viewport: Size) -> Element<'static, Message> {
         let visible = self.visible();
         if visible.is_empty() {
             return container(
@@ -504,7 +524,7 @@ impl Library {
                 .color(color::Text::MUTED),
             )
             .width(Fill)
-            .height(Fill)
+            .height(Length::Fixed((viewport.height - LIST_TOP).max(160.0)))
             .align_x(alignment::Horizontal::Center)
             .align_y(alignment::Vertical::Center)
             .into();
@@ -514,59 +534,53 @@ impl Library {
         let pitch = view.row_pitch();
         let gap = view.gap();
         let item_height = view.item_height();
-        let scroll_y = self.scroll_y;
+        // The grid tiles across the page body — the window width minus the
+        // 68px rail and the page's 28px side paddings.
+        let columns = view.columns(viewport.width - 68.0 - 56.0);
+        let total_rows = visible.len().div_ceil(columns);
+        // One row above the estimate, the viewport plus two below — the
+        // LIST_TOP estimate drifts within a pitch, the overscan hides it.
+        let first = ((((self.scroll_y - LIST_TOP) / pitch).floor() as isize - 1).clamp(0, total_rows as isize - 1)) as usize;
+        let viewport_rows = (viewport.height / pitch).ceil() as usize;
+        let end = (first + viewport_rows + 3).min(total_rows);
 
-        responsive(move |size| {
-            let columns = view.columns(size.width);
-            let total_rows = visible.len().div_ceil(columns);
-            let first = ((scroll_y / pitch).floor() as usize).saturating_sub(1);
-            let viewport_rows = (size.height / pitch).ceil() as usize;
-            let end = (first + viewport_rows + 2).min(total_rows);
-
-            let mut content = column![Space::new().height(first as f32 * pitch)].spacing(gap);
-            for row_index in first..end {
-                let start = row_index * columns;
-                let slice = &visible[start..(start + columns).min(visible.len())];
-                let mut items: Vec<Element<'static, Message>> = Vec::with_capacity(columns);
-                match view {
-                    LibraryView::Grid => {
-                        for instance in slice {
-                            items.push(instance_card(instance, Message::Play(instance.name.clone())));
-                        }
-                    }
-                    LibraryView::Compact => {
-                        for instance in slice {
-                            items.push(compact_row(instance, Message::Play(instance.name.clone())));
-                        }
-                    }
-                    LibraryView::Table => {
-                        for (offset, instance) in slice.iter().enumerate() {
-                            items.push(table_row(start + offset, instance, Message::Play(instance.name.clone())));
-                        }
+        let mut content = column![Space::new().height(first as f32 * pitch)].spacing(gap);
+        for row_index in first..end {
+            let start = row_index * columns;
+            let slice = &visible[start..(start + columns).min(visible.len())];
+            let mut items: Vec<Element<'static, Message>> = Vec::with_capacity(columns);
+            match view {
+                LibraryView::Grid => {
+                    for instance in slice {
+                        items.push(instance_card(instance, Message::Play(instance.name.clone())));
                     }
                 }
-                // Pad short rows so Fill-width items keep a uniform size.
-                for _ in slice.len()..columns {
-                    items.push(Space::new().width(Fill).height(item_height).into());
+                LibraryView::Compact => {
+                    for instance in slice {
+                        items.push(compact_row(instance, Message::Play(instance.name.clone())));
+                    }
                 }
-                content = content.push(row(items).spacing(24).width(Fill));
+                LibraryView::Table => {
+                    for (offset, instance) in slice.iter().enumerate() {
+                        items.push(table_row(start + offset, instance, Message::Play(instance.name.clone())));
+                    }
+                }
             }
-            let bottom = (total_rows - end) as f32 * pitch;
-            content = content.push(Space::new().height(bottom));
-
-            let list = scrollable(content)
-                .width(Fill)
-                .height(Fill)
-                .on_scroll(|viewport| Message::Scrolled(viewport.absolute_offset().y));
-
-            // The table keeps its header pinned above the scrolling rows.
-            if view == LibraryView::Table {
-                column![table_header(), list].width(Fill).into()
-            } else {
-                list.into()
+            // Pad short rows so Fill-width items keep a uniform size.
+            for _ in slice.len()..columns {
+                items.push(Space::new().width(Fill).height(item_height).into());
             }
-        })
-        .into()
+            content = content.push(row(items).spacing(24).width(Fill));
+        }
+        let bottom = (total_rows - end) as f32 * pitch;
+        content = content.push(Space::new().height(bottom));
+
+        // The table keeps its header pinned above its rows.
+        if view == LibraryView::Table {
+            column![table_header(), content].width(Fill).into()
+        } else {
+            content.into()
+        }
     }
 }
 
@@ -747,16 +761,16 @@ mod tests {
     }
 
     #[test]
-    fn view_changes_and_searches_reset_the_scroll_offset() {
+    fn scroll_belongs_to_the_page_not_the_filters() {
         let mut library = library_with(Instance::seed_pack(Local::now()));
         library.update(Message::Scrolled(2500.0));
         assert_eq!(library.scroll_y, 2500.0);
-        library.update(Message::SearchChanged("a".to_string()));
-        assert_eq!(library.scroll_y, 0.0, "a new search restarts at the top");
 
-        library.update(Message::Scrolled(1800.0));
+        // Filtering, searching and switching views must not jump the page.
+        library.update(Message::FilterChanged(LibraryFilter::Modded));
+        library.update(Message::SearchChanged("a".to_string()));
         library.update(Message::ViewChanged(LibraryView::Table));
-        assert_eq!(library.scroll_y, 0.0);
+        assert_eq!(library.scroll_y, 2500.0, "the page scroll is the user's position");
         assert_eq!(library.view, LibraryView::Table);
     }
 

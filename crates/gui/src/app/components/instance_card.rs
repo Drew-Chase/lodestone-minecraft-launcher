@@ -181,6 +181,14 @@ pub fn compact_row<Message: Clone + 'static>(instance: &Instance, on_play: Messa
     .into()
 }
 
+/// The table's column widths — shared by [`table_header`] and
+/// [`table_row`] so the columns line up exactly.
+const COL_VERSION: f32 = 110.0;
+const COL_LOADER: f32 = 110.0;
+const COL_MODS: f32 = 80.0;
+const COL_PLAYTIME: f32 = 110.0;
+const COL_ACTIONS: f32 = 90.0;
+
 /// The table's header row.
 pub fn table_header<Message: 'static>() -> Element<'static, Message> {
     let header = |label: &'static str, width: Length| {
@@ -194,11 +202,11 @@ pub fn table_header<Message: 'static>() -> Element<'static, Message> {
     };
     row![
         header("NAME", Fill),
-        header("VERSION", Length::Fixed(110.0)),
-        header("LOADER", Length::Fixed(110.0)),
-        header("MODS", Length::Fixed(80.0)),
-        header("PLAYTIME", Length::Fixed(110.0)),
-        header("", Length::Fixed(90.0)),
+        header("VERSION", Length::Fixed(COL_VERSION)),
+        header("LOADER", Length::Fixed(COL_LOADER)),
+        header("MODS", Length::Fixed(COL_MODS)),
+        header("PLAYTIME", Length::Fixed(COL_PLAYTIME)),
+        header("", Length::Fixed(COL_ACTIONS)),
     ]
     .spacing(12)
     .padding(Padding::new(0.0).left(16).right(16).top(12).bottom(12))
@@ -217,14 +225,22 @@ pub fn table_row<Message: Clone + 'static>(index: usize, instance: &Instance, on
                     .font(fonts::JetBrainsMono::REGULAR)
                     .color(color::Text::PLACEHOLDER),
             ]
-            .spacing(2),
-            Text::new(instance.mc_version.clone()).size(12).color(color::Text::MUTED),
-            loader_chip(instance.loader),
-            Text::new(format!("{}", instance.mod_count)).size(12).color(color::Text::MUTED),
+            .spacing(2)
+            .width(Fill),
+            Text::new(instance.mc_version.clone())
+                .size(12)
+                .color(color::Text::MUTED)
+                .width(Length::Fixed(COL_VERSION)),
+            container(loader_chip(instance.loader)).width(Length::Fixed(COL_LOADER)),
+            Text::new(format!("{}", instance.mod_count))
+                .size(12)
+                .color(color::Text::MUTED)
+                .width(Length::Fixed(COL_MODS)),
             Text::new(format!("{}h", instance.playtime_seconds / 3600))
                 .size(12)
-                .color(color::Text::MUTED),
-            play_button(on_play),
+                .color(color::Text::MUTED)
+                .width(Length::Fixed(COL_PLAYTIME)),
+            container(play_button(on_play)).width(Length::Fixed(COL_ACTIONS)),
         ]
         .spacing(12)
         .align_y(alignment::Vertical::Center)

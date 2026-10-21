@@ -78,6 +78,9 @@ pub struct LodestoneLauncher {
     db: Option<Database>,
     /// Where instance folders live (`<data>/lodestone/instances`).
     instances_dir: PathBuf,
+    /// The window's inner size — the Library's virtualized list uses it
+    /// for the grid's column count and the windowed row count.
+    window_size: Size,
     /// The active account, once someone has entered the launcher.
     account: Option<Account>,
     /// The at-rest credentials loaded from disk and rewritten on every
@@ -110,6 +113,7 @@ impl Default for LodestoneLauncher {
             login: Login::default(),
             db: None,
             instances_dir: dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("lodestone").join("instances"),
+            window_size: Size::new(1280.0, 720.0),
             account: None,
             credentials: StoredCredentials::load(),
             auth: Authentication::new(AZURE_CLIENT_ID),
@@ -290,6 +294,7 @@ impl LodestoneLauncher {
             },
             LodestoneAppMessage::WindowSizeChanged(id, size) => {
                 debug!("Window {id} size changed");
+                self.window_size = size;
                 if probe_enabled() {
                     info!("PROBE resized event: {}x{}", size.width as u32, size.height as u32);
                 }
@@ -720,7 +725,7 @@ impl LodestoneLauncher {
     fn outlet(&self) -> Element<'_, LodestoneAppMessage> {
         match self.router.current() {
             Page::Login => self.login.view(None).map(LodestoneAppMessage::Login),
-            Page::Home => self.library.view().map(LodestoneAppMessage::Library),
+            Page::Home => self.library.view(self.window_size).map(LodestoneAppMessage::Library),
             Page::Settings => self.settings.view().map(LodestoneAppMessage::Settings),
             Page::Showcase => self.showcase.view().map(LodestoneAppMessage::Showcase),
         }
