@@ -470,11 +470,19 @@ impl Login {
 
     /// Abandons an in-flight sign-in (the root invalidates the poll).
     fn cancel_button(&self) -> Element<'_, Message> {
-        TextButton::ghost("Cancel")
-            .width(Fill)
-            .padding(Padding::new(0.0).top(12).bottom(12))
-            .on_press(Message::CancelSignIn)
-            .into()
+        TextButton::content(
+            row![
+                Space::new().width(Fill),
+                Text::new("Cancel").size(13).font(fonts::Inter::MEDIUM).color(palette::Text::DEFAULT),
+                Space::new().width(Fill),
+            ]
+            .align_y(iced::Alignment::Center)
+            .width(Fill),
+        )
+        .width(Fill)
+        .padding(Padding::new(0.0).top(12).bottom(12))
+        .on_press(Message::CancelSignIn)
+        .into()
     }
 
     /// The "OR" rule.
