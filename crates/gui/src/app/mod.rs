@@ -179,6 +179,17 @@ impl LodestoneLauncher {
                 |_| LodestoneAppMessage::Login(LoginMessage::SignInMicrosoft),
             ));
         }
+        // TEMPORARY offline-form verification — env-gated: opens the offline
+        // username prompt after 2s.
+        if std::env::var_os("LODESTONE_OFFLINE_TEST").is_some() {
+            info!("PROBE offline-form verification active");
+            tasks.push(Task::perform(
+                async {
+                    std::thread::sleep(std::time::Duration::from_millis(2000));
+                },
+                |_| LodestoneAppMessage::Login(LoginMessage::OfflineMode),
+            ));
+        }
         // Silent re-login when a Microsoft refresh token is on file — the
         // launcher goes straight to Home on success.
         if let Some(ms) = app.credentials.microsoft.clone() {
