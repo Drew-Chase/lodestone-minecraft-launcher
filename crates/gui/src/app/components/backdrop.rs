@@ -233,12 +233,6 @@ fn violet_blob_size(bounds: Rectangle) -> f32 {
     quantize(bounds.width * 0.59)
 }
 
-/// The blob's CSS drift is 60px per 1300px of blob — keep the translation
-/// proportional at any scale.
-fn factor_of(size: f32) -> f32 {
-    size / 1300.0
-}
-
 use iced::Vector;
 
 /// Draws one ember (`Particles` + CSS `drift`) — a sprite, so it layers

@@ -438,7 +438,8 @@ impl Login {
                         url: verification_uri.to_string()
                     })
                     .on_enter(Message::LinkHover(true))
-                    .on_exit(Message::LinkHover(false)),
+                    .on_exit(Message::LinkHover(false))
+                    .interaction(iced::mouse::Interaction::Pointer),
                 ]
                 .align_y(iced::Alignment::Center),
                 ProgressBar::new(0.0).indeterminate(true).height(3.0).width(Fill),
@@ -541,7 +542,8 @@ impl Login {
                     .font(fonts::Inter::MEDIUM)
                     .color(palette::Primary::DEFAULT)
             )
-            .on_press(Message::LearnMore),
+            .on_press(Message::LearnMore)
+            .interaction(iced::mouse::Interaction::Pointer),
         ]
         .align_y(iced::Alignment::Center)
         .into()
