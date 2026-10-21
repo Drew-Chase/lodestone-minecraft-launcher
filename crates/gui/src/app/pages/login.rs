@@ -53,6 +53,20 @@ enum Flow {
     Failed(String),
 }
 
+/// The auth-services status shown in the status bar — the login page's
+/// view of the root's probe results.
+#[derive(Debug, Clone)]
+pub struct AuthStatus {
+    /// The services answered the probe.
+    pub online: bool,
+    /// Measured round-trip of the probe, in milliseconds (0 when the
+    /// services did not answer).
+    pub delay_ms: u64,
+    /// The region scope Microsoft reported for this address, when it
+    /// reported one.
+    pub region: Option<String>,
+}
+
 /// State of the login page.
 #[derive(Debug, Clone, Default)]
 pub struct Login {
@@ -151,7 +165,7 @@ impl Login {
         }
     }
 
-    pub fn view(&self) -> Element<'_, Message> {
+    pub fn view(&self, auth_status: Option<AuthStatus>) -> Element<'_, Message> {
         column![
             // Top chrome overlays: language chip left, brand centered.
             container(self.top_bar())
@@ -159,7 +173,7 @@ impl Login {
                 .padding(Padding::new(0.0).left(24).right(24).top(12)),
             // The card, centered in the remaining space.
             container(self.card()).width(Fill).height(Fill).center(Length::Fill),
-            self.status_bar(),
+            self.status_bar(auth_status),
         ]
         .width(Fill)
         .height(Fill)
@@ -557,22 +571,46 @@ impl Login {
         .into()
     }
 
-    /// The service status line pinned to the bottom of the screen. The ping
-    /// and region are decorative statics until the services layer exists.
-    fn status_bar(&self) -> Element<'_, Message> {
-        row![
-            PulseDot::new().size(6.0).pulsing(true),
-            mono("AUTH SERVICES ONLINE", 11.0),
-            mono("·", 11.0),
-            mono("124ms · NA-EAST", 11.0),
-            Space::new().width(Fill),
-            mono("1.20.4 · 1.20.1 · 1.19.4 · 1.18.2 available", 11.0),
-        ]
-        .spacing(14)
-        .align_y(iced::Alignment::Center)
-        .padding(Padding::new(0.0).left(24).right(24).bottom(18))
-        .width(Fill)
-        .into()
+    /// The service status line pinned to the bottom of the screen, fed by
+    /// the real auth-services probe: the dot and label carry reachability,
+    /// the middle segment the measured round-trip, and (when Microsoft
+    /// reports one for this address) the region scope.
+    fn status_bar(&self, auth_status: Option<AuthStatus>) -> Element<'_, Message> {
+        let (label, dot, delay, region) = match auth_status {
+            Some(status) if status.online => (
+                "AUTH SERVICES ONLINE",
+                PulseDot::new().size(6.0).pulsing(true),
+                Some(status.delay_ms),
+                status.region,
+            ),
+            Some(_) => (
+                "AUTH SERVICES UNREACHABLE",
+                PulseDot::with_color(palette::Accents::AMBER).size(6.0).pulsing(true),
+                None,
+                None,
+            ),
+            None => (
+                "CHECKING AUTH SERVICES",
+                PulseDot::with_color(palette::Text::DISABLED).size(6.0).pulsing(false),
+                None,
+                None,
+            ),
+        };
+
+        let mut bar = row![dot, mono(label, 11.0),];
+        if let Some(delay_ms) = delay {
+            bar = bar.push(mono("·", 11.0)).push(mono(format!("{delay_ms}ms"), 11.0));
+        }
+        if let Some(region) = region {
+            bar = bar.push(mono("·", 11.0)).push(mono(region.to_uppercase(), 11.0));
+        }
+        bar.push(Space::new().width(Fill))
+            .push(mono(format!("v{} · {}", LodestoneLauncher::VERSION, LodestoneLauncher::BUILD), 11.0))
+            .spacing(14)
+            .align_y(iced::Alignment::Center)
+            .padding(Padding::new(0.0).left(24).right(24).bottom(18))
+            .width(Fill)
+            .into()
     }
 }
 

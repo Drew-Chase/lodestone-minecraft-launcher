@@ -10,7 +10,7 @@ use crate::app::components::backdrop::LoginBackdrop;
 use crate::app::components::{NavItem, NavRail};
 use crate::app::pages::Page;
 use crate::app::pages::home::{Home, Message as HomeMessage};
-use crate::app::pages::login::{Login, Message as LoginMessage};
+use crate::app::pages::login::{AuthStatus, Login, Message as LoginMessage};
 use crate::app::pages::settings::{Message as SettingsMessage, Settings};
 use crate::app::pages::showcase::{Message as ShowcaseMessage, Showcase};
 use crate::app::router::Router;
@@ -24,7 +24,7 @@ use iced::widget::{column, container, row, stack};
 use iced::window::{Direction, Id, Level, Position};
 use iced::{Element, Fill, Padding, Size, Subscription, Task, event, mouse, window};
 use iced_borderless_window_resize_handle_widget::{ResizeHandles, drag_resize};
-use lodestone_minecraft_authentication::{Authentication, Session};
+use lodestone_minecraft_authentication::{AuthProbe, Authentication, Session};
 use std::sync::OnceLock;
 use tracing::{debug, info, warn};
 
@@ -61,10 +61,12 @@ pub struct LodestoneLauncher {
     /// Bumped on every new/abandoned sign-in so results from stale polls
     /// (cancelled or superseded) are dropped when they arrive.
     auth_generation: u64,
+    /// The last auth-services probe: `Ok` reached it (with delay + region),
+    /// `Err` did not. `None` until the first probe lands.
+    auth_status: Option<Result<AuthProbe, String>>,
     /// TEMPORARY resize-latency probe counter (env-gated).
     probe_step: u32,
 }
-
 impl Default for LodestoneLauncher {
     fn default() -> Self {
         Self {
@@ -80,6 +82,7 @@ impl Default for LodestoneLauncher {
             auth: Authentication::new(AZURE_CLIENT_ID),
             auth_generation: 0,
             probe_step: 0,
+            auth_status: None,
         }
     }
 }
@@ -106,6 +109,10 @@ pub enum LodestoneAppMessage {
     /// `LODESTONE_RESIZE_PROFILE=1`; drives `window::resize` through a
     /// fixed size sequence for screen-recording measurements.
     ResizeProbe,
+    /// Tick the auth-services reachability probe.
+    AuthProbeTick,
+    /// The auth-services probe completed.
+    AuthProbeResult(Result<AuthProbe, String>),
 }
 
 impl LodestoneLauncher {
@@ -142,6 +149,14 @@ impl LodestoneLauncher {
                 |_| LodestoneAppMessage::Login(LoginMessage::SignInMicrosoft),
             ));
         }
+        // First auth-services probe shortly after boot; the subscription
+        // keeps it going every 15s.
+        tasks.push(Task::perform(
+            async {
+                tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+            },
+            |_| LodestoneAppMessage::AuthProbeTick,
+        ));
         (Self { ..Self::default() }, Task::batch(tasks))
     }
 
@@ -310,6 +325,20 @@ impl LodestoneLauncher {
                 self.login.update(message);
                 Task::none()
             }
+            LodestoneAppMessage::AuthProbeTick => {
+                let auth = self.auth.clone();
+                Task::perform(async move { auth.probe().await.map_err(|error| error.to_string()) }, |result| {
+                    LodestoneAppMessage::AuthProbeResult(result)
+                })
+            }
+            LodestoneAppMessage::AuthProbeResult(result) => {
+                match &result {
+                    Ok(probe) => info!("Auth services reachable: {}ms", probe.delay_ms),
+                    Err(error) => warn!("Auth services unreachable: {error}"),
+                }
+                self.auth_status = Some(result);
+                Task::none()
+            }
             LodestoneAppMessage::Showcase(message) => {
                 self.showcase.update(message);
                 Task::none()
@@ -332,13 +361,34 @@ impl LodestoneLauncher {
         let content: Element<'_, LodestoneAppMessage> = if self.router.current() == Page::Login {
             // The login gate: the backdrop fills the whole window and the
             // chrome floats over it, transparent. No rail, no history.
+            let auth_status = self.auth_status.as_ref().map(|result| match result {
+                Ok(probe) => {
+                    let region = match (&probe.region_scope, &probe.region_sub_scope) {
+                        (Some(scope), Some(sub)) if !sub.is_empty() => Some(format!("{scope}-{sub}")),
+                        (Some(scope), _) => Some(scope.clone()),
+                        _ => None,
+                    };
+                    AuthStatus {
+                        online: true,
+                        delay_ms: probe.delay_ms,
+                        region,
+                    }
+                }
+                Err(_) => AuthStatus {
+                    online: false,
+                    delay_ms: 0,
+                    region: None,
+                },
+            });
             stack![
                 LoginBackdrop::new(),
                 column![
                     self.titlebar
                         .view(self.router.can_go_back(), self.router.can_go_forward(), true)
                         .map(LodestoneAppMessage::TitlebarMessage),
-                    container(self.login.view().map(LodestoneAppMessage::Login)).width(Fill).height(Fill),
+                    container(self.login.view(auth_status).map(LodestoneAppMessage::Login))
+                        .width(Fill)
+                        .height(Fill),
                 ]
                 .width(Fill)
                 .height(Fill),
@@ -431,7 +481,7 @@ impl LodestoneLauncher {
     /// callers that ask for the current page generically.
     fn outlet(&self) -> Element<'_, LodestoneAppMessage> {
         match self.router.current() {
-            Page::Login => self.login.view().map(LodestoneAppMessage::Login),
+            Page::Login => self.login.view(None).map(LodestoneAppMessage::Login),
             Page::Home => self.home.view().map(LodestoneAppMessage::Home),
             Page::Settings => self.settings.view().map(LodestoneAppMessage::Settings),
             Page::Showcase => self.showcase.view().map(LodestoneAppMessage::Showcase),
@@ -442,6 +492,8 @@ impl LodestoneLauncher {
         Subscription::batch([
             window::resize_events().map(|(id, size)| LodestoneAppMessage::WindowSizeChanged(id, size)),
             event::listen_with(Self::mouse_navigation),
+            // The auth-services probe — keeps the login status bar honest.
+            iced::time::every(std::time::Duration::from_secs(15)).map(|_| LodestoneAppMessage::AuthProbeTick),
         ])
     }
 

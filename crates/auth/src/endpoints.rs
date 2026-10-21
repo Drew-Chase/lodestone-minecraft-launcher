@@ -11,6 +11,15 @@ pub(crate) const MSA_TOKEN_URL: &str = "https://login.microsoftonline.com/common
 /// The Minecraft profile endpoint — uuid + name for the signed-in account.
 pub(crate) const PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
 
+/// Instance discovery — a lightweight, tenant-agnostic endpoint that also
+/// reports the region scope Microsoft assigns to the requesting address.
+/// Used as the auth-services reachability probe for the login status bar.
+pub(crate) const INSTANCE_DISCOVERY_URL: &str = "https://login.microsoftonline.com/common/discovery/instance";
+
+/// How long the reachability probe may take before it gives up — the
+/// status bar would rather report OFFLINE than wait.
+pub(crate) const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// The scopes a launcher needs: sign in to Xbox Live, and `offline_access` so
 /// Microsoft issues a refresh token for silent re-login.
 pub(crate) const SCOPES: [&str; 2] = ["XboxLive.signin", "offline_access"];
