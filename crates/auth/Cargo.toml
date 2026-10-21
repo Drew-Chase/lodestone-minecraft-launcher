@@ -10,6 +10,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
 tokio = { workspace = true, features = ["time"] }
+base64 = "0.22"
 oauth2 = { workspace = true }
 minecraft-msa-auth = { workspace = true }
 http = { workspace = true }
