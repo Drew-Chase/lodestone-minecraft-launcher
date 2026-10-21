@@ -1,4 +1,5 @@
 pub mod components;
+pub mod database;
 pub mod face;
 pub mod pages;
 pub mod router;
@@ -8,8 +9,10 @@ mod titlebar;
 
 use crate::app::components::backdrop::LoginBackdrop;
 use crate::app::components::sidebar::sidebar as sidebar_view;
+use crate::app::database::Database;
 use crate::app::pages::Page;
-use crate::app::pages::home::{Home, Message as HomeMessage};
+use crate::app::pages::library::instance::Instance;
+use crate::app::pages::library::{Library, LibraryView, Message as LibraryMessage};
 use crate::app::pages::login::{AuthStatus, Login, Message as LoginMessage};
 use crate::app::pages::settings::{Message as SettingsMessage, Settings};
 use crate::app::pages::showcase::{Message as ShowcaseMessage, Showcase};
@@ -17,11 +20,13 @@ use crate::app::router::Router;
 use crate::app::storage::{StoredCredentials, StoredMicrosoft};
 use crate::app::theme::color::Surface;
 use crate::app::titlebar::{Titlebar, TitlebarMessage};
+use chrono::Local;
 use iced::widget::{column, container, image, row, stack};
 use iced::window::{Direction, Id, Level, Position};
 use iced::{Element, Fill, Size, Subscription, Task, event, mouse, window};
 use iced_borderless_window_resize_handle_widget::{ResizeHandles, drag_resize};
 use lodestone_minecraft_authentication::{AuthProbe, Authentication, Session};
+use std::path::PathBuf;
 use std::sync::OnceLock;
 use tracing::{debug, info, warn};
 
@@ -65,10 +70,14 @@ pub struct LodestoneLauncher {
     titlebar: Titlebar,
     maximized: bool,
     router: Router,
-    home: Home,
+    library: Library,
     settings: Settings,
     showcase: Showcase,
     login: Login,
+    /// The launcher database — `None` until the boot-time connect lands.
+    db: Option<Database>,
+    /// Where instance folders live (`<data>/lodestone/instances`).
+    instances_dir: PathBuf,
     /// The active account, once someone has entered the launcher.
     account: Option<Account>,
     /// The at-rest credentials loaded from disk and rewritten on every
@@ -95,10 +104,12 @@ impl Default for LodestoneLauncher {
             titlebar: Titlebar,
             maximized: false,
             router: Router::default(),
-            home: Home,
+            library: Library::default(),
             settings: Settings,
             showcase: Showcase::default(),
             login: Login::default(),
+            db: None,
+            instances_dir: dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("lodestone").join("instances"),
             account: None,
             credentials: StoredCredentials::load(),
             auth: Authentication::new(AZURE_CLIENT_ID),
@@ -125,9 +136,13 @@ pub enum LodestoneAppMessage {
     /// Steps forward through the router's history.
     NavForward,
     Login(LoginMessage),
-    Home(HomeMessage),
+    Library(LibraryMessage),
     Settings(SettingsMessage),
     Showcase(ShowcaseMessage),
+    /// The launcher database finished opening (schema migrations ran).
+    DatabaseReady(Result<Database, String>),
+    /// The instance list finished loading (after any first-boot seed).
+    InstancesLoaded(Result<Vec<Instance>, String>),
     /// TEMPORARY resize-latency probe tick — active only with
     /// `LODESTONE_RESIZE_PROFILE=1`; drives `window::resize` through a
     /// fixed size sequence for screen-recording measurements.
@@ -170,8 +185,22 @@ impl LodestoneLauncher {
 
     pub fn boot() -> (Self, Task<LodestoneAppMessage>) {
         let id = window::latest();
-        let app = Self { ..Self::default() };
+        let mut app = Self { ..Self::default() };
         let mut tasks = vec![id.map(LodestoneAppMessage::WindowCreation)];
+        // TEMPORARY library-view verification — env-gated: boots the Library
+        // into `compact` or `table` so each view can be screenshotted.
+        if let Some(view) = std::env::var_os("LODESTONE_LIBRARY_VIEW") {
+            let view = match view.to_string_lossy().as_ref() {
+                "compact" => LibraryView::Compact,
+                "table" => LibraryView::Table,
+                _ => LibraryView::Grid,
+            };
+            info!("PROBE library view override: {view:?}");
+            app.library.set_view(view);
+        }
+        // Open the launcher database — migrations run on connect, and the
+        // first boot seeds the instance list.
+        tasks.push(Task::perform(Database::connect(), |result| LodestoneAppMessage::DatabaseReady(result)));
         // TEMPORARY resize-latency probe kick-off — env-gated.
         if probe_enabled() {
             info!("PROBE resize-latency profiling active");
@@ -286,9 +315,31 @@ impl LodestoneLauncher {
                 }
                 Task::none()
             }
-            // Only `Navigate` exists today; when the page grows more
-            // variants, add the delegation arm per the `pages` contract.
-            LodestoneAppMessage::Home(HomeMessage::Navigate(page)) => self.navigate(page),
+            // The reload button re-queries the database through the root;
+            // every other Library message is pure display state.
+            LodestoneAppMessage::Library(LibraryMessage::Reload) => self.load_instances(),
+            LodestoneAppMessage::Library(message) => {
+                self.library.update(message);
+                Task::none()
+            }
+            LodestoneAppMessage::DatabaseReady(Ok(db)) => {
+                info!("Launcher database ready");
+                self.db = Some(db);
+                self.load_instances()
+            }
+            LodestoneAppMessage::DatabaseReady(Err(error)) => {
+                warn!("Launcher database unavailable: {error}");
+                Task::none()
+            }
+            LodestoneAppMessage::InstancesLoaded(Ok(instances)) => {
+                info!("Loaded {} instance(s)", instances.len());
+                self.library.set_instances(instances);
+                Task::none()
+            }
+            LodestoneAppMessage::InstancesLoaded(Err(error)) => {
+                warn!("Loading instances failed: {error}");
+                Task::none()
+            }
             // Only `Navigate` exists today; when the page grows more
             // variants, add the delegation arm per the `pages` contract.
             LodestoneAppMessage::Settings(SettingsMessage::Navigate(page)) => self.navigate(page),
@@ -547,6 +598,26 @@ impl LodestoneLauncher {
         Task::none()
     }
 
+    /// Loads the instance list from the database, seeding it on the very
+    /// first boot (empty table) with the demo pack.
+    fn load_instances(&mut self) -> Task<LodestoneAppMessage> {
+        let Some(db) = self.db.clone() else {
+            return Task::none();
+        };
+        let instances_dir = self.instances_dir.clone();
+        Task::perform(
+            async move {
+                if db.instances_empty().await? {
+                    let pack = Instance::seed_pack(Local::now());
+                    info!("Seeding {} starter instances", pack.len());
+                    db.seed(&pack, &instances_dir).await?;
+                }
+                db.instances().await
+            },
+            |result| LodestoneAppMessage::InstancesLoaded(result),
+        )
+    }
+
     pub fn view(&self) -> Element<'_, LodestoneAppMessage> {
         let content: Element<'_, LodestoneAppMessage> = if self.router.current() == Page::Login {
             // The login gate: the backdrop fills the whole window and the
@@ -649,7 +720,7 @@ impl LodestoneLauncher {
     fn outlet(&self) -> Element<'_, LodestoneAppMessage> {
         match self.router.current() {
             Page::Login => self.login.view(None).map(LodestoneAppMessage::Login),
-            Page::Home => self.home.view().map(LodestoneAppMessage::Home),
+            Page::Home => self.library.view().map(LodestoneAppMessage::Library),
             Page::Settings => self.settings.view().map(LodestoneAppMessage::Settings),
             Page::Showcase => self.showcase.view().map(LodestoneAppMessage::Showcase),
         }

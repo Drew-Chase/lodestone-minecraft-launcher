@@ -1,0 +1,265 @@
+//! Instance display components — the three Library views share these:
+//! the full grid card ([`instance_card`]), the image-less [`compact_row`]
+//! (Compact), and the [`table`] (Table) — plus the shared loader chip and
+//! play button.
+
+use crate::app::components::scene_art::scene_handle;
+use crate::app::pages::library::instance::{Instance, Loader};
+use crate::app::theme::color;
+use crate::app::theme::fonts;
+use iced::widget::{Space, Text, column, container, row, svg};
+use iced::{Background, Border, Color, Element, Fill, Length, Padding, alignment, color};
+use iced_color_extension::rgb;
+
+use crate::app::components::TextButton;
+
+/// The grid card's fixed height — art box plus info block. Fixed so the
+/// virtualized rows keep an exact pitch.
+pub const CARD_HEIGHT: f32 = 264.0;
+/// The grid art box height (the top portion of [`CARD_HEIGHT`]).
+pub const CARD_ART_HEIGHT: f32 = 180.0;
+/// The compact row's fixed height.
+pub const COMPACT_ROW_HEIGHT: f32 = 64.0;
+/// One table row's fixed height (the header is not virtualized).
+pub const TABLE_ROW_HEIGHT: f32 = 52.0;
+
+/// The generated biome scene art for an instance, as an svg handle
+/// (deterministic per the instance's biome and seed).
+fn scene_handle_of(instance: &Instance) -> svg::Handle {
+    scene_handle(instance.biome, instance.art_seed)
+}
+
+/// The generated biome scene art, covering its box.
+fn scene_art<Message: 'static>(instance: &Instance) -> Element<'static, Message> {
+    svg(scene_handle_of(instance))
+        .content_fit(iced::ContentFit::Cover)
+        .width(Length::Fill)
+        .height(Fill)
+        .into()
+}
+
+/// The instance's display name.
+fn title_block(instance: &Instance) -> Text<'static> {
+    Text::new(instance.name.clone())
+        .size(15)
+        .font(fonts::Inter::EXTRA_BOLD)
+        .color(color::Text::HEADLINE)
+}
+
+/// The version · loader line under the name.
+fn version_line(instance: &Instance) -> Text<'static> {
+    Text::new(format!(
+        "{} · {}{}",
+        instance.mc_version,
+        instance.loader.label(),
+        instance.loader_version.as_ref().map(|version| format!(" {version}")).unwrap_or_default()
+    ))
+    .size(11)
+    .font(fonts::JetBrainsMono::REGULAR)
+    .color(color::Text::MUTED)
+}
+
+/// The small green play button used by every view.
+fn play_button<Message: Clone + 'static>(on_press: Message) -> Element<'static, Message> {
+    TextButton::primary("Play")
+        .padding(Padding::new(0.0).left(16).right(16).top(8).bottom(8))
+        .on_press(on_press)
+        .into()
+}
+
+/// The loader chip — uppercase mono label on the loader's tinted fill.
+pub fn loader_chip<Message: 'static>(loader: Loader) -> Element<'static, Message> {
+    let (ink, fill) = match loader {
+        Loader::Vanilla => (color!(0x22FF84), rgb!(34, 255, 132, 12%)),
+        Loader::Fabric => (color!(0xB689FF), rgb!(151, 71, 255, 14%)),
+        Loader::Forge => (color!(0xFFB545), rgb!(255, 181, 69, 14%)),
+        Loader::Quilt => (color!(0x47D9FF), rgb!(71, 217, 255, 14%)),
+        Loader::NeoForge => (color!(0xFF5EC8), rgb!(255, 94, 200, 14%)),
+    };
+    chip(loader.label(), ink, fill)
+}
+
+/// An uppercase mono chip on a tinted fill.
+fn chip<Message: 'static>(label: &'static str, ink: Color, fill: Color) -> Element<'static, Message> {
+    container(Text::new(label).size(10).font(fonts::JetBrainsMono::SEMI_BOLD).color(ink))
+        .padding(Padding::new(0.0).left(8).right(8).top(3).bottom(3))
+        .style(move |_| container::Style {
+            background: Some(Background::Color(fill)),
+            border: Border {
+                radius: 999.0.into(),
+                ..Border::default()
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// The card's dark panel style — shared by the grid card and compact row.
+fn card_panel() -> container::Style {
+    container::Style {
+        background: Some(Background::Color(color!(0x0D0F12))),
+        border: Border {
+            radius: 14.0.into(),
+            width: 1.0,
+            color: color::Surface::LINE,
+        },
+        ..container::Style::default()
+    }
+}
+
+/// The full grid card — art on top, title, version row, play button,
+/// footer stats. The height is driven by the art box; keep it fixed so the
+/// virtual rows stay uniform.
+pub fn instance_card<Message: Clone + 'static>(instance: &Instance, on_play: Message) -> Element<'static, Message> {
+    container(
+        column![
+            container(scene_art(instance)).width(Fill).height(CARD_ART_HEIGHT),
+            container(
+                column![
+                    row![
+                        column![title_block(instance), version_line(instance)].spacing(2),
+                        Space::new().width(Fill),
+                        play_button(on_play),
+                    ]
+                    .align_y(alignment::Vertical::Center),
+                    row![
+                        Text::new(format!("{}h · {} mods", instance.playtime_seconds / 3600, instance.mod_count))
+                            .size(11)
+                            .font(fonts::Inter::REGULAR)
+                            .color(color::Text::MUTED),
+                        Space::new().width(Fill),
+                        loader_chip(instance.loader),
+                    ]
+                    .spacing(8)
+                    .align_y(alignment::Vertical::Center),
+                ]
+                .spacing(8)
+                .padding(Padding::new(0.0).left(14).right(14).top(10).bottom(10)),
+            )
+            .width(Fill),
+        ]
+        .spacing(0),
+    )
+    .width(Fill)
+    .height(Length::Fixed(CARD_HEIGHT))
+    .style(|_| card_panel())
+    .into()
+}
+
+/// The Compact row — the grid card's info without the art, one tight line.
+pub fn compact_row<Message: Clone + 'static>(instance: &Instance, on_play: Message) -> Element<'static, Message> {
+    container(
+        row![
+            container(scene_art(instance)).width(44).height(44),
+            column![
+                title_block(instance),
+                Text::new(format!(
+                    "{}h · {} · {} · {} mods",
+                    instance.playtime_seconds / 3600,
+                    instance.loader.label(),
+                    instance.mc_version,
+                    instance.mod_count
+                ))
+                .size(11)
+                .font(fonts::JetBrainsMono::REGULAR)
+                .color(color::Text::MUTED),
+            ]
+            .spacing(2),
+            Space::new().width(Fill),
+            loader_chip(instance.loader),
+            play_button(on_play),
+        ]
+        .spacing(12)
+        .align_y(alignment::Vertical::Center)
+        .width(Fill),
+    )
+    .width(Fill)
+    .height(Length::Fixed(COMPACT_ROW_HEIGHT))
+    .align_y(alignment::Vertical::Center)
+    .padding(Padding::new(0.0).left(12).right(12))
+    .style(|_| card_panel())
+    .into()
+}
+
+/// The table's header row.
+pub fn table_header<Message: 'static>() -> Element<'static, Message> {
+    let header = |label: &'static str, width: Length| {
+        container(
+            Text::new(label)
+                .size(10)
+                .font(fonts::JetBrainsMono::SEMI_BOLD)
+                .color(color::Text::PLACEHOLDER),
+        )
+        .width(width)
+    };
+    row![
+        header("NAME", Fill),
+        header("VERSION", Length::Fixed(110.0)),
+        header("LOADER", Length::Fixed(110.0)),
+        header("MODS", Length::Fixed(80.0)),
+        header("PLAYTIME", Length::Fixed(110.0)),
+        header("", Length::Fixed(90.0)),
+    ]
+    .spacing(12)
+    .padding(Padding::new(0.0).left(16).right(16).top(12).bottom(12))
+    .into()
+}
+
+/// One striped table row. `index` drives the stripe parity within the
+/// whole (unwindowed) list so stripes stay stable while scrolling.
+pub fn table_row<Message: Clone + 'static>(index: usize, instance: &Instance, on_play: Message) -> Element<'static, Message> {
+    container(
+        row![
+            column![
+                title_block(instance),
+                Text::new(instance.directory_name.clone())
+                    .size(10)
+                    .font(fonts::JetBrainsMono::REGULAR)
+                    .color(color::Text::PLACEHOLDER),
+            ]
+            .spacing(2),
+            Text::new(instance.mc_version.clone()).size(12).color(color::Text::MUTED),
+            loader_chip(instance.loader),
+            Text::new(format!("{}", instance.mod_count)).size(12).color(color::Text::MUTED),
+            Text::new(format!("{}h", instance.playtime_seconds / 3600))
+                .size(12)
+                .color(color::Text::MUTED),
+            play_button(on_play),
+        ]
+        .spacing(12)
+        .align_y(alignment::Vertical::Center)
+        .width(Fill),
+    )
+    .width(Fill)
+    .height(Length::Fixed(TABLE_ROW_HEIGHT))
+    .padding(Padding::new(0.0).left(16).right(16))
+    .style(move |_| container::Style {
+        background: Some(Background::Color(if index % 2 == 1 { color!(0x101216) } else { Color::TRANSPARENT })),
+        ..container::Style::default()
+    })
+    .into()
+}
+
+/// The traditional table — header plus one row per instance, in one panel.
+/// The Library's virtualized path composes [`table_header`] and
+/// [`table_row`] directly; this covers the non-virtualized use.
+#[allow(dead_code)]
+pub fn table<Message: Clone + 'static>(instances: &[Instance], on_play: impl Fn(usize) -> Message) -> Element<'static, Message> {
+    let mut rows = column![table_header()].spacing(0);
+    for (index, instance) in instances.iter().enumerate() {
+        rows = rows.push(table_row(index, instance, on_play(index)));
+    }
+
+    container(rows)
+        .width(Fill)
+        .style(|_| container::Style {
+            background: Some(Background::Color(color!(0x0D0F12))),
+            border: Border {
+                radius: 12.0.into(),
+                width: 1.0,
+                color: color::Surface::LINE,
+            },
+            ..container::Style::default()
+        })
+        .into()
+}

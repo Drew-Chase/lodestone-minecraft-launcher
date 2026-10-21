@@ -17,7 +17,7 @@
 //!    and a delegation arm for the rest.
 //! 6. Add an arm to the root's `outlet()` so the page renders.
 
-pub mod home;
+pub mod library;
 pub mod login;
 pub mod settings;
 pub mod showcase;
@@ -32,7 +32,7 @@ pub enum Page {
     /// The sign-in gate shown before the primary navigation.
     #[default]
     Login,
-    /// Landing page.
+    /// Landing page — the instance Library.
     Home,
     /// Launcher preferences.
     Settings,
@@ -45,7 +45,7 @@ impl Page {
     pub fn title(self) -> &'static str {
         match self {
             Page::Login => "Login",
-            Page::Home => "Home",
+            Page::Home => "Library",
             Page::Settings => "Settings",
             Page::Showcase => "Showcase",
         }

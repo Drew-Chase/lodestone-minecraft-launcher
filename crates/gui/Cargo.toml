@@ -8,7 +8,8 @@ piston-mc = { version = "0.1.5-beta", features = ["assets", "downloads", "java"]
 aurora_leaf = {path="../aurora_leaf"}
 lodestone_minecraft_authentication = { path = "../auth" }
 open = "5"
-tokio = { workspace = true, features = ["rt", "time"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "time", "macros"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 dirs = "6"
 serde = { workspace = true }
