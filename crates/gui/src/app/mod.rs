@@ -14,7 +14,7 @@ use crate::app::theme::color::Surface;
 use crate::app::titlebar::{Titlebar, TitlebarMessage};
 use iced::widget::{column, container, row, stack};
 use iced::window::{Direction, Id, Level, Position};
-use iced::{Element, Fill, Padding, Size, Subscription, Task, window};
+use iced::{Element, Fill, Padding, Size, Subscription, Task, event, mouse, window};
 use iced_borderless_window_resize_handle_widget::{ResizeHandles, drag_resize};
 use tracing::{debug, info};
 
@@ -200,7 +200,29 @@ impl LodestoneLauncher {
     }
 
     pub fn subscription(&self) -> Subscription<LodestoneAppMessage> {
-        Subscription::batch([window::resize_events().map(|(id, size)| LodestoneAppMessage::WindowSizeChanged(id, size))])
+        Subscription::batch([
+            window::resize_events().map(|(id, size)| LodestoneAppMessage::WindowSizeChanged(id, size)),
+            event::listen_with(Self::mouse_navigation),
+        ])
+    }
+
+    /// Maps the mouse's side buttons onto history navigation — back and
+    /// forward, like a browser.
+    ///
+    /// Only uncaptured presses count, so widgets that consume an event keep
+    /// it to themselves. Delivery depends on the platform exposing the
+    /// hardware buttons through the windowing system (standard on Windows,
+    /// X11 buttons 8/9 on Linux, compositor-dependent on Wayland). The app
+    /// is single-window, so the source window is irrelevant.
+    fn mouse_navigation(event: iced::Event, status: event::Status, _window: Id) -> Option<LodestoneAppMessage> {
+        if status != event::Status::Ignored {
+            return None;
+        }
+        match event {
+            iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Back)) => Some(LodestoneAppMessage::NavBack),
+            iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Forward)) => Some(LodestoneAppMessage::NavForward),
+            _ => None,
+        }
     }
 
     pub fn window_settings() -> window::Settings {
@@ -243,5 +265,48 @@ impl LodestoneLauncher {
             icon: None,
             exit_on_close_request: true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn press(button: mouse::Button) -> iced::Event {
+        iced::Event::Mouse(mouse::Event::ButtonPressed(button))
+    }
+
+    #[test]
+    fn side_buttons_map_to_history_navigation() {
+        let window_id = window::Id::unique();
+
+        assert!(matches!(
+            LodestoneLauncher::mouse_navigation(press(mouse::Button::Back), event::Status::Ignored, window_id),
+            Some(LodestoneAppMessage::NavBack)
+        ));
+        assert!(matches!(
+            LodestoneLauncher::mouse_navigation(press(mouse::Button::Forward), event::Status::Ignored, window_id),
+            Some(LodestoneAppMessage::NavForward)
+        ));
+    }
+
+    #[test]
+    fn captured_events_and_other_input_are_ignored() {
+        let window_id = window::Id::unique();
+
+        // A widget consumed the press — it belongs to the widget.
+        assert!(LodestoneLauncher::mouse_navigation(press(mouse::Button::Back), event::Status::Captured, window_id).is_none());
+        // Ordinary buttons and non-button events never navigate.
+        assert!(LodestoneLauncher::mouse_navigation(press(mouse::Button::Left), event::Status::Ignored, window_id).is_none());
+        assert!(
+            LodestoneLauncher::mouse_navigation(
+                iced::Event::Mouse(mouse::Event::CursorMoved {
+                    position: iced::Point::ORIGIN
+                }),
+                event::Status::Ignored,
+                window_id
+            )
+            .is_none()
+        );
     }
 }
