@@ -36,8 +36,6 @@ const EMBER_COUNT: usize = 24;
 struct State {
     /// Animation clock — everything is a pure function of `start.elapsed()`.
     start: Instant,
-    /// The scene SVG, rasterized for a specific bounds size.
-    scene: Option<(Size, Handle)>,
 }
 
 /// The full-screen ambient background of the login screen. Produces no
@@ -67,19 +65,11 @@ where
     }
 
     fn state(&self) -> tree::State {
-        tree::State::new(State {
-            start: Instant::now(),
-            scene: None,
-        })
+        tree::State::new(State { start: Instant::now() })
     }
 
-    fn layout(&mut self, tree: &mut Tree, _renderer: &BaseRenderer, limits: &Limits) -> Node {
-        let size = limits.resolve(Length::Fill, Length::Fill, Size::new(0.0, 0.0));
-        // The scene SVG is sized to the resolved bounds — `draw` only reads,
-        // so the rebuild happens here where the tree is mutable.
-        let state = tree.state.downcast_mut::<State>();
-        Self::update_scene(state, size);
-        Node::new(size)
+    fn layout(&mut self, _tree: &mut Tree, _renderer: &BaseRenderer, limits: &Limits) -> Node {
+        Node::new(limits.resolve(Length::Fill, Length::Fill, Size::new(0.0, 0.0)))
     }
 
     fn update(
@@ -118,13 +108,12 @@ where
         // the window so proportions hold at any size.
         let factor = (bounds.width / 1280.0).clamp(0.75, 2.0);
 
-        // 1 — the static ambient field, rebuilt in `layout` on resize.
-        let Some((_, scene)) = state.scene.as_ref() else {
-            return;
-        };
+        // 1 — the static ambient field: generated once at the canonical
+        // artboard size and stretched by the GPU. Resizing must never
+        // re-rasterize a full-window SVG (that was seconds of stall).
         renderer.draw_svg(
             Svg {
-                handle: scene.clone(),
+                handle: scene_handle().clone(),
                 opacity: 1.0,
                 rotation: Radians(0.0),
                 color: None,
@@ -170,21 +159,6 @@ where
 
     fn mouse_interaction(&self, _tree: &Tree, _layout: Layout<'_>, _cursor: Cursor, _viewport: &Rectangle, _renderer: &BaseRenderer) -> Interaction {
         Interaction::default()
-    }
-}
-
-impl LoginBackdrop {
-    /// Rebuilds the scene SVG when the size changed. Split from `draw` so
-    /// the mutable cache update reads cleanly.
-    fn update_scene(state: &mut State, size: Size) -> Handle {
-        if let Some((cached, handle)) = &state.scene
-            && *cached == size
-        {
-            return handle.clone();
-        }
-        let handle = Handle::from_memory(scene_svg(size.width, size.height).into_bytes());
-        state.scene = Some((size, handle.clone()));
-        handle
     }
 }
 
@@ -405,6 +379,16 @@ fn ember_sprite_handle() -> &'static Handle {
 </svg>"##;
         Handle::from_memory(svg.as_bytes().to_vec())
     })
+}
+
+/// The ambient field, generated ONCE at the artboard's canonical 1280×820
+/// size and drawn stretched to the window: resizing rescales a cached GPU
+/// texture instead of re-rasterizing a full-window SVG per size tick. The
+/// base gradient and vignette scale cleanly; the 3px dust dots stretch
+/// imperceptibly at 5% opacity.
+fn scene_handle() -> &'static Handle {
+    static SCENE: OnceLock<Handle> = OnceLock::new();
+    SCENE.get_or_init(|| Handle::from_memory(scene_svg(1280.0, 820.0).into_bytes()))
 }
 
 /// Glow halo behind the login card's logo mark — [`glow_sprite_handle`] at
