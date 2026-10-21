@@ -21,12 +21,9 @@ use iced::advanced::renderer;
 use iced::advanced::svg::Renderer as _;
 use iced::advanced::svg::{Handle, Svg};
 use iced::advanced::widget::{Tree, tree};
-use iced::advanced::{Clipboard, Layout, Renderer as _, Shell, Widget};
-use iced::border::Radius;
+use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::mouse::{Cursor, Interaction};
-use iced::{Border, Element, Event, Length, Point, Radians, Rectangle, Renderer as BaseRenderer, Size, Theme};
-
-use crate::app::theme::color;
+use iced::{Element, Event, Length, Point, Radians, Rectangle, Renderer as BaseRenderer, Size, Theme};
 
 /// CSS `aurora-float` — 18s ease-in-out infinite.
 const AURORA_PERIOD: f32 = 18.0;
@@ -136,24 +133,33 @@ where
             bounds,
         );
 
-        // 2 — aurora washes riding their 18s float cycles. The dim overlay
-        // of the reference is baked into the field, so the washes read at
-        // full strength, like the export.
-        draw_wash(
+        // 2 — the three aurora glows riding their 18s float cycles: Lode
+        // Green upper-left, the scene's warm sun top-center, violet
+        // bottom-right — distinct blobs over the dark field, like the
+        // reference.
+        draw_blob(
             renderer,
             bounds,
-            green_wash_handle(),
-            Point::new(bounds.x + bounds.width * 0.39, bounds.y + bounds.height * 0.21),
-            1300.0 * factor,
+            green_blob_handle(),
+            Point::new(bounds.x + bounds.width * 0.22, bounds.y + bounds.height * 0.22),
+            900.0 * factor,
             (t / AURORA_PERIOD) % 1.0,
         );
-        draw_wash(
+        draw_blob(
             renderer,
             bounds,
-            violet_wash_handle(),
-            Point::new(bounds.x + bounds.width * 0.9, bounds.y + bounds.height * 0.8),
-            1000.0 * factor,
+            amber_blob_handle(),
+            Point::new(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.16),
+            620.0 * factor,
             ((t + VIOLET_DELAY) / AURORA_PERIOD) % 1.0,
+        );
+        draw_blob(
+            renderer,
+            bounds,
+            violet_blob_handle(),
+            Point::new(bounds.x + bounds.width * 0.88, bounds.y + bounds.height * 0.82),
+            760.0 * factor,
+            ((t + VIOLET_DELAY * 2.0) / AURORA_PERIOD) % 1.0,
         );
 
         // 3 — embers drifting bottom → top.
@@ -188,11 +194,11 @@ impl<'a, Message: 'static> From<LoginBackdrop> for Element<'a, Message, Theme, B
     }
 }
 
-/// Draws one aurora wash at its cycle position.
-fn draw_wash(renderer: &mut BaseRenderer, bounds: Rectangle, sprite: &Handle, center: Point, size: f32, phase: f32) {
+/// Draws one aurora blob at its cycle position.
+fn draw_blob(renderer: &mut BaseRenderer, bounds: Rectangle, sprite: &Handle, center: Point, size: f32, phase: f32) {
     let (dx, dy, scale) = aurora_offset(phase);
     let size = size * scale;
-    let center = center + Vector::new(dx * size / 1300.0, dy * size / 1300.0);
+    let center = center + Vector::new(dx * factor_of(size), dy * factor_of(size));
     let sprite_bounds = Rectangle::new(center - Vector::new(size / 2.0, size / 2.0), Size::new(size, size));
     renderer.draw_svg(
         Svg {
@@ -204,6 +210,12 @@ fn draw_wash(renderer: &mut BaseRenderer, bounds: Rectangle, sprite: &Handle, ce
         sprite_bounds,
         bounds,
     );
+}
+
+/// The blob's CSS drift is 60px per 1300px of blob — keep the translation
+/// proportional at any scale.
+fn factor_of(size: f32) -> f32 {
+    size / 1300.0
 }
 
 use iced::Vector;
@@ -227,10 +239,10 @@ fn draw_ember(renderer: &mut BaseRenderer, bounds: Rectangle, i: usize, t: f32, 
         1.0
     };
 
-    // The sprite's bright core is 8% of its radius; scale so the core lands
-    // on the reference's 2–4px dots, glow spilling out around it.
-    let core = (base_size * factor).clamp(2.0, 6.0);
-    let sprite_size = core / 0.08;
+    // The sprite's solid core reaches half its radius; draw at 4× the core
+    // so the dot is `core` px with a tight 1-core-wide glow falloff.
+    let core = (base_size * factor).clamp(1.5, 3.5);
+    let sprite_size = core * 4.0;
     let sprite_bounds = Rectangle::new(
         Point::new(x, y) - Vector::new(sprite_size / 2.0, sprite_size / 2.0),
         Size::new(sprite_size, sprite_size),
@@ -290,22 +302,21 @@ pub fn scene_svg(w: f32, h: f32) -> String {
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">
   <defs>
     <linearGradient id="base" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0b2b14"/>
-      <stop offset="0.5" stop-color="#082010"/>
-      <stop offset="1" stop-color="#07160d"/>
+      <stop offset="0" stop-color="#0a130c"/>
+      <stop offset="0.5" stop-color="#081009"/>
+      <stop offset="1" stop-color="#070d08"/>
     </linearGradient>
     <radialGradient id="vignette" cx="0.5" cy="0.5" r="0.75">
       <stop offset="0.55" stop-color="#000000" stop-opacity="0"/>
-      <stop offset="1" stop-color="#000000" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.3"/>
     </radialGradient>
-    <filter id="grain" x="0" y="0" width="100%" height="100%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" stitchTiles="stitch"/>
-      <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.05 0"/>
-    </filter>
+    <pattern id="dust" width="3" height="3" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="0.5" fill="#ffffff" fill-opacity="0.05"/>
+    </pattern>
   </defs>
   <rect width="{w}" height="{h}" fill="url(#base)"/>
+  <rect width="{w}" height="{h}" fill="url(#dust)"/>
   <rect width="{w}" height="{h}" fill="url(#vignette)"/>
-  <rect width="{w}" height="{h}" filter="url(#grain)"/>
 </svg>"##,
         w = w,
         h = h,
@@ -333,47 +344,51 @@ fn glow_sprite_handle(hex: &str, size: u32) -> Handle {
     Handle::from_memory(svg.into_bytes())
 }
 
-/// The aurora wash sprite — a broad radial matched to the sampled
-/// brightness field of the reference export (`01-login.png`). Drawn scaled
-/// to the window and drifted by [`aurora_offset`].
-///
-/// Stop alphas are authored pre-compensation: the svg texture pipeline
-/// renders translucent stops weaker than authored (≈ squared), so callers
-/// pass `sqrt(target)` values — see the sampling notes in this module's
-/// history.
-fn wash_svg(hex: &str, peak: f32, mid: f32) -> String {
+/// The aurora glow sprite — a distinct blob (not a screen-filling wash):
+/// bright core, steep CSS-aurora falloff (`transparent 65%` + 80px blur).
+/// Stop alphas are authored pre-compensated: the svg texture pipeline
+/// renders translucent stops ≈ squared, so callers pass `sqrt(target)`.
+fn blob_sprite(hex: &str, peak: f32) -> Handle {
+    Handle::from_memory(blob_svg(hex, peak).into_bytes())
+}
+
+/// The blob's SVG markup — [`blob_sprite`] minus the handle wrapping, so
+/// tests can assert on the stops.
+fn blob_svg(hex: &str, peak: f32) -> String {
+    let mid = peak * 0.55;
     format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000">
   <defs>
-    <radialGradient id="w" cx="0.5" cy="0.5" r="0.5">
+    <radialGradient id="b" cx="0.5" cy="0.5" r="0.5">
       <stop offset="0" stop-color="{hex}" stop-opacity="{peak:.2}"/>
-      <stop offset="0.35" stop-color="{hex}" stop-opacity="{mid:.2}"/>
-      <stop offset="0.65" stop-color="{hex}" stop-opacity="0.05"/>
+      <stop offset="0.45" stop-color="{hex}" stop-opacity="{mid:.2}"/>
+      <stop offset="0.8" stop-color="{hex}" stop-opacity="0.04"/>
       <stop offset="1" stop-color="{hex}" stop-opacity="0"/>
     </radialGradient>
   </defs>
-  <rect width="1000" height="1000" fill="url(#w)"/>
+  <rect width="1000" height="1000" fill="url(#b)"/>
 </svg>"##
     )
 }
 
-fn wash_sprite(hex: &str, peak: f32, mid: f32) -> Handle {
-    Handle::from_memory(wash_svg(hex, peak, mid).into_bytes())
+fn green_blob_handle() -> &'static Handle {
+    static BLOB: OnceLock<Handle> = OnceLock::new();
+    BLOB.get_or_init(|| blob_sprite("#22ff84", 0.59))
 }
 
-fn green_wash_handle() -> &'static Handle {
-    static WASH: OnceLock<Handle> = OnceLock::new();
-    WASH.get_or_init(|| wash_sprite("#22ff84", 0.55, 0.51))
+fn amber_blob_handle() -> &'static Handle {
+    static BLOB: OnceLock<Handle> = OnceLock::new();
+    BLOB.get_or_init(|| blob_sprite("#ffcf7d", 0.50))
 }
 
-fn violet_wash_handle() -> &'static Handle {
-    static WASH: OnceLock<Handle> = OnceLock::new();
-    WASH.get_or_init(|| wash_sprite("#9747ff", 0.28, 0.19))
+fn violet_blob_handle() -> &'static Handle {
+    static BLOB: OnceLock<Handle> = OnceLock::new();
+    BLOB.get_or_init(|| blob_sprite("#9747ff", 0.55))
 }
 
 /// One ember — a glowing green speck. SVG, not a quad: iced_wgpu renders a
 /// layer's quads *before* its textures, so quad embers would sink beneath
-/// the scene and wash sprites.
+/// the scene and blob sprites.
 fn ember_sprite_handle() -> &'static Handle {
     static EMBER: OnceLock<Handle> = OnceLock::new();
     EMBER.get_or_init(|| {
@@ -381,9 +396,8 @@ fn ember_sprite_handle() -> &'static Handle {
   <defs>
     <radialGradient id="e" cx="0.5" cy="0.5" r="0.5">
       <stop offset="0" stop-color="#22ff84" stop-opacity="1"/>
-      <stop offset="0.08" stop-color="#22ff84" stop-opacity="0.92"/>
-      <stop offset="0.2" stop-color="#22ff84" stop-opacity="0.35"/>
-      <stop offset="0.35" stop-color="#22ff84" stop-opacity="0.05"/>
+      <stop offset="0.5" stop-color="#22ff84" stop-opacity="0.85"/>
+      <stop offset="0.75" stop-color="#22ff84" stop-opacity="0.3"/>
       <stop offset="1" stop-color="#22ff84" stop-opacity="0"/>
     </radialGradient>
   </defs>
@@ -432,21 +446,22 @@ mod tests {
     fn scene_svg_carries_every_layer() {
         let svg = scene_svg(1280.0, 820.0);
         assert!(svg.contains("url(#base)"), "flat dark-green base");
+        assert!(svg.contains("url(#dust)"), "pixel-dust texture");
         assert!(svg.contains("url(#vignette)"), "corner falloff");
-        assert!(svg.contains("feTurbulence"), "grain dithers the dark gradients");
-        // The heavy scene features blurred into nothing in the reference —
-        // they must not come back.
+        // Full-window filters cost seconds of CPU on first raster — the
+        // scene must stay filter-free.
+        assert!(!svg.contains("feTurbulence"), "no turbulence filters");
+        assert!(!svg.contains("feGaussianBlur"), "no per-scene blur");
         assert!(!svg.contains("<polygon"), "no terrain silhouettes");
-        assert!(!svg.contains("feGaussianBlur"), "no per-scene blur needed for smooth fields");
     }
 
     #[test]
-    fn washes_are_baked_at_their_layer_opacities() {
-        let green = wash_svg("#22ff84", 0.55, 0.51);
+    fn blobs_are_authored_precompensated() {
+        let green = blob_svg("#22ff84", 0.59);
         assert!(green.contains("stop-color=\"#22ff84\""));
-        assert!(green.contains("stop-opacity=\"0.55\""));
-        let violet = wash_svg("#9747ff", 0.28, 0.19);
-        assert!(violet.contains("stop-color=\"#9747ff\""));
-        assert!(violet.contains("stop-opacity=\"0.28\""));
+        assert!(green.contains("stop-opacity=\"0.59\""));
+        assert!(green.contains("stop-opacity=\"0.32\""), "mid stop at 55% of peak");
+        let amber = blob_svg("#ffcf7d", 0.50);
+        assert!(amber.contains("stop-color=\"#ffcf7d\""));
     }
 }
