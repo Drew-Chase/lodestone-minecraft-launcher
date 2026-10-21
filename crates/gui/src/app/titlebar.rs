@@ -70,25 +70,14 @@ impl Titlebar {
     pub fn view(&self, can_go_back: bool, can_go_forward: bool, transparent: bool) -> Element<'_, TitlebarMessage> {
         container(row![
             if transparent {
-                // Chrome floats over the login backdrop: no nav, no title —
-                // just a drag surface with the brand centered.
-                mouse_area(
-                    row![
-                        Space::new().width(Fill).height(Fill),
-                        Text::new(format!("LODESTONE · v{}", LodestoneLauncher::VERSION))
-                            .size(11)
-                            .font(crate::app::theme::fonts::JetBrainsMono::REGULAR)
-                            .color(color::Text::PLACEHOLDER),
-                        Space::new().width(Fill).height(Fill),
-                    ]
+                // Chrome floats over the login backdrop: a bare drag surface
+                // with the window buttons on the right (the login page owns
+                // the centered brand line).
+                mouse_area(Space::new().width(Fill).height(Fill))
+                    .on_double_click(TitlebarMessage::ToggleMaximized)
+                    .on_press(TitlebarMessage::StartDragWindow)
                     .width(Fill)
                     .height(Fill)
-                    .align_y(iced::Alignment::Center),
-                )
-                .on_double_click(TitlebarMessage::ToggleMaximized)
-                .on_press(TitlebarMessage::StartDragWindow)
-                .width(Fill)
-                .height(Fill)
             } else {
                 row![
                     IconButton::new(Icon::lucide().chevron_left())

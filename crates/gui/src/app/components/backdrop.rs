@@ -186,17 +186,8 @@ where
             bounds,
         );
 
-        // 2 — aurora blobs riding their 18s float cycles (above the dim
-        // overlay in the reference, so they punch through the darkness).
-        draw_blob(renderer, bounds, Blob::Green, (t / AURORA_PERIOD) % 1.0);
-        draw_blob(renderer, bounds, Blob::Violet, ((t + VIOLET_DELAY) / AURORA_PERIOD) % 1.0);
-
-        // 3 — embers drifting bottom → top.
-        for i in 0..EMBER_COUNT {
-            draw_ember(renderer, bounds, i, t);
-        }
-
-        // 4 — the dim overlay: black 35% at the top to 75% at the bottom.
+        // 2 — the dim overlay sits UNDER the glows (reference order: scene →
+        // dim → aurora → particles), so they punch through the darkness.
         renderer.fill_quad(
             renderer::Quad {
                 bounds,
@@ -209,6 +200,15 @@ where
                     .into(),
             ),
         );
+
+        // 3 — aurora blobs riding their 18s float cycles.
+        draw_blob(renderer, bounds, Blob::Green, (t / AURORA_PERIOD) % 1.0);
+        draw_blob(renderer, bounds, Blob::Violet, ((t + VIOLET_DELAY) / AURORA_PERIOD) % 1.0);
+
+        // 4 — embers drifting bottom → top.
+        for i in 0..EMBER_COUNT {
+            draw_ember(renderer, bounds, i, t);
+        }
     }
 
     fn mouse_interaction(&self, _tree: &Tree, _layout: Layout<'_>, _cursor: Cursor, _viewport: &Rectangle, _renderer: &BaseRenderer) -> Interaction {
@@ -385,14 +385,14 @@ pub fn scene_svg(w: f32, h: f32, seed: f64) -> String {
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0a140d"/>
-      <stop offset="0.6" stop-color="#12301c"/>
-      <stop offset="1" stop-color="#1f5c2c"/>
+      <stop offset="0" stop-color="#060b08"/>
+      <stop offset="0.55" stop-color="#0e2013"/>
+      <stop offset="1" stop-color="#1a3f24"/>
     </linearGradient>
     <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#fff2b8" stop-opacity="0.95"/>
-      <stop offset="0.18" stop-color="#ffe9a0" stop-opacity="0.6"/>
-      <stop offset="0.5" stop-color="#ffd98a" stop-opacity="0.2"/>
+      <stop offset="0" stop-color="#fff2b8" stop-opacity="0.55"/>
+      <stop offset="0.2" stop-color="#ffe9a0" stop-opacity="0.35"/>
+      <stop offset="0.5" stop-color="#ffd98a" stop-opacity="0.12"/>
       <stop offset="1" stop-color="#ffd98a" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="hills" x1="0" y1="0" x2="0" y2="1">
@@ -400,26 +400,26 @@ pub fn scene_svg(w: f32, h: f32, seed: f64) -> String {
       <stop offset="1" stop-color="#000000" stop-opacity="0.5"/>
     </linearGradient>
     <linearGradient id="terrain" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2a5a34"/>
-      <stop offset="1" stop-color="#0e2414"/>
+      <stop offset="0" stop-color="#1c3d25"/>
+      <stop offset="1" stop-color="#081509"/>
     </linearGradient>
     <radialGradient id="vignette" cx="0.5" cy="0.5" r="0.75">
       <stop offset="0.4" stop-color="#000000" stop-opacity="0"/>
       <stop offset="1" stop-color="#000000" stop-opacity="0.5"/>
     </radialGradient>
     <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
-      <path d="M 16 0 L 0 0 0 16" fill="none" stroke="#000000" stroke-opacity="0.18" stroke-width="1"/>
+      <path d="M 16 0 L 0 0 0 16" fill="none" stroke="#000000" stroke-opacity="0.15" stroke-width="1"/>
     </pattern>
     <filter id="soften" x="-15%" y="-15%" width="130%" height="130%">
-      <feGaussianBlur stdDeviation="24"/>
-      <feColorMatrix type="saturate" values="1.2"/>
+      <feGaussianBlur stdDeviation="36"/>
+      <feColorMatrix type="saturate" values="1.1"/>
     </filter>
   </defs>
   <g filter="url(#soften)">
     <rect x="-{bleed}" y="-{bleed}" width="{wide}" height="{tall}" fill="url(#sky)"/>
     <rect x="{sun_left:.1}" y="{sun_top:.1}" width="{sun_d}" height="{sun_d}" fill="url(#sun)"/>
-    <polygon points="{back}" fill="url(#hills)" opacity="0.55"/>
-    <polygon points="{terrain}" fill="url(#terrain)" stroke="#3faa5a" stroke-width="5"/>
+    <polygon points="{back}" fill="url(#hills)" opacity="0.4"/>
+    <polygon points="{terrain}" fill="url(#terrain)" stroke="#2c7a42" stroke-opacity="0.5" stroke-width="4"/>
     <rect x="-{bleed}" y="-{bleed}" width="{wide}" height="{tall}" fill="url(#grid)" opacity="0.35"/>
   </g>
   <rect width="{w}" height="{h}" fill="url(#vignette)"/>

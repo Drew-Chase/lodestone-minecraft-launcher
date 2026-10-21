@@ -14,10 +14,9 @@
 use std::sync::OnceLock;
 
 use aurora_leaf::Icon;
-use iced::font::Family;
 use iced::widget::svg::Handle;
 use iced::widget::{Space, Text, column, container, row, stack, svg};
-use iced::{Background, Border, Color, Element, Fill, Font, Length, Padding, Radians, Shadow, Vector, color, gradient};
+use iced::{Background, Border, Color, Element, Fill, Length, Padding, Radians, Shadow, Vector, color, gradient};
 use iced_color_extension::rgb;
 use lodestone_minecraft_authentication::{DeviceCodeStart, Session};
 
@@ -29,14 +28,6 @@ use crate::app::theme::{color as palette, fonts};
 
 /// The Lodestone mark from the app's icon asset.
 const LOGO_SVG: &str = include_str!("../../../../../res/icon/icon.svg");
-
-/// The headline's serif — the reference renders the welcome line in a serif
-/// face, which the guide's Inter/JetBrains families don't cover.
-const SERIF_BOLD: Font = Font {
-    family: Family::Serif,
-    weight: Font::DEFAULT.weight,
-    ..Font::DEFAULT
-};
 
 /// The signed-in flow's display state.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -123,14 +114,27 @@ impl Login {
 
     pub fn view(&self) -> Element<'_, Message> {
         column![
-            // Language chip — top left, over the backdrop.
-            container(self.language_chip()).width(Fill).padding(Padding::new(0.0).left(24).top(12)),
+            // Top chrome overlays: language chip left, brand centered.
+            container(self.top_bar())
+                .width(Fill)
+                .padding(Padding::new(0.0).left(24).right(24).top(12)),
             // The card, centered in the remaining space.
             container(self.card()).width(Fill).height(Fill).center(Length::Fill),
             self.status_bar(),
         ]
         .width(Fill)
         .height(Fill)
+        .into()
+    }
+
+    /// Language chip left, window brand centered — the reference's top edge.
+    fn top_bar(&self) -> Element<'_, Message> {
+        stack![
+            container(self.language_chip()).width(Fill).align_x(iced::alignment::Horizontal::Left),
+            container(mono(format!("LODESTONE · v{}", LodestoneLauncher::VERSION), 11.0))
+                .width(Fill)
+                .align_x(iced::alignment::Horizontal::Center),
+        ]
         .into()
     }
 
@@ -172,6 +176,7 @@ impl Login {
             self.card_content(),
         ])
         .width(440)
+        .height(450)
         .style(|_| container::Style {
             background: Some(Background::Gradient(
                 gradient::Linear::new(Radians(std::f32::consts::FRAC_PI_2))
@@ -194,7 +199,8 @@ impl Login {
         .into()
     }
 
-    /// Everything inside the card.
+    /// Everything inside the card. The trailing `Fill` space pins the footer
+    /// to the card's bottom edge like the reference.
     fn card_content(&self) -> Element<'_, Message> {
         column![
             self.logo_row(),
@@ -205,9 +211,10 @@ impl Login {
                 .color(palette::Text::MUTED)
                 .line_height(1.5),
             self.sign_in_area(),
+            Space::new().height(Fill),
             self.footer(),
         ]
-        .spacing(14)
+        .spacing(16)
         .padding(Padding::new(0.0).left(36).right(36).top(40).bottom(32))
         .into()
     }
@@ -226,7 +233,10 @@ impl Login {
             .width(52)
             .height(52),
             column![
-                Text::new("Lodestone").size(22).font(SERIF_BOLD).color(palette::Text::HEADLINE),
+                Text::new("Lodestone")
+                    .size(22)
+                    .font(fonts::Inter::EXTRA_BOLD)
+                    .color(palette::Text::HEADLINE),
                 mono(format!("THIRD-PARTY LAUNCHER · v{}", LodestoneLauncher::VERSION), 11.0),
             ]
             .spacing(2),
@@ -236,11 +246,17 @@ impl Login {
         .into()
     }
 
-    /// "Welcome back, crafter" — the one serif moment in the app.
+    /// "Welcome back, crafter" — Inter ExtraBold, per the reference.
     fn headline(&self) -> Element<'_, Message> {
         row![
-            Text::new("Welcome back, ").size(26).font(SERIF_BOLD).color(palette::Text::HEADLINE),
-            Text::new("crafter").size(26).font(SERIF_BOLD).color(palette::Primary::DEFAULT),
+            Text::new("Welcome back, ")
+                .size(26)
+                .font(fonts::Inter::EXTRA_BOLD)
+                .color(palette::Text::HEADLINE),
+            Text::new("crafter")
+                .size(26)
+                .font(fonts::Inter::EXTRA_BOLD)
+                .color(palette::Primary::DEFAULT),
         ]
         .align_y(iced::Alignment::Center)
         .into()
@@ -299,28 +315,27 @@ impl Login {
         container(
             column![
                 row![
-                    Text::new("Open ").size(12).font(fonts::Inter::MEDIUM).color(palette::Text::MUTED),
-                    Text::new(verification_uri.to_string())
-                        .size(12)
+                    Text::new(user_code.to_string())
+                        .size(20)
                         .font(fonts::JetBrainsMono::SEMI_BOLD)
                         .color(palette::Primary::DEFAULT),
-                    Text::new(" and enter").size(12).font(fonts::Inter::MEDIUM).color(palette::Text::MUTED),
+                    Space::new().width(Fill),
+                    Text::new(verification_uri.replace("https://", "").replace("www.", ""))
+                        .size(11)
+                        .font(fonts::JetBrainsMono::REGULAR)
+                        .color(palette::Text::MUTED),
                 ]
-                .spacing(4),
-                Text::new(user_code.to_string())
-                    .size(24)
-                    .font(fonts::JetBrainsMono::SEMI_BOLD)
-                    .color(palette::Text::HEADLINE),
-                ProgressBar::new(0.0).indeterminate(true).height(4.0).width(Fill),
+                .align_y(iced::Alignment::Center),
+                ProgressBar::new(0.0).indeterminate(true).height(3.0).width(Fill),
                 Text::new("Waiting for you to finish signing in…")
-                    .size(12)
+                    .size(11)
                     .font(fonts::Inter::REGULAR)
                     .color(palette::Text::MUTED),
             ]
-            .spacing(8),
+            .spacing(6),
         )
         .width(Fill)
-        .padding(16)
+        .padding(12)
         .style(|_| container::Style {
             background: Some(Background::Color(rgb!(34, 255, 132, 6%))),
             border: Border {
