@@ -207,7 +207,7 @@ impl Authentication {
         let token = request
             .request_async(&Oauth2HttpClient(self.http.clone()))
             .await
-            .map_err(|source| AuthError::microsoft(&source))?;
+            .map_err(AuthError::from_refresh_token_error)?;
 
         self.session_from_microsoft_token(
             token.access_token().secret(),

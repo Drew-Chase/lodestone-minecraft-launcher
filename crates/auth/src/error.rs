@@ -125,6 +125,24 @@ impl AuthError {
         }
     }
 
+    /// Maps an oauth2 refresh-token failure onto user-presentable outcomes:
+    /// an `invalid_grant` means the stored sign-in can no longer be used.
+    pub(crate) fn from_refresh_token_error(
+        source: oauth2::RequestTokenError<
+            oauth2::HttpClientError<reqwest::Error>,
+            oauth2::StandardErrorResponse<oauth2::basic::BasicErrorResponseType>,
+        >,
+    ) -> Self {
+        match &source {
+            oauth2::RequestTokenError::ServerResponse(response) if response.error() == &oauth2::basic::BasicErrorResponseType::InvalidGrant => {
+                Self::Microsoft {
+                    message: "your saved Microsoft sign-in has expired — sign in again".to_string(),
+                }
+            }
+            _ => Self::microsoft(&source),
+        }
+    }
+
     /// Maps an Xbox sign-in failure onto the user-presentable variants.
     pub(crate) fn from_minecraft_error(source: MinecraftAuthError) -> Self {
         match source {
@@ -197,6 +215,20 @@ mod tests {
             None,
         ));
         assert!(matches!(AuthError::from_device_token_error(denied), AuthError::AuthorizationDenied));
+    }
+
+    #[test]
+    fn refresh_token_grant_errors_map_to_a_clean_expiry_message() {
+        let invalid_grant = oauth2::RequestTokenError::ServerResponse(oauth2::StandardErrorResponse::new(
+            oauth2::basic::BasicErrorResponseType::InvalidGrant,
+            None,
+            None,
+        ));
+        let error = AuthError::from_refresh_token_error(invalid_grant);
+        assert_eq!(
+            error.to_string(),
+            "microsoft sign-in failed: your saved Microsoft sign-in has expired — sign in again"
+        );
     }
 
     #[test]
