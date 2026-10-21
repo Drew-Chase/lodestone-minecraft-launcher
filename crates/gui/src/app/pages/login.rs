@@ -15,7 +15,7 @@ use std::sync::OnceLock;
 
 use aurora_leaf::Icon;
 use iced::widget::svg::Handle;
-use iced::widget::{Space, Text, column, container, row, stack, svg};
+use iced::widget::{Space, Text, column, container, mouse_area, row, stack, svg};
 use iced::{Background, Border, Color, Element, Fill, Length, Padding, Radians, Shadow, Vector, color, gradient};
 use iced_color_extension::rgb;
 use lodestone_minecraft_authentication::{DeviceCodeStart, Session};
@@ -204,17 +204,21 @@ impl Login {
     fn card_content(&self) -> Element<'_, Message> {
         column![
             self.logo_row(),
+            Space::new().height(22),
             self.headline(),
             Text::new("Sign in to sync your worlds, instances, and friends across devices.")
                 .size(13)
                 .font(fonts::Inter::REGULAR)
                 .color(palette::Text::MUTED)
                 .line_height(1.5),
+            Space::new().height(22),
             self.sign_in_area(),
             Space::new().height(Fill),
+            rule(),
+            Space::new().height(12),
             self.footer(),
         ]
-        .spacing(16)
+        .spacing(6)
         .padding(Padding::new(0.0).left(36).right(36).top(40).bottom(32))
         .into()
     }
@@ -263,8 +267,9 @@ impl Login {
     }
 
     /// The Microsoft device-code area and its alternates, per flow state.
+    /// The 18px rhythm matches the reference's collapsed margins.
     fn sign_in_area(&self) -> Element<'_, Message> {
-        let mut body = column![];
+        let mut body = column![].spacing(18);
         if let Flow::Failed(error) = &self.flow {
             body = body.push(
                 Text::new(error.clone())
@@ -350,7 +355,14 @@ impl Login {
 
     /// The "OR" rule.
     fn or_divider(&self) -> Element<'_, Message> {
-        row![rule(), mono("OR", 10.0), rule()].spacing(12).align_y(iced::Alignment::Center).into()
+        row![
+            rule(),
+            Text::new("OR").size(10).font(fonts::Inter::SEMI_BOLD).color(palette::Text::PLACEHOLDER),
+            rule(),
+        ]
+        .spacing(12)
+        .align_y(iced::Alignment::Center)
+        .into()
     }
 
     /// Offline / Demo entrances — no Microsoft account required.
@@ -389,15 +401,17 @@ impl Login {
     /// The card's legal line.
     fn footer(&self) -> Element<'_, Message> {
         row![
-            mono("Not affiliated with Mojang or Microsoft", 11.0),
+            Text::new("Not affiliated with Mojang or Microsoft")
+                .size(11)
+                .font(fonts::Inter::REGULAR)
+                .color(palette::Text::PLACEHOLDER),
             Space::new().width(Fill),
-            TextButton::content(
+            mouse_area(
                 Text::new("Learn more ↗")
                     .size(11)
                     .font(fonts::Inter::MEDIUM)
-                    .color(palette::Primary::DEFAULT),
+                    .color(palette::Primary::DEFAULT)
             )
-            .padding(Padding::new(0.0).left(4).right(4).top(2).bottom(2))
             .on_press(Message::LearnMore),
         ]
         .align_y(iced::Alignment::Center)
