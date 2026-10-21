@@ -15,13 +15,14 @@ use std::sync::OnceLock;
 
 use aurora_leaf::Icon;
 use iced::widget::svg::Handle;
-use iced::widget::{Space, Text, column, container, mouse_area, row, stack, svg};
+use iced::widget::{Space, Text, column, container, mouse_area, row, stack, svg, text_input};
 use iced::{Background, Border, Color, Element, Fill, Length, Padding, Radians, Shadow, Vector, color, gradient};
 use iced_color_extension::rgb;
 use lodestone_minecraft_authentication::{DeviceCodeStart, Session};
 
 use crate::app::LodestoneLauncher;
 use crate::app::components::backdrop::logo_glow_handle;
+use crate::app::components::input;
 use crate::app::components::{ProgressBar, PulseDot, TextButton};
 use crate::app::pages::Page;
 use crate::app::theme::{color as palette, fonts};
@@ -48,6 +49,13 @@ enum Flow {
         /// The code was clicked and copied to the clipboard.
         copied: bool,
     },
+    /// Offline mode picked — the user must enter a username.
+    OfflinePrompt {
+        /// The username as typed (pre-filled from storage).
+        username: String,
+    },
+    /// A stored Microsoft sign-in is being restored silently.
+    Restoring { username: String },
     /// The last attempt failed with a user-presentable message; the card
     /// offers a retry.
     Failed(String),
@@ -97,6 +105,15 @@ pub enum Message {
     OpenVerificationLink { url: String },
     /// "Cancel" — the root abandons the in-flight sign-in.
     CancelSignIn,
+    /// "Offline Mode" picked — the root opens the username prompt,
+    /// pre-filled with the stored offline username when there is one.
+    OfflinePrompt { username: String },
+    /// The offline username changed as it was typed.
+    OfflineUsernameChanged(String),
+    /// The offline username form was submitted (button or Enter key).
+    OfflineConfirm { username: String },
+    /// A stored Microsoft sign-in is being restored — display state only.
+    Restoring { username: String },
     /// Hover entered/exited the code (copy) region.
     CodeHover(bool),
     /// Hover entered/exited the verification-link region.
@@ -141,6 +158,17 @@ impl Login {
                     *copied = true;
                 }
             }
+            Message::OfflinePrompt { username } => {
+                self.flow = Flow::OfflinePrompt { username };
+                self.code_hover = false;
+                self.link_hover = false;
+            }
+            Message::OfflineUsernameChanged(username) => {
+                if let Flow::OfflinePrompt { username: stored, .. } = &mut self.flow {
+                    *stored = username;
+                }
+            }
+            Message::Restoring { username } => self.flow = Flow::Restoring { username },
             Message::SignInFailed(error) => self.flow = Flow::Failed(error),
             Message::Reset => {
                 self.flow = Flow::Idle;
@@ -160,6 +188,7 @@ impl Login {
             | Message::CopyCode { .. }
             | Message::OpenVerificationLink { .. }
             | Message::CancelSignIn
+            | Message::OfflineConfirm { .. }
             | Message::DeviceCodeStarted(_, _)
             | Message::SignInFinished(_, _) => {}
         }
@@ -324,8 +353,15 @@ impl Login {
     fn sign_in_area(&self) -> Element<'_, Message> {
         let mut body = column![].spacing(18);
         if let Flow::Failed(error) = &self.flow {
+            // Unmapped provider errors can be long — cap the card's copy so
+            // the fixed-height layout never overflows.
+            let shown = if error.chars().count() > 200 {
+                format!("{}…", error.chars().take(200).collect::<String>())
+            } else {
+                error.clone()
+            };
             body = body.push(
-                Text::new(error.clone())
+                Text::new(shown)
                     .size(12)
                     .font(fonts::Inter::MEDIUM)
                     .color(palette::Accents::PINK)
@@ -343,6 +379,14 @@ impl Login {
             }
             Flow::Opening => {
                 body = body.push(self.microsoft_button("Opening Microsoft…", Message::SignInMicrosoft).disabled(true));
+            }
+            // Offline mode asks for a username before entering.
+            Flow::OfflinePrompt { username } => {
+                body = body.push(self.offline_form(username));
+            }
+            // A stored sign-in is being restored silently.
+            Flow::Restoring { username } => {
+                body = body.push(self.restoring_panel(username));
             }
             // Idle and Failed both offer the button (retry after a failure).
             Flow::Idle | Flow::Failed(_) => {
@@ -499,6 +543,75 @@ impl Login {
         .into()
     }
 
+    /// The offline username form — input, play, cancel.
+    fn offline_form(&self, username: &str) -> Element<'_, Message> {
+        let ready = !username.trim().is_empty();
+        column![
+            mouse_area(
+                text_input("Your username", username)
+                    .on_input(Message::OfflineUsernameChanged)
+                    .on_submit(Message::OfflineConfirm {
+                        username: username.to_string()
+                    })
+                    .style(input::style)
+                    .size(14)
+                    .padding(12),
+            )
+            .interaction(iced::mouse::Interaction::Text),
+            row![
+                TextButton::primary("Play offline")
+                    .width(Fill)
+                    .padding(Padding::new(0.0).top(12).bottom(12))
+                    .disabled(!ready)
+                    .on_press(Message::OfflineConfirm {
+                        username: username.to_string()
+                    }),
+                TextButton::ghost("Cancel")
+                    .width(Fill)
+                    .padding(Padding::new(0.0).top(12).bottom(12))
+                    .on_press(Message::Reset),
+            ]
+            .spacing(10),
+        ]
+        .spacing(10)
+        .into()
+    }
+
+    /// The silent sign-in panel shown while a stored refresh token is
+    /// being restored.
+    fn restoring_panel(&self, username: &str) -> Element<'_, Message> {
+        container(
+            column![
+                row![
+                    Text::new("Signing in as ")
+                        .size(13)
+                        .font(fonts::Inter::MEDIUM)
+                        .color(palette::Text::MUTED),
+                    Text::new(username.to_string())
+                        .size(13)
+                        .font(fonts::Inter::SEMI_BOLD)
+                        .color(palette::Text::HEADLINE),
+                    Text::new("…").size(13).font(fonts::Inter::MEDIUM).color(palette::Text::MUTED),
+                ]
+                .align_y(iced::Alignment::Center),
+                ProgressBar::new(0.0).indeterminate(true).height(3.0).width(Fill),
+            ]
+            .spacing(8),
+        )
+        .width(Fill)
+        .padding(12)
+        .style(|_| container::Style {
+            background: Some(Background::Color(rgb!(34, 255, 132, 6%))),
+            border: Border {
+                radius: 12.0.into(),
+                width: 1.0,
+                color: rgb!(34, 255, 132, 25%),
+            },
+            ..container::Style::default()
+        })
+        .into()
+    }
+
     /// The "OR" rule.
     fn or_divider(&self) -> Element<'_, Message> {
         row![
@@ -515,32 +628,34 @@ impl Login {
     fn secondary_row(&self) -> Element<'_, Message> {
         row![
             TextButton::content(
-                row![
-                    Space::new().width(Fill),
-                    icon(Icon::lucide().user(), 15.0, palette::Text::MUTED, 0.68),
-                    Text::new("Offline Mode")
-                        .size(13)
-                        .font(fonts::Inter::MEDIUM)
-                        .color(palette::Text::DEFAULT),
-                    Space::new().width(Fill),
-                ]
-                .spacing(8)
-                .align_y(iced::Alignment::Center)
-                .width(Fill),
+                container(
+                    row![
+                        icon(Icon::lucide().user(), 15.0, palette::Text::MUTED, 0.68),
+                        Text::new("Offline Mode")
+                            .size(13)
+                            .font(fonts::Inter::MEDIUM)
+                            .color(palette::Text::DEFAULT),
+                    ]
+                    .spacing(8)
+                    .align_y(iced::Alignment::Center),
+                )
+                .width(Fill)
+                .center_x(Fill),
             )
             .width(Fill)
             .padding(Padding::new(0.0).top(12).bottom(12))
             .on_press(Message::OfflineMode),
             TextButton::content(
-                row![
-                    Space::new().width(Fill),
-                    icon(Icon::lucide().shield(), 15.0, palette::Text::MUTED, 0.68),
-                    Text::new("Demo Mode").size(13).font(fonts::Inter::MEDIUM).color(palette::Text::DEFAULT),
-                    Space::new().width(Fill),
-                ]
-                .spacing(8)
-                .align_y(iced::Alignment::Center)
-                .width(Fill),
+                container(
+                    row![
+                        icon(Icon::lucide().shield(), 15.0, palette::Text::MUTED, 0.68),
+                        Text::new("Demo Mode").size(13).font(fonts::Inter::MEDIUM).color(palette::Text::DEFAULT),
+                    ]
+                    .spacing(8)
+                    .align_y(iced::Alignment::Center),
+                )
+                .width(Fill)
+                .center_x(Fill),
             )
             .width(Fill)
             .padding(Padding::new(0.0).top(12).bottom(12))

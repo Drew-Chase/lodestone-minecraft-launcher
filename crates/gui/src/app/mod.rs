@@ -1,6 +1,7 @@
 pub mod components;
 pub mod pages;
 pub mod router;
+pub mod storage;
 pub mod theme;
 mod titlebar;
 
@@ -14,6 +15,7 @@ use crate::app::pages::login::{AuthStatus, Login, Message as LoginMessage};
 use crate::app::pages::settings::{Message as SettingsMessage, Settings};
 use crate::app::pages::showcase::{Message as ShowcaseMessage, Showcase};
 use crate::app::router::Router;
+use crate::app::storage::{StoredCredentials, StoredMicrosoft};
 use crate::app::theme::color::Surface;
 use crate::app::titlebar::{Titlebar, TitlebarMessage};
 #[cfg(not(windows))]
@@ -41,6 +43,25 @@ pub(crate) fn probe_enabled() -> bool {
 /// personal accounts, device-code flow).
 const AZURE_CLIENT_ID: &str = "b1156b7e-e0fe-4f86-a835-afed728d093d";
 
+/// The kind of session the launcher is running under.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Account {
+    /// Signed in through Microsoft — full online capabilities.
+    Microsoft { session: Session },
+    /// Offline mode — no Microsoft account; the username is self-declared.
+    Offline { username: String },
+}
+
+impl Account {
+    /// The name this account plays under.
+    pub fn username(&self) -> &str {
+        match self {
+            Account::Microsoft { session } => &session.profile.name,
+            Account::Offline { username } => username,
+        }
+    }
+}
+
 /// The launcher's root state.
 ///
 /// Not `#[derive(Default)]` because the auth handle needs the client id.
@@ -53,10 +74,11 @@ pub struct LodestoneLauncher {
     settings: Settings,
     showcase: Showcase,
     login: Login,
-    /// The live Minecraft session, once someone has signed in. Token
-    /// persistence (the refresh token) is gui's job per the auth crate's
-    /// contract — a real store lands with the account page.
-    session: Option<Session>,
+    /// The active account, once someone has entered the launcher.
+    account: Option<Account>,
+    /// The at-rest credentials loaded from disk and rewritten on every
+    /// sign-in.
+    credentials: StoredCredentials,
     auth: Authentication,
     /// Bumped on every new/abandoned sign-in so results from stale polls
     /// (cancelled or superseded) are dropped when they arrive.
@@ -78,7 +100,8 @@ impl Default for LodestoneLauncher {
             settings: Settings,
             showcase: Showcase::default(),
             login: Login::default(),
-            session: None,
+            account: None,
+            credentials: StoredCredentials::load(),
             auth: Authentication::new(AZURE_CLIENT_ID),
             auth_generation: 0,
             probe_step: 0,
@@ -109,6 +132,12 @@ pub enum LodestoneAppMessage {
     /// `LODESTONE_RESIZE_PROFILE=1`; drives `window::resize` through a
     /// fixed size sequence for screen-recording measurements.
     ResizeProbe,
+    /// Boot-time restore: silently re-login a stored Microsoft refresh
+    /// token before showing the sign-in card.
+    RestoreStart {
+        username: String,
+        refresh_token: String,
+    },
     /// Tick the auth-services reachability probe.
     AuthProbeTick,
     /// The auth-services probe completed.
@@ -126,6 +155,7 @@ impl LodestoneLauncher {
 
     pub fn boot() -> (Self, Task<LodestoneAppMessage>) {
         let id = window::latest();
+        let app = Self { ..Self::default() };
         let mut tasks = vec![id.map(LodestoneAppMessage::WindowCreation)];
         // TEMPORARY resize-latency probe kick-off — env-gated.
         if probe_enabled() {
@@ -149,6 +179,20 @@ impl LodestoneLauncher {
                 |_| LodestoneAppMessage::Login(LoginMessage::SignInMicrosoft),
             ));
         }
+        // Silent re-login when a Microsoft refresh token is on file — the
+        // launcher goes straight to Home on success.
+        if let Some(ms) = app.credentials.microsoft.clone() {
+            info!("PROBE restoring stored Microsoft sign-in for {}", ms.username);
+            tasks.push(Task::perform(
+                async {
+                    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+                },
+                move |_| LodestoneAppMessage::RestoreStart {
+                    username: ms.username,
+                    refresh_token: ms.refresh_token,
+                },
+            ));
+        }
         // First auth-services probe shortly after boot; the subscription
         // keeps it going every 15s.
         tasks.push(Task::perform(
@@ -157,7 +201,7 @@ impl LodestoneLauncher {
             },
             |_| LodestoneAppMessage::AuthProbeTick,
         ));
-        (Self { ..Self::default() }, Task::batch(tasks))
+        (app, Task::batch(tasks))
     }
 
     pub fn update(&mut self, message: LodestoneAppMessage) -> Task<LodestoneAppMessage> {
@@ -244,13 +288,34 @@ impl LodestoneLauncher {
             }
             LodestoneAppMessage::Login(LoginMessage::SignInFinished(generation, Ok(session))) if generation == self.auth_generation => {
                 info!("Signed in as {}", session.profile.name);
-                self.session = Some(session);
+                // Persist the refresh token so the next boot restores this
+                // sign-in silently.
+                match &session.refresh_token {
+                    Some(refresh_token) => {
+                        self.credentials.microsoft = Some(StoredMicrosoft {
+                            refresh_token: refresh_token.clone(),
+                            username: session.profile.name.clone(),
+                        });
+                        if let Err(error) = self.credentials.store() {
+                            warn!("Storing credentials failed: {error}");
+                        }
+                    }
+                    None => warn!("Microsoft issued no refresh token; the sign-in will not persist"),
+                }
+                self.account = Some(Account::Microsoft { session });
                 self.login.update(LoginMessage::Reset);
                 self.router.replace(Page::Home);
                 Task::none()
             }
             LodestoneAppMessage::Login(LoginMessage::SignInFinished(generation, Err(error))) if generation == self.auth_generation => {
                 warn!("Sign-in failed: {error}");
+                // A failed sign-in also invalidates whatever refresh token
+                // was on file — it could not have produced this attempt.
+                if self.credentials.microsoft.take().is_some() {
+                    if let Err(storage_error) = self.credentials.store() {
+                        warn!("Clearing stored credentials failed: {storage_error}");
+                    }
+                }
                 self.login.update(LoginMessage::SignInFailed(error));
                 Task::none()
             }
@@ -278,8 +343,51 @@ impl LodestoneLauncher {
                 self.login.update(LoginMessage::Reset);
                 Task::none()
             }
-            LodestoneAppMessage::Login(LoginMessage::OfflineMode | LoginMessage::DemoMode) => {
-                info!("Entering the launcher without a Microsoft account");
+            LodestoneAppMessage::Login(LoginMessage::OfflineMode) => {
+                // Open the offline prompt, pre-filled with the stored
+                // username when there is one.
+                let username = self.credentials.offline_username.clone().unwrap_or_default();
+                self.login.update(LoginMessage::OfflinePrompt { username });
+                Task::none()
+            }
+            LodestoneAppMessage::Login(LoginMessage::OfflineUsernameChanged(username)) => {
+                self.login.update(LoginMessage::OfflineUsernameChanged(username));
+                Task::none()
+            }
+            LodestoneAppMessage::Login(LoginMessage::OfflineConfirm { username }) => {
+                let username = username.trim().to_string();
+                if username.is_empty() {
+                    return Task::none();
+                }
+                info!("Entering offline mode as {username}");
+                self.credentials.offline_username = Some(username.clone());
+                if let Err(error) = self.credentials.store() {
+                    warn!("Storing credentials failed: {error}");
+                }
+                self.account = Some(Account::Offline { username });
+                self.login.update(LoginMessage::Reset);
+                self.router.replace(Page::Home);
+                Task::none()
+            }
+            LodestoneAppMessage::RestoreStart { username, refresh_token } => {
+                self.auth_generation = self.auth_generation.wrapping_add(1);
+                let generation = self.auth_generation;
+                info!("Restoring Microsoft sign-in for {username} (generation {generation})");
+                self.login.update(LoginMessage::Restoring { username });
+                let auth = self.auth.clone();
+                Task::perform(
+                    async move { auth.login_with_refresh_token(&refresh_token).await.map_err(|error| error.to_string()) },
+                    move |result| LodestoneAppMessage::Login(LoginMessage::SignInFinished(generation, result)),
+                )
+            }
+            LodestoneAppMessage::Login(LoginMessage::DemoMode) => {
+                info!("Entering offline mode as Demo Player");
+                let username = "Demo Player".to_string();
+                self.credentials.offline_username = Some(username.clone());
+                if let Err(error) = self.credentials.store() {
+                    warn!("Storing credentials failed: {error}");
+                }
+                self.account = Some(Account::Offline { username });
                 self.login.update(LoginMessage::Reset);
                 self.router.replace(Page::Home);
                 Task::none()
@@ -320,7 +428,9 @@ impl LodestoneLauncher {
                 | LoginMessage::SignInFailed(_)
                 | LoginMessage::Reset
                 | LoginMessage::CodeHover(_)
-                | LoginMessage::LinkHover(_)),
+                | LoginMessage::LinkHover(_)
+                | LoginMessage::Restoring { .. }
+                | LoginMessage::OfflinePrompt { .. }),
             ) => {
                 self.login.update(message);
                 Task::none()
