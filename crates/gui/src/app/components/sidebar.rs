@@ -19,6 +19,8 @@ use iced::widget::{Space, Text, column, container, image, stack, svg};
 use iced::{Background, Border, Element, Fill, Length, Padding, alignment};
 use iced_color_extension::rgb;
 
+use crate::app::face::AVATAR_RADIUS;
+
 /// The rail's width — the reference sidebar's 68px.
 pub const WIDTH: f32 = 68.0;
 
@@ -140,6 +142,16 @@ fn avatar<Message: Clone + 'static>(face: Option<Handle>, username: Option<Strin
     container(
         stack![
             face_layer,
+            // The ring rides on top of the face; the corners themselves are
+            // faded in the texture.
+            container(Space::new().width(Fill).height(Fill)).style(|_| container::Style {
+                border: Border {
+                    radius: (AVATAR_RADIUS + 2.0).into(),
+                    width: 1.5,
+                    color: rgb!(255, 255, 255, 25%),
+                },
+                ..container::Style::default()
+            }),
             container(container(Space::new().width(10).height(10)).style(move |_| container::Style {
                 background: Some(Background::Color(dot_ink)),
                 border: Border {
@@ -158,16 +170,7 @@ fn avatar<Message: Clone + 'static>(face: Option<Handle>, username: Option<Strin
         .width(40)
         .height(40),
     )
-    .width(40)
-    .height(40)
-    .style(|_| container::Style {
-        background: Some(Background::Color(color::Surface::BG4)),
-        border: Border {
-            radius: 10.0.into(),
-            width: 2.0,
-            color: rgb!(34, 255, 132, 60%),
-        },
-        ..container::Style::default()
-    })
+    .width(Fill)
+    .center_x(Fill)
     .into()
 }

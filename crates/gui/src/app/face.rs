@@ -45,7 +45,8 @@ pub fn face_from_rgba(skin_rgba: &[u8], skin_width: usize) -> Option<Vec<u8>> {
 
 /// Nearest-neighbour expansion of an 8×8 RGBA face to the avatar size —
 /// keeps the pixels square and crisp (the GPU's linear sampling would blur
-/// them).
+/// them) — then fades the corners out along a rounded-rect mask
+/// (radius [`AVATAR_RADIUS`]) so the face matches the UI's rounded chips.
 pub fn expanded_avatar(face: &[u8]) -> Option<Vec<u8>> {
     if face.len() != FACE_SIZE * FACE_SIZE * 4 {
         return None;
@@ -60,7 +61,29 @@ pub fn expanded_avatar(face: &[u8]) -> Option<Vec<u8>> {
             out.extend_from_slice(&face[px..px + 4]);
         }
     }
+    apply_rounded_alpha(&mut out, AVATAR_SIZE as f32, AVATAR_RADIUS);
     Some(out)
+}
+
+/// The avatar's corner rounding, in pixels.
+pub const AVATAR_RADIUS: f32 = 8.0;
+
+/// Multiplies each pixel's alpha by a rounded-rect coverage mask
+/// (signed-distance based, ~1px anti-aliased edge).
+fn apply_rounded_alpha(rgba: &mut [u8], size: f32, radius: f32) {
+    let half = size / 2.0;
+    let inset = half - radius;
+    for y in 0..size as usize {
+        for x in 0..size as usize {
+            let px = ((x as f32 + 0.5) - half, (y as f32 + 0.5) - half);
+            let qx = (px.0.abs() - inset).max(0.0);
+            let qy = (px.1.abs() - inset).max(0.0);
+            let dist = qx.hypot(qy) + (qx.max(0.0).min(qy.max(0.0))) - radius;
+            let coverage = (0.5 - dist).clamp(0.0, 1.0);
+            let index = (y * size as usize + x) * 4 + 3;
+            rgba[index] = (rgba[index] as f32 * coverage) as u8;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -103,19 +126,35 @@ mod tests {
     #[test]
     fn expanded_avatar_is_nearest_neighbour() {
         let mut face = vec![0u8; 8 * 8 * 4];
-        // One distinctive pixel: (0, 0) — pure green.
-        face[0..4].copy_from_slice(&[0, 255, 0, 255]);
+        // One distinctive pixel: (4, 4) — pure green (the center, away from
+        // the rounded-corner mask).
+        let center = (4 * 8 + 4) * 4;
+        face[center..center + 4].copy_from_slice(&[0, 255, 0, 255]);
         let expanded = expanded_avatar(&face).expect("valid face");
         assert_eq!(expanded.len(), AVATAR_SIZE * AVATAR_SIZE * 4);
-        // The top-left 5×5 block of the 40×40 avatar is that pixel.
-        for y in 0..5 {
-            for x in 0..5 {
+        // The central 5×5 block of the 40×40 avatar is that pixel.
+        for y in 20..25 {
+            for x in 20..25 {
                 let px = (y * AVATAR_SIZE + x) * 4;
-                assert_eq!(&expanded[px..px + 4], &[0, 255, 0, 255], "pixel ({x},{y})");
+                assert_eq!(&expanded[px..px + 3], &[0, 255, 0], "pixel ({x},{y})");
             }
         }
         // The pixel next to the block is transparent (the face was black).
         let px = (5 * AVATAR_SIZE) * 4;
         assert_eq!(&expanded[px..px + 4], &[0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn expanded_avatar_fades_the_corners() {
+        let face = vec![255u8; 8 * 8 * 4]; // opaque white face
+        let expanded = expanded_avatar(&face).expect("valid face");
+        let alpha_at = |x: usize, y: usize| expanded[(y * AVATAR_SIZE + x) * 4 + 3];
+        // The center stays fully opaque.
+        assert_eq!(alpha_at(20, 20), 255);
+        // The extreme corners are fully faded by the rounding mask.
+        assert_eq!(alpha_at(0, 0), 0);
+        assert_eq!(alpha_at(39, 0), 0);
+        assert_eq!(alpha_at(0, 39), 0);
+        assert_eq!(alpha_at(39, 39), 0);
     }
 }
