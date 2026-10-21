@@ -8,6 +8,7 @@ thiserror = { version = "2.0.21" }
 reqwest = { version = "0.13.5", features = ["rustls", "json", "query"] }
 serde = { version = "1.0.229", features = ["derive", "serde_derive"] }
 serde_json = { version = "1.0.154" }
+base64 = "0.22"
 anyhow = { version = "1.0.100" }
 ferinth = { version = "2.13.1" }
 oauth2 = { version = "5.0.0", default-features = false }

@@ -37,7 +37,8 @@
 //! - Device-code login in two phases (`begin_device_code_login` /
 //!   `finish_device_code_login`)
 //! - Silent re-login from a stored refresh token (`login_with_refresh_token`)
-//! - Profile resolution (`Profile { id, name }`) with game-ownership detection
+//! - Profile resolution (`Profile { id, name, skin_url }`) with
+//!   game-ownership detection
 //!   (`AuthError::MinecraftNotOwned`)
 //! - User-presentable Xbox errors (`NoXboxAccount`, `ChildAccount`, …) instead
 //!   of raw `XErr` codes
@@ -107,11 +108,40 @@ fn parse_instance_discovery(body: &str) -> (Option<String>, Option<String>) {
     (scope("tenant_region_scope"), scope("tenant_region_sub_scope"))
 }
 
+/// Decodes standard base64 (the sessionserver textures property).
+fn base64_engine(encoded: &str) -> Result<String, AuthError> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded.trim())
+        .map_err(|source| AuthError::Microsoft {
+            message: format!("the sessionserver returned a malformed texture payload: {source}"),
+        })?;
+    String::from_utf8(bytes).map_err(|_| AuthError::Microsoft {
+        message: "the sessionserver returned a malformed texture payload".to_string(),
+    })
+}
+
+/// A skin entry of `/minecraft/profile` — players may own several skins,
+/// exactly one of which is `ACTIVE`.
+#[derive(Debug, Deserialize)]
+struct SkinEntry {
+    state: String,
+    url: String,
+}
+
 /// The Minecraft profile payload of `/minecraft/profile`.
 #[derive(Debug, Deserialize)]
 struct ProfileResponse {
     id: String,
     name: String,
+    skins: Option<Vec<SkinEntry>>,
+}
+
+/// Picks the ACTIVE skin's texture url, falling back to the first entry.
+fn active_skin_url(skins: Option<Vec<SkinEntry>>) -> Option<String> {
+    let mut skins = skins?;
+    let active = skins.iter().position(|skin| skin.state == "ACTIVE")?;
+    Some(skins.swap_remove(active).url)
 }
 
 impl Authentication {
@@ -256,6 +286,115 @@ impl Authentication {
         })
     }
 
+    /// Downloads a skin texture (the full 64×64 player skin PNG) from
+    /// Mojang's texture CDN.
+    pub async fn fetch_skin(&self, url: &str) -> Result<Vec<u8>, AuthError> {
+        let response = self
+            .http
+            .get(url)
+            .timeout(endpoints::PROBE_TIMEOUT)
+            .send()
+            .await
+            .map_err(|source| AuthError::Network {
+                url: url.to_string(),
+                source,
+            })?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(AuthError::UnexpectedResponse {
+                url: url.to_string(),
+                status: status.as_u16(),
+            });
+        }
+        let bytes = response.bytes().await.map_err(|source| AuthError::Network {
+            url: url.to_string(),
+            source,
+        })?;
+        Ok(bytes.to_vec())
+    }
+
+    /// Downloads the canonical Steve face for offline/demo profiles, which
+    /// have no Microsoft identity to ask for one. The chain is all official
+    /// Mojang: name lookup → sessionserver textures → skin texture.
+    pub async fn fetch_default_steve_face(&self) -> Result<Vec<u8>, AuthError> {
+        let lookup: serde_json::Value = self.get_json(endpoints::MOJANG_NAME_LOOKUP_URL).await?;
+        let raw_uuid = lookup
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or(AuthError::UnexpectedResponse {
+                url: endpoints::MOJANG_NAME_LOOKUP_URL.to_string(),
+                status: 200,
+            })?
+            .to_string();
+        if raw_uuid.len() != 32 {
+            return Err(AuthError::UnexpectedResponse {
+                url: endpoints::MOJANG_NAME_LOOKUP_URL.to_string(),
+                status: 200,
+            });
+        }
+        let dashed_uuid = format!(
+            "{}-{}-{}-{}-{}",
+            &raw_uuid[..8],
+            &raw_uuid[8..12],
+            &raw_uuid[12..16],
+            &raw_uuid[16..20],
+            &raw_uuid[20..32]
+        );
+        let session_url = format!("{}/{}", endpoints::SESSIONSERVER_URL, dashed_uuid);
+        let session: serde_json::Value = self.get_json(&session_url).await?;
+        let textures_b64 = session
+            .pointer("/properties/0/value")
+            .and_then(serde_json::Value::as_str)
+            .ok_or(AuthError::UnexpectedResponse {
+                url: session_url.clone(),
+                status: 200,
+            })?;
+        let decoded = base64_engine(textures_b64)?;
+        let skin_url = serde_json::from_str::<serde_json::Value>(&decoded)
+            .map_err(|source| AuthError::Json {
+                url: session_url.clone(),
+                source,
+            })?
+            .pointer("/textures/SKIN/url")
+            .and_then(serde_json::Value::as_str)
+            .ok_or(AuthError::UnexpectedResponse {
+                url: session_url.clone(),
+                status: 200,
+            })?
+            .to_string();
+        self.fetch_skin(&skin_url).await
+    }
+
+    /// GETs a URL and parses the body as JSON (helper for the Mojang
+    /// metadata chain).
+    async fn get_json(&self, url: &str) -> Result<serde_json::Value, AuthError> {
+        let response = self
+            .http
+            .get(url)
+            .timeout(endpoints::PROBE_TIMEOUT)
+            .send()
+            .await
+            .map_err(|source| AuthError::Network {
+                url: url.to_string(),
+                source,
+            })?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(AuthError::UnexpectedResponse {
+                url: url.to_string(),
+                status: status.as_u16(),
+            });
+        }
+        let body = response.text().await.map_err(|source| AuthError::Network {
+            url: url.to_string(),
+            source,
+        })?;
+        serde_json::from_str(&body).map_err(|source| AuthError::Json {
+            url: url.to_string(),
+            source,
+        })
+    }
+
     /// Xbox → Minecraft → profile: turns a fresh Microsoft access token into a
     /// playable session.
     async fn session_from_microsoft_token(
@@ -318,6 +457,7 @@ impl Authentication {
         Ok(Profile {
             id: profile.id,
             name: profile.name,
+            skin_url: active_skin_url(profile.skins),
         })
     }
 }
@@ -349,9 +489,28 @@ mod tests {
         let profile = Profile {
             id: profile.id,
             name: profile.name,
+            skin_url: active_skin_url(profile.skins),
         };
         assert_eq!(profile.id, "b4beefcafe1234567890abcdef123456");
         assert_eq!(profile.name, "Steve");
+        assert_eq!(profile.skin_url, None, "no skins means no texture url");
+    }
+
+    #[test]
+    fn the_active_skin_url_wins_over_other_entries() {
+        let payload = r#"{
+            "id": "b4beefcafe1234567890abcdef123456",
+            "name": "Steve",
+            "skins": [
+                { "id": "s1", "state": "INACTIVE", "url": "https://textures.minecraft.net/texture/old" },
+                { "id": "s2", "state": "ACTIVE", "url": "https://textures.minecraft.net/texture/new" }
+            ]
+        }"#;
+        let profile: ProfileResponse = serde_json::from_str(payload).expect("recorded payload parses");
+        assert_eq!(
+            active_skin_url(profile.skins).as_deref(),
+            Some("https://textures.minecraft.net/texture/new")
+        );
     }
 
     #[test]

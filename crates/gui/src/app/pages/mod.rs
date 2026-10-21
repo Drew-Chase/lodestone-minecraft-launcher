@@ -8,8 +8,7 @@
 //! # Adding a page
 //!
 //! 1. Create `pages/<name>.rs` with a state struct and a `Message` enum.
-//! 2. Add a variant to [`Page`], with `title` and `icon` arms — and to
-//!    [`Page::RAIL_PAGES`] when it belongs in the nav rail.
+//! 2. Add a variant to [`Page`] with a `title` arm.
 //! 3. Add `Navigate(Page)` to the page's `Message` — the `<Link>` of this
 //!    framework. The root intercepts it before the page's `update` runs.
 //! 4. Add `Message::PageName(page::Message)` to `LodestoneAppMessage`.
@@ -22,8 +21,6 @@ pub mod home;
 pub mod login;
 pub mod settings;
 pub mod showcase;
-
-use aurora_leaf::Icon;
 
 /// Every screen the launcher can display.
 ///
@@ -44,10 +41,6 @@ pub enum Page {
 }
 
 impl Page {
-    /// Pages shown in the nav rail, in display order. [`Page::Login`] is
-    /// deliberately absent — it renders without the primary navigation.
-    pub const RAIL_PAGES: [Page; 3] = [Page::Home, Page::Showcase, Page::Settings];
-
     /// Human-readable name, for titles and logs.
     pub fn title(self) -> &'static str {
         match self {
@@ -57,16 +50,6 @@ impl Page {
             Page::Showcase => "Showcase",
         }
     }
-
-    /// Rail icon as SVG markup.
-    pub fn icon(self) -> &'static str {
-        match self {
-            Page::Login => Icon::lucide().user(),
-            Page::Home => Icon::lucide().house(),
-            Page::Settings => Icon::lucide().settings(),
-            Page::Showcase => Icon::lucide().compass(),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -74,23 +57,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_page_has_a_title_and_icon() {
+    fn every_page_has_a_title() {
         for page in [Page::Login, Page::Home, Page::Settings, Page::Showcase] {
             assert!(!page.title().is_empty(), "{page:?} needs a title");
-            assert!(page.icon().contains("<svg"), "{page:?} needs an icon");
         }
     }
 
     #[test]
-    fn the_rail_lists_every_primary_page() {
-        for page in [Page::Home, Page::Settings, Page::Showcase] {
-            assert!(Page::RAIL_PAGES.contains(&page), "{page:?} is missing from the rail");
-        }
-    }
-
-    #[test]
-    fn login_boots_first_and_stays_out_of_the_rail() {
+    fn login_boots_first() {
         assert_eq!(Page::default(), Page::Login, "the app must boot to the login gate");
-        assert!(!Page::RAIL_PAGES.contains(&Page::Login), "login renders without primary navigation");
     }
 }

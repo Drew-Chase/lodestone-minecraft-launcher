@@ -29,6 +29,9 @@ pub struct Profile {
     pub id: String,
     /// The player's current name (the launcher's `--username` argument).
     pub name: String,
+    /// The texture URL of the player's ACTIVE skin (the full 64×64 PNG on
+    /// Mojang's texture CDN), when the profile reports one.
+    pub skin_url: Option<String>,
 }
 
 /// The first phase of a device-code login: what the user must see and confirm.

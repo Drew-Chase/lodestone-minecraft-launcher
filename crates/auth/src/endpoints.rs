@@ -16,6 +16,13 @@ pub(crate) const PROFILE_URL: &str = "https://api.minecraftservices.com/minecraf
 /// Used as the auth-services reachability probe for the login status bar.
 pub(crate) const INSTANCE_DISCOVERY_URL: &str = "https://login.microsoftonline.com/common/discovery/instance";
 
+/// Mojang's name-lookup API — resolves a player name to their uuid.
+/// Used for the canonical "Steve" account (offline/demo faces).
+pub(crate) const MOJANG_NAME_LOOKUP_URL: &str = "https://api.mojang.com/users/profiles/minecraft/Steve";
+
+/// Mojang's session server — serves a profile's textures by uuid.
+pub(crate) const SESSIONSERVER_URL: &str = "https://sessionserver.mojang.com/session/minecraft/profile";
+
 /// How long the reachability probe may take before it gives up — the
 /// status bar would rather report OFFLINE than wait.
 pub(crate) const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);

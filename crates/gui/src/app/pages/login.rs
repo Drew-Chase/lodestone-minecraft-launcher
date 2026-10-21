@@ -571,7 +571,7 @@ impl Login {
                 TextButton::content(
                     row![
                         Space::new().width(Fill),
-                        icon(Icon::mage().play_fill(), 14.0, palette::Primary::ON, 1.0),
+                        icon(Icon::material_symbols().play_arrow(), 14.0, palette::Primary::ON, 1.0),
                         Text::new("Play offline").size(13).font(fonts::Inter::MEDIUM).color(palette::Primary::ON),
                         Space::new().width(Fill),
                     ]
@@ -757,8 +757,9 @@ impl Login {
     }
 }
 
-/// The logo handle — built once from the embedded icon asset.
-fn logo_handle() -> &'static Handle {
+/// The logo handle — built once from the embedded icon asset. Shared with
+/// the sidebar's logo.
+pub(crate) fn logo_handle() -> &'static Handle {
     static LOGO: OnceLock<Handle> = OnceLock::new();
     LOGO.get_or_init(|| Handle::from_memory(LOGO_SVG.as_bytes()))
 }

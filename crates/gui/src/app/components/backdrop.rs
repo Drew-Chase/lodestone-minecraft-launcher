@@ -274,11 +274,6 @@ fn draw_ember(renderer: &mut BaseRenderer, bounds: Rectangle, i: usize, t: f32, 
     );
 }
 
-/// `anim::fade` without importing the module's easing machinery.
-fn anim_fade(color: iced::Color, alpha: f32) -> iced::Color {
-    iced::Color { a: color.a * alpha, ..color }
-}
-
 /// Ember field layout — a faithful port of `Particles.jsx`:
 /// `delay = (i·0.37) % 12`, `dur = 8 + (i·0.7) % 6`, `left = (i·17.3) % 100`,
 /// `size = 1 + i % 3`. Returns `(left %, size px, delay s, duration s)`.

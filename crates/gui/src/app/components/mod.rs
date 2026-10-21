@@ -9,6 +9,7 @@ pub mod menu;
 pub mod nav;
 pub mod progress;
 pub mod select;
+pub mod sidebar;
 pub mod status;
 pub mod tabs;
 pub mod toggle;

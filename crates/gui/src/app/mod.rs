@@ -1,14 +1,13 @@
 pub mod components;
+pub mod face;
 pub mod pages;
 pub mod router;
 pub mod storage;
 pub mod theme;
 mod titlebar;
 
-#[cfg(not(windows))]
-use crate::app::components::IconButton;
 use crate::app::components::backdrop::LoginBackdrop;
-use crate::app::components::{NavItem, NavRail};
+use crate::app::components::sidebar::sidebar as sidebar_view;
 use crate::app::pages::Page;
 use crate::app::pages::home::{Home, Message as HomeMessage};
 use crate::app::pages::login::{AuthStatus, Login, Message as LoginMessage};
@@ -18,13 +17,9 @@ use crate::app::router::Router;
 use crate::app::storage::{StoredCredentials, StoredMicrosoft};
 use crate::app::theme::color::Surface;
 use crate::app::titlebar::{Titlebar, TitlebarMessage};
-#[cfg(not(windows))]
-use aurora_leaf::Icon;
-#[cfg(not(windows))]
-use iced::border::Radius;
-use iced::widget::{column, container, row, stack};
+use iced::widget::{column, container, image, row, stack};
 use iced::window::{Direction, Id, Level, Position};
-use iced::{Element, Fill, Padding, Size, Subscription, Task, event, mouse, window};
+use iced::{Element, Fill, Size, Subscription, Task, event, mouse, window};
 use iced_borderless_window_resize_handle_widget::{ResizeHandles, drag_resize};
 use lodestone_minecraft_authentication::{AuthProbe, Authentication, Session};
 use std::sync::OnceLock;
@@ -83,6 +78,10 @@ pub struct LodestoneLauncher {
     /// Bumped on every new/abandoned sign-in so results from stale polls
     /// (cancelled or superseded) are dropped when they arrive.
     auth_generation: u64,
+    /// The player face texture for the sidebar avatar — the real skin face
+    /// for Microsoft accounts, the vanilla Steve for offline/demo. `None`
+    /// renders the username-initial fallback.
+    face: Option<image::Handle>,
     /// The last auth-services probe: `Ok` reached it (with delay + region),
     /// `Err` did not. `None` until the first probe lands.
     auth_status: Option<Result<AuthProbe, String>>,
@@ -104,6 +103,7 @@ impl Default for LodestoneLauncher {
             credentials: StoredCredentials::load(),
             auth: Authentication::new(AZURE_CLIENT_ID),
             auth_generation: 0,
+            face: None,
             probe_step: 0,
             auth_status: None,
         }
@@ -142,6 +142,21 @@ pub enum LodestoneAppMessage {
     AuthProbeTick,
     /// The auth-services probe completed.
     AuthProbeResult(Result<AuthProbe, String>),
+    /// A sidebar nav item was pressed. Only the Library (index 0) navigates
+    /// today; the rest are display-only.
+    SidebarNav {
+        group: NavGroup,
+        index: usize,
+    },
+    /// The player face finished loading (8×8 RGBA, ready to upscale).
+    FaceReady(Result<Vec<u8>, String>),
+}
+
+/// Which sidebar group a nav selection came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NavGroup {
+    Top,
+    Bottom,
 }
 
 impl LodestoneLauncher {
@@ -162,7 +177,7 @@ impl LodestoneLauncher {
             info!("PROBE resize-latency profiling active");
             tasks.push(Task::perform(
                 async {
-                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
                 },
                 |_| LodestoneAppMessage::ResizeProbe,
             ));
@@ -174,20 +189,31 @@ impl LodestoneLauncher {
             info!("PROBE auth verification active");
             tasks.push(Task::perform(
                 async {
-                    std::thread::sleep(std::time::Duration::from_millis(2000));
+                    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
                 },
                 |_| LodestoneAppMessage::Login(LoginMessage::SignInMicrosoft),
             ));
         }
         // TEMPORARY offline-form verification — env-gated: opens the offline
-        // username prompt after 2s.
+        // username prompt after 2s and confirms it at 3.5s (entering the
+        // launcher and exercising the Steve-face fetch).
         if std::env::var_os("LODESTONE_OFFLINE_TEST").is_some() {
             info!("PROBE offline-form verification active");
             tasks.push(Task::perform(
                 async {
-                    std::thread::sleep(std::time::Duration::from_millis(2000));
+                    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
                 },
                 |_| LodestoneAppMessage::Login(LoginMessage::OfflineMode),
+            ));
+            tasks.push(Task::perform(
+                async {
+                    tokio::time::sleep(std::time::Duration::from_millis(3500)).await;
+                },
+                |_| {
+                    LodestoneAppMessage::Login(LoginMessage::OfflineConfirm {
+                        username: "Demo Player".to_string(),
+                    })
+                },
             ));
         }
         // Silent re-login when a Microsoft refresh token is on file — the
@@ -315,8 +341,25 @@ impl LodestoneLauncher {
                 }
                 self.account = Some(Account::Microsoft { session });
                 self.login.update(LoginMessage::Reset);
+                // Fetch the player's face for the sidebar avatar — the
+                // ACTIVE skin's texture, or the vanilla Steve when the
+                // profile reports none (default-skin accounts).
+                let auth = self.auth.clone();
+                let skin_url = self.account.as_ref().and_then(|account| match account {
+                    Account::Microsoft { session } => session.profile.skin_url.clone(),
+                    Account::Offline { .. } => None,
+                });
+                let face_task = match skin_url {
+                    Some(url) => Task::perform(async move { auth.fetch_skin(&url).await.map_err(|error| error.to_string()) }, |result| {
+                        LodestoneAppMessage::FaceReady(result)
+                    }),
+                    None => Task::perform(
+                        async move { auth.fetch_default_steve_face().await.map_err(|error| error.to_string()) },
+                        |result| LodestoneAppMessage::FaceReady(result),
+                    ),
+                };
                 self.router.replace(Page::Home);
-                Task::none()
+                face_task
             }
             LodestoneAppMessage::Login(LoginMessage::SignInFinished(generation, Err(error))) if generation == self.auth_generation => {
                 warn!("Sign-in failed: {error}");
@@ -365,6 +408,25 @@ impl LodestoneLauncher {
                 self.login.update(LoginMessage::OfflineUsernameChanged(username));
                 Task::none()
             }
+            LodestoneAppMessage::SidebarNav {
+                group: NavGroup::Top,
+                index: 0,
+            } => self.navigate(Page::Home),
+            LodestoneAppMessage::SidebarNav { group, index } => {
+                debug!("Sidebar nav item {group:?}#{index} has no page yet");
+                Task::none()
+            }
+            LodestoneAppMessage::FaceReady(Ok(skin_png)) => {
+                self.face = face::face_from_skin_png(&skin_png)
+                    .and_then(|face| face::expanded_avatar(&face))
+                    .and_then(|expanded| Some(image::Handle::from_rgba(face::AVATAR_SIZE as u32, face::AVATAR_SIZE as u32, expanded)));
+                Task::none()
+            }
+            LodestoneAppMessage::FaceReady(Err(error)) => {
+                warn!("Player face unavailable: {error}");
+                self.face = None;
+                Task::none()
+            }
             LodestoneAppMessage::Login(LoginMessage::OfflineConfirm { username }) => {
                 let username = username.trim().to_string();
                 if username.is_empty() {
@@ -377,8 +439,15 @@ impl LodestoneLauncher {
                 }
                 self.account = Some(Account::Offline { username });
                 self.login.update(LoginMessage::Reset);
+                // The canonical Steve face — fetched from Mojang's own
+                // profile service for the "Steve" account.
+                let auth = self.auth.clone();
+                let face_task = Task::perform(
+                    async move { auth.fetch_default_steve_face().await.map_err(|error| error.to_string()) },
+                    |result| LodestoneAppMessage::FaceReady(result),
+                );
                 self.router.replace(Page::Home);
-                Task::none()
+                face_task
             }
             LodestoneAppMessage::RestoreStart { username, refresh_token } => {
                 self.auth_generation = self.auth_generation.wrapping_add(1);
@@ -537,54 +606,31 @@ impl LodestoneLauncher {
         .into()
     }
 
-    /// Left edge chrome. On Windows the history chevrons live in the
-    /// titlebar; elsewhere they tuck above the nav rail.
-    #[cfg(windows)]
+    /// The full sidebar — logo, all nav groups, and the player avatar. The
+    /// top group's first item (Library) navigates; the rest are display-only
+    /// until their pages exist.
     fn rail_column(&self) -> Element<'_, LodestoneAppMessage> {
-        self.nav_rail()
-    }
-
-    #[cfg(not(windows))]
-    fn rail_column(&self) -> Element<'_, LodestoneAppMessage> {
-        column![self.history_controls(), self.nav_rail()].height(Fill).into()
-    }
-
-    /// Back/forward chevrons tucked above the nav rail.
-    #[cfg(not(windows))]
-    fn history_controls(&self) -> Element<'_, LodestoneAppMessage> {
-        row![
-            IconButton::new(Icon::lucide().chevron_left())
-                .size(28.0)
-                .icon_size(14.0)
-                .radius(Radius::from(8.0_f32))
-                .disabled(!self.router.can_go_back())
-                .on_press(LodestoneAppMessage::NavBack),
-            IconButton::new(Icon::lucide().chevron_right())
-                .size(28.0)
-                .icon_size(14.0)
-                .radius(Radius::from(8.0_f32))
-                .disabled(!self.router.can_go_forward())
-                .on_press(LodestoneAppMessage::NavForward),
-        ]
-        .spacing(4)
-        .padding(Padding::new(0.0).left(12).top(12))
-        .into()
+        sidebar_view(
+            self.face.clone(),
+            self.account.as_ref().map(Account::username).map(str::to_string),
+            matches!(self.account, Some(Account::Microsoft { .. })),
+            0,
+            |index| {
+                if index == 0 {
+                    LodestoneAppMessage::Navigate(Page::Home)
+                } else {
+                    debug!("Sidebar nav item {index} has no page yet");
+                    LodestoneAppMessage::SidebarNav { group: NavGroup::Top, index }
+                }
+            },
+            |index| LodestoneAppMessage::SidebarNav {
+                group: NavGroup::Bottom,
+                index,
+            },
+        )
     }
 
     /// Left edge chrome — one rail slot per [`Page::RAIL_PAGES`] entry.
-    fn nav_rail(&self) -> Element<'_, LodestoneAppMessage> {
-        let active = Page::RAIL_PAGES.iter().position(|page| *page == self.router.current());
-        container(
-            NavRail::new(Page::RAIL_PAGES.map(|page| NavItem::new(page.icon())))
-                .active(active.unwrap_or(0))
-                .on_select(|index| LodestoneAppMessage::Navigate(Page::RAIL_PAGES[index])),
-        )
-        .height(Fill)
-        .align_y(iced::alignment::Vertical::Top)
-        .padding(Padding::new(0.0).left(12).top(12))
-        .into()
-    }
-
     /// The page area: the router's current page.
     fn body(&self) -> Element<'_, LodestoneAppMessage> {
         container(self.outlet())
