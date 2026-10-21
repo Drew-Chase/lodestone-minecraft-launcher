@@ -22,6 +22,7 @@ use lodestone_minecraft_authentication::{DeviceCodeStart, Session};
 
 use crate::app::LodestoneLauncher;
 use crate::app::components::backdrop::logo_glow_handle;
+use crate::app::components::button;
 use crate::app::components::input;
 use crate::app::components::{ProgressBar, PulseDot, TextButton};
 use crate::app::pages::Page;
@@ -546,8 +547,11 @@ impl Login {
     /// The offline username form — input, play, cancel.
     fn offline_form(&self, username: &str) -> Element<'_, Message> {
         let ready = !username.trim().is_empty();
+        if crate::app::probe_enabled() {
+            tracing::info!("PROBE offline form: username={username:?} ready={ready}");
+        }
         column![
-            mouse_area(
+            stack![
                 text_input("Your username", username)
                     .on_input(Message::OfflineUsernameChanged)
                     .on_submit(Message::OfflineConfirm {
@@ -555,17 +559,33 @@ impl Login {
                     })
                     .style(input::style)
                     .size(14)
-                    .padding(12),
-            )
-            .interaction(iced::mouse::Interaction::Text),
-            row![
-                TextButton::primary("Play offline")
+                    .padding(Padding::new(0.0).left(38).right(12).top(12).bottom(12)),
+                container(icon(Icon::lucide().user(), 16.0, palette::Text::MUTED, 0.68,))
                     .width(Fill)
-                    .padding(Padding::new(0.0).top(12).bottom(12))
-                    .disabled(!ready)
-                    .on_press(Message::OfflineConfirm {
-                        username: username.to_string()
-                    }),
+                    .height(Fill)
+                    .align_x(iced::alignment::Horizontal::Left)
+                    .align_y(iced::alignment::Vertical::Center)
+                    .padding(Padding::new(0.0).left(12)),
+            ],
+            row![
+                TextButton::content(
+                    row![
+                        Space::new().width(Fill),
+                        icon(Icon::lucide().play(), 14.0, palette::Primary::ON, 1.0),
+                        Text::new("Play offline").size(13).font(fonts::Inter::MEDIUM).color(palette::Primary::ON),
+                        Space::new().width(Fill),
+                    ]
+                    .spacing(8)
+                    .align_y(iced::Alignment::Center)
+                    .width(Fill),
+                )
+                .variant(button::Variant::Primary)
+                .width(Fill)
+                .padding(button::PRIMARY_PADDING)
+                .disabled(!ready)
+                .on_press(Message::OfflineConfirm {
+                    username: username.to_string()
+                }),
                 TextButton::ghost("Cancel")
                     .width(Fill)
                     .padding(Padding::new(0.0).top(12).bottom(12))

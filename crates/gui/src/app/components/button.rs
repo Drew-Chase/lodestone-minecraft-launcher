@@ -29,7 +29,7 @@ use iced_color_extension::rgb;
 use super::anim;
 
 /// Default `.btn-primary` padding — 12px vertical, 20px horizontal.
-const PRIMARY_PADDING: Padding = Padding {
+pub const PRIMARY_PADDING: Padding = Padding {
     top: 12.0,
     bottom: 12.0,
     left: 20.0,
@@ -131,7 +131,9 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
         .padding(GHOST_PADDING)
     }
 
-    fn variant(mut self, variant: Variant) -> Self {
+    /// Overrides the style variant — for custom content that needs the
+    /// primary look (green fill, on-green ink) instead of the ghost default.
+    pub fn variant(mut self, variant: Variant) -> Self {
         self.variant = variant;
         self
     }
