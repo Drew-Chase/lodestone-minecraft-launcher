@@ -36,6 +36,9 @@ const EMBER_COUNT: usize = 24;
 struct State {
     /// Animation clock — everything is a pure function of `start.elapsed()`.
     start: Instant,
+    /// Last size this instance drew at — for the resize-latency probe.
+    /// `Cell` because `draw` only gets `&Tree`.
+    last_size: std::cell::Cell<Option<(u32, u32)>>,
 }
 
 /// The full-screen ambient background of the login screen. Produces no
@@ -65,7 +68,10 @@ where
     }
 
     fn state(&self) -> tree::State {
-        tree::State::new(State { start: Instant::now() })
+        tree::State::new(State {
+            start: Instant::now(),
+            last_size: std::cell::Cell::new(None),
+        })
     }
 
     fn layout(&mut self, _tree: &mut Tree, _renderer: &BaseRenderer, limits: &Limits) -> Node {
@@ -104,13 +110,28 @@ where
             return;
         }
         let t = state.start.elapsed().as_secs_f32();
-        // The reference artboard is 1280×820 — washes and embers scale with
-        // the window so proportions hold at any size.
-        let factor = (bounds.width / 1280.0).clamp(0.75, 2.0);
+
+        // TEMPORARY resize-latency probe — log the first draw at each size.
+        let size_key = (bounds.width as u32, bounds.height as u32);
+        if state.last_size.get() != Some(size_key) {
+            state.last_size.set(Some(size_key));
+            tracing::info!("PROBE backdrop drawn: {}x{} (anim {:.2}s)", size_key.0, size_key.1, t);
+        }
+        // The reference artboard is 1280×820 — embers scale with the
+        // window, quantized to 0.25 steps so their raster sizes only
+        // change on large resizes (an SVG raster is keyed by drawn size).
+        let factor = (((bounds.width / 1280.0) / 0.25).round() * 0.25).clamp(0.75, 2.0);
 
         // 1 — the static ambient field: generated once at the canonical
-        // artboard size and stretched by the GPU. Resizing must never
-        // re-rasterize a full-window SVG (that was seconds of stall).
+        // artboard size and drawn at a quantized, slightly oversized rect
+        // centered on the window. Resizes only re-rasterize at 256px steps
+        // (an SVG raster is keyed by its drawn size); between steps it is
+        // a pure GPU rescale.
+        let scene_size = Size::new(quantize(bounds.width), quantize(bounds.height));
+        let scene_bounds = Rectangle::new(
+            Point::new(bounds.center_x() - scene_size.width / 2.0, bounds.center_y() - scene_size.height / 2.0),
+            scene_size,
+        );
         renderer.draw_svg(
             Svg {
                 handle: scene_handle().clone(),
@@ -118,20 +139,22 @@ where
                 rotation: Radians(0.0),
                 color: None,
             },
-            bounds,
+            scene_bounds,
             bounds,
         );
 
         // 2 — the three aurora glows riding their 18s float cycles: Lode
         // Green upper-left, the scene's warm sun top-center, violet
         // bottom-right — distinct blobs over the dark field, like the
-        // reference.
+        // reference. Drawn at FIXED sizes: iced_wgpu re-rasterizes an SVG
+        // whenever its drawn size changes (resvg on the CPU), so animation
+        // rides on position and opacity only.
         draw_blob(
             renderer,
             bounds,
             green_blob_handle(),
             Point::new(bounds.x + bounds.width * 0.22, bounds.y + bounds.height * 0.22),
-            900.0 * factor,
+            green_blob_size(bounds),
             (t / AURORA_PERIOD) % 1.0,
         );
         draw_blob(
@@ -139,7 +162,7 @@ where
             bounds,
             amber_blob_handle(),
             Point::new(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.16),
-            620.0 * factor,
+            amber_blob_size(bounds),
             ((t + VIOLET_DELAY) / AURORA_PERIOD) % 1.0,
         );
         draw_blob(
@@ -147,7 +170,7 @@ where
             bounds,
             violet_blob_handle(),
             Point::new(bounds.x + bounds.width * 0.88, bounds.y + bounds.height * 0.82),
-            760.0 * factor,
+            violet_blob_size(bounds),
             ((t + VIOLET_DELAY * 2.0) / AURORA_PERIOD) % 1.0,
         );
 
@@ -169,21 +192,45 @@ impl<'a, Message: 'static> From<LoginBackdrop> for Element<'a, Message, Theme, B
 }
 
 /// Draws one aurora blob at its cycle position.
+/// Draws one aurora blob at its cycle position. The drawn size is fixed
+/// (quantized); the cycle animates position and opacity only.
 fn draw_blob(renderer: &mut BaseRenderer, bounds: Rectangle, sprite: &Handle, center: Point, size: f32, phase: f32) {
-    let (dx, dy, scale) = aurora_offset(phase);
-    let size = size * scale;
-    let center = center + Vector::new(dx * factor_of(size), dy * factor_of(size));
+    let (dx, dy, _scale) = aurora_offset(phase);
+    let center = center + Vector::new(dx * size / 1300.0, dy * size / 1300.0);
+    // Opacity breathes with the cycle — the CSS `scale(1 → 1.1 → 0.95)`
+    // pulse, expressed without changing the drawn size (a size change
+    // would re-rasterize the sprite on the CPU every frame).
+    let breathe = 0.8 + 0.2 * (phase * std::f32::consts::TAU).sin();
     let sprite_bounds = Rectangle::new(center - Vector::new(size / 2.0, size / 2.0), Size::new(size, size));
     renderer.draw_svg(
         Svg {
             handle: sprite.clone(),
-            opacity: 1.0,
+            opacity: breathe.clamp(0.0, 1.0),
             rotation: Radians(0.0),
             color: None,
         },
         sprite_bounds,
         bounds,
     );
+}
+
+/// Quantizes to 256px steps — an SVG's raster is keyed by its drawn size,
+/// so continuous sizes would re-rasterize continuously. Only a handful of
+/// rasters exist across the whole resize range.
+fn quantize(size: f32) -> f32 {
+    (size / 256.0).ceil() * 256.0
+}
+
+fn green_blob_size(bounds: Rectangle) -> f32 {
+    quantize(bounds.width * 0.7)
+}
+
+fn amber_blob_size(bounds: Rectangle) -> f32 {
+    quantize(bounds.width * 0.48)
+}
+
+fn violet_blob_size(bounds: Rectangle) -> f32 {
+    quantize(bounds.width * 0.59)
 }
 
 /// The blob's CSS drift is 60px per 1300px of blob — keep the translation

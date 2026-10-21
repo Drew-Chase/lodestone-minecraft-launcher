@@ -6,6 +6,8 @@ mod titlebar;
 
 #[cfg(not(windows))]
 use crate::app::components::IconButton;
+use std::sync::OnceLock;
+
 use crate::app::components::backdrop::LoginBackdrop;
 use crate::app::components::{NavItem, NavRail};
 use crate::app::pages::Page;
@@ -26,6 +28,15 @@ use iced::{Element, Fill, Padding, Size, Subscription, Task, event, mouse, windo
 use iced_borderless_window_resize_handle_widget::{ResizeHandles, drag_resize};
 use lodestone_minecraft_authentication::{Authentication, Session};
 use tracing::{debug, info, warn};
+
+/// TEMPORARY resize-latency probe — active only with
+/// `LODESTONE_RESIZE_PROFILE=1`; drives `window::resize` through a fixed
+/// size sequence for render-latency measurement, and logs the timeline
+/// (request → compositor Resized event → first frame at the new size).
+pub(crate) fn probe_enabled() -> bool {
+    static PROBE: OnceLock<bool> = OnceLock::new();
+    *PROBE.get_or_init(|| std::env::var_os("LODESTONE_RESIZE_PROFILE").is_some())
+}
 
 /// The Azure app registration backing Microsoft sign-in (public client,
 /// personal accounts, device-code flow).
@@ -48,6 +59,8 @@ pub struct LodestoneLauncher {
     /// contract — a real store lands with the account page.
     session: Option<Session>,
     auth: Authentication,
+    /// TEMPORARY resize-latency probe counter (env-gated).
+    probe_step: u32,
 }
 
 impl Default for LodestoneLauncher {
@@ -63,6 +76,7 @@ impl Default for LodestoneLauncher {
             login: Login::default(),
             session: None,
             auth: Authentication::new(AZURE_CLIENT_ID),
+            probe_step: 0,
         }
     }
 }
@@ -85,6 +99,10 @@ pub enum LodestoneAppMessage {
     Home(HomeMessage),
     Settings(SettingsMessage),
     Showcase(ShowcaseMessage),
+    /// TEMPORARY resize-latency probe tick — active only with
+    /// `LODESTONE_RESIZE_PROFILE=1`; drives `window::resize` through a
+    /// fixed size sequence for screen-recording measurements.
+    ResizeProbe,
 }
 
 impl LodestoneLauncher {
@@ -98,8 +116,18 @@ impl LodestoneLauncher {
 
     pub fn boot() -> (Self, Task<LodestoneAppMessage>) {
         let id = window::latest();
-        let app = Self { ..Self::default() };
-        (app, Task::batch([id.map(LodestoneAppMessage::WindowCreation)]))
+        let mut tasks = vec![id.map(LodestoneAppMessage::WindowCreation)];
+        // TEMPORARY resize-latency probe kick-off — env-gated.
+        if probe_enabled() {
+            info!("PROBE resize-latency profiling active");
+            tasks.push(Task::perform(
+                async {
+                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                },
+                |_| LodestoneAppMessage::ResizeProbe,
+            ));
+        }
+        (Self { ..Self::default() }, Task::batch(tasks))
     }
 
     pub fn update(&mut self, message: LodestoneAppMessage) -> Task<LodestoneAppMessage> {
@@ -120,8 +148,11 @@ impl LodestoneLauncher {
                 }
                 None => Task::none(),
             },
-            LodestoneAppMessage::WindowSizeChanged(id, _size) => {
+            LodestoneAppMessage::WindowSizeChanged(id, size) => {
                 debug!("Window {id} size changed");
+                if probe_enabled() {
+                    info!("PROBE resized event: {}x{}", size.width as u32, size.height as u32);
+                }
                 window::is_maximized(id).map(LodestoneAppMessage::WindowMaximized)
             }
             LodestoneAppMessage::WindowMaximized(maximized) => {
@@ -198,6 +229,32 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Login(LoginMessage::LearnMore) => {
                 info!("'Learn more' requested — opening a browser is not wired yet");
                 Task::none()
+            }
+            LodestoneAppMessage::ResizeProbe => {
+                self.probe_step = self.probe_step.wrapping_add(1);
+                const SIZES: [(f32, f32); 6] = [
+                    (1200.0, 800.0),
+                    (1920.0, 1080.0),
+                    (1400.0, 900.0),
+                    (1920.0, 1080.0),
+                    (1000.0, 700.0),
+                    (1920.0, 1080.0),
+                ];
+                let (w, h) = SIZES[(self.probe_step as usize - 1) % SIZES.len()];
+                info!("PROBE resize #{} -> {}x{}", self.probe_step, w, h);
+                let apply = match self.id {
+                    Some(id) => window::resize(id, Size::new(w, h)),
+                    None => Task::none(),
+                };
+                // TEMPORARY probe cadence — a blocked pool thread per tick
+                // is fine for a measurement run.
+                let tick = Task::perform(
+                    async {
+                        std::thread::sleep(std::time::Duration::from_millis(1000));
+                    },
+                    |_| LodestoneAppMessage::ResizeProbe,
+                );
+                Task::batch([apply, tick])
             }
             // Display-state messages: pure page state, forwarded as-is.
             LodestoneAppMessage::Login(
