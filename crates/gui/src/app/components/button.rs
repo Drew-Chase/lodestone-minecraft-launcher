@@ -51,6 +51,9 @@ pub enum Variant {
     Primary,
     /// `.btn-ghost` — white 4% fill, hairline border, `--ink-1` label.
     Ghost,
+    /// Chrome-free tab: no fill, no border, no lift — the label (and an
+    /// external underline) carries the state.
+    Tab,
 }
 
 /// Widget-local interaction status.
@@ -209,6 +212,13 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
                     lift: 0.0,
                     glow: 0.0,
                 },
+                Variant::Tab => Visual {
+                    background: Color::TRANSPARENT,
+                    foreground: color::Text::DISABLED,
+                    border: Color::TRANSPARENT,
+                    lift: 0.0,
+                    glow: 0.0,
+                },
             };
         }
 
@@ -258,6 +268,32 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
                     background: rgb!(255, 255, 255, 4%),
                     foreground: color::Text::DEFAULT,
                     border: color::Surface::LINE,
+                    lift: 0.0,
+                    glow: 0.0,
+                },
+            },
+            // Tabs are chrome-free: only the label (and the page's
+            // underline) changes. Hover brightens the ink and leaves a
+            // barely-there tint so the row still feels alive.
+            Variant::Tab => match status {
+                Status::Hovered => Visual {
+                    background: rgb!(255, 255, 255, 3%),
+                    foreground: color::Text::HEADLINE,
+                    border: Color::TRANSPARENT,
+                    lift: 0.0,
+                    glow: 0.0,
+                },
+                Status::Pressed => Visual {
+                    background: rgb!(255, 255, 255, 5%),
+                    foreground: color::Text::HEADLINE,
+                    border: Color::TRANSPARENT,
+                    lift: 0.0,
+                    glow: 0.0,
+                },
+                _ => Visual {
+                    background: Color::TRANSPARENT,
+                    foreground: color::Text::MUTED,
+                    border: Color::TRANSPARENT,
                     lift: 0.0,
                     glow: 0.0,
                 },
@@ -400,6 +436,11 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for TextButton<'_, Mes
                     color: rgb!(0, 0, 0, 30%),
                     offset: Vector::new(0.0, 4.0 + visual.lift * 4.0),
                     blur_radius: 12.0 + visual.lift * 8.0,
+                },
+                Variant::Tab => Shadow {
+                    color: Color::TRANSPARENT,
+                    offset: Vector::ZERO,
+                    blur_radius: 0.0,
                 },
             };
 

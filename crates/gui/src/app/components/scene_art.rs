@@ -96,6 +96,20 @@ static HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
 /// alphas are sqrt-compensated here (0.80 → 0.894, 0.30 → 0.548).
 static HERO_HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
 
+/// The instance page's wide masthead — the top of the scene (moon and
+/// mountain crests) cropped to a 4:1 band and faded into the page at its
+/// bottom edge. Cropping the same artwork, rather than stretching it,
+/// keeps the moon round and the peaks at the reference's scale.
+static BANNER_HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
+
+/// The instance page's square icon — a centred crop of the scene's moon
+/// and peaks behind a rounded-rect clip.
+static ICON_HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
+
+/// Screenshot thumbnails — the full scene, rounded and shaded at the
+/// bottom so the filename overlay stays readable.
+static THUMB_HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
+
 /// The scene artwork for an instance — deterministic per `(biome, seed)`:
 /// the seed selects the base scene or one of its two variants.
 pub fn scene_handle(biome: Biome, seed: u64) -> Handle {
@@ -114,18 +128,54 @@ pub fn hero_handle(biome: Biome, seed: u64) -> Handle {
     handles[slot(biome) * 3 + (seed % 3) as usize].clone()
 }
 
-/// Wraps a scene file's content in the hero treatment: a rounded-corner
-/// clip (12px in the 800×450 viewBox ≈ the banner's 18px radius at the
-/// default window) plus the left-dark fade. The C2PA provenance blob is
-/// stripped — it carries nothing visual and its namespace prefix dies with
-/// the outer tag (an undefined prefix makes the wrapped doc unparseable).
-/// The banner's own border still draws on the container; the transparent
-/// corners let the page show.
-fn hero_wrapped(scene: &str) -> String {
+/// The instance-page masthead — the top of the scene (moon, peaks and
+/// sky) cropped to a 800×200 band, with the bottom fading into the page.
+/// The crop is what makes the artwork read at the reference's scale: the
+/// moon stays circular and the peaks keep their authored proportions.
+pub fn banner_handle(biome: Biome, seed: u64) -> Handle {
+    let handles = BANNER_HANDLES.get_or_init(|| {
+        SCENES
+            .iter()
+            .map(|(_, svg)| Handle::from_memory(banner_wrapped(svg).into_bytes()))
+            .collect()
+    });
+    handles[slot(biome) * 3 + (seed % 3) as usize].clone()
+}
+
+/// The instance page's square icon — a centred crop of the scene clipped
+/// to a rounded square.
+pub fn icon_handle(biome: Biome, seed: u64) -> Handle {
+    let handles = ICON_HANDLES.get_or_init(|| {
+        SCENES
+            .iter()
+            .map(|(_, svg)| Handle::from_memory(icon_wrapped(svg).into_bytes()))
+            .collect()
+    });
+    handles[slot(biome) * 3 + (seed % 3) as usize].clone()
+}
+
+/// A screenshot thumbnail — the full scene, rounded and shaded at the
+/// bottom for the filename overlay.
+pub fn screenshot_handle(biome: Biome, seed: u64) -> Handle {
+    let handles = THUMB_HANDLES.get_or_init(|| {
+        SCENES
+            .iter()
+            .map(|(_, svg)| Handle::from_memory(thumb_wrapped(svg).into_bytes()))
+            .collect()
+    });
+    handles[slot(biome) * 3 + (seed % 3) as usize].clone()
+}
+
+/// The scene file's contents without its outer `<svg>` tag and C2PA
+/// `<metadata>` blob. Keeping only the drawing nodes lets each wrapper
+/// supply its own dimensions/viewBox and clip. The provenance blob must
+/// go — its namespace prefix dies with the outer tag, which makes the
+/// wrapped document unparseable.
+fn scene_inner(scene: &str) -> String {
     let inner = scene.split_once('>').map(|(_, rest)| rest).unwrap_or(scene);
     let inner = inner.trim_end();
     let inner = inner.strip_suffix("</svg>").unwrap_or(inner);
-    let inner = match (inner.find("<metadata>"), inner.find("</metadata>")) {
+    match (inner.find("<metadata>"), inner.find("</metadata>")) {
         (Some(start), Some(end)) => {
             let mut without = String::with_capacity(inner.len());
             without.push_str(&inner[..start]);
@@ -133,7 +183,15 @@ fn hero_wrapped(scene: &str) -> String {
             without
         }
         _ => inner.to_string(),
-    };
+    }
+}
+
+/// Wraps a scene file's content in the hero treatment: a rounded-corner
+/// clip (12px in the 800×450 viewBox ≈ the banner's 18px radius at the
+/// default window) plus the left-dark fade. The banner's own border still
+/// draws on the container; the transparent corners let the page show.
+fn hero_wrapped(scene: &str) -> String {
+    let inner = scene_inner(scene);
     format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
   <defs>
@@ -147,6 +205,67 @@ fn hero_wrapped(scene: &str) -> String {
   <g clip-path="url(#banner)">
 {inner}
     <rect width="800" height="450" fill="url(#fade)"/>
+  </g>
+</svg>"##
+    )
+}
+
+/// The masthead band: only the scene's top 200 units (of 450) remain in
+/// the viewBox. A bottom gradient dissolves the terrain into the page.
+fn banner_wrapped(scene: &str) -> String {
+    let inner = scene_inner(scene);
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="800" height="200" viewBox="0 0 800 200">
+  <defs>
+    <linearGradient id="masthead-fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.62" stop-color="#08090a" stop-opacity="0"/>
+      <stop offset="0.88" stop-color="#08090a" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#08090a" stop-opacity="0.94"/>
+    </linearGradient>
+  </defs>
+{inner}
+  <rect width="800" height="200" fill="url(#masthead-fade)"/>
+</svg>"##
+    )
+}
+
+/// The icon crop: a 280×280 window around the moon and peaks, clipped to
+/// a 56-unit radius (the rendered icon's 22px at 166px).
+fn icon_wrapped(scene: &str) -> String {
+    let inner = scene_inner(scene);
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="280" height="280" viewBox="130 25 280 280">
+  <defs>
+    <clipPath id="icon-clip"><rect x="130" y="25" width="280" height="280" rx="56"/></clipPath>
+    <radialGradient id="icon-glow" cx="0.5" cy="0.42" r="0.72">
+      <stop offset="0.5" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.35"/>
+    </radialGradient>
+  </defs>
+  <g clip-path="url(#icon-clip)">
+{inner}
+    <rect x="130" y="25" width="280" height="280" fill="url(#icon-glow)"/>
+  </g>
+</svg>"##
+    )
+}
+
+/// A screenshot thumbnail: rounded corners and a bottom shade. The radius
+/// is 24 units of the 800-wide viewBox, ≈12px at a 376px card.
+fn thumb_wrapped(scene: &str) -> String {
+    let inner = scene_inner(scene);
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+  <defs>
+    <clipPath id="thumb-clip"><rect width="800" height="450" rx="24"/></clipPath>
+    <linearGradient id="thumb-shade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.55" stop-color="#050607" stop-opacity="0"/>
+      <stop offset="1" stop-color="#050607" stop-opacity="0.72"/>
+    </linearGradient>
+  </defs>
+  <g clip-path="url(#thumb-clip)">
+{inner}
+    <rect width="800" height="450" fill="url(#thumb-shade)"/>
   </g>
 </svg>"##
     )

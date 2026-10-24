@@ -9,9 +9,9 @@ use crate::app::components::icon_button::IconButton;
 use crate::app::theme::color;
 #[cfg(windows)]
 use aurora_leaf::Icon;
+use iced::widget::row;
 #[cfg(windows)]
 use iced::widget::{Space, Text, container, mouse_area};
-use iced::widget::row;
 #[cfg(windows)]
 use iced::{Background, Fill, Padding};
 use iced::{Element, Task, window};

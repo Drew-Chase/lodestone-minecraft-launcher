@@ -14,7 +14,7 @@ use crate::app::components::{IconButton, PulseDot, TextButton};
 use crate::app::theme::{color, fonts};
 use aurora_leaf::Icon;
 use chrono::{DateTime, Local};
-use iced::widget::{Space, Text, column, container, row, scrollable, stack, svg, text_input};
+use iced::widget::{Space, Text, column, container, mouse_area, row, scrollable, stack, svg, text_input};
 use iced::{Background, Border, Color, Element, Fill, Length, Padding, Size, alignment};
 use iced_color_extension::rgb;
 use tracing::info;
@@ -32,6 +32,8 @@ pub enum Message {
     Scrolled(f32),
     /// Play was pressed on an instance (dummy until the game launcher).
     Play(String),
+    /// Open an instance's detail page — the root routes to it.
+    OpenInstance(String),
     /// A per-instance menu button (folder/settings/kebab) — dummy.
     InstanceMenu { instance: String, action: &'static str },
     /// A header/quick action (New Instance, Import, ...) — dummy.
@@ -161,6 +163,7 @@ impl Library {
             Message::ViewChanged(view) => self.view = view,
             Message::Scrolled(offset) => self.scroll_y = offset.max(0.0),
             Message::Play(name) => info!("Play requested for {name} (dummy)"),
+            Message::OpenInstance(id) => info!("Open instance {id} requested"),
             Message::InstanceMenu { instance, action } => info!("Instance '{instance}' menu: {action} (dummy)"),
             Message::QuickAction(action) => info!("Quick action '{action}' (dummy)"),
             Message::Reload => {} // handled by the root
@@ -170,6 +173,12 @@ impl Library {
     /// Replaces the loaded instances (the root re-queried the database).
     pub fn set_instances(&mut self, instances: Vec<Instance>) {
         self.instances = instances;
+    }
+
+    /// Looks an instance up by id — the root uses this to open the detail
+    /// page when a card or the hero is clicked.
+    pub fn instance(&self, id: &str) -> Option<Instance> {
+        self.instances.iter().find(|instance| instance.id == id).cloned()
     }
 
     /// Overrides the initial view mode (the `LODESTONE_LIBRARY_VIEW` probe).
@@ -328,12 +337,18 @@ impl Library {
                 .height(Fill),
                 container(
                     column![
-                        chips,
-                        Text::new(hero.name.clone())
-                            .size(34)
-                            .font(fonts::Inter::EXTRA_BOLD)
-                            .color(color::Text::HEADLINE),
-                        Text::new(meta).size(13).font(fonts::Inter::REGULAR).color(color::Text::DEFAULT),
+                        mouse_area(
+                            column![
+                                chips,
+                                Text::new(hero.name.clone())
+                                    .size(34)
+                                    .font(fonts::Inter::EXTRA_BOLD)
+                                    .color(color::Text::HEADLINE),
+                                Text::new(meta).size(13).font(fonts::Inter::REGULAR).color(color::Text::DEFAULT),
+                            ]
+                            .spacing(14),
+                        )
+                        .on_press(Message::OpenInstance(hero.id.clone())),
                         row![
                             TextButton::content(
                                 row![
@@ -357,7 +372,7 @@ impl Library {
                         .align_y(alignment::Vertical::Center),
                     ]
                     .spacing(14)
-                    .padding(Padding::new(0.0).left(28).right(28).bottom(28))
+                    .padding(Padding::new(0.0).left(28).right(28).bottom(28)),
                 )
                 .width(Fill)
                 .height(Fill)
@@ -552,17 +567,30 @@ impl Library {
             match view {
                 LibraryView::Grid => {
                     for instance in slice {
-                        items.push(instance_card(instance, Message::Play(instance.name.clone())));
+                        items.push(instance_card(
+                            instance,
+                            Message::Play(instance.name.clone()),
+                            Message::OpenInstance(instance.id.clone()),
+                        ));
                     }
                 }
                 LibraryView::Compact => {
                     for instance in slice {
-                        items.push(compact_row(instance, Message::Play(instance.name.clone())));
+                        items.push(compact_row(
+                            instance,
+                            Message::Play(instance.name.clone()),
+                            Message::OpenInstance(instance.id.clone()),
+                        ));
                     }
                 }
                 LibraryView::Table => {
                     for (offset, instance) in slice.iter().enumerate() {
-                        items.push(table_row(start + offset, instance, Message::Play(instance.name.clone())));
+                        items.push(table_row(
+                            start + offset,
+                            instance,
+                            Message::Play(instance.name.clone()),
+                            Message::OpenInstance(instance.id.clone()),
+                        ));
                     }
                 }
             }

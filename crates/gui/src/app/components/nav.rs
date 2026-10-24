@@ -59,6 +59,10 @@ pub struct NavRail<Message> {
     on_select: Option<Box<dyn Fn(usize) -> Message>>,
     icon_size: f32,
     disabled: bool,
+    /// Whether the active item draws the 3px left indicator bar. The
+    /// sidebar suppresses it (its active state is the filled slot alone);
+    /// the style-guide showcase keeps it.
+    indicator: bool,
 }
 
 #[derive(Debug)]
@@ -85,6 +89,7 @@ impl<Message> NavRail<Message> {
             on_select: None,
             icon_size: 20.0,
             disabled: false,
+            indicator: true,
         }
     }
 
@@ -110,6 +115,12 @@ impl<Message> NavRail<Message> {
 
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self
+    }
+
+    /// Shows or hides the active item's left indicator bar.
+    pub fn indicator(mut self, indicator: bool) -> Self {
+        self.indicator = indicator;
         self
     }
 
@@ -366,6 +377,9 @@ where
         }
 
         // Active indicator — 3px green bar with a glow (§07 `.nav-item.active::before`).
+        if !self.indicator {
+            return;
+        }
         let indicator_bounds = Rectangle::new(
             Point::new(bounds.x, bounds.y + *state.indicator_y.value()),
             Size::new(INDICATOR_WIDTH, INDICATOR_HEIGHT),

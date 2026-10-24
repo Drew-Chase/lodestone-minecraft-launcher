@@ -11,6 +11,7 @@ use crate::app::components::backdrop::LoginBackdrop;
 use crate::app::components::sidebar::sidebar as sidebar_view;
 use crate::app::database::Database;
 use crate::app::pages::Page;
+use crate::app::pages::instance::{InstancePage, Message as InstanceMessage};
 use crate::app::pages::library::instance::Instance;
 use crate::app::pages::library::{Library, LibraryView, Message as LibraryMessage};
 use crate::app::pages::login::{AuthStatus, Login, Message as LoginMessage};
@@ -71,6 +72,7 @@ pub struct LodestoneLauncher {
     maximized: bool,
     router: Router,
     library: Library,
+    instance_page: InstancePage,
     settings: Settings,
     showcase: Showcase,
     login: Login,
@@ -108,6 +110,7 @@ impl Default for LodestoneLauncher {
             maximized: false,
             router: Router::default(),
             library: Library::default(),
+            instance_page: InstancePage::default(),
             settings: Settings,
             showcase: Showcase::default(),
             login: Login::default(),
@@ -141,6 +144,7 @@ pub enum LodestoneAppMessage {
     NavForward,
     Login(LoginMessage),
     Library(LibraryMessage),
+    Instance(InstanceMessage),
     Settings(SettingsMessage),
     Showcase(ShowcaseMessage),
     /// The launcher database finished opening (schema migrations ran).
@@ -323,8 +327,31 @@ impl LodestoneLauncher {
             // The reload button re-queries the database through the root;
             // every other Library message is pure display state.
             LodestoneAppMessage::Library(LibraryMessage::Reload) => self.load_instances(),
+            // Opening a card/hero hands the instance to the detail page and
+            // pushes the route — the page itself never owns navigation.
+            LodestoneAppMessage::Library(LibraryMessage::OpenInstance(id)) => match self.library.instance(&id) {
+                Some(instance) => {
+                    self.instance_page.show(instance);
+                    self.navigate(Page::Instance)
+                }
+                None => {
+                    warn!("Open instance {id} ignored: the instance is no longer loaded");
+                    Task::none()
+                }
+            },
             LodestoneAppMessage::Library(message) => {
                 self.library.update(message);
+                Task::none()
+            }
+            LodestoneAppMessage::Instance(InstanceMessage::Navigate(page)) => self.navigate(page),
+            LodestoneAppMessage::Instance(InstanceMessage::Back) => {
+                if self.router.go_back() {
+                    info!("Navigated back to {}", self.router.current().title());
+                }
+                Task::none()
+            }
+            LodestoneAppMessage::Instance(message) => {
+                self.instance_page.update(message);
                 Task::none()
             }
             LodestoneAppMessage::DatabaseReady(Ok(db)) => {
@@ -726,6 +753,7 @@ impl LodestoneLauncher {
         match self.router.current() {
             Page::Login => self.login.view(None).map(LodestoneAppMessage::Login),
             Page::Home => self.library.view(self.window_size).map(LodestoneAppMessage::Library),
+            Page::Instance => self.instance_page.view(self.window_size).map(LodestoneAppMessage::Instance),
             Page::Settings => self.settings.view().map(LodestoneAppMessage::Settings),
             Page::Showcase => self.showcase.view().map(LodestoneAppMessage::Showcase),
         }
