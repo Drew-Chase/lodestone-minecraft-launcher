@@ -7,7 +7,7 @@ use crate::app::components::scene_art::scene_handle;
 use crate::app::pages::library::instance::{Instance, Loader};
 use crate::app::theme::color;
 use crate::app::theme::fonts;
-use iced::widget::{Space, Text, column, container, row, svg};
+use iced::widget::{Space, Text, column, container, mouse_area, row, svg};
 use iced::{Background, Border, Color, Element, Fill, Length, Padding, alignment, color};
 use iced_color_extension::rgb;
 
@@ -110,14 +110,14 @@ fn card_panel() -> container::Style {
 /// The full grid card — art on top, title, version row, play button,
 /// footer stats. The height is driven by the art box; keep it fixed so the
 /// virtual rows stay uniform.
-pub fn instance_card<Message: Clone + 'static>(instance: &Instance, on_play: Message) -> Element<'static, Message> {
+pub fn instance_card<Message: Clone + 'static>(instance: &Instance, on_play: Message, on_open: Message) -> Element<'static, Message> {
     container(
         column![
             container(scene_art(instance)).width(Fill).height(CARD_ART_HEIGHT),
             container(
                 column![
                     row![
-                        column![title_block(instance), version_line(instance)].spacing(2),
+                        mouse_area(column![title_block(instance), version_line(instance)].spacing(2)).on_press(on_open),
                         Space::new().width(Fill),
                         play_button(on_play),
                     ]
@@ -147,24 +147,27 @@ pub fn instance_card<Message: Clone + 'static>(instance: &Instance, on_play: Mes
 }
 
 /// The Compact row — the grid card's info without the art, one tight line.
-pub fn compact_row<Message: Clone + 'static>(instance: &Instance, on_play: Message) -> Element<'static, Message> {
+pub fn compact_row<Message: Clone + 'static>(instance: &Instance, on_play: Message, on_open: Message) -> Element<'static, Message> {
     container(
         row![
             container(scene_art(instance)).width(44).height(44),
-            column![
-                title_block(instance),
-                Text::new(format!(
-                    "{}h · {} · {} · {} mods",
-                    instance.playtime_seconds / 3600,
-                    instance.loader.label(),
-                    instance.mc_version,
-                    instance.mod_count
-                ))
-                .size(11)
-                .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::Text::MUTED),
-            ]
-            .spacing(2),
+            mouse_area(
+                column![
+                    title_block(instance),
+                    Text::new(format!(
+                        "{}h · {} · {} · {} mods",
+                        instance.playtime_seconds / 3600,
+                        instance.loader.label(),
+                        instance.mc_version,
+                        instance.mod_count
+                    ))
+                    .size(11)
+                    .font(fonts::JetBrainsMono::REGULAR)
+                    .color(color::Text::MUTED),
+                ]
+                .spacing(2),
+            )
+            .on_press(on_open),
             Space::new().width(Fill),
             loader_chip(instance.loader),
             play_button(on_play),
@@ -215,18 +218,21 @@ pub fn table_header<Message: 'static>() -> Element<'static, Message> {
 
 /// One striped table row. `index` drives the stripe parity within the
 /// whole (unwindowed) list so stripes stay stable while scrolling.
-pub fn table_row<Message: Clone + 'static>(index: usize, instance: &Instance, on_play: Message) -> Element<'static, Message> {
+pub fn table_row<Message: Clone + 'static>(index: usize, instance: &Instance, on_play: Message, on_open: Message) -> Element<'static, Message> {
     container(
         row![
-            column![
-                title_block(instance),
-                Text::new(instance.directory_name.clone())
-                    .size(10)
-                    .font(fonts::JetBrainsMono::REGULAR)
-                    .color(color::Text::PLACEHOLDER),
-            ]
-            .spacing(2)
-            .width(Fill),
+            mouse_area(
+                column![
+                    title_block(instance),
+                    Text::new(instance.directory_name.clone())
+                        .size(10)
+                        .font(fonts::JetBrainsMono::REGULAR)
+                        .color(color::Text::PLACEHOLDER),
+                ]
+                .spacing(2)
+                .width(Fill),
+            )
+            .on_press(on_open),
             Text::new(instance.mc_version.clone())
                 .size(12)
                 .color(color::Text::MUTED)
@@ -260,10 +266,14 @@ pub fn table_row<Message: Clone + 'static>(index: usize, instance: &Instance, on
 /// The Library's virtualized path composes [`table_header`] and
 /// [`table_row`] directly; this covers the non-virtualized use.
 #[allow(dead_code)]
-pub fn table<Message: Clone + 'static>(instances: &[Instance], on_play: impl Fn(usize) -> Message) -> Element<'static, Message> {
+pub fn table<Message: Clone + 'static>(
+    instances: &[Instance],
+    on_play: impl Fn(usize) -> Message,
+    on_open: impl Fn(usize) -> Message,
+) -> Element<'static, Message> {
     let mut rows = column![table_header()].spacing(0);
     for (index, instance) in instances.iter().enumerate() {
-        rows = rows.push(table_row(index, instance, on_play(index)));
+        rows = rows.push(table_row(index, instance, on_play(index), on_open(index)));
     }
 
     container(rows)

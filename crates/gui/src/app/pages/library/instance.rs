@@ -186,6 +186,9 @@ impl Instance {
                 let last_played = played.then(|| now - chrono::Duration::hours((index * 13 + 12) as i64));
                 let installed_at = now - chrono::Duration::days((index * 5 + 3) as i64);
                 let slug = name.to_lowercase().replace([':', ' ', '&'], "-");
+                // The reference instance (04-instance.png) is Aether
+                // Legacy: 87 mods, 24h 12m played, a suffix-free folder.
+                let playtime_seconds = if index == 0 { 24 * 3600 + 12 * 60 } else { hours * 3600 };
                 Instance {
                     id: format!("seed-{index:03}"),
                     name,
@@ -201,9 +204,10 @@ impl Instance {
                     } else {
                         Some(LOADER_VERSIONS[index % LOADER_VERSIONS.len()].into())
                     },
-                    playtime_seconds: (hours * 3600) as u32,
+                    playtime_seconds: playtime_seconds as u32,
                     mod_count: match loader {
                         Loader::Vanilla => 0,
+                        _ if index == 0 => 87,
                         _ => ((index * 23 + 37) % 240) as u32,
                     },
                     last_played,
@@ -212,7 +216,7 @@ impl Instance {
                     state: if index == 0 { InstanceState::Playing } else { InstanceState::Idle },
                     biome: BIOME_CYCLE[index % BIOME_CYCLE.len()],
                     art_seed: (index as u64) * 7 + 1,
-                    directory_name: format!("{slug}-{:04}", index + 1),
+                    directory_name: if index == 0 { slug } else { format!("{slug}-{:04}", index + 1) },
                 }
             })
             .collect()
