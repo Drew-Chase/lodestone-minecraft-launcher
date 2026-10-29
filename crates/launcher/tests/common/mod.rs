@@ -75,7 +75,7 @@ impl StubJava {
         #[cfg(windows)]
         let body = "@echo off\r\necho %*\r\necho STUB_STDERR_LINE>&2\r\n";
         #[cfg(not(windows))]
-        let body = "echo \"$@\"\necho STUB_STDERR_LINE >&2\n";
+        let body = "#!/bin/sh\necho \"$@\"\necho STUB_STDERR_LINE >&2\n";
         Self::write(body)
     }
 
@@ -87,7 +87,7 @@ impl StubJava {
         #[cfg(windows)]
         let body = "@echo off\r\necho STUB_STARTED_LINE\r\nping -n 11 127.0.0.1 >nul 2>&1\r\n";
         #[cfg(not(windows))]
-        let body = "echo STUB_STARTED_LINE\nsleep 10 >/dev/null 2>&1\n";
+        let body = "#!/bin/sh\necho STUB_STARTED_LINE\nsleep 10 >/dev/null 2>&1\n";
         Self::write(body)
     }
 }

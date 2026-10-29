@@ -7,17 +7,17 @@ use crate::app::components::icon_button;
 use crate::app::components::icon_button::IconButton;
 #[cfg(windows)]
 use crate::app::theme::color;
-use crate::app::theme::fonts;
-use crate::app::theme::utility::icon;
-use crate::{body, eyebrow};
+#[cfg(windows)]
+use crate::eyebrow;
 #[cfg(windows)]
 use aurora_leaf::Icon;
+use iced::widget::row;
 #[cfg(windows)]
-use iced::widget::{Space, Text, container, mouse_area};
-use iced::widget::{row, stack};
+use iced::widget::{Space, Text, container, mouse_area, stack};
 #[cfg(windows)]
-use iced::{Background, Fill, Padding};
-use iced::{Border, Element, Task, window};
+use iced::{Background, Border, Fill, Padding};
+use iced::{Element, Task, window};
+#[cfg(windows)]
 use iced_color_extension::rgb;
 #[cfg(windows)]
 use tracing::{debug, info};
@@ -159,6 +159,7 @@ impl Titlebar {
         row![].into()
     }
 
+    #[cfg(windows)]
     fn language_chip(&self) -> Element<'_, TitlebarMessage> {
         container(
             row![
