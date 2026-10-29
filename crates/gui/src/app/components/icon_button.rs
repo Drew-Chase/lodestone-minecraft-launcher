@@ -191,6 +191,10 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for IconButton<Message
         renderer.draw_svg(icon_svg, icon_bounds, bounds);
     }
 
+    fn tag(&self) -> tree::Tag {
+        tree::Tag::of::<IconButtonState>()
+    }
+
     fn state(&self) -> tree::State {
         tree::State::new(IconButtonState::default())
     }
@@ -251,3 +255,7 @@ impl<'a, Message: Clone + 'a> From<IconButton<Message>> for Element<'a, Message,
         Element::new(button)
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/app/components/icon_button.rs"]
+mod tests;
