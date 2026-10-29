@@ -28,7 +28,6 @@ pub const SECONDARY_BUTTON_STYLE: IconButtonStyle = IconButtonStyle {
     foreground_pressed: color::buttons::Secondary::FOREGROUND,
     background_pressed: color::buttons::Secondary::BACKGROUND_HOVER,
 };
-#[cfg(windows)]
 pub const DANGER_BUTTON_STYLE: IconButtonStyle = IconButtonStyle {
     foreground: color::buttons::Danger::FOREGROUND,
     foreground_hover: color::buttons::Danger::FOREGROUND_HOVER,
