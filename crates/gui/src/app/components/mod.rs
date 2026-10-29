@@ -1,3 +1,4 @@
+pub mod alert;
 pub mod anim;
 pub mod backdrop;
 pub mod badge;
@@ -9,6 +10,7 @@ pub mod icon_button;
 pub mod input;
 pub mod instance_card;
 pub mod menu;
+pub mod modal;
 pub mod nav;
 pub mod panel;
 pub mod progress;
@@ -24,6 +26,7 @@ pub mod tabs;
 pub mod toggle;
 pub mod typography;
 
+pub use alert::Alerts;
 pub use button::TextButton;
 pub use card::Card;
 pub use dropdown::Dropdown;
