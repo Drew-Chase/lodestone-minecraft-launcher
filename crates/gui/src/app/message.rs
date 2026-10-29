@@ -1,0 +1,71 @@
+//! The root message type: every event the launcher reacts to, from window
+//! chrome and navigation to page messages and background-task results.
+
+use crate::app::database::Database;
+use crate::app::pages::Page;
+use crate::app::pages::instance::Message as InstanceMessage;
+use crate::app::pages::library::Message as LibraryMessage;
+use crate::app::pages::library::instance::Instance;
+use crate::app::pages::login::Message as LoginMessage;
+use crate::app::pages::settings::Message as SettingsMessage;
+use crate::app::pages::showcase::Message as ShowcaseMessage;
+use crate::app::titlebar::TitlebarMessage;
+use iced::Size;
+use iced::window::{Direction, Id};
+use lodestone_minecraft_authentication::AuthProbe;
+
+#[derive(Debug, Clone)]
+pub enum LodestoneAppMessage {
+    WindowCreation(Option<Id>),
+    WindowStartResize(Direction),
+    WindowSizeChanged(Id, Size),
+    TitlebarMessage(TitlebarMessage),
+    WindowMaximized(bool),
+    /// Pushes `page` onto the router's history — the `useNavigate` of this
+    /// framework. Produced by the rail and by any page's `Navigate(Page)`.
+    Navigate(Page),
+    /// Steps back through the router's history.
+    NavBack,
+    /// Steps forward through the router's history.
+    NavForward,
+    Login(LoginMessage),
+    Library(LibraryMessage),
+    Instance(InstanceMessage),
+    Settings(SettingsMessage),
+    Showcase(ShowcaseMessage),
+    /// The launcher database finished opening (schema migrations ran).
+    DatabaseReady(Result<Database, String>),
+    /// The instance list finished loading (after any first-boot seed).
+    InstancesLoaded(Result<Vec<Instance>, String>),
+    /// TEMPORARY resize-latency probe tick — active only with
+    /// `LODESTONE_RESIZE_PROFILE=1`; drives `window::resize` through a
+    /// fixed size sequence for screen-recording measurements.
+    ResizeProbe,
+    /// Boot-time restore: silently re-login a stored Microsoft refresh
+    /// token before showing the sign-in card.
+    RestoreStart {
+        username: String,
+        refresh_token: String,
+    },
+    /// Tick the auth-services reachability probe.
+    AuthProbeTick,
+    /// The auth-services probe completed.
+    AuthProbeResult(Result<AuthProbe, String>),
+    /// A sidebar nav item was pressed. Only the Library (index 0) navigates
+    /// today; the rest are display-only.
+    SidebarNav {
+        group: NavGroup,
+        index: usize,
+    },
+    /// The player face finished loading (8×8 RGBA, ready to upscale).
+    FaceReady(Result<Vec<u8>, String>),
+    /// A background credential write finished.
+    CredentialsSaved(Result<(), String>),
+}
+
+/// Which sidebar group a nav selection came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NavGroup {
+    Top,
+    Bottom,
+}

@@ -93,49 +93,42 @@ fn restrict_permissions(path: &PathBuf) {
     let _ = path;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Serialises credential writes so they can run off the UI thread without
+/// landing out of order. At most one write is in flight. A save requested
+/// meanwhile only marks the state dirty, and the newest snapshot is written
+/// once the current write completes, so the file always ends on the latest
+/// state.
+#[derive(Debug, Default)]
+pub struct CredentialWriter {
+    in_flight: bool,
+    dirty: bool,
+}
 
-    fn temp_path(tag: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("lodestone-storage-test-{tag}-{}.json", std::process::id()))
+impl CredentialWriter {
+    /// Asks for a save. Returns `true` when the caller should start a write
+    /// now, or `false` when one is running and this save will follow it.
+    pub fn request(&mut self) -> bool {
+        if self.in_flight {
+            self.dirty = true;
+            false
+        } else {
+            self.in_flight = true;
+            true
+        }
     }
 
-    #[test]
-    fn credentials_round_trip() {
-        let path = temp_path("round-trip");
-        let credentials = StoredCredentials {
-            microsoft: Some(StoredMicrosoft {
-                refresh_token: "refresh-token-value".into(),
-                username: "Steve".into(),
-            }),
-            offline_username: Some("Drew".into()),
-        };
-        StoredCredentials::store_to(&path, &credentials).expect("store succeeds");
-        let loaded = StoredCredentials::load_from(&path);
-        assert_eq!(loaded, credentials);
-        std::fs::remove_file(&path).ok();
-    }
-
-    #[test]
-    fn a_missing_file_loads_as_empty() {
-        let path = temp_path("missing");
-        let loaded = StoredCredentials::load_from(&path);
-        assert_eq!(loaded, StoredCredentials::default());
-    }
-
-    #[test]
-    fn a_corrupt_file_loads_as_empty() {
-        let path = temp_path("corrupt");
-        std::fs::write(&path, "{ not json").expect("write succeeds");
-        let loaded = StoredCredentials::load_from(&path);
-        assert_eq!(loaded, StoredCredentials::default());
-        std::fs::remove_file(&path).ok();
-    }
-
-    #[test]
-    fn an_empty_store_serializes_without_secrets() {
-        let json = serde_json::to_string(&StoredCredentials::default()).expect("serializes");
-        assert_eq!(json, "{\"microsoft\":null,\"offline_username\":null}");
+    /// Records a finished write. Returns `true` when a save arrived during
+    /// it, so the caller should write the newest state now.
+    pub fn complete(&mut self) -> bool {
+        if std::mem::take(&mut self.dirty) {
+            true
+        } else {
+            self.in_flight = false;
+            false
+        }
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/app/storage.rs"]
+mod tests;
