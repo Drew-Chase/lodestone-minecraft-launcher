@@ -1,0 +1,294 @@
+//! The masthead: the generated biome band with its chrome buttons, the
+//! identity block and its badges, the session controls, and the instance icon
+//! that hangs below the band.
+
+use aurora_leaf::Icon;
+use iced::widget::{Space, Text, column, container, responsive, row, stack, svg};
+use iced::{Background, Border, Color, ContentFit, Element, Fill, Gradient, Padding, Shadow, Size, alignment, gradient};
+use iced_color_extension::rgb;
+
+use crate::app::components::badge::{Badge, loader_palette};
+use crate::app::components::button::Variant;
+use crate::app::components::icon_button::IconButtonStyle;
+use crate::app::components::scene_art::{banner_handle, icon_handle};
+use crate::app::components::{IconButton, TextButton};
+use crate::app::pages::library::instance::{Instance, InstanceState};
+use crate::app::theme::{color, fonts, utility};
+
+use super::{GUTTER, Message, layer};
+
+/// The masthead's height — the design's 230px scene band.
+const HERO_HEIGHT: f32 = 230.0;
+/// The instance icon's edge.
+const ICON_SIZE: f32 = 110.0;
+/// The icon hangs 40px below the masthead (`translateY(40px)`).
+const ICON_TOP: f32 = HERO_HEIGHT - ICON_SIZE + 40.0;
+/// Left edge of the identity text — icon + the design's 20px gap.
+const IDENTITY_LEFT: f32 = GUTTER + ICON_SIZE + 20.0;
+/// Below this width the session controls move under the identity block.
+const NARROW_WIDTH: f32 = 1020.0;
+
+/// The masthead's toggles, owned by the page.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Controls {
+    pub favorite: bool,
+    pub paused: bool,
+}
+
+/// The masthead for `instance`, laid out for a window of `viewport` size.
+pub fn hero<'a>(instance: &'a Instance, controls: Controls, viewport: Size) -> Element<'a, Message> {
+    // The art is generated at the masthead's exact pixel size, so it fills
+    // the band without stretching.
+    let (biome, seed) = (instance.biome, instance.art_seed);
+    let art = responsive(move |size| {
+        svg(banner_handle(biome, seed, size))
+            .content_fit(ContentFit::Fill)
+            .width(Fill)
+            .height(Fill)
+            .into()
+    })
+    .height(HERO_HEIGHT);
+
+    // `linear-gradient(180deg, rgba(8,9,10,.3), rgba(8,9,10,.85) 85%, bg)`
+    let fade = container(Space::new().width(Fill).height(Fill))
+        .width(Fill)
+        .height(Fill)
+        .style(|_| container::Style {
+            background: Some(Background::Gradient(Gradient::Linear(
+                gradient::Linear::new(std::f32::consts::PI)
+                    .add_stop(0.0, rgb!(8, 9, 10, 30%))
+                    .add_stop(0.85, rgb!(8, 9, 10, 85%))
+                    .add_stop(1.0, color::Surface::APPLICATION),
+            ))),
+            ..container::Style::default()
+        });
+
+    let back = layer(
+        glass_button(Icon::lucide().chevron_left(), Message::Back),
+        alignment::Horizontal::Left,
+        alignment::Vertical::Top,
+        Padding::new(0.0).left(24.0).top(16.0),
+    );
+
+    let favorite = if controls.favorite {
+        glass_button_with_style(Icon::lucide().heart(), favorite_style(), Message::ToggleFavorite)
+    } else {
+        glass_button(Icon::lucide().heart(), Message::ToggleFavorite)
+    };
+    let top_right = layer(
+        row![
+            favorite,
+            glass_button(Icon::lucide().external_link(), Message::RevealFolder),
+            glass_button(Icon::lucide().ellipsis_vertical(), Message::More),
+        ]
+        .spacing(8)
+        .into(),
+        alignment::Horizontal::Right,
+        alignment::Vertical::Top,
+        Padding::new(0.0).right(24.0).top(16.0),
+    );
+
+    let identity = column![
+        row![
+            status_badge(instance.state),
+            loader_badge(instance),
+            Badge::new(format!("MC {}", instance.mc_version), color::Text::MUTED, rgb!(255, 255, 255, 6%)),
+            Badge::new(format!("{} MODS", instance.mod_count), color::Accents::AMBER, color::Accents::AMBER_TINT),
+        ]
+        .spacing(6),
+        Text::new(instance.name.clone())
+            .size(32)
+            .line_height(1.0)
+            .font(fonts::Inter::EXTRA_BOLD)
+            .color(color::Text::HEADLINE),
+        Text::new(meta_line(instance))
+            .size(12)
+            .line_height(1.2)
+            .font(fonts::JetBrainsMono::REGULAR)
+            .color(color::Text::PLACEHOLDER),
+    ]
+    .spacing(7);
+
+    let playing = instance.state == InstanceState::Playing;
+    let narrow = viewport.width < NARROW_WIDTH;
+    let identity = if narrow {
+        identity.push(session_controls(playing, controls.paused)).spacing(12)
+    } else {
+        identity
+    };
+    let actions_layer = (!narrow).then(|| {
+        layer(
+            session_controls(playing, controls.paused),
+            alignment::Horizontal::Right,
+            alignment::Vertical::Bottom,
+            Padding::new(0.0).right(GUTTER).bottom(18.0),
+        )
+    });
+    let identity_layer = layer(
+        identity.into(),
+        alignment::Horizontal::Left,
+        alignment::Vertical::Bottom,
+        Padding::new(0.0).left(IDENTITY_LEFT).bottom(18.0),
+    );
+
+    let mut surface = stack![art, fade, back, top_right, identity_layer];
+    if let Some(actions) = actions_layer {
+        surface = surface.push(actions);
+    }
+
+    container(surface.width(Fill).height(HERO_HEIGHT)).width(Fill).height(HERO_HEIGHT).into()
+}
+
+/// The instance icon: 110px square, hanging 40px below the masthead. The page
+/// shell layers it over the whole page, since inside the masthead it would be
+/// clamped to the 70px beneath its top offset.
+pub fn hero_icon(instance: &Instance) -> Element<'static, Message> {
+    let icon = container(
+        svg(icon_handle(instance.biome, instance.art_seed))
+            .content_fit(ContentFit::Fill)
+            .width(Fill)
+            .height(Fill),
+    )
+    .width(ICON_SIZE)
+    .height(ICON_SIZE)
+    .style(|_| container::Style {
+        background: Some(Background::Color(color::Surface::APPLICATION)),
+        border: Border {
+            radius: 18.0.into(),
+            width: 3.0,
+            color: color::Surface::APPLICATION,
+        },
+        shadow: Shadow {
+            color: rgb!(0, 0, 0, 80%),
+            offset: iced::Vector::new(0.0, 20.0),
+            blur_radius: 40.0,
+        },
+        ..container::Style::default()
+    });
+
+    layer(
+        icon.into(),
+        alignment::Horizontal::Left,
+        alignment::Vertical::Top,
+        Padding::new(0.0).left(GUTTER).top(ICON_TOP),
+    )
+}
+
+/// Pause plus the running-session button.
+fn session_controls(playing: bool, paused: bool) -> Element<'static, Message> {
+    let pause_label = if paused { "Resume" } else { "Pause" };
+
+    row![
+        TextButton::content(
+            row![
+                utility::icon(Icon::lucide().pause(), 13.0, Some((color::Text::DEFAULT, color::Text::DEFAULT))),
+                Text::new(pause_label).size(13).font(fonts::Inter::MEDIUM).color(color::Text::DEFAULT),
+            ]
+            .spacing(8)
+            .align_y(alignment::Vertical::Center),
+        )
+        .variant(Variant::Ghost)
+        .padding(Padding::new(0.0).left(16).right(16).top(10).bottom(10))
+        .on_press(Message::TogglePause),
+        TextButton::content(
+            row![
+                utility::icon(Icon::lucide().play(), 12.0, Some((color::Primary::ON, color::Primary::ON))),
+                Text::new(if playing { "Running · 12m" } else { "Launch" })
+                    .size(14)
+                    .font(fonts::Inter::BOLD)
+                    .color(color::Primary::ON),
+            ]
+            .spacing(8)
+            .align_y(alignment::Vertical::Center),
+        )
+        .variant(Variant::Primary)
+        .padding(Padding::new(0.0).left(22).right(22).top(11).bottom(11))
+        .on_press(Message::TogglePause),
+    ]
+    .spacing(8)
+    .align_y(alignment::Vertical::Center)
+    .into()
+}
+
+/// A 36px glass chrome button over the masthead art.
+fn glass_button(markup: &'static str, message: Message) -> Element<'static, Message> {
+    glass_button_with_style(markup, glass_style(), message)
+}
+
+fn glass_button_with_style(markup: &'static str, style: IconButtonStyle, message: Message) -> Element<'static, Message> {
+    container(
+        IconButton::new(markup)
+            .size(36)
+            .radius(12.0)
+            .icon_size(14.0)
+            .style(style)
+            .on_press(message),
+    )
+    .style(|_| container::Style {
+        background: Some(Background::Color(rgb!(0, 0, 0, 40%))),
+        border: Border {
+            radius: 12.0.into(),
+            width: 1.0,
+            color: color::Surface::LINE,
+        },
+        ..container::Style::default()
+    })
+    .into()
+}
+
+fn glass_style() -> IconButtonStyle {
+    IconButtonStyle {
+        foreground: color::Text::MUTED,
+        foreground_hover: color::Text::HEADLINE,
+        background: Color::TRANSPARENT,
+        background_hover: rgb!(255, 255, 255, 8%),
+        background_disabled: Color::TRANSPARENT,
+        foreground_disabled: color::Text::DISABLED,
+        background_pressed: rgb!(255, 255, 255, 12%),
+        foreground_pressed: color::Text::HEADLINE,
+    }
+}
+
+fn favorite_style() -> IconButtonStyle {
+    IconButtonStyle {
+        foreground: color::Accents::PINK,
+        foreground_hover: color::Accents::PINK,
+        background: Color::TRANSPARENT,
+        background_hover: color::Accents::PINK_TINT,
+        ..glass_style()
+    }
+}
+
+/// The launched/idle badge.
+fn status_badge(state: InstanceState) -> Element<'static, Message> {
+    let (label, ink, fill, pulsing) = match state {
+        InstanceState::Playing => ("LAUNCHED", color::Primary::DEFAULT, color::Primary::TINT, true),
+        InstanceState::Idle => ("IDLE", color::Text::MUTED, rgb!(255, 255, 255, 6%), false),
+    };
+    Badge::new(label, ink, fill).with_pulse(pulsing).into()
+}
+
+/// The loader badge, with the loader's version when it has one.
+fn loader_badge(instance: &Instance) -> Element<'static, Message> {
+    let (ink, fill) = loader_palette(instance.loader);
+    let label = match &instance.loader_version {
+        Some(version) => format!("{} {version}", instance.loader.label()),
+        None => instance.loader.label().to_string(),
+    };
+    Badge::new(label, ink, fill).into()
+}
+
+/// The mono identity line: folder, footprint, last save.
+fn meta_line(instance: &Instance) -> String {
+    format!("/instances/{} · {:.1} GB · last saved 02:14", instance.directory_name, size_gb(instance))
+}
+
+/// The instance's on-disk footprint — a deterministic demo figure derived
+/// from the mod count (87 mods → 4.8 GB).
+fn size_gb(instance: &Instance) -> f32 {
+    0.7 + instance.mod_count as f32 * 0.047
+}
+
+#[cfg(test)]
+#[path = "../../../../tests/app/pages/instance/hero.rs"]
+mod tests;

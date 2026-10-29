@@ -28,7 +28,6 @@ pub const SECONDARY_BUTTON_STYLE: IconButtonStyle = IconButtonStyle {
     foreground_pressed: color::buttons::Secondary::FOREGROUND,
     background_pressed: color::buttons::Secondary::BACKGROUND_HOVER,
 };
-#[cfg(windows)]
 pub const DANGER_BUTTON_STYLE: IconButtonStyle = IconButtonStyle {
     foreground: color::buttons::Danger::FOREGROUND,
     foreground_hover: color::buttons::Danger::FOREGROUND_HOVER,
@@ -192,6 +191,10 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for IconButton<Message
         renderer.draw_svg(icon_svg, icon_bounds, bounds);
     }
 
+    fn tag(&self) -> tree::Tag {
+        tree::Tag::of::<IconButtonState>()
+    }
+
     fn state(&self) -> tree::State {
         tree::State::new(IconButtonState::default())
     }
@@ -252,3 +255,7 @@ impl<'a, Message: Clone + 'a> From<IconButton<Message>> for Element<'a, Message,
         Element::new(button)
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/app/components/icon_button.rs"]
+mod tests;

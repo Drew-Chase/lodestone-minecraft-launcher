@@ -63,8 +63,8 @@ pub fn sidebar<Message: Clone + 'static>(
     on_top_nav: impl Fn(usize) -> Message + 'static,
     on_bottom_nav: impl Fn(usize) -> Message + 'static,
 ) -> Element<'static, Message> {
-    let top_rail = NavRail::new(rail_items(&TOP_ICONS)).active(active).on_select(on_top_nav);
-    let bottom_rail = NavRail::new(rail_items(&BOTTOM_ICONS)).on_select(on_bottom_nav);
+    let top_rail = NavRail::new(rail_items(&TOP_ICONS)).active(active).indicator(false).on_select(on_top_nav);
+    let bottom_rail = NavRail::new(rail_items(&BOTTOM_ICONS)).indicator(false).on_select(on_bottom_nav);
 
     container(
         column![

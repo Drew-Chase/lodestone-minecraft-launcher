@@ -2,7 +2,8 @@
 //!
 //! Primary is the one loud thing on screen: a Lode Green fill with on-green
 //! ink and a glow shadow. Ghost is the quiet counterpart — white 4% fill with
-//! a hairline border. Hover lifts the button 1px and brightens it; press
+//! a hairline border. Danger is the destructive counterpart: a red tint that
+//! turns solid on hover. Hover lifts the button 1px and brightens it; press
 //! settles it back down. All of it eases on the §08 timings (Micro/Lift).
 //!
 //! ```text
@@ -14,7 +15,7 @@
 //! icon plus label, build the row yourself and wrap it with
 //! [`TextButton::content`].
 
-use crate::app::theme::{color, fonts};
+use crate::app::theme::{color, fonts, utility};
 use iced::advanced::Renderer as _;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer;
@@ -44,6 +45,9 @@ const GHOST_PADDING: Padding = Padding {
     right: 16.0,
 };
 
+/// The destructive red — the danger palette's hover fill.
+const DANGER: Color = color::buttons::Danger::BACKGROUND_HOVER;
+
 /// The visual treatment of a text button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Variant {
@@ -51,6 +55,11 @@ pub enum Variant {
     Primary,
     /// `.btn-ghost` — white 4% fill, hairline border, `--ink-1` label.
     Ghost,
+    /// Chrome-free tab: no fill, no border, no lift — the label (and an
+    /// external underline) carries the state.
+    Tab,
+    /// Destructive action — red ink on a red tint that turns solid on hover.
+    Danger,
 }
 
 /// Widget-local interaction status.
@@ -131,6 +140,28 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
         .padding(GHOST_PADDING)
     }
 
+    /// An icon followed by a label — the Import and New world style buttons.
+    pub fn labeled_icon(icon: &'static str, label: impl Into<String>, variant: Variant) -> Self {
+        let (ink, padding) = match variant {
+            Variant::Primary => (color::Primary::ON, PRIMARY_PADDING),
+            _ => (color::Text::DEFAULT, GHOST_PADDING),
+        };
+        Self::content(
+            iced::widget::row![
+                utility::icon(icon, 14.0, Some((ink, ink))),
+                iced::widget::Text::new(label.into())
+                    .size(13.0)
+                    .line_height(1.0)
+                    .font(fonts::Inter::MEDIUM)
+                    .color(ink),
+            ]
+            .spacing(8)
+            .align_y(iced::alignment::Vertical::Center),
+        )
+        .variant(variant)
+        .padding(padding)
+    }
+
     /// Overrides the style variant — for custom content that needs the
     /// primary look (green fill, on-green ink) instead of the ghost default.
     pub fn variant(mut self, variant: Variant) -> Self {
@@ -209,6 +240,20 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
                     lift: 0.0,
                     glow: 0.0,
                 },
+                Variant::Danger => Visual {
+                    background: anim::fade(DANGER, 0.04),
+                    foreground: color::Text::DISABLED,
+                    border: anim::fade(DANGER, 0.08),
+                    lift: 0.0,
+                    glow: 0.0,
+                },
+                Variant::Tab => Visual {
+                    background: Color::TRANSPARENT,
+                    foreground: color::Text::DISABLED,
+                    border: Color::TRANSPARENT,
+                    lift: 0.0,
+                    glow: 0.0,
+                },
             };
         }
 
@@ -258,6 +303,57 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
                     background: rgb!(255, 255, 255, 4%),
                     foreground: color::Text::DEFAULT,
                     border: color::Surface::LINE,
+                    lift: 0.0,
+                    glow: 0.0,
+                },
+            },
+            // Destructive — red ink on a red tint at rest; hover turns the
+            // fill solid red with headline ink.
+            Variant::Danger => match status {
+                Status::Hovered => Visual {
+                    background: DANGER,
+                    foreground: color::Text::HEADLINE,
+                    border: DANGER,
+                    lift: 1.0,
+                    glow: 0.0,
+                },
+                Status::Pressed => Visual {
+                    background: anim::fade(DANGER, 0.8),
+                    foreground: color::Text::HEADLINE,
+                    border: DANGER,
+                    lift: 0.0,
+                    glow: 0.0,
+                },
+                _ => Visual {
+                    background: anim::fade(DANGER, 0.12),
+                    foreground: DANGER,
+                    border: anim::fade(DANGER, 0.3),
+                    lift: 0.0,
+                    glow: 0.0,
+                },
+            },
+            // Tabs are chrome-free: only the label (and the page's
+            // underline) changes. Hover brightens the ink and leaves a
+            // barely-there tint so the row still feels alive.
+            Variant::Tab => match status {
+                Status::Hovered => Visual {
+                    background: rgb!(255, 255, 255, 3%),
+                    foreground: color::Text::HEADLINE,
+                    border: Color::TRANSPARENT,
+                    lift: 0.0,
+                    glow: 0.0,
+                },
+                Status::Pressed => Visual {
+                    background: rgb!(255, 255, 255, 5%),
+                    foreground: color::Text::HEADLINE,
+                    border: Color::TRANSPARENT,
+                    lift: 0.0,
+                    glow: 0.0,
+                },
+                _ => Visual {
+                    background: Color::TRANSPARENT,
+                    foreground: color::Text::MUTED,
+                    border: Color::TRANSPARENT,
                     lift: 0.0,
                     glow: 0.0,
                 },
@@ -396,10 +492,15 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for TextButton<'_, Mes
                         blur_radius,
                     }
                 }
-                Variant::Ghost => Shadow {
+                Variant::Ghost | Variant::Danger => Shadow {
                     color: rgb!(0, 0, 0, 30%),
                     offset: Vector::new(0.0, 4.0 + visual.lift * 4.0),
                     blur_radius: 12.0 + visual.lift * 8.0,
+                },
+                Variant::Tab => Shadow {
+                    color: Color::TRANSPARENT,
+                    offset: Vector::ZERO,
+                    blur_radius: 0.0,
                 },
             };
 
@@ -447,43 +548,5 @@ impl<'a, Message: Clone + 'a> From<TextButton<'a, Message>> for Element<'a, Mess
 }
 
 #[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use super::*;
-
-    fn button<'a>() -> TextButton<'a, ()> {
-        TextButton::primary("Play")
-    }
-
-    #[test]
-    fn hover_lifts_and_brightens() {
-        let idle = button().visual(Status::Idle);
-        let hovered = button().visual(Status::Hovered);
-        assert_eq!(idle.lift, 0.0);
-        assert_eq!(hovered.lift, 1.0);
-        assert_ne!(idle.background, hovered.background);
-    }
-
-    #[test]
-    fn disabled_has_no_lift() {
-        for status in [Status::Idle, Status::Hovered, Status::Pressed] {
-            assert_eq!(button().disabled(true).visual(status).lift, 0.0);
-        }
-    }
-
-    #[test]
-    fn ghost_is_quieter_than_primary() {
-        let primary = TextButton::<()>::primary("Play").visual(Status::Idle);
-        let ghost = TextButton::<()>::ghost("Edit").visual(Status::Idle);
-        assert!(primary.glow > ghost.glow);
-        assert_ne!(primary.background, ghost.background);
-    }
-
-    #[test]
-    fn animation_mode_is_liftable() {
-        // The preset must be constructible — guards against API drift.
-        let _mode: Mode = anim::lift().into();
-        let _ = Duration::from_millis(200);
-    }
-}
+#[path = "../../../tests/app/components/button.rs"]
+mod tests;

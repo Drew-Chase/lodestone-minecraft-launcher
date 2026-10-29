@@ -17,6 +17,7 @@
 //!    and a delegation arm for the rest.
 //! 6. Add an arm to the root's `outlet()` so the page renders.
 
+pub mod instance;
 pub mod library;
 pub mod login;
 pub mod settings;
@@ -34,6 +35,10 @@ pub enum Page {
     Login,
     /// Landing page — the instance Library.
     Home,
+    /// A single instance's detail view. The instance itself lives in the
+    /// root's `InstancePage`; the route stays parameterless so the router
+    /// keeps `Copy`/`Eq` history semantics.
+    Instance,
     /// Launcher preferences.
     Settings,
     /// Style-guide gallery of every core control.
@@ -46,6 +51,7 @@ impl Page {
         match self {
             Page::Login => "Login",
             Page::Home => "Library",
+            Page::Instance => "Instance",
             Page::Settings => "Settings",
             Page::Showcase => "Showcase",
         }
@@ -58,7 +64,7 @@ mod tests {
 
     #[test]
     fn every_page_has_a_title() {
-        for page in [Page::Login, Page::Home, Page::Settings, Page::Showcase] {
+        for page in [Page::Login, Page::Home, Page::Instance, Page::Settings, Page::Showcase] {
             assert!(!page.title().is_empty(), "{page:?} needs a title");
         }
     }
