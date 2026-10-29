@@ -3,15 +3,20 @@
 //! the binary and served as cached svg handles.
 //!
 //! The variant is picked by the instance's `art_seed`, so the grid mixes
-//! scenes without any runtime generation.
+//! scenes without any runtime generation. The masthead and the screenshot
+//! thumbnails are the exception: they are wrapped at the exact pixel size
+//! they are drawn at, so the art is never stretched and their rounded corners
+//! stay circular. Those wrappers are cached per size.
 
-use std::sync::OnceLock;
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex, OnceLock, PoisonError};
 
 use crate::app::pages::library::instance::Biome;
+use iced::Size;
 use iced::widget::svg::Handle;
 
 /// Every scene file, grouped in [`Biome`] declaration order: base scene,
-/// variant 1, variant 2. `slot(biome) * 3 + (seed % 3)` indexes it.
+/// variant 1, variant 2. [`scene_index`] indexes it.
 const SCENES: [(Biome, &str); 24] = [
     (Biome::End, include_str!("../../../../../res/artwork/scenes/scene-end.svg")),
     (Biome::End, include_str!("../../../../../res/artwork/scenes/variants/scene-end-1.svg")),
@@ -69,6 +74,16 @@ const SCENES: [(Biome, &str); 24] = [
     ),
 ];
 
+/// Every scene file is drawn in this viewBox.
+const SCENE_WIDTH: f32 = 800.0;
+const SCENE_HEIGHT: f32 = 450.0;
+/// The moon's centre height in the scene files (about 118–128). The crops keep
+/// it a third of the way down the frame, as in the reference.
+const MOON_Y: f32 = 122.0;
+/// Generated widths are rounded to this step, so resizing reuses handles
+/// instead of building a new one for every pixel.
+const SIZE_STEP: f32 = 4.0;
+
 /// The scene slot a biome occupies — must follow the [`SCENES`] grouping.
 fn slot(biome: Biome) -> usize {
     match biome {
@@ -81,6 +96,12 @@ fn slot(biome: Biome) -> usize {
         Biome::Nether => 6,
         Biome::Mushroom => 7,
     }
+}
+
+/// The [`SCENES`] index for a biome and seed: the seed picks the base scene
+/// or one of its two variants.
+fn scene_index(biome: Biome, seed: u64) -> usize {
+    slot(biome) * 3 + (seed % 3) as usize
 }
 
 /// The embedded handles, built once. One `Handle` per file so iced_wgpu's
@@ -96,25 +117,33 @@ static HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
 /// alphas are sqrt-compensated here (0.80 → 0.894, 0.30 → 0.548).
 static HERO_HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
 
-/// The instance page's wide masthead — the top of the scene (moon and
-/// mountain crests) cropped to a 4:1 band and faded into the page at its
-/// bottom edge. Cropping the same artwork, rather than stretching it,
-/// keeps the moon round and the peaks at the reference's scale.
-static BANNER_HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
-
 /// The instance page's square icon — a centred crop of the scene's moon
 /// and peaks behind a rounded-rect clip.
 static ICON_HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
 
-/// Screenshot thumbnails — the full scene, rounded and shaded at the
-/// bottom so the filename overlay stays readable.
-static THUMB_HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
+/// Wrappers generated for the instance page, keyed by kind, scene index and
+/// size. A new `Handle` per call would re-rasterise on every redraw, so each
+/// size is built once.
+/// A cache entry's key: the wrapper, the scene index, and the quantised width
+/// and height.
+type GeneratedKey = (Wrapper, usize, u32, u32);
+
+static GENERATED: LazyLock<Mutex<HashMap<GeneratedKey, Handle>>> = LazyLock::new(Mutex::default);
+
+/// The instance-page wrappers that are generated at a size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Wrapper {
+    /// The masthead band.
+    Banner,
+    /// A screenshot thumbnail.
+    Thumbnail,
+}
 
 /// The scene artwork for an instance — deterministic per `(biome, seed)`:
 /// the seed selects the base scene or one of its two variants.
 pub fn scene_handle(biome: Biome, seed: u64) -> Handle {
     let handles = HANDLES.get_or_init(|| SCENES.iter().map(|(_, svg)| Handle::from_memory(svg.as_bytes().to_vec())).collect());
-    handles[slot(biome) * 3 + (seed % 3) as usize].clone()
+    handles[scene_index(biome, seed)].clone()
 }
 
 /// The hero-banner artwork — the same scene, rounded and left-faded.
@@ -125,21 +154,14 @@ pub fn hero_handle(biome: Biome, seed: u64) -> Handle {
             .map(|(_, svg)| Handle::from_memory(hero_wrapped(svg).into_bytes()))
             .collect()
     });
-    handles[slot(biome) * 3 + (seed % 3) as usize].clone()
+    handles[scene_index(biome, seed)].clone()
 }
 
-/// The instance-page masthead — the top of the scene (moon, peaks and
-/// sky) cropped to a 800×200 band, with the bottom fading into the page.
-/// The crop is what makes the artwork read at the reference's scale: the
-/// moon stays circular and the peaks keep their authored proportions.
-pub fn banner_handle(biome: Biome, seed: u64) -> Handle {
-    let handles = BANNER_HANDLES.get_or_init(|| {
-        SCENES
-            .iter()
-            .map(|(_, svg)| Handle::from_memory(banner_wrapped(svg).into_bytes()))
-            .collect()
-    });
-    handles[slot(biome) * 3 + (seed % 3) as usize].clone()
+/// The instance-page masthead at `size`, the band's exact pixel size. The
+/// scene is covered to the band's width and cropped so the moon sits a third
+/// of the way down. The fade into the page is the page's overlay, not baked in.
+pub fn banner_handle(biome: Biome, seed: u64, size: Size) -> Handle {
+    generated(Wrapper::Banner, biome, seed, size)
 }
 
 /// The instance page's square icon — a centred crop of the scene clipped
@@ -151,19 +173,51 @@ pub fn icon_handle(biome: Biome, seed: u64) -> Handle {
             .map(|(_, svg)| Handle::from_memory(icon_wrapped(svg).into_bytes()))
             .collect()
     });
-    handles[slot(biome) * 3 + (seed % 3) as usize].clone()
+    handles[scene_index(biome, seed)].clone()
 }
 
-/// A screenshot thumbnail — the full scene, rounded and shaded at the
-/// bottom for the filename overlay.
-pub fn screenshot_handle(biome: Biome, seed: u64) -> Handle {
-    let handles = THUMB_HANDLES.get_or_init(|| {
-        SCENES
-            .iter()
-            .map(|(_, svg)| Handle::from_memory(thumb_wrapped(svg).into_bytes()))
-            .collect()
-    });
-    handles[slot(biome) * 3 + (seed % 3) as usize].clone()
+/// A screenshot thumbnail at `size`, the tile's exact pixel size: the scene
+/// cropped as for the masthead, rounded and shaded at the bottom for the
+/// filename overlay.
+pub fn screenshot_handle(biome: Biome, seed: u64, size: Size) -> Handle {
+    generated(Wrapper::Thumbnail, biome, seed, size)
+}
+
+/// The cached wrapper for `wrapper` at `size`, built on first use.
+fn generated(wrapper: Wrapper, biome: Biome, seed: u64, size: Size) -> Handle {
+    let index = scene_index(biome, seed);
+    let width = quantise(size.width);
+    let height = size.height.round().max(1.0) as u32;
+
+    let mut cache = GENERATED.lock().unwrap_or_else(PoisonError::into_inner);
+    cache
+        .entry((wrapper, index, width, height))
+        .or_insert_with(|| {
+            let (scene, width, height) = (SCENES[index].1, width as f32, height as f32);
+            let svg = match wrapper {
+                Wrapper::Banner => banner_wrapped(scene, width, height),
+                Wrapper::Thumbnail => thumb_wrapped(scene, width, height),
+            };
+            Handle::from_memory(svg.into_bytes())
+        })
+        .clone()
+}
+
+/// Rounds a width to the nearest [`SIZE_STEP`], never below one step.
+fn quantise(width: f32) -> u32 {
+    ((width / SIZE_STEP).round().max(1.0) * SIZE_STEP) as u32
+}
+
+/// The transform that covers a `width`×`height` frame with the scene. It
+/// scales the scene to the frame's width, or to its height if that is
+/// larger, then crops vertically so the moon sits a third of the way down.
+/// Returns `(scale, offset_x, offset_y)`: a scene unit maps to
+/// `unit * scale + offset` in pixels.
+fn cover(width: f32, height: f32) -> (f32, f32, f32) {
+    let scale = (width / SCENE_WIDTH).max(height / SCENE_HEIGHT);
+    let visible = height / scale;
+    let top = (MOON_Y - visible / 3.0).clamp(0.0, (SCENE_HEIGHT - visible).max(0.0));
+    (scale, (width - SCENE_WIDTH * scale) / 2.0, -top * scale)
 }
 
 /// The scene file's contents without its outer `<svg>` tag and C2PA
@@ -210,22 +264,17 @@ fn hero_wrapped(scene: &str) -> String {
     )
 }
 
-/// The masthead band: only the scene's top 200 units (of 450) remain in
-/// the viewBox. A bottom gradient dissolves the terrain into the page.
-fn banner_wrapped(scene: &str) -> String {
-    let inner = scene_inner(scene);
+/// The instance-page masthead at `width`×`height`: the scene covered and
+/// cropped by [`cover`]. There is no clip and no fade; the page overlays both.
+fn banner_wrapped(scene: &str, width: f32, height: f32) -> String {
+    let (scale, x, y) = cover(width, height);
     format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="800" height="200" viewBox="0 0 800 200">
-  <defs>
-    <linearGradient id="masthead-fade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0.62" stop-color="#08090a" stop-opacity="0"/>
-      <stop offset="0.88" stop-color="#08090a" stop-opacity="0.55"/>
-      <stop offset="1" stop-color="#08090a" stop-opacity="0.94"/>
-    </linearGradient>
-  </defs>
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
+  <g transform="translate({x} {y}) scale({scale})">
 {inner}
-  <rect width="800" height="200" fill="url(#masthead-fade)"/>
-</svg>"##
+  </g>
+</svg>"##,
+        inner = scene_inner(scene),
     )
 }
 
@@ -250,23 +299,73 @@ fn icon_wrapped(scene: &str) -> String {
     )
 }
 
-/// A screenshot thumbnail: rounded corners and a bottom shade. The radius
-/// is 24 units of the 800-wide viewBox, ≈12px at a 376px card.
-fn thumb_wrapped(scene: &str) -> String {
-    let inner = scene_inner(scene);
+/// A screenshot thumbnail at `width`×`height`: the scene covered and cropped
+/// by [`cover`], clipped to 12px rounded corners and shaded at the bottom for
+/// the filename overlay. The clip is in the thumbnail's own pixels, so the
+/// corners stay circular at any tile size.
+fn thumb_wrapped(scene: &str, width: f32, height: f32) -> String {
+    let (scale, x, y) = cover(width, height);
     format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
   <defs>
-    <clipPath id="thumb-clip"><rect width="800" height="450" rx="24"/></clipPath>
+    <clipPath id="thumb-clip"><rect width="{width}" height="{height}" rx="12"/></clipPath>
     <linearGradient id="thumb-shade" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0.55" stop-color="#050607" stop-opacity="0"/>
       <stop offset="1" stop-color="#050607" stop-opacity="0.72"/>
     </linearGradient>
   </defs>
   <g clip-path="url(#thumb-clip)">
+    <g transform="translate({x} {y}) scale({scale})">
 {inner}
-    <rect width="800" height="450" fill="url(#thumb-shade)"/>
+    </g>
+    <rect width="{width}" height="{height}" fill="url(#thumb-shade)"/>
   </g>
-</svg>"##
+</svg>"##,
+        inner = scene_inner(scene),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_moon_sits_a_third_of_the_way_down() {
+        for (width, height) in [(1848.0, 230.0), (388.0, 100.0)] {
+            let (scale, _, y) = cover(width, height);
+            let moon = MOON_Y * scale + y;
+            assert!((moon - height / 3.0).abs() < 0.5, "moon at {moon} in a {width}×{height} frame");
+        }
+    }
+
+    #[test]
+    fn the_scene_covers_the_frame() {
+        for (width, height) in [(1848.0, 230.0), (388.0, 100.0), (300.0, 500.0)] {
+            let (scale, x, y) = cover(width, height);
+            let top = -y / scale;
+            assert!(
+                x <= 0.0 && SCENE_WIDTH * scale + x >= width - 0.01,
+                "{width}×{height} is not covered across"
+            );
+            assert!(
+                top >= 0.0 && top + height / scale <= SCENE_HEIGHT + 0.01,
+                "{width}×{height} runs off the scene"
+            );
+        }
+    }
+
+    #[test]
+    fn thumbnails_are_sized_to_the_tile_with_round_corners() {
+        let svg = thumb_wrapped(SCENES[0].1, 388.0, 100.0);
+        assert!(svg.contains(r#"width="388" height="100" viewBox="0 0 388 100""#));
+        assert!(svg.contains(r#"rx="12""#));
+    }
+
+    #[test]
+    fn sizes_are_quantised_to_four_pixels() {
+        assert_eq!(quantise(388.0), 388);
+        assert_eq!(quantise(389.0), 388);
+        assert_eq!(quantise(391.0), 392);
+        assert_eq!(quantise(0.0), 4);
+    }
 }

@@ -14,13 +14,13 @@
 
 use crate::app::components::button::Variant;
 use crate::app::components::scene_art::{banner_handle, icon_handle, screenshot_handle};
-use crate::app::components::{IconButton, ProgressBar, PulseDot, TextButton};
+use crate::app::components::{IconButton, ProgressBar, PulseDot, Tabs, TextButton};
 use crate::app::pages::Page;
 use crate::app::pages::library::instance::{Biome, Instance, InstanceState, Loader};
 use crate::app::theme::color;
 use crate::app::theme::fonts;
 use aurora_leaf::Icon;
-use iced::widget::{Space, Text, column, container, row, scrollable, stack, svg};
+use iced::widget::{Space, Text, column, container, responsive, row, scrollable, stack, svg};
 use iced::{Background, Border, Color, ContentFit, Element, Fill, Gradient, Length, Padding, Shadow, Size, alignment, gradient};
 use iced_color_extension::rgb;
 
@@ -122,14 +122,18 @@ impl InstancePage {
             return self.empty_state();
         };
 
-        column![
+        let page = column![
             self.hero(instance, viewport),
             self.tab_bar(),
             scrollable(self.tab_content(instance)).width(Fill).height(Fill),
         ]
         .width(Fill)
-        .height(Fill)
-        .into()
+        .height(Fill);
+
+        // The icon hangs 40px below the masthead, so it is layered over the
+        // whole page: inside the masthead it would be clamped to the 70px
+        // left beneath its top offset.
+        stack![page, hero_icon(instance)].width(Fill).height(Fill).into()
     }
 
     fn empty_state(&self) -> Element<'_, Message> {
@@ -155,17 +159,20 @@ impl InstancePage {
         .into()
     }
 
-    /// The masthead: scene band, darkening gradient, chrome buttons, icon,
-    /// identity and the session controls.
+    /// The masthead: scene band, darkening gradient, chrome buttons, identity
+    /// and the session controls. The icon is layered over the page by `view`.
     fn hero<'a>(&'a self, instance: &'a Instance, viewport: Size) -> Element<'a, Message> {
-        let art = container(
-            svg(banner_handle(instance.biome, instance.art_seed))
+        // The art is generated at the masthead's exact pixel size, so it fills
+        // the band without stretching.
+        let (biome, seed) = (instance.biome, instance.art_seed);
+        let art = responsive(move |size| {
+            svg(banner_handle(biome, seed, size))
                 .content_fit(ContentFit::Fill)
                 .width(Fill)
-                .height(Fill),
-        )
-        .width(Fill)
-        .height(Fill);
+                .height(Fill)
+                .into()
+        })
+        .height(HERO_HEIGHT);
 
         // `linear-gradient(180deg, rgba(8,9,10,.3), rgba(8,9,10,.85) 85%, bg)`
         let fade = container(Space::new().width(Fill).height(Fill))
@@ -173,7 +180,7 @@ impl InstancePage {
             .height(Fill)
             .style(|_| container::Style {
                 background: Some(Background::Gradient(Gradient::Linear(
-                    gradient::Linear::new(std::f32::consts::FRAC_PI_2)
+                    gradient::Linear::new(std::f32::consts::PI)
                         .add_stop(0.0, rgb!(8, 9, 10, 30%))
                         .add_stop(0.85, rgb!(8, 9, 10, 85%))
                         .add_stop(1.0, color::Surface::APPLICATION),
@@ -205,35 +212,6 @@ impl InstancePage {
             alignment::Horizontal::Right,
             alignment::Vertical::Top,
             Padding::new(0.0).right(24.0).top(16.0),
-        );
-
-        let icon = container(
-            svg(icon_handle(instance.biome, instance.art_seed))
-                .content_fit(ContentFit::Fill)
-                .width(Fill)
-                .height(Fill),
-        )
-        .width(ICON_SIZE)
-        .height(ICON_SIZE)
-        .style(|_| container::Style {
-            background: Some(Background::Color(color::Surface::APPLICATION)),
-            border: Border {
-                radius: 18.0.into(),
-                width: 3.0,
-                color: color::Surface::APPLICATION,
-            },
-            shadow: Shadow {
-                color: rgb!(0, 0, 0, 80%),
-                offset: iced::Vector::new(0.0, 20.0),
-                blur_radius: 40.0,
-            },
-            ..container::Style::default()
-        });
-        let icon_layer = layer(
-            icon.into(),
-            alignment::Horizontal::Left,
-            alignment::Vertical::Top,
-            Padding::new(0.0).left(GUTTER).top(ICON_TOP),
         );
 
         let identity = column![
@@ -277,7 +255,7 @@ impl InstancePage {
             Padding::new(0.0).left(IDENTITY_LEFT).bottom(18.0),
         );
 
-        let mut surface = stack![art, fade, back, top_right, icon_layer, identity_layer];
+        let mut surface = stack![art, fade, back, top_right, identity_layer];
         if let Some(actions) = actions_layer {
             surface = surface.push(actions);
         }
@@ -322,46 +300,22 @@ impl InstancePage {
         .into()
     }
 
-    /// The underlined tab row with its hairline.
+    /// The underlined tab row. `Tabs` draws the full-width rule and the active
+    /// bar itself, so the bar paints over the rule and every tab's whole slot
+    /// is clickable.
     fn tab_bar(&self) -> Element<'_, Message> {
-        let tabs = Tab::ALL.into_iter().map(|tab| {
-            let active = self.tab == tab;
-            let ink = if active { color::Primary::DEFAULT } else { color::Text::MUTED };
+        let active = Tab::ALL.iter().position(|tab| *tab == self.tab).unwrap_or_default();
 
-            let button = TextButton::content(Text::new(tab.label()).size(13).line_height(1.0).font(fonts::Inter::MEDIUM).color(ink))
-                .variant(Variant::Tab)
-                .padding(Padding::new(0.0).left(16).right(16).top(10).bottom(10))
-                .on_press(Message::TabSelected(tab));
-
-            // The underline is the tab's own background: transparent down
-            // to the final two pixels, then Lode Green.
-            let underline = active.then(|| {
-                Background::Gradient(Gradient::Linear(
-                    gradient::Linear::new(std::f32::consts::FRAC_PI_2)
-                        .add_stop(0.0, Color::TRANSPARENT)
-                        .add_stop(0.935, Color::TRANSPARENT)
-                        .add_stop(0.935, color::Primary::DEFAULT)
-                        .add_stop(1.0, color::Primary::DEFAULT),
-                ))
-            });
-
-            container(button)
-                .style(move |_| container::Style {
-                    background: underline,
-                    ..container::Style::default()
-                })
-                .into()
-        });
-
-        column![
-            container(row(tabs).spacing(4))
+        container(
+            Tabs::new(Tab::ALL.map(Tab::label))
+                .underline()
+                .inset(GUTTER)
                 .width(Fill)
-                .padding(Padding::new(0.0).left(GUTTER).right(GUTTER).top(52.0)),
-            container(Space::new().width(Fill).height(1)).width(Fill).style(|_| container::Style {
-                background: Some(Background::Color(color::Surface::LINE)),
-                ..container::Style::default()
-            }),
-        ]
+                .active(active)
+                .on_select(|index| Message::TabSelected(Tab::ALL[index])),
+        )
+        .width(Fill)
+        .padding(Padding::new(0.0).top(52.0))
         .into()
     }
 
@@ -410,7 +364,7 @@ fn placeholder(tab: Tab) -> Element<'static, Message> {
     .into()
 }
 
-/// Positions a child inside the masthead: the container fills the hero and
+/// Positions a child inside its parent: the container fills the parent and
 /// the padding/alignment pin the child to one edge.
 fn layer<'a, M: 'a>(content: Element<'a, M>, align_x: alignment::Horizontal, align_y: alignment::Vertical, padding: Padding) -> Element<'a, M> {
     container(content)
@@ -420,6 +374,39 @@ fn layer<'a, M: 'a>(content: Element<'a, M>, align_x: alignment::Horizontal, ali
         .align_y(align_y)
         .padding(padding)
         .into()
+}
+
+/// The instance icon: 110px square, hanging 40px below the masthead.
+fn hero_icon(instance: &Instance) -> Element<'static, Message> {
+    let icon = container(
+        svg(icon_handle(instance.biome, instance.art_seed))
+            .content_fit(ContentFit::Fill)
+            .width(Fill)
+            .height(Fill),
+    )
+    .width(ICON_SIZE)
+    .height(ICON_SIZE)
+    .style(|_| container::Style {
+        background: Some(Background::Color(color::Surface::APPLICATION)),
+        border: Border {
+            radius: 18.0.into(),
+            width: 3.0,
+            color: color::Surface::APPLICATION,
+        },
+        shadow: Shadow {
+            color: rgb!(0, 0, 0, 80%),
+            offset: iced::Vector::new(0.0, 20.0),
+            blur_radius: 40.0,
+        },
+        ..container::Style::default()
+    });
+
+    layer(
+        icon.into(),
+        alignment::Horizontal::Left,
+        alignment::Vertical::Top,
+        Padding::new(0.0).left(GUTTER).top(ICON_TOP),
+    )
 }
 
 /// A 36px glass chrome button over the masthead art.
@@ -587,7 +574,7 @@ fn panel<'a, M: 'a>(content: impl Into<Element<'a, M>>) -> Element<'a, M> {
         .padding(18)
         .style(|_| container::Style {
             background: Some(Background::Gradient(Gradient::Linear(
-                gradient::Linear::new(std::f32::consts::FRAC_PI_2)
+                gradient::Linear::new(std::f32::consts::PI)
                     .add_stop(0.0, rgb!(255, 255, 255, 4%))
                     .add_stop(1.0, rgb!(255, 255, 255, 2%)),
             ))),
@@ -714,8 +701,8 @@ fn player_row((initials, name, ink): (&'static str, &'static str, Color)) -> Ele
         container(Text::new(initials).size(10).font(fonts::Inter::EXTRA_BOLD).color(rgb!(0, 0, 0, 100%)))
             .width(24)
             .height(24)
-            .center_x(Fill)
-            .center_y(Fill)
+            .align_x(alignment::Horizontal::Center)
+            .align_y(alignment::Vertical::Center)
             .style(move |_| container::Style {
                 background: Some(Background::Color(ink)),
                 border: Border {
@@ -758,22 +745,29 @@ fn screenshots_section() -> Element<'static, Message> {
 }
 
 fn screenshot_card(biome: Biome, seed: u64, filename: &'static str) -> Element<'static, Message> {
-    stack![
-        container(svg(screenshot_handle(biome, seed)).content_fit(ContentFit::Fill).width(Fill).height(Fill))
+    // Generated at the tile's exact pixel size, so the rounded corners stay circular.
+    responsive(move |size| {
+        stack![
+            svg(screenshot_handle(biome, seed, size))
+                .content_fit(ContentFit::Fill)
+                .width(Fill)
+                .height(Fill),
+            container(
+                Text::new(filename)
+                    .size(9)
+                    .font(fonts::JetBrainsMono::REGULAR)
+                    .color(rgb!(255, 255, 255, 70%)),
+            )
             .width(Fill)
-            .height(Fill),
-        container(
-            Text::new(filename)
-                .size(9)
-                .font(fonts::JetBrainsMono::REGULAR)
-                .color(rgb!(255, 255, 255, 70%)),
-        )
+            .height(Fill)
+            .align_x(alignment::Horizontal::Left)
+            .align_y(alignment::Vertical::Bottom)
+            .padding(Padding::new(0.0).left(8).bottom(6)),
+        ]
         .width(Fill)
         .height(Fill)
-        .align_x(alignment::Horizontal::Left)
-        .align_y(alignment::Vertical::Bottom)
-        .padding(Padding::new(0.0).left(8).bottom(6)),
-    ]
+        .into()
+    })
     .width(Fill)
     .height(100)
     .into()
