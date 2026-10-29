@@ -1,0 +1,2 @@
+# Keep res/ (icons, artwork, reference images) out of GitHub's language stats
+res/** linguist-vendored
