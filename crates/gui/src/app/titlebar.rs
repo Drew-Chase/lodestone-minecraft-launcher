@@ -7,6 +7,8 @@ use crate::app::components::icon_button;
 use crate::app::components::icon_button::IconButton;
 #[cfg(windows)]
 use crate::app::theme::color;
+use crate::app::theme::fonts;
+use crate::app::theme::utility::icon;
 use crate::{body, eyebrow};
 #[cfg(windows)]
 use aurora_leaf::Icon;
@@ -15,13 +17,10 @@ use iced::widget::{Space, Text, container, mouse_area};
 use iced::widget::{row, stack};
 #[cfg(windows)]
 use iced::{Background, Fill, Padding};
-use iced::{window, Border, Element, Task};
+use iced::{Border, Element, Task, window};
 use iced_color_extension::rgb;
 #[cfg(windows)]
 use tracing::{debug, info};
-use crate::app::pages::login::Message;
-use crate::app::theme::fonts;
-use crate::app::theme::utility::icon;
 
 #[derive(Debug, Clone, Default)]
 pub struct Titlebar;
@@ -160,26 +159,25 @@ impl Titlebar {
         row![].into()
     }
 
-
-    fn language_chip(&self) -> Element<'_, Message> {
+    fn language_chip(&self) -> Element<'_, TitlebarMessage> {
         container(
             row![
-//                icon(Icon::lucide().globe(), 14.0, palette::Text::MUTED, 0.68),
-//                body!("English US"),
-//                icon(Icon::lucide().chevron_down(), 12.0, palette::Text::MUTED, 0.68),
-            ]
-                .spacing(8)
-                .align_y(iced::Alignment::Center),
+            //                icon(Icon::lucide().globe(), 14.0, palette::Text::MUTED, 0.68),
+            //                body!("English US"),
+            //                icon(Icon::lucide().chevron_down(), 12.0, palette::Text::MUTED, 0.68),
+                        ]
+            .spacing(8)
+            .align_y(iced::Alignment::Center),
         )
-            .padding(Padding::new(0.0).left(16).right(12).top(10).bottom(10))
-            .style(|_| container::Style {
-                background: Some(Background::Color(rgb!(0, 0, 0, 40%))),
-                border: Border {
-                    radius: 12.0.into(),
-                    ..Border::default()
-                },
-                ..container::Style::default()
-            })
-            .into()
+        .padding(Padding::new(0.0).left(16).right(12).top(10).bottom(10))
+        .style(|_| container::Style {
+            background: Some(Background::Color(rgb!(0, 0, 0, 40%))),
+            border: Border {
+                radius: 12.0.into(),
+                ..Border::default()
+            },
+            ..container::Style::default()
+        })
+        .into()
     }
 }
