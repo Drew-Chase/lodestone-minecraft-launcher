@@ -2,7 +2,22 @@
 name = "lodestone_launch"
 version = "0.1.0"
 edition = "2024"
+# Tests mirror src/ under tests/ and are wired in with #[path], so only the
+# integration binaries declared below are separate test targets.
+autotests = false
 
 [dependencies]
 thiserror = { workspace = true }
 tracing = { workspace = true }
+
+[[test]]
+name = "command"
+path = "tests/integration/command.rs"
+
+[[test]]
+name = "config"
+path = "tests/integration/config.rs"
+
+[[test]]
+name = "process"
+path = "tests/integration/process.rs"
