@@ -1,4 +1,5 @@
-//! Tabs — the style guide's `.tab` pill row (§07).
+//! Tabs — the style guide's `.tab` pill row (§07), or the underline row the
+//! instance page uses ([`Tabs::underline`]).
 //!
 //! Inactive tabs are quiet (`--ink-2` on transparent); the active tab is a
 //! Lode Green pill with near-black ink. The pill *glides* between tabs on a
@@ -6,6 +7,10 @@
 //! under the hovered tab — the guide's lift-family motion (§08). The hover
 //! tint is 8% white rather than the spec's 4%, which is imperceptible on
 //! this panel.
+//!
+//! The underline style drops the pill. The active label turns Lode Green and
+//! a 2px bar glides under it, on the row's bottom two pixels. A 1px rule runs
+//! across the full width on the bottom pixel, and the bar paints over it.
 //!
 //! Labels are real [`Text`] children: iced measures and anchors them, so the
 //! pill geometry comes straight from the child layout nodes and can never
@@ -35,21 +40,40 @@ use iced_color_extension::rgb;
 
 use super::anim;
 
-/// Horizontal padding inside one tab — `.tab` is `8px 14px`.
+/// Horizontal padding inside one pill tab — `.tab` is `8px 14px`.
 const H_PADDING: f32 = 14.0;
+/// Horizontal padding inside one underline tab — the label + 32px is the slot.
+const UNDERLINE_H_PADDING: f32 = 16.0;
 /// Gap between adjacent tabs.
 const SPACING: f32 = 4.0;
 /// The `.tab` line height — 13px text plus the 8px vertical padding.
 const TAB_HEIGHT: f32 = 34.0;
+/// The underline row: the label centred in the box, with the 1px rule on the
+/// last pixel and the 2px bar over it.
+const UNDERLINE_HEIGHT: f32 = 38.0;
+/// The underline bar's thickness, on the bottom two pixels of the row.
+const BAR_THICKNESS: f32 = 2.0;
 
-/// An animated tab row (`.tab`).
+/// An animated tab row (`.tab`), or the underline row used by the instance page.
 pub struct Tabs<Message> {
     labels: Vec<String>,
     active: usize,
     on_select: Option<Box<dyn Fn(usize) -> Message>>,
+    style: Style,
+    /// Left inset before the first tab, so the row can start at the page gutter.
+    inset: f32,
     width: Length,
     height: Length,
     disabled: bool,
+}
+
+/// How the active tab is marked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Style {
+    /// `.tab` — a Lode Green pill behind the active label.
+    Pill,
+    /// A Lode Green bar on the rule under the active label.
+    Underline,
 }
 
 #[derive(Debug)]
@@ -60,7 +84,8 @@ struct State {
     text_bounds: Vec<Rectangle>,
     /// Pill slot bounds relative to the row (label + horizontal padding).
     tab_bounds: Vec<Rectangle>,
-    /// Animated active-pill geometry, relative to the row.
+    /// Animated active-pill geometry, relative to the row. The underline bar
+    /// uses the same slot, so it glides with the pill.
     pill_x: Animated<f32>,
     pill_width: Animated<f32>,
     /// Hovered tab, if any.
@@ -76,18 +101,18 @@ struct State {
 /// The contiguous hover/hit span of the tab at `index`: bounded by the
 /// midpoints between adjacent labels (the outer tabs extend to the row's
 /// padding). Every point of the row belongs to exactly one tab.
-fn region_span(text_bounds: &[Rectangle], index: usize) -> (f32, f32) {
+fn region_span(text_bounds: &[Rectangle], index: usize, padding: f32) -> (f32, f32) {
     let text = &text_bounds[index];
 
     let start = if index == 0 {
-        text.x - H_PADDING
+        text.x - padding
     } else {
         let previous = &text_bounds[index - 1];
         (previous.x + previous.width + text.x) / 2.0
     };
 
     let end = if index + 1 == text_bounds.len() {
-        text.x + text.width + H_PADDING
+        text.x + text.width + padding
     } else {
         let next = &text_bounds[index + 1];
         (text.x + text.width + next.x) / 2.0
@@ -103,6 +128,8 @@ impl<Message> Tabs<Message> {
             labels: labels.into_iter().map(Into::into).collect(),
             active: 0,
             on_select: None,
+            style: Style::Pill,
+            inset: 0.0,
             width: Length::Shrink,
             height: Length::Fixed(TAB_HEIGHT),
             disabled: false,
@@ -120,6 +147,21 @@ impl<Message> Tabs<Message> {
     /// Without an `on_select` closure the tabs are not interactive.
     pub fn on_select(mut self, on_select: impl Fn(usize) -> Message + 'static) -> Self {
         self.on_select = Some(Box::new(on_select));
+        self
+    }
+
+    /// Switches to the underline style: no pill, a Lode Green label, and a
+    /// 2px bar with a full-width rule beneath the row.
+    pub fn underline(mut self) -> Self {
+        self.style = Style::Underline;
+        self.height = Length::Fixed(UNDERLINE_HEIGHT);
+        self
+    }
+
+    /// Leaves `inset` pixels before the first tab, for a row that starts
+    /// inside the page gutter while its rule spans the full width.
+    pub fn inset(mut self, inset: f32) -> Self {
+        self.inset = inset;
         self
     }
 
@@ -141,6 +183,22 @@ impl<Message> Tabs<Message> {
     /// Whether the tabs can be interacted with at all.
     fn interactive(&self) -> bool {
         !self.disabled && self.on_select.is_some()
+    }
+
+    /// Horizontal padding inside one tab for the current style.
+    fn h_padding(&self) -> f32 {
+        match self.style {
+            Style::Pill => H_PADDING,
+            Style::Underline => UNDERLINE_H_PADDING,
+        }
+    }
+
+    /// The row's height for the current style.
+    fn tab_height(&self) -> f32 {
+        match self.style {
+            Style::Pill => TAB_HEIGHT,
+            Style::Underline => UNDERLINE_HEIGHT,
+        }
     }
 
     /// The label widgets — rebuilt identically for `children`, `diff`,
@@ -165,27 +223,33 @@ impl<Message> Tabs<Message> {
     ///
     /// Hit regions are contiguous and derived from the label bounds — the
     /// boundary between two tabs is the midpoint between their glyphs, so the
-    /// region you hit is the region you see highlighted.
-    fn tab_at(state: &State, cursor: Cursor, bounds: Rectangle) -> Option<usize> {
+    /// region you hit is the region you see highlighted. The regions span the
+    /// row's full height, so the underline bar is part of the tab.
+    fn tab_at(&self, state: &State, cursor: Cursor, bounds: Rectangle) -> Option<usize> {
         // `position_in` is already relative to `bounds` — subtracting the
         // origin again shifts the whole hit test by the widget's position
         // (hovering a tab's left half registered the previous tab).
         let position = cursor.position_in(bounds)?;
         let x = position.x;
+        let padding = self.h_padding();
 
         (0..state.text_bounds.len()).find(|&index| {
-            let (start, end) = region_span(&state.text_bounds, index);
+            let (start, end) = region_span(&state.text_bounds, index, padding);
             x >= start && x < end
         })
     }
 
-    /// Ink color for a tab — active reads on the green pill, hover brightens.
+    /// Ink color for a tab — active reads on the pill or in the underline's
+    /// green, hover brightens.
     fn ink(&self, index: usize, hovered: Option<usize>) -> Color {
         if self.disabled {
             return color::Text::DISABLED;
         }
         if index == self.active {
-            color::Primary::ON
+            match self.style {
+                Style::Pill => color::Primary::ON,
+                Style::Underline => color::Primary::DEFAULT,
+            }
         } else if hovered == Some(index) {
             color::Text::HEADLINE
         } else {
@@ -219,7 +283,7 @@ impl<Message> Tabs<Message> {
         if let Some(index) = state.hovered
             && index < state.text_bounds.len()
         {
-            let (start, end) = region_span(&state.text_bounds, index);
+            let (start, end) = region_span(&state.text_bounds, index, self.h_padding());
             let width = end - start;
             if state.hover_x.target() != &start || state.hover_width.target() != &width {
                 state.hover_x.set_target(start);
@@ -276,28 +340,27 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
 
     fn layout(&mut self, tree: &mut Tree, renderer: &BaseRenderer, limits: &Limits) -> Node {
         let mut widgets = self.label_widgets();
+        let padding = self.h_padding();
+        let height = self.tab_height();
         let state = tree.state.downcast_mut::<State>();
 
         let mut children = Vec::with_capacity(self.labels.len());
         let mut text_bounds = Vec::with_capacity(self.labels.len());
         let mut tab_bounds = Vec::with_capacity(self.labels.len());
-        let mut x = 0.0;
+        let mut x = self.inset;
         let mut total_width = 0.0;
 
         for (index, widget) in widgets.iter_mut().enumerate() {
             // Shrink-resolve the label to its natural size.
             let node = widget.as_widget_mut().layout(&mut tree.children[index], renderer, limits);
             let text_size = node.size();
-            let tab_width = text_size.width + H_PADDING * 2.0;
+            let tab_width = text_size.width + padding * 2.0;
 
             // Center the label inside its tab slot.
-            let positioned = node.move_to(Point::new(x + H_PADDING, (TAB_HEIGHT - text_size.height) / 2.0));
+            let positioned = node.move_to(Point::new(x + padding, (height - text_size.height) / 2.0));
 
-            text_bounds.push(Rectangle::new(
-                Point::new(x + H_PADDING, (TAB_HEIGHT - text_size.height) / 2.0),
-                text_size,
-            ));
-            tab_bounds.push(Rectangle::new(Point::new(x, 0.0), Size::new(tab_width, TAB_HEIGHT)));
+            text_bounds.push(Rectangle::new(Point::new(x + padding, (height - text_size.height) / 2.0), text_size));
+            tab_bounds.push(Rectangle::new(Point::new(x, 0.0), Size::new(tab_width, height)));
             children.push(positioned);
             x += tab_width + SPACING;
         }
@@ -309,7 +372,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
         state.tab_bounds = tab_bounds;
         let _ = self.sync_targets(state);
 
-        let size = limits.resolve(self.width, self.height, Size::new(total_width, TAB_HEIGHT));
+        let size = limits.resolve(self.width, self.height, Size::new(total_width, height));
         Node::with_children(size, children)
     }
 
@@ -339,20 +402,20 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
                 // CursorMoved events, so the hover must be re-derived here —
                 // otherwise it trails fast mouse motion by a frame while the
                 // row is animating.
-                let hovered = if self.interactive() { Self::tab_at(state, cursor, bounds) } else { None };
+                let hovered = if self.interactive() { self.tab_at(state, cursor, bounds) } else { None };
                 if state.hovered != hovered {
                     state.hovered = hovered;
                 }
             }
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                if self.interactive() && Self::tab_at(state, cursor, bounds).is_some() {
+                if self.interactive() && self.tab_at(state, cursor, bounds).is_some() {
                     state.is_pressed = true;
                     shell.capture_event();
                 }
             }
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) if state.is_pressed => {
                 state.is_pressed = false;
-                if let (Some(index), Some(on_select)) = (Self::tab_at(state, cursor, bounds), self.on_select.as_ref())
+                if let (Some(index), Some(on_select)) = (self.tab_at(state, cursor, bounds), self.on_select.as_ref())
                     && !self.disabled
                 {
                     shell.publish(on_select(index));
@@ -360,7 +423,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
                 shell.capture_event();
             }
             Event::Mouse(mouse::Event::CursorMoved { .. }) => {
-                let hovered = if self.interactive() { Self::tab_at(state, cursor, bounds) } else { None };
+                let hovered = if self.interactive() { self.tab_at(state, cursor, bounds) } else { None };
                 if state.hovered != hovered {
                     state.hovered = hovered;
                 }
@@ -393,49 +456,77 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
         let state = tree.state.downcast_ref::<State>();
         let widgets = self.label_widgets();
         let bounds = layout.bounds();
-        let radius = Radius::from(12.0);
 
-        // Sliding hover highlight — white 8% (the guide's ghost-hover level;
-        // the spec's 4% is imperceptible on this panel), covering exactly the
-        // hit region of the hovered tab (both position and width ease toward
-        // it).
-        let hover_alpha = *state.hover_alpha.value();
-        if hover_alpha > 0.01
-            && let Some(hovered) = state.hovered
-            && hovered < state.text_bounds.len()
-        {
-            let hover_bounds = Rectangle::new(
-                Point::new(bounds.x + *state.hover_x.value(), bounds.y),
-                Size::new(*state.hover_width.value(), bounds.height),
-            );
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: hover_bounds,
-                    border: Border { radius, ..Border::default() },
-                    ..renderer::Quad::default()
-                },
-                anim::fade(rgb!(255, 255, 255, 8%), hover_alpha),
-            );
+        match self.style {
+            Style::Pill => {
+                let radius = Radius::from(12.0);
+
+                // Sliding hover highlight — white 8% (the guide's ghost-hover level;
+                // the spec's 4% is imperceptible on this panel), covering exactly the
+                // hit region of the hovered tab (both position and width ease toward
+                // it).
+                let hover_alpha = *state.hover_alpha.value();
+                if hover_alpha > 0.01
+                    && let Some(hovered) = state.hovered
+                    && hovered < state.text_bounds.len()
+                {
+                    let hover_bounds = Rectangle::new(
+                        Point::new(bounds.x + *state.hover_x.value(), bounds.y),
+                        Size::new(*state.hover_width.value(), bounds.height),
+                    );
+                    renderer.fill_quad(
+                        renderer::Quad {
+                            bounds: hover_bounds,
+                            border: Border { radius, ..Border::default() },
+                            ..renderer::Quad::default()
+                        },
+                        anim::fade(rgb!(255, 255, 255, 8%), hover_alpha),
+                    );
+                }
+
+                // Active pill — Lode Green, glowing (§07 `.tab.active`).
+                let pill_bounds = Rectangle::new(
+                    Point::new(bounds.x + *state.pill_x.value(), bounds.y),
+                    Size::new(*state.pill_width.value(), bounds.height),
+                );
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: pill_bounds,
+                        border: Border { radius, ..Border::default() },
+                        shadow: iced::Shadow {
+                            color: rgb!(34, 255, 132, 35%),
+                            offset: iced::Vector::new(0.0, 8.0),
+                            blur_radius: 20.0,
+                        },
+                        ..renderer::Quad::default()
+                    },
+                    color::Primary::DEFAULT,
+                );
+            }
+            Style::Underline => {
+                // The 1px rule runs the full width on the row's last pixel…
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: Rectangle::new(Point::new(bounds.x, bounds.y + bounds.height - 1.0), Size::new(bounds.width, 1.0)),
+                        ..renderer::Quad::default()
+                    },
+                    color::Surface::LINE,
+                );
+
+                // …and the active bar sits on the two bottom pixels, over the
+                // rule, spanning the same slot as the pill would.
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: Rectangle::new(
+                            Point::new(bounds.x + *state.pill_x.value(), bounds.y + bounds.height - BAR_THICKNESS),
+                            Size::new(*state.pill_width.value(), BAR_THICKNESS),
+                        ),
+                        ..renderer::Quad::default()
+                    },
+                    color::Primary::DEFAULT,
+                );
+            }
         }
-
-        // Active pill — Lode Green, glowing (§07 `.tab.active`).
-        let pill_bounds = Rectangle::new(
-            Point::new(bounds.x + *state.pill_x.value(), bounds.y),
-            Size::new(*state.pill_width.value(), bounds.height),
-        );
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds: pill_bounds,
-                border: Border { radius, ..Border::default() },
-                shadow: iced::Shadow {
-                    color: rgb!(34, 255, 132, 35%),
-                    offset: iced::Vector::new(0.0, 8.0),
-                    blur_radius: 20.0,
-                },
-                ..renderer::Quad::default()
-            },
-            color::Primary::DEFAULT,
-        );
 
         // Labels — real Text children, so measurement/anchoring is iced's job.
         let mut children = layout.children();
@@ -464,7 +555,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
 
     fn mouse_interaction(&self, tree: &Tree, layout: Layout<'_>, cursor: Cursor, _viewport: &Rectangle, _renderer: &BaseRenderer) -> Interaction {
         let state = tree.state.downcast_ref::<State>();
-        if self.interactive() && Self::tab_at(state, cursor, layout.bounds()).is_some() {
+        if self.interactive() && self.tab_at(state, cursor, layout.bounds()).is_some() {
             Interaction::Pointer
         } else {
             Interaction::default()
@@ -496,10 +587,33 @@ mod tests {
         ]
     }
 
+    fn state_with(text_bounds: Vec<Rectangle>) -> State {
+        State {
+            text_bounds,
+            tab_bounds: Vec::new(),
+            pill_x: Animated::new(0.0, anim::glide()),
+            pill_width: Animated::new(0.0, anim::glide()),
+            hovered: None,
+            hover_x: Animated::new(0.0, anim::micro()),
+            hover_width: Animated::new(0.0, anim::micro()),
+            hover_alpha: Animated::new(0.0, anim::micro()),
+            is_pressed: false,
+            first_layout: true,
+        }
+    }
+
     #[test]
     fn ink_follows_active_and_hover() {
         let tabs = tabs();
         assert_eq!(tabs.ink(0, None), color::Primary::ON);
+        assert_eq!(tabs.ink(1, None), color::Text::MUTED);
+        assert_eq!(tabs.ink(1, Some(1)), color::Text::HEADLINE);
+    }
+
+    #[test]
+    fn underline_ink_is_green_on_the_active_tab_only() {
+        let tabs = Tabs::<()>::new(["Overview", "Mods"]).underline().on_select(|_| ());
+        assert_eq!(tabs.ink(0, None), color::Primary::DEFAULT);
         assert_eq!(tabs.ink(1, None), color::Text::MUTED);
         assert_eq!(tabs.ink(1, Some(1)), color::Text::HEADLINE);
     }
@@ -528,18 +642,8 @@ mod tests {
 
     #[test]
     fn hit_test_is_relative_to_the_widget_origin() {
-        let state = State {
-            text_bounds: sample_bounds(),
-            tab_bounds: Vec::new(),
-            pill_x: Animated::new(0.0, anim::glide()),
-            pill_width: Animated::new(0.0, anim::glide()),
-            hovered: None,
-            hover_x: Animated::new(0.0, anim::micro()),
-            hover_width: Animated::new(0.0, anim::micro()),
-            hover_alpha: Animated::new(0.0, anim::micro()),
-            is_pressed: false,
-            first_layout: true,
-        };
+        let state = state_with(sample_bounds());
+        let tabs = tabs();
 
         // A widget parked at origin (44, 100) — the cursor is given in window
         // coordinates while `position_in` resolves it against these bounds.
@@ -550,43 +654,72 @@ mod tests {
         let at = |rel_x: f32| Cursor::Available(Point::new(44.0 + rel_x, 100.0 + 16.0));
 
         // Deep inside the first tab's region...
-        assert_eq!(Tabs::<()>::tab_at(&state, at(34.0), bounds), Some(0));
+        assert_eq!(tabs.tab_at(&state, at(34.0), bounds), Some(0));
         // ...its far-left padding edge (one pixel in)...
-        assert_eq!(Tabs::<()>::tab_at(&state, at(1.0), bounds), Some(0));
+        assert_eq!(tabs.tab_at(&state, at(1.0), bounds), Some(0));
         // ...and the left half of the second tab, which used to hit the first.
-        assert_eq!(Tabs::<()>::tab_at(&state, at(70.0), bounds), Some(1));
+        assert_eq!(tabs.tab_at(&state, at(70.0), bounds), Some(1));
 
         // Just past the row's right edge: nothing.
-        assert_eq!(Tabs::<()>::tab_at(&state, at(265.0), bounds), None);
+        assert_eq!(tabs.tab_at(&state, at(265.0), bounds), None);
+    }
+
+    #[test]
+    fn underline_slots_include_the_bar_row() {
+        // The instance row: labels start at x = 44 (GUTTER 28 + 16) and the
+        // second label at 138, as in the reference (slot = label + 32, gap 4).
+        let text_bounds = vec![
+            Rectangle::new(Point::new(44.0, 10.0), Size::new(58.0, 13.0)),
+            Rectangle::new(Point::new(138.0, 10.0), Size::new(30.0, 13.0)),
+        ];
+        let state = state_with(text_bounds);
+        let tabs = Tabs::<()>::new(["Overview", "Mods"]).underline().on_select(|_| ());
+        let bounds = Rectangle::new(Point::new(0.0, 0.0), Size::new(400.0, UNDERLINE_HEIGHT));
+
+        // The bar's row is the last pixel row of the box: it still hits the tab.
+        let on_bar = |rel_x: f32| Cursor::Available(Point::new(rel_x, UNDERLINE_HEIGHT - 1.0));
+        assert_eq!(tabs.tab_at(&state, on_bar(30.0), bounds), Some(0));
+        assert_eq!(tabs.tab_at(&state, on_bar(130.0), bounds), Some(1));
     }
 
     #[test]
     fn regions_are_contiguous_and_contain_their_label() {
         let bounds = sample_bounds();
-        let (start, end) = region_span(&bounds, 0);
+        let (start, end) = region_span(&bounds, 0, H_PADDING);
         assert!(start <= bounds[0].x && end >= bounds[0].x + bounds[0].width);
 
         // The boundary between two regions is the midpoint between the
         // previous label's right edge and the next label's left edge.
-        let (next_start, _) = region_span(&bounds, 1);
+        let (next_start, _) = region_span(&bounds, 1, H_PADDING);
         let expected = (bounds[0].x + bounds[0].width + bounds[1].x) / 2.0;
         assert_eq!(next_start, expected);
 
         // Contiguity: each region starts where the previous one ends.
-        let (_, first_end) = region_span(&bounds, 0);
-        let (second_start, _) = region_span(&bounds, 1);
+        let (_, first_end) = region_span(&bounds, 0, H_PADDING);
+        let (second_start, _) = region_span(&bounds, 1, H_PADDING);
         assert_eq!(first_end, second_start);
     }
 
     #[test]
     fn outer_regions_cover_the_row_padding() {
         let bounds = sample_bounds();
-        let (first_start, _) = region_span(&bounds, 0);
+        let (first_start, _) = region_span(&bounds, 0, H_PADDING);
         assert_eq!(first_start, bounds[0].x - 14.0);
 
         let last = bounds.len() - 1;
-        let (_, last_end) = region_span(&bounds, last);
+        let (_, last_end) = region_span(&bounds, last, H_PADDING);
         let last_text = &bounds[last];
         assert_eq!(last_end, last_text.x + last_text.width + 14.0);
+    }
+
+    #[test]
+    fn underline_padding_is_sixteen_each_side() {
+        // Label at 44 with 16px padding: the first slot starts at the 28px
+        // inset, and the midpoint with the second label (138) is at 120.
+        let bounds = vec![
+            Rectangle::new(Point::new(44.0, 10.0), Size::new(58.0, 13.0)),
+            Rectangle::new(Point::new(138.0, 10.0), Size::new(30.0, 13.0)),
+        ];
+        assert_eq!(region_span(&bounds, 0, UNDERLINE_H_PADDING), (28.0, 120.0));
     }
 }
