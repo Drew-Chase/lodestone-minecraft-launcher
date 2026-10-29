@@ -13,7 +13,7 @@ use instance::{Instance, Loader};
 
 use crate::app::components::instance_card::{CARD_HEIGHT, COMPACT_ROW_HEIGHT, TABLE_ROW_HEIGHT};
 use crate::app::theme::fonts;
-use iced::widget::{Text, column, container, scrollable, svg};
+use iced::widget::{Column, Text, container, scrollable, svg};
 use iced::{Background, Border, Color, Element, Fill, Padding, Size};
 use tracing::info;
 
@@ -202,15 +202,22 @@ impl Library {
     /// inner size, used for the grid's column count and the windowed row
     /// count.
     pub fn view(&self, viewport: Size) -> Element<'_, Message> {
+        // The banner is optional, so the column takes its children one at a
+        // time: a missing hero must not leave a spacing gap behind.
+        let mut page = Column::new().push(self.header());
+        if let Some(hero) = self.hero() {
+            page = page.push(hero);
+        }
+        let page = page.push(self.quick_actions()).push(self.instances_section(viewport));
+
         scrollable(
-            column![self.header(), self.hero(), self.quick_actions(), self.instances_section(viewport),]
-                .spacing(24)
+            page.spacing(24)
                 .padding(Padding::new(0.0).left(28).right(28).top(24).bottom(28))
                 .width(Fill),
         )
         .width(Fill)
         .height(Fill)
-        .on_scroll(|page| Message::Scrolled(page.absolute_offset().y))
+        .on_scroll(|scroll| Message::Scrolled(scroll.absolute_offset().y))
         .into()
     }
 }

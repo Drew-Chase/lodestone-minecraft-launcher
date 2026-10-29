@@ -1,35 +1,34 @@
-//! Worlds tab — the saved worlds as a two-column grid, with a search field, a
-//! Singleplayer/Backups filter and per-world actions.
+//! Worlds tab — the saved worlds as a two-column grid, with a search field and
+//! per-world actions.
 //!
-//! The list is seeded by [`super::demo`]. `update` keeps the visible indices
-//! current, so `view` only walks them.
+//! The list is read from the instance's `saves/` folder by [`super::files`].
+//! `update` keeps the visible indices current, so `view` only walks them.
 
 use aurora_leaf::Icon;
 use chrono::{DateTime, Local};
-use iced::widget::{Space, Text, column, container, responsive, row, stack, svg, text_input};
+use iced::widget::{Space, Text, column, container, image, row, stack, text_input};
 use iced::{Background, Border, Color, ContentFit, Element, Fill, Length, Padding, Theme, alignment};
 use iced_color_extension::rgb;
 
+use super::files::WorldFile;
+use super::format::format_bytes;
+use super::layer;
 use crate::app::components::badge::Badge;
 use crate::app::components::button::Variant;
 use crate::app::components::grid::grid;
 use crate::app::components::icon_button::SECONDARY_BUTTON_STYLE;
 use crate::app::components::input;
 use crate::app::components::panel::{panel, panel_with_padding};
-use crate::app::components::scene_art::screenshot_handle;
-use crate::app::components::segmented::segmented;
+use crate::app::components::screenshot_tile::placeholder_art;
 use crate::app::components::{IconButton, TextButton};
-use crate::app::pages::library::instance::{Biome, Instance};
 use crate::app::theme::{color, fonts, utility};
-
-use super::demo;
-use super::format::{format_bytes, format_clock};
-use super::layer;
 
 /// A card's height, per the reference.
 const CARD_HEIGHT: f32 = 145.0;
-/// The scene thumbnail's width, per the reference.
+/// The world thumbnail's width, per the reference.
 const THUMB_WIDTH: f32 = 128.0;
+/// The thumbnail's corner radius, per the reference.
+const THUMB_RADIUS: f32 = 12.0;
 
 /// The game mode a world was created in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,6 +54,7 @@ impl GameMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Difficulty {
     Peaceful,
+    Easy,
     Normal,
     Hard,
 }
@@ -63,59 +63,11 @@ impl Difficulty {
     pub fn label(self) -> &'static str {
         match self {
             Difficulty::Peaceful => "PEACEFUL",
+            Difficulty::Easy => "EASY",
             Difficulty::Normal => "NORMAL",
             Difficulty::Hard => "HARD",
         }
     }
-}
-
-/// The chips above the grid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum WorldFilter {
-    #[default]
-    All,
-    Singleplayer,
-    Backups,
-}
-
-impl WorldFilter {
-    /// The chips, in order, with their labels.
-    pub const OPTIONS: [(WorldFilter, &'static str); 3] = [
-        (WorldFilter::All, "All"),
-        (WorldFilter::Singleplayer, "Singleplayer"),
-        (WorldFilter::Backups, "Backups"),
-    ];
-
-    /// Whether `world` belongs under this chip.
-    pub fn admits(self, world: &WorldEntry) -> bool {
-        match self {
-            WorldFilter::All => true,
-            WorldFilter::Singleplayer => !world.backup,
-            WorldFilter::Backups => world.backup,
-        }
-    }
-}
-
-/// One saved world.
-#[derive(Debug, Clone, PartialEq)]
-pub struct WorldEntry {
-    pub name: String,
-    pub game_mode: GameMode,
-    pub difficulty: Difficulty,
-    pub seed: i64,
-    pub play_seconds: u32,
-    pub size_bytes: u64,
-    pub saved: DateTime<Local>,
-    pub version: String,
-    pub pinned: bool,
-    /// Synced to the cloud — draws the cloud glyph.
-    pub synced: bool,
-    /// Protected from edits — draws the shield glyph when not synced.
-    pub protected: bool,
-    /// A backup copy rather than a live save.
-    pub backup: bool,
-    pub biome: Biome,
-    pub art_seed: u64,
 }
 
 /// The "Saved …" caption: relative to `now` for the last few weeks, and a
@@ -136,7 +88,6 @@ pub fn format_saved(saved: DateTime<Local>, now: DateTime<Local>) -> String {
 #[derive(Debug, Clone)]
 pub enum Message {
     Search(String),
-    Filter(WorldFilter),
     /// Import — display-only until the instance manager lands.
     Import,
     /// New world — display-only until the instance manager lands.
@@ -150,12 +101,11 @@ pub enum Message {
 /// The Worlds tab's state.
 #[derive(Debug)]
 pub struct State {
-    worlds: Vec<WorldEntry>,
+    worlds: Vec<WorldFile>,
     query: String,
-    filter: WorldFilter,
-    /// Indices into `worlds` that pass the search and the filter.
+    /// Indices into `worlds` that pass the search, kept current by `update`.
     visible: Vec<usize>,
-    /// The moment the tab was opened, the reference for "Saved … today".
+    /// The moment the worlds were read, the reference for "Saved … today".
     now: DateTime<Local>,
 }
 
@@ -164,7 +114,6 @@ impl Default for State {
         Self {
             worlds: Vec::new(),
             query: String::new(),
-            filter: WorldFilter::default(),
             visible: Vec::new(),
             now: Local::now(),
         }
@@ -172,25 +121,18 @@ impl Default for State {
 }
 
 impl State {
-    /// The worlds an instance starts with, relative to `now`.
-    pub fn for_instance(instance: &Instance, now: DateTime<Local>) -> Self {
-        let mut state = Self {
-            worlds: demo::worlds(instance, now),
-            now,
-            ..Self::default()
-        };
-        state.refilter();
-        state
+    /// Replaces the worlds with the ones the folder holds. Save times are
+    /// relative to `now`.
+    pub fn set_worlds(&mut self, worlds: Vec<WorldFile>, now: DateTime<Local>) {
+        self.worlds = worlds;
+        self.now = now;
+        self.refilter();
     }
 
     pub fn update(&mut self, message: Message) {
         match message {
             Message::Search(query) => {
                 self.query = query;
-                self.refilter();
-            }
-            Message::Filter(filter) => {
-                self.filter = filter;
                 self.refilter();
             }
             // Display-only until the launch pipeline and instance manager land.
@@ -204,7 +146,7 @@ impl State {
             .worlds
             .iter()
             .enumerate()
-            .filter(|(_, world)| self.filter.admits(world) && (query.is_empty() || world.name.to_lowercase().contains(&query)))
+            .filter(|(_, world)| query.is_empty() || world.name.to_lowercase().contains(&query))
             .map(|(index, _)| index)
             .collect();
         self.visible = visible;
@@ -214,12 +156,12 @@ impl State {
     pub fn view(&self) -> Element<'_, Message> {
         let cards: Vec<Element<'_, Message>> = self.visible.iter().map(|&index| self.world_card(&self.worlds[index])).collect();
         let body = if cards.is_empty() {
-            panel(
-                Text::new("No worlds match your search.")
-                    .size(12)
-                    .font(fonts::Inter::REGULAR)
-                    .color(color::Text::MUTED),
-            )
+            let message = if self.worlds.is_empty() {
+                "No worlds yet. Worlds you create in the game appear here."
+            } else {
+                "No worlds match your search."
+            };
+            panel(Text::new(message).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED))
         } else {
             grid(cards, 2, 14.0)
         };
@@ -257,7 +199,6 @@ impl State {
 
         row![
             search,
-            segmented(&WorldFilter::OPTIONS, self.filter, Message::Filter),
             Space::new().width(Fill),
             TextButton::labeled_icon(Icon::lucide().upload(), "Import", Variant::Ghost).on_press(Message::Import),
             TextButton::labeled_icon(Icon::lucide().plus(), "New world", Variant::Ghost).on_press(Message::NewWorld),
@@ -267,41 +208,36 @@ impl State {
         .into()
     }
 
-    /// One world: the thumbnail beside its name, chips, playtime and actions.
-    fn world_card<'a>(&'a self, world: &'a WorldEntry) -> Element<'a, Message> {
+    /// One world: the thumbnail beside its name, its tags, seed and size, and the actions.
+    fn world_card<'a>(&'a self, world: &'a WorldFile) -> Element<'a, Message> {
+        let mut tags: Vec<Element<'a, Message>> = Vec::new();
+        if let Some(mode) = world.game_mode {
+            tags.push(mode_badge(mode).into());
+        }
+        if let Some(difficulty) = world.difficulty {
+            tags.push(
+                Badge::new(difficulty.label(), color::Text::MUTED, rgb!(255, 255, 255, 6%))
+                    .compact()
+                    .into(),
+            );
+        }
+        let seed = world.seed.map_or_else(|| "# —".to_string(), |seed| format!("# {seed}"));
+        let size = format_bytes(world.size_bytes);
+        let saved = world.saved.map_or_else(|| "Saved —".to_string(), |saved| format_saved(saved, self.now));
+
         let body = column![
-            row![
-                Text::new(world.name.as_str())
-                    .size(14)
-                    .font(fonts::Inter::SEMI_BOLD)
-                    .color(color::Text::HEADLINE),
-                Space::new().width(Fill),
-                status_glyph(world),
-            ]
-            .align_y(alignment::Vertical::Center),
-            row![
-                mode_badge(world.game_mode),
-                Badge::new(world.difficulty.label(), color::Text::MUTED, rgb!(255, 255, 255, 6%)).compact(),
-            ]
-            .spacing(6),
-            Text::new(format!("# {}", world.seed))
+            Text::new(world.name.as_str())
+                .size(14)
+                .font(fonts::Inter::SEMI_BOLD)
+                .color(color::Text::HEADLINE),
+            row(tags).spacing(6),
+            Text::new(format!("{seed} · size {size}"))
                 .size(11)
                 .font(fonts::JetBrainsMono::REGULAR)
                 .color(color::Text::PLACEHOLDER),
-            Text::new(format!(
-                "play {} · size {}",
-                format_clock(world.play_seconds),
-                format_bytes(world.size_bytes)
-            ))
-            .size(11)
-            .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::PLACEHOLDER),
             Space::new().height(Fill),
             row![
-                Text::new(format_saved(world.saved, self.now))
-                    .size(11)
-                    .font(fonts::Inter::REGULAR)
-                    .color(color::Text::MUTED),
+                Text::new(saved).size(11).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
                 Space::new().width(Fill),
                 IconButton::new(Icon::lucide().folder())
                     .size(30)
@@ -344,66 +280,30 @@ fn bare_input(_theme: &Theme, _status: text_input::Status) -> text_input::Style 
     }
 }
 
-/// The scene thumbnail, with the pin (top-left) and the version (bottom-right).
-fn thumbnail(world: &WorldEntry) -> Element<'static, Message> {
-    let (biome, seed) = (world.biome, world.art_seed);
-    let art = responsive(move |size| {
-        svg(screenshot_handle(biome, seed, size))
-            .content_fit(ContentFit::Fill)
+/// The world's own `icon.png`, with the Minecraft version in the bottom-right
+/// corner. A world without an icon gets a neutral placeholder.
+fn thumbnail(world: &WorldFile) -> Element<'_, Message> {
+    let art: Element<'_, Message> = match &world.icon {
+        Some(handle) => image(handle.clone())
+            .content_fit(ContentFit::Cover)
+            .border_radius(THUMB_RADIUS)
             .width(Fill)
             .height(Fill)
-            .into()
-    });
+            .into(),
+        None => placeholder_art(THUMB_RADIUS),
+    };
 
     let mut layers = stack![art];
-    if world.pinned {
+    if let Some(version) = &world.version {
         layers = layers.push(layer(
-            pin_chip(),
-            alignment::Horizontal::Left,
-            alignment::Vertical::Top,
-            Padding::new(0.0).left(8.0).top(8.0),
+            Badge::new(version.as_str(), color::Text::DEFAULT, rgb!(0, 0, 0, 45%)).compact().into(),
+            alignment::Horizontal::Right,
+            alignment::Vertical::Bottom,
+            Padding::new(0.0).right(8.0).bottom(8.0),
         ));
     }
-    layers = layers.push(layer(
-        Badge::new(world.version.as_str(), color::Text::DEFAULT, rgb!(0, 0, 0, 45%))
-            .compact()
-            .into(),
-        alignment::Horizontal::Right,
-        alignment::Vertical::Bottom,
-        Padding::new(0.0).right(8.0).bottom(8.0),
-    ));
 
     container(layers).width(THUMB_WIDTH).height(Fill).into()
-}
-
-fn pin_chip() -> Element<'static, Message> {
-    container(utility::icon(
-        Icon::lucide().pin(),
-        11.0,
-        Some((color::Text::HEADLINE, color::Text::HEADLINE)),
-    ))
-    .padding(5)
-    .style(|_| container::Style {
-        background: Some(Background::Color(rgb!(0, 0, 0, 40%))),
-        border: Border {
-            radius: 8.0.into(),
-            width: 1.0,
-            color: color::Surface::LINE,
-        },
-        ..container::Style::default()
-    })
-    .into()
-}
-
-/// The cloud for synced worlds, the shield for protected ones, nothing otherwise.
-fn status_glyph(world: &WorldEntry) -> Element<'static, Message> {
-    if world.synced {
-        utility::icon(Icon::lucide().cloud(), 13.0, Some((color::Accents::CYAN, color::Accents::CYAN)))
-    } else if world.protected {
-        utility::icon(Icon::lucide().shield(), 13.0, Some((color::Text::PLACEHOLDER, color::Text::PLACEHOLDER)))
-    } else {
-        Space::new().into()
-    }
 }
 
 fn mode_badge(mode: GameMode) -> Badge {

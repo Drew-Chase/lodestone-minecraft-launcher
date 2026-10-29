@@ -1,91 +1,35 @@
-//! Mods tab — the installed mods as one divided list, with a text filter, a
-//! category filter, and a switch per mod.
+//! Mods tab — the mod jars in the instance's `mods/` folder as one divided
+//! list, with a text filter and a switch per mod.
 //!
-//! The list is seeded per instance by [`super::demo`]. `update` keeps the
-//! indices of the visible rows current, so `view` only walks them.
+//! The list is read from disk by [`super::files`]. `update` keeps the indices
+//! of the visible rows current, so `view` only walks them.
 
 use aurora_leaf::Icon;
 use iced::widget::{Space, Text, column, container, row, text_input};
 use iced::{Background, Border, Color, Element, Fill, Padding, alignment};
+use iced_color_extension::rgb;
 
+use super::files::ModFile;
 use crate::app::components::badge::Badge;
 use crate::app::components::button::Variant;
 use crate::app::components::icon_button::SECONDARY_BUTTON_STYLE;
 use crate::app::components::input;
 use crate::app::components::panel::{divided_panel, panel};
-use crate::app::components::{IconButton, Select, TextButton, Toggle};
-use crate::app::pages::library::instance::Instance;
+use crate::app::components::{IconButton, TextButton, Toggle};
 use crate::app::theme::{color, fonts, utility};
 
-use super::demo;
-
-/// The categories a mod is filed under.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModCategory {
-    Performance,
-    Graphics,
-    Library,
-    Hud,
-    Utility,
-}
-
-impl ModCategory {
-    /// Every category, in the order the filter lists them.
-    pub const ALL: [ModCategory; 5] = [
-        ModCategory::Performance,
-        ModCategory::Graphics,
-        ModCategory::Library,
-        ModCategory::Hud,
-        ModCategory::Utility,
-    ];
-
-    /// The uppercase tag drawn beside each mod's name.
-    pub fn label(self) -> &'static str {
-        match self {
-            ModCategory::Performance => "PERFORMANCE",
-            ModCategory::Graphics => "GRAPHICS",
-            ModCategory::Library => "LIBRARY",
-            ModCategory::Hud => "HUD",
-            ModCategory::Utility => "UTILITY",
-        }
-    }
-
-    /// The title-case name the category filter lists.
-    pub fn title(self) -> &'static str {
-        match self {
-            ModCategory::Performance => "Performance",
-            ModCategory::Graphics => "Graphics",
-            ModCategory::Library => "Library",
-            ModCategory::Hud => "HUD",
-            ModCategory::Utility => "Utility",
-        }
-    }
-}
-
-/// One installed mod.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModEntry {
-    pub name: String,
-    pub author: String,
-    pub version: String,
-    pub category: ModCategory,
-    pub enabled: bool,
-}
-
-/// The active filter: a case-insensitive match on name or author, and an
-/// optional category.
+/// The active filter: a case-insensitive match on name or author.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ModFilter {
     pub query: String,
-    pub category: Option<ModCategory>,
 }
 
 impl ModFilter {
     /// Whether `entry` passes the filter.
-    pub fn matches(&self, entry: &ModEntry) -> bool {
-        let in_category = self.category.is_none_or(|category| category == entry.category);
-        let in_text = self.query.is_empty() || contains_ignore_case(&entry.name, &self.query) || contains_ignore_case(&entry.author, &self.query);
-        in_category && in_text
+    pub fn matches(&self, entry: &ModFile) -> bool {
+        self.query.is_empty()
+            || contains_ignore_case(&entry.name, &self.query)
+            || entry.author.as_deref().is_some_and(|author| contains_ignore_case(author, &self.query))
     }
 }
 
@@ -96,7 +40,7 @@ fn contains_ignore_case(haystack: &str, needle: &str) -> bool {
 /// The Mods tab's state.
 #[derive(Debug, Default)]
 pub struct State {
-    entries: Vec<ModEntry>,
+    entries: Vec<ModFile>,
     filter: ModFilter,
     /// Indices into `entries` that pass `filter`, kept current by `update`.
     visible: Vec<usize>,
@@ -107,8 +51,6 @@ pub struct State {
 pub enum Message {
     /// The filter text changed.
     Query(String),
-    /// A category was picked; `None` lists every category.
-    Category(Option<ModCategory>),
     /// A mod's switch was flipped.
     Toggle { index: usize, enabled: bool },
     /// Add Mod was pressed — display-only until the instance manager lands.
@@ -118,24 +60,16 @@ pub enum Message {
 }
 
 impl State {
-    /// The mods an instance starts with, unfiltered.
-    pub fn for_instance(instance: &Instance) -> Self {
-        let mut state = Self {
-            entries: demo::mods(instance),
-            ..Self::default()
-        };
-        state.refilter();
-        state
+    /// Replaces the mods with the ones the folder holds, unfiltered.
+    pub fn set_mods(&mut self, mods: Vec<ModFile>) {
+        self.entries = mods;
+        self.refilter();
     }
 
     pub fn update(&mut self, message: Message) {
         match message {
             Message::Query(query) => {
                 self.filter.query = query;
-                self.refilter();
-            }
-            Message::Category(category) => {
-                self.filter.category = category;
                 self.refilter();
             }
             Message::Toggle { index, enabled } => {
@@ -163,12 +97,12 @@ impl State {
     pub fn view(&self) -> Element<'_, Message> {
         let rows: Vec<Element<'_, Message>> = self.visible.iter().map(|&index| mod_row(index, &self.entries[index])).collect();
         let list = if rows.is_empty() {
-            panel(
-                Text::new("No mods match these filters.")
-                    .size(12)
-                    .font(fonts::Inter::REGULAR)
-                    .color(color::Text::MUTED),
-            )
+            let message = if self.entries.is_empty() {
+                "No mods in this instance yet."
+            } else {
+                "No mods match this filter."
+            };
+            panel(Text::new(message).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED))
         } else {
             divided_panel(rows, Padding::new(0.0).left(16).right(16))
         };
@@ -177,14 +111,6 @@ impl State {
     }
 
     fn toolbar(&self) -> Element<'_, Message> {
-        // Option 0 clears the category filter; the rest map onto `ModCategory::ALL`.
-        let options = std::iter::once("All categories").chain(ModCategory::ALL.iter().map(|category| category.title()));
-        let selected = self
-            .filter
-            .category
-            .and_then(|category| ModCategory::ALL.iter().position(|item| *item == category))
-            .map(|position| position + 1);
-
         row![
             text_input("Filter mods…", &self.filter.query)
                 .on_input(Message::Query)
@@ -192,10 +118,6 @@ impl State {
                 .padding(Padding::new(0.0).left(14).right(14).top(10).bottom(10))
                 .size(13)
                 .width(Fill),
-            Select::new(options, selected)
-                .placeholder("Category")
-                .on_select(|index| Message::Category(index.checked_sub(1).map(|position| ModCategory::ALL[position])))
-                .width(160),
             TextButton::labeled_icon(Icon::lucide().plus(), "Add Mod", Variant::Primary).on_press(Message::Add),
         ]
         .spacing(10)
@@ -204,10 +126,14 @@ impl State {
     }
 }
 
-/// One mod row: category tile, name and tag, author and version, the switch,
-/// and the menu.
-fn mod_row(index: usize, entry: &ModEntry) -> Element<'_, Message> {
-    let (ink, fill) = category_palette(entry.category);
+/// One mod row: a tile, the name, the author and version (or the file name
+/// when the jar declares neither), the switch, and the menu.
+fn mod_row(index: usize, entry: &ModFile) -> Element<'_, Message> {
+    let (ink, fill) = if entry.enabled {
+        (color::Primary::DEFAULT, color::Primary::TINT)
+    } else {
+        (color::Text::MUTED, rgb!(255, 255, 255, 6%))
+    };
     let tile = container(utility::icon(Icon::lucide().package(), 15.0, Some((ink, ink))))
         .width(32)
         .height(32)
@@ -215,17 +141,21 @@ fn mod_row(index: usize, entry: &ModEntry) -> Element<'_, Message> {
         .align_y(alignment::Vertical::Center)
         .style(move |_| tile_style(fill));
 
+    let mut title = row![
+        Text::new(entry.name.as_str())
+            .size(13)
+            .font(fonts::Inter::SEMI_BOLD)
+            .color(color::Text::HEADLINE),
+    ]
+    .spacing(8)
+    .align_y(alignment::Vertical::Center);
+    if !entry.enabled {
+        title = title.push(Badge::new("DISABLED", color::Text::MUTED, rgb!(255, 255, 255, 6%)).compact());
+    }
+
     let details = column![
-        row![
-            Text::new(entry.name.as_str())
-                .size(13)
-                .font(fonts::Inter::SEMI_BOLD)
-                .color(color::Text::HEADLINE),
-            Badge::new(entry.category.label(), ink, fill).compact(),
-        ]
-        .spacing(8)
-        .align_y(alignment::Vertical::Center),
-        Text::new(format!("by {} · v{}", entry.author, entry.version))
+        title,
+        Text::new(subtitle(entry))
             .size(11)
             .font(fonts::JetBrainsMono::REGULAR)
             .color(color::Text::PLACEHOLDER),
@@ -250,13 +180,13 @@ fn mod_row(index: usize, entry: &ModEntry) -> Element<'_, Message> {
     .into()
 }
 
-/// The accent ink and tinted fill of a category.
-fn category_palette(category: ModCategory) -> (Color, Color) {
-    match category {
-        ModCategory::Performance => (color::Accents::CYAN, color::Accents::CYAN_TINT),
-        ModCategory::Graphics => (color::Accents::VIOLET_LIGHT, color::Accents::VIOLET_TINT),
-        ModCategory::Library | ModCategory::Utility => (color::Accents::AMBER, color::Accents::AMBER_TINT),
-        ModCategory::Hud => (color::Primary::DEFAULT, color::Primary::TINT),
+/// The line under a mod's name.
+fn subtitle(entry: &ModFile) -> String {
+    match (&entry.author, &entry.version) {
+        (Some(author), Some(version)) => format!("by {author} · v{version}"),
+        (Some(author), None) => format!("by {author}"),
+        (None, Some(version)) => format!("v{version}"),
+        (None, None) => entry.file_name.clone(),
     }
 }
 

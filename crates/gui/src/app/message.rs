@@ -36,7 +36,7 @@ pub enum LodestoneAppMessage {
     Showcase(ShowcaseMessage),
     /// The launcher database finished opening (schema migrations ran).
     DatabaseReady(Result<Database, String>),
-    /// The instance list finished loading (after any first-boot seed).
+    /// The instance list finished loading, with each mod count read from disk.
     InstancesLoaded(Result<Vec<Instance>, String>),
     /// TEMPORARY resize-latency probe tick — active only with
     /// `LODESTONE_RESIZE_PROFILE=1`; drives `window::resize` through a

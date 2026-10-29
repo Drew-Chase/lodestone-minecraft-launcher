@@ -1,6 +1,19 @@
-use chrono::Local;
+use chrono::{Duration, Local};
 
+use super::instance::fixture;
 use super::*;
+
+/// Three instances: a pinned Fabric pack played just now, a vanilla world
+/// installed three days ago, and a Forge pack installed just now.
+fn sample() -> Vec<Instance> {
+    let mut aether = fixture("aether", "Aether Legacy", Loader::Fabric);
+    aether.pinned = true;
+    aether.last_played = Some(Local::now());
+    let mut vanilla = fixture("vanilla", "Vanilla Survival", Loader::Vanilla);
+    vanilla.installed_at = Local::now() - Duration::days(3);
+    let forge = fixture("sky", "Sky Factory 5", Loader::Forge);
+    vec![aether, vanilla, forge]
+}
 
 fn library_with(instances: Vec<Instance>) -> Library {
     let mut library = Library::default();
@@ -8,37 +21,37 @@ fn library_with(instances: Vec<Instance>) -> Library {
     library
 }
 
+/// The names of the visible instances, in list order.
+fn names(library: &Library) -> Vec<String> {
+    library.visible().iter().map(|instance| instance.name.clone()).collect()
+}
+
 #[test]
 fn filters_narrow_the_list() {
-    let mut library = library_with(Instance::seed_pack(Local::now()));
-    assert_eq!(library.visible().len(), 48, "Recent shows everything");
+    let mut library = library_with(sample());
+    assert_eq!(library.visible().len(), 3, "Recent shows everything");
 
     library.update(Message::FilterChanged(LibraryFilter::Pinned));
-    assert!(library.visible().iter().all(|instance| instance.pinned), "Pinned shows only pinned");
-    assert!(library.visible().len() < 48);
+    assert_eq!(names(&library), ["Aether Legacy"], "Pinned shows only pinned");
 }
 
 #[test]
 fn modded_and_vanilla_tabs_are_disjoint() {
-    let mut library = library_with(Instance::seed_pack(Local::now()));
+    let mut library = library_with(sample());
     library.update(Message::FilterChanged(LibraryFilter::Modded));
-    let modded = library.visible().clone();
-    assert!(!modded.is_empty());
-    assert!(modded.iter().all(|instance| instance.loader != Loader::Vanilla));
+    let mut modded = names(&library);
+    modded.sort();
+    assert_eq!(modded, ["Aether Legacy", "Sky Factory 5"]);
 
     library.update(Message::FilterChanged(LibraryFilter::Vanilla));
-    let vanilla = library.visible().clone();
-    assert!(!vanilla.is_empty());
-    assert!(vanilla.iter().all(|instance| instance.loader == Loader::Vanilla));
+    assert_eq!(names(&library), ["Vanilla Survival"]);
 }
 
 #[test]
 fn search_matches_by_name_case_insensitively() {
-    let mut library = library_with(Instance::seed_pack(Local::now()));
+    let mut library = library_with(sample());
     library.update(Message::SearchChanged("AETHER".to_string()));
-    let visible = library.visible();
-    assert!(!visible.is_empty(), "the first seed instance is 'Aether Legacy'");
-    assert!(visible.iter().all(|instance| instance.name.to_lowercase().contains("aether")));
+    assert_eq!(names(&library), ["Aether Legacy"]);
 
     library.update(Message::SearchChanged("no instance has this name".to_string()));
     assert!(library.visible().is_empty());
@@ -46,7 +59,7 @@ fn search_matches_by_name_case_insensitively() {
 
 #[test]
 fn visible_sorts_most_recent_first() {
-    let library = library_with(Instance::seed_pack(Local::now()));
+    let library = library_with(sample());
     let visible = library.visible();
     for pair in visible.windows(2) {
         assert!(pair[0].recency() >= pair[1].recency(), "instances must sort most-recent first");
@@ -54,8 +67,14 @@ fn visible_sorts_most_recent_first() {
 }
 
 #[test]
+fn the_banner_is_absent_without_instances() {
+    assert!(Library::default().hero().is_none(), "an empty library reserves no room for the banner");
+    assert!(library_with(sample()).hero().is_some(), "one instance brings the banner back");
+}
+
+#[test]
 fn scroll_belongs_to_the_page_not_the_filters() {
-    let mut library = library_with(Instance::seed_pack(Local::now()));
+    let mut library = library_with(sample());
     library.update(Message::Scrolled(2500.0));
     assert_eq!(library.scroll_y, 2500.0);
 

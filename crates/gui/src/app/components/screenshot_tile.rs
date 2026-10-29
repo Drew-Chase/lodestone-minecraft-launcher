@@ -1,18 +1,17 @@
-//! Screenshot tiles — generated scene art with a caption.
+//! Screenshot tiles — a capture's thumbnail with a caption.
 //!
-//! [`Caption::Overlay`] writes the file name over the art (the Overview strip)
-//! with no frame. [`Caption::Footer`] adds an opaque bar with the name and size
-//! inside a hairline frame (the Screenshots tab). The art is generated at the
-//! tile's exact pixel size, so its rounded corners stay circular.
+//! [`Caption::Overlay`] writes the file name over the bottom-left corner with no
+//! frame (the Overview strip). [`Caption::Footer`] adds an opaque bar with the
+//! name and size inside a hairline frame (the Screenshots tab). A tile whose
+//! thumbnail has not decoded yet shows [`placeholder_art`].
 
 use aurora_leaf::Icon;
 use iced::border::Radius;
-use iced::widget::{Space, Text, container, responsive, row, stack, svg};
+use iced::widget::image::Handle;
+use iced::widget::{Space, Text, container, image, row, stack};
 use iced::{Background, Border, ContentFit, Element, Fill, Padding, alignment};
 use iced_color_extension::rgb;
 
-use crate::app::components::scene_art::screenshot_handle;
-use crate::app::pages::library::instance::Biome;
 use crate::app::theme::{color, fonts, utility};
 
 /// The footer bar's height, per the reference (34px).
@@ -29,18 +28,21 @@ pub enum Caption<'a> {
     Footer { name: &'a str, size: &'a str },
 }
 
-/// A screenshot tile `height` pixels tall, filling the width it is given.
-pub fn screenshot_tile<'a, M: 'a>(biome: Biome, seed: u64, caption: Caption<'a>, height: f32) -> Element<'a, M> {
-    let art = responsive(move |bounds| {
-        let art = svg(screenshot_handle(biome, seed, bounds))
-            .content_fit(ContentFit::Fill)
+/// A screenshot tile `height` pixels tall, filling the width it is given. The
+/// thumbnail covers the art area; `None` shows the placeholder instead.
+pub fn photo_tile<'a, M: 'a>(thumbnail: Option<&Handle>, caption: Caption<'a>, height: f32) -> Element<'a, M> {
+    let art: Element<'a, M> = match thumbnail {
+        Some(handle) => image(handle.clone())
+            .content_fit(ContentFit::Cover)
+            .border_radius(RADIUS)
             .width(Fill)
-            .height(Fill);
-        stack![art, caption_layer(caption)].width(Fill).height(Fill).into()
-    });
+            .height(Fill)
+            .into(),
+        None => placeholder_art(RADIUS),
+    };
 
     let framed = matches!(caption, Caption::Footer { .. });
-    container(art)
+    container(stack![art, caption_layer(caption)].width(Fill).height(Fill))
         .width(Fill)
         .height(height)
         .style(move |_| container::Style {
@@ -52,6 +54,29 @@ pub fn screenshot_tile<'a, M: 'a>(biome: Biome, seed: u64, caption: Caption<'a>,
             ..container::Style::default()
         })
         .into()
+}
+
+/// The neutral stand-in for a thumbnail that is not ready, or cannot be read,
+/// with corners rounded to `radius` like the thumbnail it stands in for.
+pub fn placeholder_art<'a, M: 'a>(radius: f32) -> Element<'a, M> {
+    container(utility::icon(
+        Icon::lucide().image(),
+        18.0,
+        Some((color::Text::PLACEHOLDER, color::Text::PLACEHOLDER)),
+    ))
+    .width(Fill)
+    .height(Fill)
+    .align_x(alignment::Horizontal::Center)
+    .align_y(alignment::Vertical::Center)
+    .style(move |_| container::Style {
+        background: Some(Background::Color(rgb!(255, 255, 255, 4%))),
+        border: Border {
+            radius: radius.into(),
+            ..Border::default()
+        },
+        ..container::Style::default()
+    })
+    .into()
 }
 
 /// The caption, pinned to the tile's bottom edge.

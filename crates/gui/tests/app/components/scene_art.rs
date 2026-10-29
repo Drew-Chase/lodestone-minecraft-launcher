@@ -26,13 +26,6 @@ fn the_scene_covers_the_frame() {
 }
 
 #[test]
-fn thumbnails_are_sized_to_the_tile_with_round_corners() {
-    let svg = thumb_wrapped(SCENES[0].1, 388.0, 100.0);
-    assert!(svg.contains(r#"width="388" height="100" viewBox="0 0 388 100""#));
-    assert!(svg.contains(r#"rx="12""#));
-}
-
-#[test]
 fn sizes_are_quantised_to_four_pixels() {
     assert_eq!(quantise(388.0), 388);
     assert_eq!(quantise(389.0), 388);

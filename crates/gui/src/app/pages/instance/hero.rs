@@ -3,6 +3,7 @@
 //! that hangs below the band.
 
 use aurora_leaf::Icon;
+use chrono::Local;
 use iced::widget::{Space, Text, column, container, responsive, row, stack, svg};
 use iced::{Background, Border, Color, ContentFit, Element, Fill, Gradient, Padding, Shadow, Size, alignment, gradient};
 use iced_color_extension::rgb;
@@ -15,6 +16,9 @@ use crate::app::components::{IconButton, TextButton};
 use crate::app::pages::library::instance::{Instance, InstanceState};
 use crate::app::theme::{color, fonts, utility};
 
+use super::files::InstanceFiles;
+use super::format::format_bytes;
+use super::worlds::format_saved;
 use super::{GUTTER, Message, layer};
 
 /// The masthead's height — the design's 230px scene band.
@@ -35,8 +39,9 @@ pub struct Controls {
     pub paused: bool,
 }
 
-/// The masthead for `instance`, laid out for a window of `viewport` size.
-pub fn hero<'a>(instance: &'a Instance, controls: Controls, viewport: Size) -> Element<'a, Message> {
+/// The masthead for `instance`, laid out for a window of `viewport` size. `files`
+/// is what the folder held at the last scan; until one lands, its figures show a dash.
+pub fn hero<'a>(instance: &'a Instance, files: Option<&InstanceFiles>, controls: Controls, viewport: Size) -> Element<'a, Message> {
     // The art is generated at the masthead's exact pixel size, so it fills
     // the band without stretching.
     let (biome, seed) = (instance.biome, instance.art_seed);
@@ -93,7 +98,7 @@ pub fn hero<'a>(instance: &'a Instance, controls: Controls, viewport: Size) -> E
             status_badge(instance.state),
             loader_badge(instance),
             Badge::new(format!("MC {}", instance.mc_version), color::Text::MUTED, rgb!(255, 255, 255, 6%)),
-            Badge::new(format!("{} MODS", instance.mod_count), color::Accents::AMBER, color::Accents::AMBER_TINT),
+            Badge::new(mods_label(files), color::Accents::AMBER, color::Accents::AMBER_TINT),
         ]
         .spacing(6),
         Text::new(instance.name.clone())
@@ -101,7 +106,7 @@ pub fn hero<'a>(instance: &'a Instance, controls: Controls, viewport: Size) -> E
             .line_height(1.0)
             .font(fonts::Inter::EXTRA_BOLD)
             .color(color::Text::HEADLINE),
-        Text::new(meta_line(instance))
+        Text::new(meta_line(instance, files))
             .size(12)
             .line_height(1.2)
             .font(fonts::JetBrainsMono::REGULAR)
@@ -193,7 +198,7 @@ fn session_controls(playing: bool, paused: bool) -> Element<'static, Message> {
         TextButton::content(
             row![
                 utility::icon(Icon::lucide().play(), 12.0, Some((color::Primary::ON, color::Primary::ON))),
-                Text::new(if playing { "Running · 12m" } else { "Launch" })
+                Text::new(if playing { "Running" } else { "Launch" })
                     .size(14)
                     .font(fonts::Inter::BOLD)
                     .color(color::Primary::ON),
@@ -278,15 +283,23 @@ fn loader_badge(instance: &Instance) -> Element<'static, Message> {
     Badge::new(label, ink, fill).into()
 }
 
-/// The mono identity line: folder, footprint, last save.
-fn meta_line(instance: &Instance) -> String {
-    format!("/instances/{} · {:.1} GB · last saved 02:14", instance.directory_name, size_gb(instance))
+/// The mono identity line: folder, size on disk, and when a world was last saved.
+fn meta_line(instance: &Instance, files: Option<&InstanceFiles>) -> String {
+    let Some(files) = files else {
+        return format!("/instances/{} · —", instance.directory_name);
+    };
+    let saved = files
+        .worlds
+        .iter()
+        .filter_map(|world| world.saved)
+        .max()
+        .map_or_else(|| "No saves yet".to_string(), |saved| format_saved(saved, Local::now()));
+    format!("/instances/{} · {} · {saved}", instance.directory_name, format_bytes(files.folder_bytes))
 }
 
-/// The instance's on-disk footprint — a deterministic demo figure derived
-/// from the mod count (87 mods → 4.8 GB).
-fn size_gb(instance: &Instance) -> f32 {
-    0.7 + instance.mod_count as f32 * 0.047
+/// The mod count for the masthead badge, or a dash until the folder is read.
+fn mods_label(files: Option<&InstanceFiles>) -> String {
+    files.map_or_else(|| "— MODS".to_string(), |files| format!("{} MODS", files.mods.len()))
 }
 
 #[cfg(test)]

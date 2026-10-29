@@ -2,7 +2,8 @@
 //!
 //! The buffer keeps the newest [`MAX_LINES`] lines. While following, the
 //! scroller stays pinned to the bottom so new lines come into view; the LIVE
-//! pill toggles that. Export is display-only until the root owns file IO.
+//! pill toggles that, and the page re-reads the file on a timer while it is on.
+//! Export is display-only until the root owns file IO.
 
 use std::collections::VecDeque;
 
@@ -15,10 +16,7 @@ use crate::app::components::TextButton;
 use crate::app::components::badge::Badge;
 use crate::app::components::button::Variant;
 use crate::app::components::panel::{hairline, panel_with_padding};
-use crate::app::pages::library::instance::Instance;
 use crate::app::theme::{color, fonts, utility};
-
-use super::demo;
 
 /// How many lines the buffer keeps; the oldest are dropped first.
 pub const MAX_LINES: usize = 500;
@@ -84,6 +82,10 @@ impl LogBuffer {
     pub fn iter(&self) -> impl Iterator<Item = &LogLine> {
         self.lines.iter()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.lines.is_empty()
+    }
 }
 
 /// Messages the Logs tab emits.
@@ -96,19 +98,31 @@ pub enum Message {
 }
 
 /// The Logs tab's state.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct State {
     buffer: LogBuffer,
     follow: bool,
 }
 
-impl State {
-    /// The log an instance starts with, following new lines.
-    pub fn for_instance(instance: &Instance) -> Self {
+impl Default for State {
+    /// Empty, and following new lines.
+    fn default() -> Self {
         Self {
-            buffer: LogBuffer::from_lines(demo::log_lines(instance)),
+            buffer: LogBuffer::default(),
             follow: true,
         }
+    }
+}
+
+impl State {
+    /// Replaces the buffered lines with the latest read of the log.
+    pub fn set_lines(&mut self, lines: Vec<LogLine>) {
+        self.buffer = LogBuffer::from_lines(lines);
+    }
+
+    /// Whether new lines are followed. The page re-reads the log only while they are.
+    pub fn following(&self) -> bool {
+        self.follow
     }
 
     pub fn update(&mut self, message: Message) {
@@ -134,8 +148,17 @@ impl State {
         .spacing(10)
         .align_y(alignment::Vertical::Center);
 
-        let lines: Vec<Element<'_, Message>> = self.buffer.iter().map(log_row).chain(std::iter::once(caret())).collect();
-        let scroll = scrollable(column(lines).spacing(5).width(Fill)).width(Fill).height(Fill);
+        let body: Element<'_, Message> = if self.buffer.is_empty() {
+            Text::new("No latest.log yet. Launch the game to create one.")
+                .size(12)
+                .font(fonts::Inter::REGULAR)
+                .color(color::Text::MUTED)
+                .into()
+        } else {
+            let lines: Vec<Element<'_, Message>> = self.buffer.iter().map(log_row).chain(std::iter::once(caret())).collect();
+            column(lines).spacing(5).width(Fill).into()
+        };
+        let scroll = scrollable(body).width(Fill).height(Fill);
         let scroll = if self.follow { scroll.anchor_bottom() } else { scroll };
 
         container(panel_with_padding(

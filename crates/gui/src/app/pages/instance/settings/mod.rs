@@ -19,8 +19,6 @@ use crate::app::components::setting_row::section_header;
 use crate::app::pages::library::instance::Instance;
 use crate::app::theme::{color, fonts, utility};
 
-use super::demo;
-
 /// The sub-nav's width, per the reference.
 const SIDEBAR_WIDTH: f32 = 180.0;
 /// The sides a window resolution may take, in pixels.
@@ -175,6 +173,21 @@ pub struct Settings {
 }
 
 impl Settings {
+    /// The launch settings an instance starts with. Nothing persists yet, so
+    /// every value is a neutral default. The instance's own Minecraft and loader
+    /// versions are the only figures that come from the instance.
+    pub fn for_instance(instance: &Instance) -> Self {
+        Self {
+            minecraft_version: MINECRAFT_VERSIONS.iter().position(|version| *version == instance.mc_version).unwrap_or(0),
+            loader_versions: vec![instance.loader_version.clone().unwrap_or_else(|| "—".to_string())],
+            memory_gb: 4,
+            width: "1920".to_string(),
+            height: "1080".to_string(),
+            launch_mode: LaunchMode::Windowed,
+            ..Self::default()
+        }
+    }
+
     fn set_index(&mut self, choice: Choice, index: usize) {
         match choice {
             Choice::JavaRuntime => self.java_runtime = index,
@@ -244,7 +257,7 @@ impl State {
     pub fn for_instance(instance: &Instance) -> Self {
         Self {
             section: Section::default(),
-            settings: demo::settings(instance),
+            settings: Settings::for_instance(instance),
         }
     }
 
@@ -277,7 +290,11 @@ impl State {
         let nav = column(Section::ALL.map(|section| nav_item(section, section == self.section)))
             .spacing(2)
             .width(Fill);
-        let sidebar = column![nav, inherited_note(self.settings.inherited)].spacing(18).width(SIDEBAR_WIDTH);
+        let mut sidebar = column![nav].spacing(18).width(SIDEBAR_WIDTH);
+        // Only shown once there are global defaults to inherit from.
+        if self.settings.inherited > 0 {
+            sidebar = sidebar.push(inherited_note(self.settings.inherited));
+        }
         let body = column![
             section_header(self.section.icon(), self.section.tint(), self.section.label(), self.section.subtitle()),
             sections::body(self.section, &self.settings, instance),

@@ -2,8 +2,6 @@
 //! compiled as the `tests` child module of `logs`, so they can read the buffer
 //! and the follow flag directly.
 
-use chrono::Local;
-
 use super::*;
 
 fn line(message: &str) -> LogLine {
@@ -46,13 +44,19 @@ fn levels_have_bracketed_tags() {
 }
 
 #[test]
-fn the_live_pill_toggles_following_and_export_changes_nothing() {
-    let instance = Instance::seed_pack(Local::now()).remove(0);
-    let mut state = State::for_instance(&instance);
-    assert!(state.follow, "a fresh log follows new lines");
+fn an_empty_log_has_no_lines_yet() {
+    assert!(LogBuffer::default().is_empty());
+    assert!(!LogBuffer::from_lines([line("a")]).is_empty());
+}
 
+#[test]
+fn the_live_pill_toggles_following_and_export_changes_nothing() {
+    let mut state = State::default();
+    assert!(state.following(), "a fresh log follows new lines");
+
+    state.set_lines(vec![line("a"), line("b")]);
     state.update(Message::ToggleFollow);
-    assert!(!state.follow);
+    assert!(!state.following());
 
     let before = state.buffer.iter().count();
     state.update(Message::Export);

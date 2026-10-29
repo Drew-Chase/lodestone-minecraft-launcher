@@ -6,7 +6,7 @@ use crate::app::components::{IconButton, PulseDot, TextButton};
 use crate::app::theme::{color, fonts};
 use aurora_leaf::Icon;
 use chrono::{DateTime, Local};
-use iced::widget::{Space, Text, column, container, mouse_area, row, stack, svg};
+use iced::widget::{Text, column, container, mouse_area, row, stack, svg};
 use iced::{Background, Border, Color, Element, Fill, Padding, alignment};
 use iced_color_extension::rgb;
 
@@ -16,10 +16,9 @@ use super::{Library, Message, chip, icon};
 impl Library {
     /// The most-recent instance's wide banner card — rounded with a
     /// hairline border, scene art behind a left-dark readability gradient.
-    pub(super) fn hero(&self) -> Element<'_, Message> {
-        let Some(hero) = self.instances.iter().max_by_key(|instance| instance.recency().timestamp_millis()) else {
-            return Space::new().height(0).into();
-        };
+    /// `None` without instances, so the page reserves no room for it.
+    pub(super) fn hero(&self) -> Option<Element<'_, Message>> {
+        let hero = self.instances.iter().max_by_key(|instance| instance.recency().timestamp_millis())?;
         let playing = hero.state == InstanceState::Playing;
 
         let chips = row![
@@ -55,84 +54,77 @@ impl Library {
             meta.push_str(" · never played");
         }
 
-        container(
-            stack![
-                // The biome scene fills the banner behind everything — the
-                // hero variant clips the corners and bakes the left fade.
-                container(
-                    svg(hero_handle(hero.biome, hero.art_seed))
-                        .content_fit(iced::ContentFit::Cover)
-                        .width(Fill)
-                        .height(Fill)
-                )
-                .width(Fill)
-                .height(Fill),
-                container(
-                    column![
-                        mouse_area(
-                            column![
-                                chips,
-                                Text::new(hero.name.clone())
-                                    .size(34)
-                                    .font(fonts::Inter::EXTRA_BOLD)
-                                    .color(color::Text::HEADLINE),
-                                Text::new(meta).size(13).font(fonts::Inter::REGULAR).color(color::Text::DEFAULT),
-                            ]
-                            .spacing(14),
-                        )
-                        .on_press(Message::OpenInstance(hero.id.clone())),
-                        row![
-                            TextButton::content(
-                                row![
-                                    icon(Icon::lucide().play(), 14.0, color::Primary::ON, 1.0),
-                                    Text::new(if playing { "Resume Session" } else { "Play" })
-                                        .size(13)
-                                        .font(fonts::Inter::BOLD)
-                                        .color(color::Primary::ON),
+        Some(
+            container(
+                stack![
+                    // The biome scene fills the banner behind everything — the
+                    // hero variant clips the corners and bakes the left fade.
+                    container(
+                        svg(hero_handle(hero.biome, hero.art_seed))
+                            .content_fit(iced::ContentFit::Cover)
+                            .width(Fill)
+                            .height(Fill)
+                    )
+                    .width(Fill)
+                    .height(Fill),
+                    container(
+                        column![
+                            mouse_area(
+                                column![
+                                    chips,
+                                    Text::new(hero.name.clone())
+                                        .size(34)
+                                        .font(fonts::Inter::EXTRA_BOLD)
+                                        .color(color::Text::HEADLINE),
+                                    Text::new(meta).size(13).font(fonts::Inter::REGULAR).color(color::Text::DEFAULT),
                                 ]
-                                .spacing(8)
-                                .align_y(alignment::Vertical::Center)
+                                .spacing(14),
                             )
-                            .variant(crate::app::components::button::Variant::Primary)
-                            .padding(Padding::new(0.0).left(22).right(22).top(14).bottom(14))
-                            .on_press(Message::Play(hero.name.clone())),
-                            hero_menu_button(&hero.name, "folder", Icon::lucide().folder()),
-                            hero_menu_button(&hero.name, "settings", Icon::lucide().settings()),
-                            hero_menu_button(&hero.name, "more", Icon::lucide().ellipsis_vertical()),
+                            .on_press(Message::OpenInstance(hero.id.clone())),
+                            row![
+                                TextButton::content(
+                                    row![
+                                        icon(Icon::lucide().play(), 14.0, color::Primary::ON, 1.0),
+                                        Text::new(if playing { "Resume Session" } else { "Play" })
+                                            .size(13)
+                                            .font(fonts::Inter::BOLD)
+                                            .color(color::Primary::ON),
+                                    ]
+                                    .spacing(8)
+                                    .align_y(alignment::Vertical::Center)
+                                )
+                                .variant(crate::app::components::button::Variant::Primary)
+                                .padding(Padding::new(0.0).left(22).right(22).top(14).bottom(14))
+                                .on_press(Message::Play(hero.name.clone())),
+                                hero_menu_button(&hero.name, "folder", Icon::lucide().folder()),
+                                hero_menu_button(&hero.name, "settings", Icon::lucide().settings()),
+                                hero_menu_button(&hero.name, "more", Icon::lucide().ellipsis_vertical()),
+                            ]
+                            .spacing(10)
+                            .align_y(alignment::Vertical::Center),
                         ]
-                        .spacing(10)
-                        .align_y(alignment::Vertical::Center),
-                    ]
-                    .spacing(14)
-                    .padding(Padding::new(0.0).left(28).right(28).bottom(28)),
-                )
+                        .spacing(14)
+                        .padding(Padding::new(0.0).left(28).right(28).bottom(28)),
+                    )
+                    .width(Fill)
+                    .height(Fill)
+                    .align_y(alignment::Vertical::Center),
+                ]
                 .width(Fill)
-                .height(Fill)
-                .align_y(alignment::Vertical::Center),
-                // The live session readout sits top-right while playing.
-                container(
-                    container(chip("2.1 GB / 6 GB · 58 FPS".into(), color::Text::DEFAULT, rgb!(0, 0, 0, 45%)))
-                        .padding(Padding::new(0.0).right(16).top(16))
-                )
-                .width(Fill)
-                .height(Fill)
-                .align_x(alignment::Horizontal::Right)
-                .align_y(alignment::Vertical::Top),
-            ]
+                .height(300),
+            )
             .width(Fill)
-            .height(300),
+            .height(300)
+            .style(|_| container::Style {
+                border: Border {
+                    radius: 18.0.into(),
+                    width: 1.0,
+                    color: color::Surface::LINE,
+                },
+                ..container::Style::default()
+            })
+            .into(),
         )
-        .width(Fill)
-        .height(300)
-        .style(|_| container::Style {
-            border: Border {
-                radius: 18.0.into(),
-                width: 1.0,
-                color: color::Surface::LINE,
-            },
-            ..container::Style::default()
-        })
-        .into()
     }
 
     /// The four quick-action cards — dummy entries until the features land.

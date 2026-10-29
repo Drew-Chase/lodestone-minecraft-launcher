@@ -3,11 +3,12 @@
 //!
 //! The page is a fixed masthead plus tab row over one content region. Each tab
 //! lives in its own module with its own state, message and view; this file
-//! routes messages and lays out the shell. Tab data is seeded by [`demo`] until
-//! a real instance manager exists. The instance model's own data (name, loader,
-//! version, mods, playtime, folder, biome) is real.
+//! routes messages and lays out the shell. The instance model's own data (name,
+//! loader, version, playtime, biome) comes from the database. Everything else
+//! the tabs show is read from the instance folder by [`files`], on the blocking
+//! pool, and applied when it lands.
 
-mod demo;
+pub mod files;
 mod format;
 mod hero;
 mod logs;
@@ -17,14 +18,19 @@ mod screenshots;
 mod settings;
 mod worlds;
 
+use std::path::PathBuf;
+use std::time::Duration;
+
 use chrono::Local;
+use iced::widget::image::Handle;
 use iced::widget::{Text, column, container, scrollable, stack};
-use iced::{Element, Fill, Padding, Size, alignment};
+use iced::{Element, Fill, Padding, Size, Subscription, Task, alignment};
 
 use crate::app::components::Tabs;
 use crate::app::pages::Page;
 use crate::app::pages::library::instance::Instance;
 use crate::app::theme::{color, fonts};
+use files::InstanceFiles;
 
 /// The page's horizontal gutter — 28px, per the design.
 const GUTTER: f32 = 28.0;
@@ -78,15 +84,40 @@ pub enum Message {
     Worlds(worlds::Message),
     Logs(logs::Message),
     Settings(settings::Message),
+    /// The instance folder was read. Stale when `generation` has moved on.
+    Scanned {
+        generation: u64,
+        files: InstanceFiles,
+    },
+    /// A capture's thumbnail was decoded, or could not be (`None`).
+    Thumbnail {
+        generation: u64,
+        path: PathBuf,
+        handle: Option<Handle>,
+    },
+    /// The log refresh timer fired while the Logs tab is following.
+    LogsTick,
+    /// The log was re-read.
+    LogsLoaded {
+        generation: u64,
+        lines: Vec<logs::LogLine>,
+    },
 }
 
 /// The instance detail page state.
 #[derive(Debug, Default)]
 pub struct InstancePage {
     instance: Option<Instance>,
+    /// The instance folder, which holds the files the tabs read.
+    folder: PathBuf,
     tab: Tab,
     favorite: bool,
     paused: bool,
+    /// Bumped by every [`InstancePage::show`]. Results from an older generation
+    /// belong to an instance the page no longer shows, so they are dropped.
+    generation: u64,
+    /// What the folder held at the last scan; `None` until that scan lands.
+    files: Option<InstanceFiles>,
     mods: mods::State,
     worlds: worlds::State,
     screenshots: screenshots::State,
@@ -95,33 +126,125 @@ pub struct InstancePage {
 }
 
 impl InstancePage {
-    /// Points the page at `instance`, resetting transient controls and
-    /// rebuilding every tab's data for it.
-    pub fn show(&mut self, instance: Instance) {
-        let now = Local::now();
-        self.mods = mods::State::for_instance(&instance);
-        self.worlds = worlds::State::for_instance(&instance, now);
-        self.screenshots = screenshots::State::for_instance(&instance);
-        self.logs = logs::State::for_instance(&instance);
+    /// Points the page at `instance`, whose files live in `folder`. Resets the
+    /// transient controls and every tab, and returns the task that reads the folder.
+    pub fn show(&mut self, instance: Instance, folder: PathBuf) -> Task<Message> {
+        self.generation += 1;
+        let generation = self.generation;
         self.settings = settings::State::for_instance(&instance);
         self.instance = Some(instance);
+        self.folder = folder.clone();
+        self.files = None;
+        self.mods = mods::State::default();
+        self.worlds = worlds::State::default();
+        self.screenshots = screenshots::State::default();
+        self.logs = logs::State::default();
         self.tab = Tab::Overview;
         self.paused = false;
+
+        Task::perform(
+            async move { tokio::task::spawn_blocking(move || files::scan(&folder)).await.unwrap_or_default() },
+            move |files| Message::Scanned { generation, files },
+        )
     }
 
-    pub fn update(&mut self, message: Message) {
+    pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::TabSelected(tab) => self.tab = tab,
-            Message::ToggleFavorite => self.favorite = !self.favorite,
-            Message::TogglePause => self.paused = !self.paused,
-            Message::Mods(message) => self.mods.update(message),
-            Message::Worlds(message) => self.worlds.update(message),
-            Message::Logs(message) => self.logs.update(message),
-            Message::Settings(message) => self.settings.update(message),
+            Message::TabSelected(tab) => {
+                self.tab = tab;
+                Task::none()
+            }
+            Message::ToggleFavorite => {
+                self.favorite = !self.favorite;
+                Task::none()
+            }
+            Message::TogglePause => {
+                self.paused = !self.paused;
+                Task::none()
+            }
+            Message::Mods(message) => {
+                self.mods.update(message);
+                Task::none()
+            }
+            Message::Worlds(message) => {
+                self.worlds.update(message);
+                Task::none()
+            }
+            Message::Logs(message) => {
+                self.logs.update(message);
+                Task::none()
+            }
+            Message::Settings(message) => {
+                self.settings.update(message);
+                Task::none()
+            }
+            Message::Scanned { generation, files } if generation == self.generation => self.apply(files),
+            Message::Thumbnail { generation, path, handle } if generation == self.generation => {
+                self.screenshots.store(path, handle);
+                self.decode_next_thumbnail()
+            }
+            Message::LogsTick if self.tab == Tab::Logs && self.logs.following() => self.read_logs(),
+            Message::LogsLoaded { generation, lines } if generation == self.generation => {
+                self.logs.set_lines(lines);
+                Task::none()
+            }
             // Navigation is intercepted by the root; the remaining actions
             // are display-only until the instance manager lands.
-            Message::Back | Message::RevealFolder | Message::More | Message::Navigate(_) => {}
+            Message::Back | Message::RevealFolder | Message::More | Message::Navigate(_) => Task::none(),
+            // Results for an instance the page no longer shows, and ticks the
+            // Logs tab no longer needs.
+            Message::Scanned { .. } | Message::Thumbnail { .. } | Message::LogsTick | Message::LogsLoaded { .. } => Task::none(),
         }
+    }
+
+    /// The log refresh: while the Logs tab is following, the log is re-read every
+    /// two seconds. The root only adds this while the detail page is on screen.
+    pub fn subscription(&self) -> Subscription<Message> {
+        if self.tab == Tab::Logs && self.logs.following() {
+            iced::time::every(Duration::from_secs(2)).map(|_| Message::LogsTick)
+        } else {
+            Subscription::none()
+        }
+    }
+
+    /// Hands a scan's results to the tabs and starts the thumbnails.
+    fn apply(&mut self, files: InstanceFiles) -> Task<Message> {
+        self.mods.set_mods(files.mods.clone());
+        self.worlds.set_worlds(files.worlds.clone(), Local::now());
+        self.screenshots.set_shots(files.screenshots.clone());
+        self.logs.set_lines(files.log.clone());
+        self.files = Some(files);
+        self.decode_next_thumbnail()
+    }
+
+    /// Decodes the next pending thumbnail on the blocking pool. One at a time:
+    /// each result starts the next, so a folder full of captures never holds
+    /// more than one full-size image in memory.
+    fn decode_next_thumbnail(&mut self) -> Task<Message> {
+        let Some(path) = self.screenshots.next_pending() else {
+            return Task::none();
+        };
+        let generation = self.generation;
+        let decode = path.clone();
+        Task::perform(
+            async move {
+                tokio::task::spawn_blocking(move || files::decode_image(&decode, Some(screenshots::THUMBNAIL)))
+                    .await
+                    .ok()
+                    .flatten()
+            },
+            move |handle| Message::Thumbnail { generation, path, handle },
+        )
+    }
+
+    /// Re-reads the instance's log on the blocking pool.
+    fn read_logs(&self) -> Task<Message> {
+        let generation = self.generation;
+        let folder = self.folder.clone();
+        Task::perform(
+            async move { tokio::task::spawn_blocking(move || files::read_log(&folder)).await.unwrap_or_default() },
+            move |lines| Message::LogsLoaded { generation, lines },
+        )
     }
 
     /// The page: fixed masthead, fixed tab row, and the tab body.
@@ -134,9 +257,13 @@ impl InstancePage {
             favorite: self.favorite,
             paused: self.paused,
         };
-        let page = column![hero::hero(instance, controls, viewport), self.tab_bar(), self.tab_body(instance),]
-            .width(Fill)
-            .height(Fill);
+        let page = column![
+            hero::hero(instance, self.files.as_ref(), controls, viewport),
+            self.tab_bar(),
+            self.tab_body(instance),
+        ]
+        .width(Fill)
+        .height(Fill);
 
         // The icon hangs 40px below the masthead, so it is layered over the
         // whole page: inside the masthead it would be clamped to the 70px
@@ -190,7 +317,7 @@ impl InstancePage {
     /// fills the height and scrolls itself; every other tab scrolls as a page.
     fn tab_body<'a>(&'a self, instance: &'a Instance) -> Element<'a, Message> {
         let content: Element<'a, Message> = match self.tab {
-            Tab::Overview => overview::view(instance),
+            Tab::Overview => overview::view(instance, &self.screenshots),
             Tab::Mods => self.mods.view().map(Message::Mods),
             Tab::Worlds => self.worlds.view().map(Message::Worlds),
             Tab::Screenshots => screenshots::view(&self.screenshots),

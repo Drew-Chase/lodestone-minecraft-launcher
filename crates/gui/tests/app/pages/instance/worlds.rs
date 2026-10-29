@@ -13,22 +13,16 @@ fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Local
         .expect("a valid local time")
 }
 
-fn world(name: &str, backup: bool) -> WorldEntry {
-    WorldEntry {
+fn world(name: &str) -> WorldFile {
+    WorldFile {
         name: name.to_string(),
-        game_mode: GameMode::Survival,
-        difficulty: Difficulty::Normal,
-        seed: 1,
-        play_seconds: 60,
+        game_mode: Some(GameMode::Survival),
+        difficulty: Some(Difficulty::Normal),
+        seed: Some(1),
+        version: Some("1.20.1".to_string()),
         size_bytes: 1,
-        saved: at(2026, 10, 29, 12, 0),
-        version: "1.20.1".to_string(),
-        pinned: false,
-        synced: false,
-        protected: false,
-        backup,
-        biome: Biome::End,
-        art_seed: 0,
+        saved: Some(at(2026, 10, 29, 12, 0)),
+        icon: None,
     }
 }
 
@@ -44,38 +38,25 @@ fn the_saved_caption_is_relative_to_now() {
 }
 
 #[test]
-fn the_singleplayer_chip_hides_backups_and_the_backups_chip_shows_only_them() {
-    let live = world("Live", false);
-    let backup = world("Copy", true);
-    assert!(WorldFilter::All.admits(&live) && WorldFilter::All.admits(&backup));
-    assert!(WorldFilter::Singleplayer.admits(&live) && !WorldFilter::Singleplayer.admits(&backup));
-    assert!(!WorldFilter::Backups.admits(&live) && WorldFilter::Backups.admits(&backup));
-}
-
-#[test]
-fn search_matches_names_ignoring_case_and_combines_with_the_chip() {
-    let mut state = State {
-        worlds: vec![world("Aether Hub", false), world("Aether Copy", true), world("Pixel Town", false)],
-        now: at(2026, 10, 29, 12, 0),
-        ..State::default()
-    };
-    state.refilter();
+fn search_matches_names_ignoring_case() {
+    let mut state = State::default();
+    state.set_worlds(
+        vec![world("Aether Hub"), world("Aether Copy"), world("Pixel Town")],
+        at(2026, 10, 29, 12, 0),
+    );
     assert_eq!(state.visible, [0, 1, 2]);
 
     state.update(Message::Search("AETHER".to_string()));
     assert_eq!(state.visible, [0, 1]);
 
-    state.update(Message::Filter(WorldFilter::Singleplayer));
-    assert_eq!(state.visible, [0]);
+    state.update(Message::Search("no world has this name".to_string()));
+    assert!(state.visible.is_empty());
 }
 
 #[test]
 fn display_only_actions_leave_the_grid_alone() {
-    let mut state = State {
-        worlds: vec![world("Aether Hub", false)],
-        ..State::default()
-    };
-    state.refilter();
+    let mut state = State::default();
+    state.set_worlds(vec![world("Aether Hub")], at(2026, 10, 29, 12, 0));
     state.update(Message::Import);
     state.update(Message::NewWorld);
     state.update(Message::Play);

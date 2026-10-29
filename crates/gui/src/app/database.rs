@@ -39,49 +39,6 @@ impl Database {
         Ok(Self { pool })
     }
 
-    /// Whether the instances table has no rows (first boot — seed it).
-    pub async fn instances_empty(&self) -> Result<bool, String> {
-        let row = sqlx::query("SELECT COUNT(*) AS count FROM instances")
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|error| error.to_string())?;
-        let count: i64 = row.get("count");
-        Ok(count == 0)
-    }
-
-    /// Inserts the seed instances and creates their directories.
-    pub async fn seed(&self, instances: &[Instance], instances_root: &std::path::Path) -> Result<(), String> {
-        std::fs::create_dir_all(instances_root).map_err(|error| format!("creating {}: {error}", instances_root.display()))?;
-        let mut transaction = self.pool.begin().await.map_err(|error| error.to_string())?;
-        for instance in instances {
-            sqlx::query(
-                "INSERT INTO instances \
-                 (id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
-                  last_played_at, installed_at, pinned, state, biome, art_seed, directory_name) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            )
-            .bind(&instance.id)
-            .bind(&instance.name)
-            .bind(&instance.mc_version)
-            .bind(instance.loader.to_db())
-            .bind(&instance.loader_version)
-            .bind(instance.playtime_seconds as i64)
-            .bind(instance.mod_count as i64)
-            .bind(instance.last_played.map(|at| at.timestamp()))
-            .bind(instance.installed_at.timestamp())
-            .bind(instance.pinned as i64)
-            .bind(instance.state.to_db())
-            .bind(instance.biome.to_db())
-            .bind(instance.art_seed as i64)
-            .bind(&instance.directory_name)
-            .execute(&mut *transaction)
-            .await
-            .map_err(|error| error.to_string())?;
-            let directory = instances_root.join(&instance.directory_name);
-            std::fs::create_dir_all(&directory).map_err(|error| format!("creating {}: {error}", directory.display()))?;
-        }
-        transaction.commit().await.map_err(|error| error.to_string())
-    }
     /// Loads every instance, most recently installed first.
     pub async fn instances(&self) -> Result<Vec<Instance>, String> {
         let rows = sqlx::query(

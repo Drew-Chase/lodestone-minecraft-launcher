@@ -37,17 +37,6 @@ pub fn format_playtime(seconds: u32) -> String {
     }
 }
 
-/// Playtime as a zero-padded clock — "9h 04m", "48h 12m", "45m" (the Worlds form).
-pub fn format_clock(seconds: u32) -> String {
-    let minutes = seconds / 60;
-    let hours = minutes / 60;
-    if hours > 0 {
-        format!("{hours}h {:02}m", minutes % 60)
-    } else {
-        format!("{minutes}m")
-    }
-}
-
 #[cfg(test)]
 #[path = "../../../../tests/app/pages/instance/format.rs"]
 mod tests;

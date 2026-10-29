@@ -34,6 +34,8 @@ impl Loader {
         }
     }
 
+    /// Only the tests write rows until the New Instance flow exists.
+    #[cfg(test)]
     pub(crate) fn to_db(self) -> &'static str {
         match self {
             Loader::Vanilla => "vanilla",
@@ -60,6 +62,8 @@ impl InstanceState {
         }
     }
 
+    /// Only the tests write rows until the New Instance flow exists.
+    #[cfg(test)]
     pub(crate) fn to_db(self) -> &'static str {
         match self {
             InstanceState::Idle => "idle",
@@ -95,6 +99,8 @@ impl Biome {
         }
     }
 
+    /// Only the tests write rows until the New Instance flow exists.
+    #[cfg(test)]
     pub(crate) fn to_db(self) -> &'static str {
         match self {
             Biome::End => "end",
@@ -142,84 +148,26 @@ impl Instance {
     pub fn recency(&self) -> DateTime<Local> {
         self.last_played.unwrap_or(self.installed_at)
     }
+}
 
-    /// Builds the seed instances shown before a real instance manager
-    /// exists. Deterministic, varied across loaders, biomes and playtime.
-    pub fn seed_pack(now: DateTime<Local>) -> Vec<Self> {
-        const NAMES: [&str; 16] = [
-            "Aether Legacy",
-            "Vanilla Survival",
-            "Create: Above & Beyond",
-            "Sky Factory 5",
-            "Better MC Forever",
-            "DawnCraft",
-            "Prominence II",
-            "Medieval Madness",
-            "Terralith Exploration",
-            "All the Mods 10",
-            "Retro NES",
-            "Cave & Cliffs Reborn",
-            "Pixelmon Adventures",
-            "Vault Hunters 3",
-            "Blue Skies",
-            "Hardcore World",
-        ];
-        const LOADERS: [Loader; 5] = [Loader::Fabric, Loader::Vanilla, Loader::Forge, Loader::Quilt, Loader::NeoForge];
-        const BIOME_CYCLE: [Biome; 8] = [
-            Biome::End,
-            Biome::Forest,
-            Biome::Cherry,
-            Biome::Ocean,
-            Biome::Desert,
-            Biome::Snow,
-            Biome::Nether,
-            Biome::Mushroom,
-        ];
-        const LOADER_VERSIONS: [&str; 5] = ["0.14.21", "", "1.16.5", "0.15.11", "20.4.237"];
-
-        (0..48)
-            .map(|index| {
-                let name = NAMES[index % NAMES.len()].to_string();
-                let loader = LOADERS[index % LOADERS.len()];
-                let played = index % 5 != 4; // every fifth never played
-                let hours = (index * 37) % 300;
-                let last_played = played.then(|| now - chrono::Duration::hours((index * 13 + 12) as i64));
-                let installed_at = now - chrono::Duration::days((index * 5 + 3) as i64);
-                let slug = name.to_lowercase().replace([':', ' ', '&'], "-");
-                // The reference instance (04-instance.png) is Aether
-                // Legacy: 87 mods, 24h 12m played, a suffix-free folder.
-                let playtime_seconds = if index == 0 { 24 * 3600 + 12 * 60 } else { hours * 3600 };
-                Instance {
-                    id: format!("seed-{index:03}"),
-                    name,
-                    mc_version: match index % 4 {
-                        0 => "1.20.1".into(),
-                        1 => "1.20.4".into(),
-                        2 => "1.16.5".into(),
-                        _ => "1.19.4".into(),
-                    },
-                    loader,
-                    loader_version: if loader == Loader::Vanilla {
-                        None
-                    } else {
-                        Some(LOADER_VERSIONS[index % LOADER_VERSIONS.len()].into())
-                    },
-                    playtime_seconds: playtime_seconds as u32,
-                    mod_count: match loader {
-                        Loader::Vanilla => 0,
-                        _ if index == 0 => 87,
-                        _ => ((index * 23 + 37) % 240) as u32,
-                    },
-                    last_played,
-                    installed_at,
-                    pinned: index % 7 == 3,
-                    state: if index == 0 { InstanceState::Playing } else { InstanceState::Idle },
-                    biome: BIOME_CYCLE[index % BIOME_CYCLE.len()],
-                    art_seed: (index as u64) * 7 + 1,
-                    directory_name: if index == 0 { slug } else { format!("{slug}-{:04}", index + 1) },
-                }
-            })
-            .collect()
+/// A minimal instance for the tests: installed now, never played, no mods.
+#[cfg(test)]
+pub(crate) fn fixture(id: &str, name: &str, loader: Loader) -> Instance {
+    Instance {
+        id: id.to_string(),
+        name: name.to_string(),
+        mc_version: "1.20.1".to_string(),
+        loader,
+        loader_version: None,
+        playtime_seconds: 0,
+        mod_count: 0,
+        last_played: None,
+        installed_at: Local::now(),
+        pinned: false,
+        state: InstanceState::Idle,
+        biome: Biome::Forest,
+        art_seed: 1,
+        directory_name: id.to_string(),
     }
 }
 

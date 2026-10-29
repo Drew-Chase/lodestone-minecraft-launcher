@@ -2,12 +2,59 @@
 //! compiled as the `tests` child module of `instance`, so they can reach the
 //! page's private state.
 
+use std::path::PathBuf;
+
 use chrono::Local;
 
+use super::logs::{LogLevel, LogLine};
+use super::worlds::{Difficulty, GameMode};
 use super::*;
+use crate::app::pages::library::instance::{Loader, fixture};
 
 fn aether() -> Instance {
-    Instance::seed_pack(Local::now()).remove(0)
+    fixture("aether", "Aether Legacy", Loader::Fabric)
+}
+
+/// What a scan of a small instance folder finds: one mod, one world, one
+/// capture and two log lines.
+fn sample_files() -> InstanceFiles {
+    InstanceFiles {
+        folder_bytes: 1_200_000_000,
+        mods: vec![files::ModFile {
+            file_name: "sodium.jar".to_string(),
+            enabled: true,
+            name: "Sodium".to_string(),
+            author: Some("JellySquid".to_string()),
+            version: Some("0.5.8".to_string()),
+        }],
+        worlds: vec![files::WorldFile {
+            name: "Aether Hub".to_string(),
+            game_mode: Some(GameMode::Survival),
+            difficulty: Some(Difficulty::Hard),
+            seed: Some(-4_827_193_047_281),
+            version: Some("1.20.1".to_string()),
+            size_bytes: 1_503_238_554,
+            saved: Some(Local::now()),
+            icon: None,
+        }],
+        screenshots: vec![files::ScreenshotFile {
+            file_name: "2026-10-29_12.00.00.png".to_string(),
+            size_label: "2.1 MB".to_string(),
+            path: PathBuf::from("/instances/aether/screenshots/2026-10-29_12.00.00.png"),
+        }],
+        log: vec![
+            LogLine {
+                time: "12:00:00".to_string(),
+                level: LogLevel::Info,
+                message: "Loading Fabric Loader".to_string(),
+            },
+            LogLine {
+                time: "12:00:01".to_string(),
+                level: LogLevel::Warn,
+                message: "Mod registered legacy recipe handler".to_string(),
+            },
+        ],
+    }
 }
 
 #[test]
@@ -26,13 +73,13 @@ fn starts_without_an_instance() {
 fn show_resets_the_tab_and_controls() {
     let mut page = InstancePage::default();
 
-    page.show(aether());
-    page.update(Message::TabSelected(Tab::Logs));
-    page.update(Message::TogglePause);
+    let _ = page.show(aether(), PathBuf::new());
+    let _ = page.update(Message::TabSelected(Tab::Logs));
+    let _ = page.update(Message::TogglePause);
     assert_eq!(page.tab, Tab::Logs);
     assert!(page.paused, "pause is display state");
 
-    page.show(aether());
+    let _ = page.show(aether(), PathBuf::new());
     assert_eq!(page.tab, Tab::Overview, "opening another instance starts on Overview");
     assert!(!page.paused);
 }
@@ -41,31 +88,75 @@ fn show_resets_the_tab_and_controls() {
 fn favorite_toggles() {
     let mut page = InstancePage::default();
     assert!(!page.favorite);
-    page.update(Message::ToggleFavorite);
+    let _ = page.update(Message::ToggleFavorite);
     assert!(page.favorite);
-    page.update(Message::ToggleFavorite);
+    let _ = page.update(Message::ToggleFavorite);
     assert!(!page.favorite);
 }
 
 #[test]
 fn back_and_navigation_are_left_to_the_root() {
     let mut page = InstancePage::default();
-    page.show(aether());
-    page.update(Message::TabSelected(Tab::Mods));
-    page.update(Message::Back);
-    page.update(Message::Navigate(Page::Home));
+    let _ = page.show(aether(), PathBuf::new());
+    let _ = page.update(Message::TabSelected(Tab::Mods));
+    let _ = page.update(Message::Back);
+    let _ = page.update(Message::Navigate(Page::Home));
     assert_eq!(page.tab, Tab::Mods, "the root handles Back and Navigate, so the page keeps its tab");
+}
+
+#[test]
+fn a_scan_for_the_current_instance_lands() {
+    let mut page = InstancePage::default();
+    let _ = page.show(aether(), PathBuf::new());
+    let generation = page.generation;
+
+    let _ = page.update(Message::Scanned {
+        generation,
+        files: sample_files(),
+    });
+    assert_eq!(page.files.as_ref().map(|files| files.folder_bytes), Some(1_200_000_000));
+    assert_eq!(page.screenshots.shots().len(), 1);
+}
+
+#[test]
+fn a_scan_for_an_earlier_instance_is_dropped() {
+    let mut page = InstancePage::default();
+    let _ = page.show(aether(), PathBuf::from("/instances/aether"));
+    let stale = page.generation;
+    let _ = page.show(fixture("beta", "Beta", Loader::Quilt), PathBuf::from("/instances/beta"));
+
+    let _ = page.update(Message::Scanned {
+        generation: stale,
+        files: sample_files(),
+    });
+    assert!(page.files.is_none(), "the page moved on, so the old scan must not land");
 }
 
 #[test]
 fn every_tab_builds_at_narrow_and_wide_widths() {
     let mut page = InstancePage::default();
-    page.show(aether());
+    let _ = page.show(aether(), PathBuf::new());
+    let generation = page.generation;
+    let _ = page.update(Message::Scanned {
+        generation,
+        files: sample_files(),
+    });
+
     for tab in Tab::ALL {
-        page.update(Message::TabSelected(tab));
+        let _ = page.update(Message::TabSelected(tab));
         for viewport in [Size::new(900.0, 700.0), Size::new(1400.0, 900.0)] {
             let _ = page.view(viewport);
         }
+    }
+}
+
+#[test]
+fn every_tab_builds_before_the_scan_lands() {
+    let mut page = InstancePage::default();
+    let _ = page.show(aether(), PathBuf::new());
+    for tab in Tab::ALL {
+        let _ = page.update(Message::TabSelected(tab));
+        let _ = page.view(Size::new(1280.0, 800.0));
     }
 }
 

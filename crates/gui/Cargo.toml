@@ -12,6 +12,9 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "time", "macros"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 dirs = "6"
+lodestone_loaders = { path = "../loaders" }
+fastnbt = "2.6"
+flate2 = "1.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 iced = { version = "0.14", default-features = false, features = ["canvas", "advanced", "svg", "lazy", "sipper", "advanced-shaping", "web-colors", "crisp", "wgpu", "thread-pool", "tokio", "image", "x11", "wayland"] }

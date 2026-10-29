@@ -1,9 +1,10 @@
-//! Ongoing root subscriptions: window resizes, mouse history buttons, and the
-//! auth-services probe timer.
+//! Ongoing root subscriptions: window resizes, mouse history buttons, the
+//! auth-services probe timer, and the instance page's log refresh.
 
 use iced::window::Id;
 use iced::{Subscription, event, mouse, window};
 
+use super::pages::Page;
 use super::{LodestoneAppMessage, LodestoneLauncher};
 
 impl LodestoneLauncher {
@@ -13,7 +14,16 @@ impl LodestoneLauncher {
             event::listen_with(Self::mouse_navigation),
             // The auth-services probe — keeps the login status bar honest.
             iced::time::every(std::time::Duration::from_secs(15)).map(|_| LodestoneAppMessage::AuthProbeTick),
+            self.instance_subscription(),
         ])
+    }
+
+    /// The instance page's log refresh. It runs only while that page is on screen.
+    fn instance_subscription(&self) -> Subscription<LodestoneAppMessage> {
+        match self.router.current() {
+            Page::Instance => self.instance_page.subscription().map(LodestoneAppMessage::Instance),
+            _ => Subscription::none(),
+        }
     }
 
     /// Maps the mouse's side buttons onto history navigation — back and

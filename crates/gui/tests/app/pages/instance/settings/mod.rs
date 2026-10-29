@@ -2,12 +2,11 @@
 //! are compiled as the `tests` child module of `settings`, so they can read the
 //! open section and the values directly.
 
-use chrono::Local;
-
 use super::*;
+use crate::app::pages::library::instance::{Loader, fixture};
 
 fn aether() -> Instance {
-    Instance::seed_pack(Local::now()).remove(0)
+    fixture("aether", "Aether Legacy", Loader::Fabric)
 }
 
 #[test]

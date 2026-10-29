@@ -21,10 +21,3 @@ fn playtime_matches_the_overview_reference() {
     assert_eq!(format_playtime(3600), "1h");
     assert_eq!(format_playtime(0), "—");
 }
-
-#[test]
-fn the_clock_pads_minutes_like_the_worlds_reference() {
-    assert_eq!(format_clock(9 * 3600 + 4 * 60), "9h 04m");
-    assert_eq!(format_clock(48 * 3600 + 12 * 60), "48h 12m");
-    assert_eq!(format_clock(45 * 60), "45m");
-}

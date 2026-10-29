@@ -25,8 +25,7 @@ impl LodestoneLauncher {
             info!("PROBE library view override: {view:?}");
             app.library.set_view(view);
         }
-        // Open the launcher database — migrations run on connect, and the
-        // first boot seeds the instance list.
+        // Open the launcher database — migrations run on connect.
         tasks.push(Task::perform(Database::connect(), |result| LodestoneAppMessage::DatabaseReady(result)));
         // TEMPORARY resize-latency probe kick-off — env-gated.
         if probe_enabled() {

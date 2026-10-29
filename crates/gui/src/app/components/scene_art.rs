@@ -135,8 +135,6 @@ static GENERATED: LazyLock<Mutex<HashMap<GeneratedKey, Handle>>> = LazyLock::new
 enum Wrapper {
     /// The masthead band.
     Banner,
-    /// A screenshot thumbnail.
-    Thumbnail,
 }
 
 /// The scene artwork for an instance — deterministic per `(biome, seed)`:
@@ -176,13 +174,6 @@ pub fn icon_handle(biome: Biome, seed: u64) -> Handle {
     handles[scene_index(biome, seed)].clone()
 }
 
-/// A screenshot thumbnail at `size`, the tile's exact pixel size: the scene
-/// cropped as for the masthead, rounded and shaded at the bottom for the
-/// filename overlay.
-pub fn screenshot_handle(biome: Biome, seed: u64, size: Size) -> Handle {
-    generated(Wrapper::Thumbnail, biome, seed, size)
-}
-
 /// The cached wrapper for `wrapper` at `size`, built on first use.
 fn generated(wrapper: Wrapper, biome: Biome, seed: u64, size: Size) -> Handle {
     let index = scene_index(biome, seed);
@@ -196,7 +187,6 @@ fn generated(wrapper: Wrapper, biome: Biome, seed: u64, size: Size) -> Handle {
             let (scene, width, height) = (SCENES[index].1, width as f32, height as f32);
             let svg = match wrapper {
                 Wrapper::Banner => banner_wrapped(scene, width, height),
-                Wrapper::Thumbnail => thumb_wrapped(scene, width, height),
             };
             Handle::from_memory(svg.into_bytes())
         })
@@ -296,32 +286,6 @@ fn icon_wrapped(scene: &str) -> String {
     <rect x="130" y="25" width="280" height="280" fill="url(#icon-glow)"/>
   </g>
 </svg>"##
-    )
-}
-
-/// A screenshot thumbnail at `width`×`height`: the scene covered and cropped
-/// by [`cover`], clipped to 12px rounded corners and shaded at the bottom for
-/// the filename overlay. The clip is in the thumbnail's own pixels, so the
-/// corners stay circular at any tile size.
-fn thumb_wrapped(scene: &str, width: f32, height: f32) -> String {
-    let (scale, x, y) = cover(width, height);
-    format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
-  <defs>
-    <clipPath id="thumb-clip"><rect width="{width}" height="{height}" rx="12"/></clipPath>
-    <linearGradient id="thumb-shade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0.55" stop-color="#050607" stop-opacity="0"/>
-      <stop offset="1" stop-color="#050607" stop-opacity="0.72"/>
-    </linearGradient>
-  </defs>
-  <g clip-path="url(#thumb-clip)">
-    <g transform="translate({x} {y}) scale({scale})">
-{inner}
-    </g>
-    <rect width="{width}" height="{height}" fill="url(#thumb-shade)"/>
-  </g>
-</svg>"##,
-        inner = scene_inner(scene),
     )
 }
 

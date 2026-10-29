@@ -2,17 +2,19 @@
 //! database, and the probes. Sign-in and account messages are routed to
 //! `auth.rs`.
 
+use crate::app::database::Database;
 use crate::app::face;
 use crate::app::pages::Page;
 use crate::app::pages::instance::Message as InstanceMessage;
+use crate::app::pages::instance::files;
 use crate::app::pages::library::Message as LibraryMessage;
 use crate::app::pages::library::instance::Instance;
 use crate::app::pages::settings::Message as SettingsMessage;
 use crate::app::pages::showcase::Message as ShowcaseMessage;
-use chrono::Local;
 use iced::widget::image;
 use iced::{Size, Task, window};
 use iced_borderless_window_resize_handle_widget::drag_resize;
+use std::path::PathBuf;
 use tracing::{debug, info, warn};
 
 use super::{LodestoneAppMessage, LodestoneLauncher, NavGroup, probe_enabled};
@@ -71,8 +73,9 @@ impl LodestoneLauncher {
             // pushes the route — the page itself never owns navigation.
             LodestoneAppMessage::Library(LibraryMessage::OpenInstance(id)) => match self.library.instance(&id) {
                 Some(instance) => {
-                    self.instance_page.show(instance);
-                    self.navigate(Page::Instance)
+                    let folder = self.instances_dir.join(&instance.directory_name);
+                    let scan = self.instance_page.show(instance, folder);
+                    Task::batch([self.navigate(Page::Instance), scan.map(LodestoneAppMessage::Instance)])
                 }
                 None => {
                     warn!("Open instance {id} ignored: the instance is no longer loaded");
@@ -90,10 +93,7 @@ impl LodestoneLauncher {
                 }
                 Task::none()
             }
-            LodestoneAppMessage::Instance(message) => {
-                self.instance_page.update(message);
-                Task::none()
-            }
+            LodestoneAppMessage::Instance(message) => self.instance_page.update(message).map(LodestoneAppMessage::Instance),
             LodestoneAppMessage::DatabaseReady(Ok(db)) => {
                 info!("Launcher database ready");
                 self.db = Some(db);
@@ -200,23 +200,25 @@ impl LodestoneLauncher {
         Task::none()
     }
 
-    /// Loads the instance list from the database, seeding it on the very
-    /// first boot (empty table) with the demo pack.
+    /// Loads the instance list from the database.
     fn load_instances(&mut self) -> Task<LodestoneAppMessage> {
         let Some(db) = self.db.clone() else {
             return Task::none();
         };
-        let instances_dir = self.instances_dir.clone();
-        Task::perform(
-            async move {
-                if db.instances_empty().await? {
-                    let pack = Instance::seed_pack(Local::now());
-                    info!("Seeding {} starter instances", pack.len());
-                    db.seed(&pack, &instances_dir).await?;
-                }
-                db.instances().await
-            },
-            |result| LodestoneAppMessage::InstancesLoaded(result),
-        )
+        Task::perform(read_instances(db, self.instances_dir.clone()), LodestoneAppMessage::InstancesLoaded)
     }
+}
+
+/// Reads the instance rows, then counts each instance's mods from its
+/// `mods/` folder, so the library card and the detail page agree.
+async fn read_instances(db: Database, instances_dir: PathBuf) -> Result<Vec<Instance>, String> {
+    let mut instances = db.instances().await?;
+    tokio::task::spawn_blocking(move || {
+        for instance in &mut instances {
+            instance.mod_count = files::count_mods(&instances_dir.join(&instance.directory_name)) as u32;
+        }
+        instances
+    })
+    .await
+    .map_err(|error| error.to_string())
 }
