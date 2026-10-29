@@ -9,9 +9,9 @@ use crate::app::theme::color;
 use crate::app::theme::fonts;
 use iced::widget::{Space, Text, column, container, mouse_area, row, svg};
 use iced::{Background, Border, Color, Element, Fill, Length, Padding, alignment, color};
-use iced_color_extension::rgb;
 
 use crate::app::components::TextButton;
+use crate::app::components::badge::{Badge, loader_palette};
 
 /// The grid card's fixed height — art box plus info block. Fixed so the
 /// virtualized rows keep an exact pitch.
@@ -69,29 +69,8 @@ fn play_button<Message: Clone + 'static>(on_press: Message) -> Element<'static, 
 
 /// The loader chip — uppercase mono label on the loader's tinted fill.
 pub fn loader_chip<Message: 'static>(loader: Loader) -> Element<'static, Message> {
-    let (ink, fill) = match loader {
-        Loader::Vanilla => (color!(0x22FF84), rgb!(34, 255, 132, 12%)),
-        Loader::Fabric => (color!(0xB689FF), rgb!(151, 71, 255, 14%)),
-        Loader::Forge => (color!(0xFFB545), rgb!(255, 181, 69, 14%)),
-        Loader::Quilt => (color!(0x47D9FF), rgb!(71, 217, 255, 14%)),
-        Loader::NeoForge => (color!(0xFF5EC8), rgb!(255, 94, 200, 14%)),
-    };
-    chip(loader.label(), ink, fill)
-}
-
-/// An uppercase mono chip on a tinted fill.
-fn chip<Message: 'static>(label: &'static str, ink: Color, fill: Color) -> Element<'static, Message> {
-    container(Text::new(label).size(10).font(fonts::JetBrainsMono::SEMI_BOLD).color(ink))
-        .padding(Padding::new(0.0).left(8).right(8).top(3).bottom(3))
-        .style(move |_| container::Style {
-            background: Some(Background::Color(fill)),
-            border: Border {
-                radius: 999.0.into(),
-                ..Border::default()
-            },
-            ..container::Style::default()
-        })
-        .into()
+    let (ink, fill) = loader_palette(loader);
+    Badge::new(loader.label(), ink, fill).compact().into()
 }
 
 /// The card's dark panel style — shared by the grid card and compact row.
