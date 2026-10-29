@@ -7,16 +7,21 @@ use crate::app::components::icon_button;
 use crate::app::components::icon_button::IconButton;
 #[cfg(windows)]
 use crate::app::theme::color;
+use crate::{body, eyebrow};
 #[cfg(windows)]
 use aurora_leaf::Icon;
 #[cfg(windows)]
 use iced::widget::{Space, Text, container, mouse_area};
-use iced::widget::row;
+use iced::widget::{row, stack};
 #[cfg(windows)]
 use iced::{Background, Fill, Padding};
-use iced::{Element, Task, window};
+use iced::{window, Border, Element, Task};
+use iced_color_extension::rgb;
 #[cfg(windows)]
 use tracing::{debug, info};
+use crate::app::pages::login::Message;
+use crate::app::theme::fonts;
+use crate::app::theme::utility::icon;
 
 #[derive(Debug, Clone, Default)]
 pub struct Titlebar;
@@ -74,6 +79,12 @@ impl Titlebar {
                 // with the window buttons on the right (the login page owns
                 // the centered brand line).
                 row![
+                    stack![
+                        container(self.language_chip()).width(Fill).align_x(iced::alignment::Horizontal::Left),
+                        container(eyebrow!(format!("LODESTONE · v{}", LodestoneLauncher::VERSION)))
+                            .width(Fill)
+                            .align_x(iced::alignment::Horizontal::Center),
+                    ],
                     mouse_area(Space::new().width(Fill).height(Fill))
                         .on_double_click(TitlebarMessage::ToggleMaximized)
                         .on_press(TitlebarMessage::StartDragWindow),
@@ -147,5 +158,28 @@ impl Titlebar {
     #[cfg(not(target_os = "windows"))]
     pub fn view(&self, _can_go_back: bool, _can_go_forward: bool, _transparent: bool) -> Element<'_, TitlebarMessage> {
         row![].into()
+    }
+
+
+    fn language_chip(&self) -> Element<'_, Message> {
+        container(
+            row![
+//                icon(Icon::lucide().globe(), 14.0, palette::Text::MUTED, 0.68),
+//                body!("English US"),
+//                icon(Icon::lucide().chevron_down(), 12.0, palette::Text::MUTED, 0.68),
+            ]
+                .spacing(8)
+                .align_y(iced::Alignment::Center),
+        )
+            .padding(Padding::new(0.0).left(16).right(12).top(10).bottom(10))
+            .style(|_| container::Style {
+                background: Some(Background::Color(rgb!(0, 0, 0, 40%))),
+                border: Border {
+                    radius: 12.0.into(),
+                    ..Border::default()
+                },
+                ..container::Style::default()
+            })
+            .into()
     }
 }

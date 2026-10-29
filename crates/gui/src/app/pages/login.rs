@@ -16,7 +16,7 @@ use std::sync::OnceLock;
 use aurora_leaf::Icon;
 use iced::widget::svg::Handle;
 use iced::widget::{Space, Text, column, container, mouse_area, row, stack, svg, text_input};
-use iced::{Background, Border, Color, Element, Fill, Length, Padding, Radians, Shadow, Vector, color, gradient};
+use iced::{Background, Border, Color, Element, Fill, Padding, Radians, Shadow, Vector, color, gradient};
 use iced_color_extension::rgb;
 use lodestone_minecraft_authentication::{DeviceCodeStart, Session};
 
@@ -202,7 +202,7 @@ impl Login {
                 .width(Fill)
                 .padding(Padding::new(0.0).left(24).right(24).top(12)),
             // The card, centered in the remaining space.
-            container(self.card()).width(Fill).height(Fill).center(Length::Fill),
+            container(self.card()).width(Fill).height(Fill).center(Fill),
             self.status_bar(auth_status),
         ]
         .width(Fill)
@@ -212,13 +212,18 @@ impl Login {
 
     /// Language chip left, window brand centered — the reference's top edge.
     fn top_bar(&self) -> Element<'_, Message> {
-        stack![
-            container(self.language_chip()).width(Fill).align_x(iced::alignment::Horizontal::Left),
-            container(mono(format!("LODESTONE · v{}", LodestoneLauncher::VERSION), 11.0))
-                .width(Fill)
-                .align_x(iced::alignment::Horizontal::Center),
-        ]
-        .into()
+        #[cfg(not(windows))]
+        {
+            stack![
+                container(self.language_chip()).width(Fill).align_x(iced::alignment::Horizontal::Left),
+                container(mono(format!("LODESTONE · v{}", LodestoneLauncher::VERSION), 11.0))
+                    .width(Fill)
+                    .align_x(iced::alignment::Horizontal::Center),
+            ]
+            .into()
+        }
+        #[cfg(windows)]
+        row![].into()
     }
 
     /// The "English · US" chip — decorative until localization lands.
