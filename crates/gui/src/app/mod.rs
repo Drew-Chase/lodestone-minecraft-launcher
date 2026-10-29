@@ -13,6 +13,7 @@ mod titlebar;
 mod update;
 mod view;
 
+use crate::app::components::Alerts;
 use crate::app::database::Database;
 use crate::app::pages::instance::InstancePage;
 use crate::app::pages::library::Library;
@@ -101,6 +102,8 @@ pub struct LodestoneLauncher {
     /// The last auth-services probe: `Ok` reached it (with delay + region),
     /// `Err` did not. `None` until the first probe lands.
     auth_status: Option<Result<AuthProbe, String>>,
+    /// The alert queue; the front alert covers the window (see `view.rs`).
+    alerts: Alerts,
     /// TEMPORARY resize-latency probe counter (env-gated).
     probe_step: u32,
 }
@@ -127,6 +130,7 @@ impl Default for LodestoneLauncher {
             face: None,
             probe_step: 0,
             auth_status: None,
+            alerts: Alerts::default(),
         }
     }
 }

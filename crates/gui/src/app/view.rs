@@ -5,7 +5,7 @@ use crate::app::components::sidebar::sidebar as sidebar_view;
 use crate::app::pages::Page;
 use crate::app::pages::login::AuthStatus;
 use crate::app::theme::color::Surface;
-use iced::widget::{column, container, row, stack};
+use iced::widget::{Space, column, container, row, stack};
 use iced::{Element, Fill};
 use iced_borderless_window_resize_handle_widget::ResizeHandles;
 use tracing::debug;
@@ -61,8 +61,16 @@ impl LodestoneLauncher {
             .height(Fill)
             .into()
         };
+        // An open alert covers the titlebar and sidebar too; the resize
+        // handles stay above it so the window can still be resized. The slot
+        // is always present so the layers keep their tree positions.
+        let alert: Element<'_, LodestoneAppMessage> = match self.alerts.view() {
+            Some(alert) => alert.map(LodestoneAppMessage::Alert),
+            None => Space::new().into(),
+        };
         stack![
             content,
+            alert,
             ResizeHandles::new(LodestoneAppMessage::WindowStartResize)
                 .gutter(4.0)
                 .enabled(!self.maximized)

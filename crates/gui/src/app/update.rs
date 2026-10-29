@@ -181,6 +181,11 @@ impl LodestoneLauncher {
                 self.showcase.update(message);
                 Task::none()
             }
+            // Answering resolves the task `Alerts::show` handed out.
+            LodestoneAppMessage::Alert(message) => {
+                self.alerts.update(message);
+                Task::none()
+            }
         }
     }
 

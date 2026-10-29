@@ -1,6 +1,7 @@
 //! The root message type: every event the launcher reacts to, from window
 //! chrome and navigation to page messages and background-task results.
 
+use crate::app::components::alert::Message as AlertMessage;
 use crate::app::database::Database;
 use crate::app::pages::Page;
 use crate::app::pages::instance::Message as InstanceMessage;
@@ -61,6 +62,8 @@ pub enum LodestoneAppMessage {
     FaceReady(Result<Vec<u8>, String>),
     /// A background credential write finished.
     CredentialsSaved(Result<(), String>),
+    /// The open alert was answered (see `components::alert`).
+    Alert(AlertMessage),
 }
 
 /// Which sidebar group a nav selection came from.
