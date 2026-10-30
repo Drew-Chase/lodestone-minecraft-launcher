@@ -12,6 +12,7 @@ pub mod input;
 pub mod instance_art;
 pub mod instance_card;
 pub mod instance_icon;
+pub mod loader_icon;
 pub mod menu;
 pub mod modal;
 pub mod nav;
