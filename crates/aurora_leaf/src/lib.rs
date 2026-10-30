@@ -1,5 +1,5 @@
 mod internal {
-    aurora_iconify::icon_sets!("lucide", "material-symbols", "mage");
+    aurora_iconify::icon_sets!("lucide", "material-symbols", "mage", "material-icon-theme");
     aurora_fonts::font_families!("Inter", "JetBrains Mono");
 }
 
