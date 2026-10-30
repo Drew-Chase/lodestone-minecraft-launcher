@@ -33,7 +33,7 @@ use iced_anim::Animated;
 use iced_color_extension::rgb;
 
 use super::anim;
-use super::menu::{self, Anchor, MenuItem, MenuState};
+use super::menu::{self, Anchor, GAP, MenuItem, MenuState};
 
 /// Horizontal padding inside the trigger.
 const H_PADDING: f32 = 12.0;
@@ -402,6 +402,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
                 origin: Point::new(bounds.x + translation.x, bounds.y + translation.y),
                 trigger_height: bounds.height,
                 width: bounds.width,
+                gap: GAP,
             },
             self.searchable,
         )

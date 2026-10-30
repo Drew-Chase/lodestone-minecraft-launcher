@@ -3,7 +3,7 @@
 //! The trigger is the guide's `.btn-icon` — a 36×36 rounded slot that
 //! brightens on hover — and the menu reuses the shared floating engine
 //! ([`super::menu`]): `bg-3` surface, elevation-3 shadow, `bg-4` hover rows,
-//! `--pink` ink for destructive entries and hairline separators between
+//! red ink for destructive entries and hairline separators between
 //! groups (§02, §06, §07).
 //!
 //! ```text
@@ -30,7 +30,7 @@ use iced_anim::Animated;
 use iced_color_extension::rgb;
 
 use super::anim;
-use super::menu::{self, Anchor, MenuItem, MenuState};
+use super::menu::{self, Anchor, GAP, MenuItem, MenuState};
 
 /// Trigger size — the `.btn-icon` spec is 36×36 with a 12px radius.
 const TRIGGER_SIZE: f32 = 36.0;
@@ -283,6 +283,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Dropdown<Message
                 origin: Point::new(bounds.x + translation.x, bounds.y + translation.y),
                 trigger_height: bounds.height,
                 width: bounds.width.max(180.0),
+                gap: GAP,
             },
             false,
         )

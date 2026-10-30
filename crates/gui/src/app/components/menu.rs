@@ -40,7 +40,7 @@ use super::anim;
 use super::search_field::{self, Query};
 
 /// Vertical gap between the trigger and the menu.
-const GAP: f32 = 6.0;
+pub(crate) const GAP: f32 = 6.0;
 /// Margin kept from the window edge.
 const SCREEN_MARGIN: f32 = 8.0;
 /// Height of one action row — 13px text at 1.4 plus 8px vertical padding.
@@ -65,7 +65,7 @@ pub enum MenuItem {
     Action {
         label: String,
         icon: Option<&'static str>,
-        /// Destructive action — `--pink` ink (§02: errors, destructive).
+        /// Destructive action — the red danger ink (the same red as the danger buttons).
         danger: bool,
     },
     /// A hairline divider between groups.
@@ -180,13 +180,50 @@ pub(crate) fn listed(items: &[MenuItem], query: &str) -> Vec<usize> {
         .collect()
 }
 
-/// Where the menu attaches to its trigger, in window space.
+/// Where the menu attaches, in window space: a trigger's top-left corner and height, or a bare
+/// point with no height (the pointer, for a context menu).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Anchor {
-    /// Top-left of the trigger.
+    /// Top-left of the trigger, or the point the menu opens at.
     pub(crate) origin: Point,
     pub(crate) trigger_height: f32,
     pub(crate) width: f32,
+    /// Space between the anchor and the menu: [`GAP`] for a trigger, none at the pointer.
+    pub(crate) gap: f32,
+}
+
+/// Where a floating menu sits: its top-left corner, its size, and whether it opened below its
+/// anchor.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Placement {
+    pub(crate) position: Point,
+    pub(crate) size: Size,
+    pub(crate) below: bool,
+}
+
+/// Places a menu `content` pixels tall against `anchor` in a `window`. The menu opens below the
+/// anchor when that side has the room, otherwise above it. It is held to the window's width and
+/// shifts left when it would run off the right edge, so it keeps its width.
+pub(crate) fn place(anchor: Anchor, window: Size, content: f32) -> Placement {
+    let origin = anchor.origin;
+    let bottom = origin.y + anchor.trigger_height;
+    let space_below = window.height - bottom - anchor.gap - SCREEN_MARGIN;
+    let space_above = origin.y - anchor.gap - SCREEN_MARGIN;
+    let (below, available) = if space_below >= space_above {
+        (true, space_below)
+    } else {
+        (false, space_above)
+    };
+
+    let height = content.min(available).clamp(0.0, MAX_MENU_HEIGHT);
+    let width = anchor.width.min(window.width - SCREEN_MARGIN * 2.0).max(0.0);
+    let x = origin.x.min(window.width - SCREEN_MARGIN - width).max(0.0);
+    let y = if below { bottom + anchor.gap } else { origin.y - height - anchor.gap };
+    Placement {
+        position: Point::new(x, y),
+        size: Size::new(width, height),
+        below,
+    }
 }
 
 /// The floating menu overlay. Created fresh each frame by the host widget's
@@ -361,35 +398,15 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
         // The listed rows follow the query, so refresh them before measuring.
         self.state.visible = listed(self.items, self.state.query.text());
         let chrome = self.chrome();
-        let total = self.total_height() + chrome;
-
-        let origin = self.anchor.origin;
-        let trigger_height = self.anchor.trigger_height;
-        let space_below = bounds.height - (origin.y + trigger_height) - GAP - SCREEN_MARGIN;
-        let space_above = origin.y - GAP - SCREEN_MARGIN;
-        let (place_below, available) = if space_below >= space_above {
-            (true, space_below)
-        } else {
-            (false, space_above)
-        };
-
-        let height = total.min(available).clamp(0.0, MAX_MENU_HEIGHT);
-        let width = self.anchor.width.min(bounds.width - origin.x).max(0.0);
-        let size = Size::new(width, height);
-
-        let position = if place_below {
-            Point::new(origin.x, origin.y + trigger_height + GAP)
-        } else {
-            Point::new(origin.x, origin.y - height - GAP)
-        };
+        let placed = place(self.anchor, bounds, self.total_height() + chrome);
 
         // Keep scroll in range for the (possibly changed) viewport height.
-        self.state.below = place_below;
-        self.state.window_height = (height - chrome).max(0.0);
+        self.state.below = placed.below;
+        self.state.window_height = (placed.size.height - chrome).max(0.0);
         self.state.max_scroll = (self.total_height() - self.state.window_height).max(0.0);
         self.state.scroll = self.state.scroll.clamp(0.0, self.state.max_scroll);
 
-        Node::new(size).move_to(position)
+        Node::new(placed.size).move_to(placed.position)
     }
 
     fn update(
@@ -590,9 +607,9 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
                                 );
                             }
 
-                            // Ink — danger rows are pink; selected rows read green.
+                            // Ink — danger rows are red; selected rows read green.
                             let ink = if *danger {
-                                color::Accents::PINK
+                                color::buttons::Danger::BACKGROUND_HOVER
                             } else if is_selected {
                                 color::Primary::DEFAULT
                             } else {
