@@ -1,6 +1,7 @@
 //! The Library hero banner for the most-recent instance, and the quick-action
 //! cards beneath it.
 
+use crate::app::components::badge::{Badge, loader_palette};
 use crate::app::components::instance_art;
 use crate::app::components::{IconButton, PulseDot, TextButton};
 use crate::app::theme::{color, fonts};
@@ -10,7 +11,7 @@ use iced::widget::{Text, column, container, mouse_area, row, stack};
 use iced::{Background, Border, Color, Element, Fill, Padding, alignment};
 use iced_color_extension::rgb;
 
-use super::instance::{InstanceState, Loader};
+use super::instance::InstanceState;
 use super::{Library, Message, chip, icon};
 
 impl Library {
@@ -21,28 +22,19 @@ impl Library {
         let hero = self.instances.iter().max_by_key(|instance| instance.recency().timestamp_millis())?;
         let playing = hero.state == InstanceState::Playing;
 
+        let (ink, fill) = loader_palette(hero.loader);
         let chips = row![
             status_chip(hero.state),
-            chip(
+            Badge::new(
                 match &hero.loader_version {
                     Some(version) => format!("{} {version}", hero.loader.label()),
                     None => hero.loader.label().to_string(),
                 },
-                match hero.loader {
-                    Loader::Vanilla => color::Primary::DEFAULT,
-                    Loader::Fabric => color::Accents::VIOLET_LIGHT,
-                    Loader::Forge => color::Accents::AMBER,
-                    Loader::Quilt => color::Accents::CYAN,
-                    Loader::NeoForge => color::Accents::PINK,
-                },
-                match hero.loader {
-                    Loader::Vanilla => color::Primary::TINT,
-                    Loader::Fabric => color::Accents::VIOLET_TINT,
-                    Loader::Forge => color::Accents::AMBER_TINT,
-                    Loader::Quilt => color::Accents::CYAN_TINT,
-                    Loader::NeoForge => color::Accents::PINK_TINT,
-                },
-            ),
+                ink,
+                fill,
+            )
+            .compact()
+            .with_loader(hero.loader),
             chip(format!("MC {}", hero.mc_version), color::Text::MUTED, rgb!(255, 255, 255, 6%)),
         ]
         .spacing(8);

@@ -60,7 +60,7 @@ fn play_button<Message: Clone + 'static>(on_press: Message) -> Element<'static, 
 /// The loader chip — uppercase mono label on the loader's tinted fill.
 pub fn loader_chip<Message: 'static>(loader: Loader) -> Element<'static, Message> {
     let (ink, fill) = loader_palette(loader);
-    Badge::new(loader.label(), ink, fill).compact().into()
+    Badge::new(loader.label(), ink, fill).compact().with_loader(loader).into()
 }
 
 /// The card's dark panel style — shared by the grid card and compact row.

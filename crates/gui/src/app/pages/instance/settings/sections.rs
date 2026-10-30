@@ -191,7 +191,7 @@ fn game_version<'a>(settings: &'a Settings, instance: &'a Instance) -> Element<'
         .on_select(|index| Message::Choose(Choice::MinecraftVersion, index))
         .width(160);
     let loader = row![
-        Badge::new(instance.loader.label(), ink, fill),
+        Badge::new(instance.loader.label(), ink, fill).with_loader(instance.loader),
         Select::new(&settings.loader_versions, Some(settings.loader_version))
             .on_select(|index| Message::Choose(Choice::LoaderVersion, index))
             .width(160),

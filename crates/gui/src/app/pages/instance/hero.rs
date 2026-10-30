@@ -280,7 +280,7 @@ fn loader_badge(instance: &Instance) -> Element<'static, Message> {
         Some(version) => format!("{} {version}", instance.loader.label()),
         None => instance.loader.label().to_string(),
     };
-    Badge::new(label, ink, fill).into()
+    Badge::new(label, ink, fill).with_loader(instance.loader).into()
 }
 
 /// The mono identity line: folder, size on disk, and when a world was last saved.

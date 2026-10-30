@@ -8,9 +8,9 @@ use iced_color_extension::rgb;
 
 use super::naming;
 use super::{BannerChoice, IconChoice, Message, NewInstance, banner};
-use crate::app::components::badge::loader_palette;
 use crate::app::components::button::Variant;
 use crate::app::components::instance_icon;
+use crate::app::components::loader_icon::loader_icon;
 use crate::app::components::modal::Modal;
 use crate::app::components::scene_art::scene_handle;
 use crate::app::components::tile::{INSET, tile};
@@ -153,22 +153,10 @@ fn loader_section(dialog: &NewInstance) -> Element<'_, Message> {
     column![label("MOD LOADER"), row(cards).spacing(10)].spacing(8).into()
 }
 
-/// One loader card: its colour, its name and its caption. The chosen card is outlined.
+/// One loader card: its mark, its name and its caption. The chosen card is outlined.
 fn loader_card(loader: Loader, name: &'static str, caption: &'static str, chosen: bool) -> Element<'static, Message> {
-    let (ink, _) = loader_palette(loader);
-    let swatch = container(Space::new().width(20).height(20))
-        .width(28)
-        .height(28)
-        .style(move |_| container::Style {
-            background: Some(Background::Color(ink)),
-            border: Border {
-                radius: 8.0.into(),
-                ..Border::default()
-            },
-            ..container::Style::default()
-        });
     let content = column![
-        swatch,
+        loader_icon(loader, 28.0),
         Text::new(name).size(13).font(fonts::Inter::SEMI_BOLD).color(color::Text::HEADLINE),
         Text::new(caption).size(11).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
     ]
