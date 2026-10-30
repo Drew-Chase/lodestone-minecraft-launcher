@@ -4,6 +4,7 @@
 use crate::app::components::instance_card::{InstanceMessages, compact_row, instance_card, table_header, table_row};
 use crate::app::lang;
 use crate::app::pages::library::instance::Instance;
+use crate::app::perf;
 use crate::app::theme::{color, fonts};
 use iced::widget::{Space, Text, column, container, row};
 use iced::{Element, Fill, Length, Size, alignment};
@@ -39,6 +40,7 @@ impl Library {
     /// spacers hold the page height stable so the scrollbar reflects the
     /// full list.
     fn instances_list(&self, viewport: Size) -> Element<'static, Message> {
+        let _scope = perf::scope("view.library.list");
         let visible = self.visible();
         if visible.is_empty() {
             return container(

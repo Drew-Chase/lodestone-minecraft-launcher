@@ -11,6 +11,7 @@ use crate::app::pages::library::instance::Instance;
 use crate::app::pages::login::Message as LoginMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
 use crate::app::pages::showcase::Message as ShowcaseMessage;
+use crate::app::perf;
 use crate::app::titlebar::TitlebarMessage;
 use iced::Size;
 use iced::window::{Direction, Id};
@@ -81,6 +82,8 @@ pub enum LodestoneAppMessage {
     Game(GameMessage),
     /// A Microsoft session refresh finished, with the new session or the reason it failed.
     SessionRefreshed(Result<Session, String>),
+    /// The performance overlay: its F3 toggle and its one-second refresh. See `perf`.
+    Perf(perf::Message),
 }
 
 /// Which sidebar group a nav selection came from.

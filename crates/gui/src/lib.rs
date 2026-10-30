@@ -1,5 +1,7 @@
 mod app;
 use crate::app::LodestoneLauncher;
+/// Measurement for the `perf` feature. The binary starts it, so it is public for `main`'s logging.
+pub use app::perf;
 use app::theme::{color, fonts};
 use aurora_leaf::FontFamily;
 use color_eyre::Result;

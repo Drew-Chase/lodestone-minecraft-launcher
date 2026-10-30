@@ -1,11 +1,12 @@
 //! Ongoing root subscriptions: window resizes, mouse history buttons, the
-//! auth-services probe timer, and the instance page's log refresh.
+//! auth-services probe timer, the instance page's log refresh, and the F3
+//! performance overlay.
 
 use iced::window::Id;
 use iced::{Subscription, event, mouse, window};
 
 use super::pages::Page;
-use super::{LodestoneAppMessage, LodestoneLauncher};
+use super::{LodestoneAppMessage, LodestoneLauncher, perf};
 
 impl LodestoneLauncher {
     pub fn subscription(&self) -> Subscription<LodestoneAppMessage> {
@@ -15,6 +16,7 @@ impl LodestoneLauncher {
             // The auth-services probe — keeps the login status bar honest.
             iced::time::every(std::time::Duration::from_secs(15)).map(|_| LodestoneAppMessage::AuthProbeTick),
             self.instance_subscription(),
+            perf::subscription(&self.perf).map(LodestoneAppMessage::Perf),
         ])
     }
 

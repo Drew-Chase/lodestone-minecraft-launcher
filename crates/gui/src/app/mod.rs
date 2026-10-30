@@ -12,6 +12,7 @@ mod message;
 mod new_instance;
 pub mod pages;
 pub mod paths;
+pub mod perf;
 mod preferences;
 pub mod router;
 pub mod storage;
@@ -119,6 +120,8 @@ pub struct LodestoneLauncher {
     runs_open: launch::games::RunsOpen,
     /// TEMPORARY resize-latency probe counter (env-gated).
     probe_step: u32,
+    /// The F3 performance overlay. It shows nothing unless built with the `perf` feature.
+    perf: perf::Hud,
 }
 impl Default for LodestoneLauncher {
     fn default() -> Self {
@@ -146,6 +149,7 @@ impl Default for LodestoneLauncher {
             alerts: Alerts::default(),
             games: launch::games::Games::default(),
             runs_open: launch::games::RunsOpen::default(),
+            perf: perf::Hud::default(),
         }
     }
 }

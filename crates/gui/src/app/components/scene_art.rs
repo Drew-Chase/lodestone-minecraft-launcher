@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex, OnceLock, PoisonError};
 
 use crate::app::pages::library::instance::Biome;
+use crate::app::perf;
 use iced::Size;
 use iced::widget::svg::Handle;
 
@@ -175,17 +176,21 @@ fn generated(wrapper: Wrapper, biome: Biome, seed: u64, size: Size) -> Handle {
     let height = size.height.round().max(1.0) as u32;
 
     let mut cache = GENERATED.lock().unwrap_or_else(PoisonError::into_inner);
-    cache
-        .entry((wrapper, index, width, height))
-        .or_insert_with(|| {
-            let (scene, width, height) = (SCENES[index].1, width as f32, height as f32);
-            let svg = match wrapper {
-                Wrapper::Banner => banner_wrapped(scene, width, height),
-                Wrapper::Card => card_wrapped(scene, width, height),
-            };
-            Handle::from_memory(svg.into_bytes())
-        })
-        .clone()
+    let key = (wrapper, index, width, height);
+    if let Some(handle) = cache.get(&key) {
+        perf::count("art.hit", 1);
+        return handle.clone();
+    }
+    perf::count("art.miss", 1);
+    let _scope = perf::scope("art.build");
+    let (scene, width, height) = (SCENES[index].1, width as f32, height as f32);
+    let svg = match wrapper {
+        Wrapper::Banner => banner_wrapped(scene, width, height),
+        Wrapper::Card => card_wrapped(scene, width, height),
+    };
+    let handle = Handle::from_memory(svg.into_bytes());
+    cache.insert(key, handle.clone());
+    handle
 }
 
 /// Rounds a width to the nearest [`SIZE_STEP`], never below one step.

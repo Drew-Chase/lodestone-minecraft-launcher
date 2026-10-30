@@ -14,6 +14,8 @@ use std::path::Path;
 
 use iced::widget::image::Handle;
 
+use crate::app::perf;
+
 use super::logs::{LogLine, MAX_LINES};
 
 pub use mods::ModFile;
@@ -37,6 +39,7 @@ pub struct InstanceFiles {
 
 /// Reads everything the instance tabs show from the instance folder at `folder`.
 pub fn scan(folder: &Path) -> InstanceFiles {
+    let _scope = perf::scope("io.scan");
     InstanceFiles {
         folder_bytes: dir_size(folder),
         mods: mods::scan(&folder.join("mods")),
@@ -48,6 +51,7 @@ pub fn scan(folder: &Path) -> InstanceFiles {
 
 /// The last [`MAX_LINES`] lines of the instance's `logs/latest.log`.
 pub fn read_log(folder: &Path) -> Vec<LogLine> {
+    let _scope = perf::scope("io.log");
     log::read_tail(&folder.join("logs").join("latest.log"), MAX_LINES)
 }
 
@@ -59,6 +63,7 @@ pub fn count_mods(folder: &Path) -> usize {
 /// Decodes the image at `path`, scaled down to fit `bounds` when given. `None`
 /// when the file is missing or is not an image the decoder reads.
 pub fn decode_image(path: &Path, bounds: Option<(u32, u32)>) -> Option<Handle> {
+    let _scope = perf::scope("io.decode");
     let mut decoded = image::open(path).ok()?;
     if let Some((width, height)) = bounds {
         decoded = decoded.thumbnail(width, height);

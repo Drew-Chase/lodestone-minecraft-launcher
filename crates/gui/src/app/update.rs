@@ -17,6 +17,7 @@ use crate::app::pages::library::instance::Instance;
 use crate::app::pages::login::Message as LoginMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
 use crate::app::pages::showcase::Message as ShowcaseMessage;
+use crate::app::perf;
 use crate::app::preferences::Preferences;
 use iced::widget::image;
 use iced::{Size, Task, window};
@@ -28,6 +29,7 @@ use super::{LodestoneAppMessage, LodestoneLauncher, NavGroup, probe_enabled};
 
 impl LodestoneLauncher {
     pub fn update(&mut self, message: LodestoneAppMessage) -> Task<LodestoneAppMessage> {
+        let _scope = perf::scope(perf::message_kind(&message));
         match message {
             LodestoneAppMessage::TitlebarMessage(message) => match self.id {
                 Some(id) => self.titlebar.update(message, id),
@@ -214,6 +216,10 @@ impl LodestoneLauncher {
             }
             LodestoneAppMessage::Game(message) => self.game_message(message),
             LodestoneAppMessage::SessionRefreshed(result) => self.session_refreshed(result),
+            LodestoneAppMessage::Perf(message) => {
+                self.perf.update(message);
+                Task::none()
+            }
         }
     }
 
@@ -262,6 +268,7 @@ fn select_language(code: &'static str) -> Task<LodestoneAppMessage> {
 /// instance's mods from its `mods/` folder, so the library card and the detail
 /// page agree.
 async fn read_instances(db: Database, instances_dir: PathBuf) -> Result<Vec<Instance>, String> {
+    let _scope = perf::scope("io.instances");
     let mut instances = db.instances().await?;
     tokio::task::spawn_blocking(move || {
         for instance in &mut instances {

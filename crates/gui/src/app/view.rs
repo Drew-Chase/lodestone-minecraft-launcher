@@ -7,6 +7,7 @@ use crate::app::launch::GameMessage;
 use crate::app::launch::games::{GameBar, RunsPlace};
 use crate::app::pages::Page;
 use crate::app::pages::login::AuthStatus;
+use crate::app::perf;
 use crate::app::theme::color::Surface;
 use iced::widget::{Space, column, container, row, stack};
 use iced::{Element, Fill};
@@ -17,6 +18,7 @@ use super::{Account, LodestoneAppMessage, LodestoneLauncher, NavGroup};
 
 impl LodestoneLauncher {
     pub fn view(&self) -> Element<'_, LodestoneAppMessage> {
+        let _scope = perf::scope("view.root");
         let content: Element<'_, LodestoneAppMessage> = if self.router.current() == Page::Login {
             // The login gate: the backdrop fills the whole window and the
             // chrome floats over it, transparent. No rail, no history.
@@ -83,17 +85,23 @@ impl LodestoneLauncher {
             Some(dialog) => dialog.map(LodestoneAppMessage::Library),
             None => Space::new().into(),
         };
-        stack![
-            content,
-            dialog,
-            alert,
-            ResizeHandles::new(LodestoneAppMessage::WindowStartResize)
-                .gutter(4.0)
-                .enabled(!self.maximized)
-        ]
-        .width(Fill)
-        .height(Fill)
-        .into()
+        // The overlay sits under the resize handles and above everything else. It is an empty slot unless
+        // the `perf` feature shows it, so the layers keep their tree positions either way.
+        let hud: Element<'_, LodestoneAppMessage> = perf::overlay(&self.perf);
+        perf::frame(
+            stack![
+                content,
+                dialog,
+                alert,
+                hud,
+                ResizeHandles::new(LodestoneAppMessage::WindowStartResize)
+                    .gutter(4.0)
+                    .enabled(!self.maximized)
+            ]
+            .width(Fill)
+            .height(Fill)
+            .into(),
+        )
     }
 
     /// The full sidebar — logo, all nav groups, the game block, and the player avatar. The
@@ -148,7 +156,15 @@ impl LodestoneLauncher {
     /// renders through `view`'s dedicated branch, so this arm only serves
     /// callers that ask for the current page generically.
     fn outlet(&self) -> Element<'_, LodestoneAppMessage> {
-        match self.router.current() {
+        let page = self.router.current();
+        let _scope = perf::scope(match page {
+            Page::Login => "view.login",
+            Page::Home => "view.library",
+            Page::Instance => "view.instance",
+            Page::Settings => "view.settings",
+            Page::Showcase => "view.showcase",
+        });
+        match page {
             Page::Login => self.login.view(None).map(LodestoneAppMessage::Login),
             Page::Home => self.library.view(self.window_size).map(LodestoneAppMessage::Library),
             Page::Instance => self
