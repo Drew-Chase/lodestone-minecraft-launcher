@@ -14,10 +14,11 @@ use instance::{Instance, Loader};
 use new_instance::NewInstance;
 
 use crate::app::components::instance_card::{CARD_HEIGHT, COMPACT_ROW_HEIGHT, TABLE_ROW_HEIGHT};
+use crate::app::components::scrollbar;
 use crate::app::database::Database;
 use crate::app::paths::LauncherPaths;
 use crate::app::theme::fonts;
-use iced::widget::{Column, Text, container, scrollable, svg};
+use iced::widget::{Column, Text, container, svg};
 use iced::{Background, Border, Color, Element, Fill, Padding, Size, Task};
 use tracing::info;
 
@@ -281,7 +282,7 @@ impl Library {
         }
         let page = page.push(self.quick_actions()).push(self.instances_section(viewport));
 
-        scrollable(
+        scrollbar::scroll(
             page.spacing(24)
                 .padding(Padding::new(0.0).left(28).right(28).top(24).bottom(28))
                 .width(Fill),

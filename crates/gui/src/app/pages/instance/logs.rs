@@ -8,7 +8,7 @@
 use std::collections::VecDeque;
 
 use aurora_leaf::Icon;
-use iced::widget::{Space, Text, column, container, row, scrollable};
+use iced::widget::{Space, Text, column, container, row};
 use iced::{Background, Color, Element, Fill, Padding, alignment};
 use iced_color_extension::rgb;
 
@@ -16,6 +16,7 @@ use crate::app::components::TextButton;
 use crate::app::components::badge::Badge;
 use crate::app::components::button::Variant;
 use crate::app::components::panel::{hairline, panel_with_padding};
+use crate::app::components::scrollbar;
 use crate::app::theme::{color, fonts, utility};
 
 /// How many lines the buffer keeps; the oldest are dropped first.
@@ -158,7 +159,7 @@ impl State {
             let lines: Vec<Element<'_, Message>> = self.buffer.iter().map(log_row).chain(std::iter::once(caret())).collect();
             column(lines).spacing(5).width(Fill).into()
         };
-        let scroll = scrollable(body).width(Fill).height(Fill);
+        let scroll = scrollbar::scroll(body).width(Fill).height(Fill);
         let scroll = if self.follow { scroll.anchor_bottom() } else { scroll };
 
         container(panel_with_padding(

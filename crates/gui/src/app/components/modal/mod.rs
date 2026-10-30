@@ -25,10 +25,11 @@
 mod layer;
 
 use crate::app::components::icon_button::{self, IconButton};
+use crate::app::components::scrollbar;
 use crate::app::components::typography;
 use crate::app::theme::utility;
 use aurora_leaf::Icon;
-use iced::widget::{Column, Container, Row, Text, column, container, row, scrollable};
+use iced::widget::{Column, Container, Row, Text, column, container, row};
 use iced::{Background, Border, Color, Element, Fill, Length, Padding, alignment};
 use std::borrow::Cow;
 
@@ -261,7 +262,7 @@ impl<'a, Message: Clone + 'a> From<Modal<'a, Message>> for Element<'a, Message> 
         let header = Modal::header(title, subtitle, icon, on_close.clone());
         // The layer hands the body whatever height the header and footer
         // leave, so a long body scrolls instead of pushing the footer out.
-        let body = scrollable(container(body.into_element(typography::body)).width(Fill).padding(BODY_PADDING))
+        let body = scrollbar::scroll(container(body.into_element(typography::body)).width(Fill).padding(BODY_PADDING))
             .width(Fill)
             .height(Length::Shrink)
             .into();

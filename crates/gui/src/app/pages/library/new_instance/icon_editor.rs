@@ -4,13 +4,14 @@
 
 use aurora_leaf::Icon;
 use iced::widget::scrollable::AbsoluteOffset;
-use iced::widget::{Id, Space, Text, column, container, operation, row, scrollable, svg};
+use iced::widget::{Id, Space, Text, column, container, operation, row, svg};
 use iced::{Element, Fill, Length, Padding, Task, alignment};
 
 use super::{IconChoice, Upload};
 use crate::app::components::carousel::{self, Step};
 use crate::app::components::instance_icon::{self, BACKGROUNDS, SYMBOLS};
 use crate::app::components::modal::Modal;
+use crate::app::components::scrollbar;
 use crate::app::components::tile::{INSET, tile};
 use crate::app::components::{TextButton, button::Variant};
 use crate::app::pages::library::instance::InstanceIcon;
@@ -31,8 +32,6 @@ const COLUMNS: usize = 6;
 const GRID_HEIGHT: f32 = 176.0;
 /// The space the carousel's back button takes, so the symbol columns line up with the swatches.
 const NAV_GUTTER: f32 = 36.0;
-/// The room the grid's scrollbar takes beside its columns.
-const SCROLLBAR_GUTTER: f32 = 14.0;
 /// How many recents the editor lists.
 pub const RECENTS_SHOWN: usize = 4;
 
@@ -272,8 +271,8 @@ impl IconEditor {
             })
             .collect();
 
-        let grid_width = COLUMNS as f32 * CELL + (COLUMNS - 1) as f32 * GAP + SCROLLBAR_GUTTER;
-        let grid = scrollable(column(rows).spacing(GAP))
+        let grid_width = COLUMNS as f32 * CELL + (COLUMNS - 1) as f32 * GAP + scrollbar::TRACK_WIDTH;
+        let grid = scrollbar::scroll(column(rows).spacing(GAP))
             .id(grid_id())
             .width(Length::Fixed(grid_width))
             .height(GRID_HEIGHT);

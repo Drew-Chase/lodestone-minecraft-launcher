@@ -4,12 +4,13 @@
 //! Deliberately self-contained: it owns its own state and messages, and can
 //! be swapped for real pages without touching the components module.
 
+use crate::app::components::scrollbar;
 use crate::app::components::{Card, Dropdown, MenuItem, NavItem, NavRail, ProgressBar, PulseDot, Select, Tabs, TextButton, Toggle, input};
 use crate::app::pages::Page;
 use crate::app::theme::color;
 use aurora_leaf::Icon;
 use iced::widget::container::Style;
-use iced::widget::{column, container, row, scrollable, text_input};
+use iced::widget::{column, container, row, text_input};
 use iced::{Alignment, Background, Color, Element, Fill, Gradient, Length, Padding, Theme, color, gradient};
 
 /// Interactive state of the gallery.
@@ -68,7 +69,7 @@ impl Showcase {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        scrollable(
+        scrollbar::scroll(
             container(self.gallery())
                 .width(Fill)
                 .max_width(720)

@@ -23,10 +23,11 @@ use std::time::Duration;
 
 use chrono::Local;
 use iced::widget::image::Handle;
-use iced::widget::{Text, column, container, scrollable, stack};
+use iced::widget::{Text, column, container, stack};
 use iced::{Element, Fill, Padding, Size, Subscription, Task, alignment};
 
 use crate::app::components::Tabs;
+use crate::app::components::scrollbar;
 use crate::app::pages::Page;
 use crate::app::pages::library::instance::Instance;
 use crate::app::theme::{color, fonts};
@@ -330,7 +331,7 @@ impl InstancePage {
 
         match self.tab {
             Tab::Logs => padded.height(Fill).into(),
-            _ => scrollable(padded).width(Fill).height(Fill).into(),
+            _ => scrollbar::scroll(padded).width(Fill).height(Fill).into(),
         }
     }
 }
