@@ -6,6 +6,7 @@
 
 mod hero;
 pub mod instance;
+pub mod instance_menu;
 mod list;
 pub mod new_instance;
 mod toolbar;
@@ -38,8 +39,14 @@ pub enum Message {
     Play(String),
     /// Open an instance's detail page — the root routes to it.
     OpenInstance(String),
-    /// A per-instance menu button (folder/settings/kebab) — dummy.
-    InstanceMenu { instance: String, action: &'static str },
+    /// Edit an instance: open its detail page on the Settings tab — the root routes to it.
+    EditInstance(String),
+    /// Reveal an instance's folder in the file manager — the root does the IO.
+    RevealInstance(String),
+    /// A row of an instance's menu was picked; `instance_menu::action_at` says what it asks for.
+    InstanceMenu { instance: String, index: usize },
+    /// The pointer entered (`hovered`) or left a card, which grows while it is hovered.
+    Hover { instance: String, hovered: bool },
     /// A header/quick action (Import, Join Server, ...) — dummy.
     QuickAction(&'static str),
     /// The refresh button — the root re-queries the database.
@@ -160,6 +167,8 @@ pub struct Library {
     scroll_y: f32,
     /// The New Instance dialog, while it is open.
     new_instance: Option<NewInstance>,
+    /// The instance whose card the pointer is over, if any.
+    hovered: Option<String>,
 }
 
 impl Library {
@@ -167,14 +176,28 @@ impl Library {
     /// intercepted by the root before reaching here. The scroll offset is
     /// owned by the page scroll alone — filter changes must not jump it.
     pub fn update(&mut self, message: Message) {
+        // Any message but a hover ends the hover: the card under the pointer may have moved or
+        // gone, and then its exit would never arrive.
+        if !matches!(message, Message::Hover { .. }) {
+            self.hovered = None;
+        }
         match message {
             Message::SearchChanged(search) => self.search = search,
             Message::FilterChanged(filter) => self.filter = filter,
             Message::ViewChanged(view) => self.view = view,
             Message::Scrolled(offset) => self.scroll_y = offset.max(0.0),
+            Message::Hover { instance, hovered } => {
+                // An exit clears only the card it was for, so enter and exit can arrive in any order.
+                if hovered {
+                    self.hovered = Some(instance);
+                } else if self.hovered.as_deref() == Some(instance.as_str()) {
+                    self.hovered = None;
+                }
+            }
             Message::Play(name) => info!("Play requested for {name} (dummy)"),
             Message::OpenInstance(id) => info!("Open instance {id} requested"),
-            Message::InstanceMenu { instance, action } => info!("Instance '{instance}' menu: {action} (dummy)"),
+            // The root routes these: they need the database, the alerts or the instance page.
+            Message::EditInstance(_) | Message::RevealInstance(_) | Message::InstanceMenu { .. } => {}
             Message::QuickAction(action) => info!("Quick action '{action}' (dummy)"),
             // The root handles the reload and the New Instance messages: they need the database.
             Message::Reload | Message::OpenNewInstance | Message::NewInstance(_) => {}

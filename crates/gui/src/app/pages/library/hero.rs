@@ -3,7 +3,7 @@
 
 use crate::app::components::badge::{Badge, loader_palette};
 use crate::app::components::instance_art;
-use crate::app::components::{IconButton, PulseDot, TextButton};
+use crate::app::components::{Dropdown, IconButton, PulseDot, TextButton};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
 use aurora_leaf::Icon;
@@ -13,6 +13,7 @@ use iced::{Background, Border, Color, Element, Fill, Padding, alignment};
 use iced_color_extension::rgb;
 
 use super::instance::InstanceState;
+use super::instance_menu;
 use super::{Library, Message, chip, icon};
 
 impl Library {
@@ -86,9 +87,9 @@ impl Library {
                                 .variant(crate::app::components::button::Variant::Primary)
                                 .padding(Padding::new(0.0).left(22).right(22).top(14).bottom(14))
                                 .on_press(Message::Play(hero.name.clone())),
-                                hero_menu_button(&hero.name, "folder", Icon::lucide().folder()),
-                                hero_menu_button(&hero.name, "settings", Icon::lucide().settings()),
-                                hero_menu_button(&hero.name, "more", Icon::lucide().ellipsis_vertical()),
+                                hero_icon_button(Icon::lucide().folder(), Message::RevealInstance(hero.id.clone())),
+                                hero_icon_button(Icon::lucide().settings(), Message::EditInstance(hero.id.clone())),
+                                hero_menu(&hero.id),
                             ]
                             .spacing(10)
                             .align_y(alignment::Vertical::Center),
@@ -163,16 +164,24 @@ impl Library {
     }
 }
 
-/// A hero icon button — one of the instance's context actions.
-fn hero_menu_button(instance: &str, action: &'static str, icon_markup: &'static str) -> Element<'static, Message> {
+/// A hero icon button — one of the instance's actions.
+fn hero_icon_button(icon_markup: &'static str, on_press: Message) -> Element<'static, Message> {
     IconButton::new(icon_markup)
         .width(44)
         .height(44)
         .icon_size(16.0)
-        .on_press(Message::InstanceMenu {
-            instance: instance.to_string(),
-            action,
-        })
+        .on_press(on_press)
+        .into()
+}
+
+/// The hero's ⋯ menu: the same rows as a card's context menu.
+fn hero_menu(instance: &str) -> Element<'static, Message> {
+    let id = instance.to_owned();
+    Dropdown::new(Icon::lucide().ellipsis_vertical())
+        .items(instance_menu::items())
+        .width(44)
+        .height(44)
+        .on_select(move |index| Message::InstanceMenu { instance: id.clone(), index })
         .into()
 }
 

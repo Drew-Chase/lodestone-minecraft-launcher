@@ -101,3 +101,32 @@ fn row_pitches_match_the_fixed_component_heights() {
     assert_eq!(LibraryView::Compact.row_pitch(), COMPACT_ROW_HEIGHT + 24.0);
     assert_eq!(LibraryView::Table.row_pitch(), TABLE_ROW_HEIGHT);
 }
+
+fn hover(instance: &str, hovered: bool) -> Message {
+    Message::Hover {
+        instance: instance.to_string(),
+        hovered,
+    }
+}
+
+#[test]
+fn an_exit_clears_only_the_card_it_was_for() {
+    let mut library = library_with(sample());
+    library.update(hover("aether", true));
+    library.update(hover("sky", true));
+    assert_eq!(library.hovered.as_deref(), Some("sky"), "the latest enter wins");
+
+    library.update(hover("aether", false));
+    assert_eq!(library.hovered.as_deref(), Some("sky"), "an exit for another card changes nothing");
+
+    library.update(hover("sky", false));
+    assert_eq!(library.hovered, None);
+}
+
+#[test]
+fn any_other_message_ends_the_hover() {
+    let mut library = library_with(sample());
+    library.update(hover("aether", true));
+    library.update(Message::Scrolled(40.0));
+    assert_eq!(library.hovered, None, "a scroll can move the card away with no exit to follow");
+}

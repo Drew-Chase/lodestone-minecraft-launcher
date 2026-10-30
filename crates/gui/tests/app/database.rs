@@ -121,6 +121,27 @@ async fn recent_icons_are_capped() {
 }
 
 #[tokio::test]
+async fn deleting_an_instance_removes_only_its_row() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    let doomed = fixture("doomed", "Doomed", Loader::Vanilla);
+    let kept = fixture("kept", "Kept", Loader::Fabric);
+    db.insert_instance(&doomed).await.expect("insert succeeds");
+    db.insert_instance(&kept).await.expect("insert succeeds");
+
+    db.delete_instance(&doomed.id).await.expect("delete succeeds");
+
+    let left = db.instances().await.expect("instances load");
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0].id, kept.id);
+}
+
+#[tokio::test]
+async fn deleting_an_unknown_instance_is_not_a_failure() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    db.delete_instance("nobody").await.expect("a row that is already gone is not an error");
+}
+
+#[tokio::test]
 async fn migration_0002_removes_the_seeded_demo_rows_only() {
     let db = Database::connect_in_memory().await.expect("in-memory db opens");
     let demo = fixture("seed-000", "Aether Legacy", Loader::Fabric);

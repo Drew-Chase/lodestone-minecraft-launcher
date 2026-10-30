@@ -94,6 +94,13 @@ instance.mods.one = "{count} mod"
 instance.mods.other = "{count} mods"
 instance.stats = "{hours}h · {mods}"
 instance.compact_stats = "{hours}h · {loader} · {version} · {mods}"
+instance.menu.edit = "Edit instance"
+instance.menu.reveal = "Reveal instance folder"
+instance.menu.delete = "Delete instance"
+instance.delete.title = "Delete instance"
+instance.delete.message = "Delete “{name}”? Its folder and everything in it will be removed. This cannot be undone."
+instance.delete.failed = "Could not delete “{name}”: {error}"
+instance.reveal.failed = "Could not open the instance folder: {error}"
 
 # --- new instance ---
 new_instance.title = "New Instance"

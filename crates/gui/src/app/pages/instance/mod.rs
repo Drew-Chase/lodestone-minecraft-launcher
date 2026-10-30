@@ -15,7 +15,7 @@ mod logs;
 mod mods;
 mod overview;
 mod screenshots;
-mod settings;
+pub mod settings;
 mod worlds;
 
 use std::path::PathBuf;
@@ -148,6 +148,11 @@ impl InstancePage {
             async move { tokio::task::spawn_blocking(move || files::scan(&folder)).await.unwrap_or_default() },
             move |files| Message::Scanned { generation, files },
         )
+    }
+
+    /// The instance the page shows, if one has been shown.
+    pub fn instance(&self) -> Option<&Instance> {
+        self.instance.as_ref()
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {

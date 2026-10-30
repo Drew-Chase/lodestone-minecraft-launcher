@@ -38,6 +38,18 @@ pub enum LodestoneAppMessage {
     DatabaseReady(Result<Database, String>),
     /// The instance list finished loading, with each mod count read from disk.
     InstancesLoaded(Result<Vec<Instance>, String>),
+    /// The delete alert was answered for `instance`.
+    InstanceDeleteAnswered {
+        instance: String,
+        confirmed: bool,
+    },
+    /// The instance's folder and row were removed, or the removal failed.
+    InstanceDeleted {
+        instance: String,
+        result: Result<(), String>,
+    },
+    /// An instance folder was opened in the file manager, or could not be.
+    FolderOpened(Result<(), String>),
     /// TEMPORARY resize-latency probe tick — active only with
     /// `LODESTONE_RESIZE_PROFILE=1`; drives `window::resize` through a
     /// fixed size sequence for screen-recording measurements.

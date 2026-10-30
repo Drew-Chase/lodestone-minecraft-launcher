@@ -129,6 +129,16 @@ impl Database {
         .map_err(|error| error.to_string())
     }
 
+    /// Deletes an instance's row. The caller removes its folder; nothing else refers to the row.
+    pub async fn delete_instance(&self, id: &str) -> Result<(), String> {
+        sqlx::query("DELETE FROM instances WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
     /// The icon recents, most recently used first.
     pub async fn recent_icons(&self) -> Result<Vec<InstanceIcon>, String> {
         let rows = sqlx::query("SELECT background, symbol FROM icon_recents ORDER BY used_at DESC, id DESC LIMIT ?")

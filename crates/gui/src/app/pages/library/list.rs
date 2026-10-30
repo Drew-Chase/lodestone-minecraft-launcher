@@ -1,8 +1,9 @@
 //! The "Your Instances" section and its virtualized list, which windows rows
 //! against the page scroll.
 
-use crate::app::components::instance_card::{compact_row, instance_card, table_header, table_row};
+use crate::app::components::instance_card::{InstanceMessages, compact_row, instance_card, table_header, table_row};
 use crate::app::lang;
+use crate::app::pages::library::instance::Instance;
 use crate::app::theme::{color, fonts};
 use iced::widget::{Space, Text, column, container, row};
 use iced::{Element, Fill, Length, Size, alignment};
@@ -79,30 +80,18 @@ impl Library {
             match view {
                 LibraryView::Grid => {
                     for instance in slice {
-                        items.push(instance_card(
-                            instance,
-                            Message::Play(instance.name.clone()),
-                            Message::OpenInstance(instance.id.clone()),
-                        ));
+                        let hovered = self.hovered.as_deref() == Some(instance.id.as_str());
+                        items.push(instance_card(instance, hovered, instance_messages(instance)));
                     }
                 }
                 LibraryView::Compact => {
                     for instance in slice {
-                        items.push(compact_row(
-                            instance,
-                            Message::Play(instance.name.clone()),
-                            Message::OpenInstance(instance.id.clone()),
-                        ));
+                        items.push(compact_row(instance, instance_messages(instance)));
                     }
                 }
                 LibraryView::Table => {
                     for (offset, instance) in slice.iter().enumerate() {
-                        items.push(table_row(
-                            start + offset,
-                            instance,
-                            Message::Play(instance.name.clone()),
-                            Message::OpenInstance(instance.id.clone()),
-                        ));
+                        items.push(table_row(start + offset, instance, instance_messages(instance)));
                     }
                 }
             }
@@ -121,5 +110,23 @@ impl Library {
         } else {
             content.into()
         }
+    }
+}
+
+/// The messages one instance's card or row sends: its Play, open, hover and menu messages.
+fn instance_messages(instance: &Instance) -> InstanceMessages<Message> {
+    let id = instance.id.clone();
+    InstanceMessages {
+        play: Message::Play(instance.name.clone()),
+        open: Message::OpenInstance(id.clone()),
+        enter: Message::Hover {
+            instance: id.clone(),
+            hovered: true,
+        },
+        exit: Message::Hover {
+            instance: id.clone(),
+            hovered: false,
+        },
+        menu: Box::new(move |index| Message::InstanceMenu { instance: id.clone(), index }),
     }
 }

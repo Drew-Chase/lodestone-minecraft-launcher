@@ -4,6 +4,7 @@ pub mod components;
 pub mod database;
 pub mod face;
 mod install;
+mod instances;
 mod lang;
 mod message;
 mod new_instance;

@@ -7,7 +7,9 @@ use crate::app::face;
 use crate::app::lang;
 use crate::app::pages::Page;
 use crate::app::pages::instance::Message as InstanceMessage;
+use crate::app::pages::instance::Tab;
 use crate::app::pages::instance::files;
+use crate::app::pages::instance::settings::Message as InstanceSettingsMessage;
 use crate::app::pages::library::Message as LibraryMessage;
 use crate::app::pages::library::instance::Instance;
 use crate::app::pages::login::Message as LoginMessage;
@@ -74,17 +76,10 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Library(LibraryMessage::Reload) => self.load_instances(),
             // Opening a card/hero hands the instance to the detail page and
             // pushes the route — the page itself never owns navigation.
-            LodestoneAppMessage::Library(LibraryMessage::OpenInstance(id)) => match self.library.instance(&id) {
-                Some(instance) => {
-                    let folder = self.paths.instance(&instance.directory_name);
-                    let scan = self.instance_page.show(instance, folder);
-                    Task::batch([self.navigate(Page::Instance), scan.map(LodestoneAppMessage::Instance)])
-                }
-                None => {
-                    warn!("Open instance {id} ignored: the instance is no longer loaded");
-                    Task::none()
-                }
-            },
+            LodestoneAppMessage::Library(LibraryMessage::OpenInstance(id)) => self.open_instance_page(&id, Tab::Overview),
+            LodestoneAppMessage::Library(LibraryMessage::EditInstance(id)) => self.open_instance_page(&id, Tab::Settings),
+            LodestoneAppMessage::Library(LibraryMessage::RevealInstance(id)) => self.reveal_instance(&id),
+            LodestoneAppMessage::Library(LibraryMessage::InstanceMenu { instance, index }) => self.instance_menu_action(&instance, index),
             LodestoneAppMessage::Library(LibraryMessage::OpenNewInstance) => self.open_new_instance(),
             LodestoneAppMessage::Library(LibraryMessage::NewInstance(message)) => self.new_instance_message(message),
             LodestoneAppMessage::Library(message) => {
@@ -98,6 +93,10 @@ impl LodestoneLauncher {
                 }
                 Task::none()
             }
+            // The page's reveal and delete actions need the root's IO and alerts, so they are routed here.
+            LodestoneAppMessage::Instance(InstanceMessage::RevealFolder) => self.reveal_current_instance(),
+            LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::RevealFolder)) => self.reveal_current_instance(),
+            LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::DeleteInstance)) => self.ask_current_instance_delete(),
             LodestoneAppMessage::Instance(message) => self.instance_page.update(message).map(LodestoneAppMessage::Instance),
             LodestoneAppMessage::DatabaseReady(Ok(db)) => {
                 info!("Launcher database ready");
@@ -117,6 +116,9 @@ impl LodestoneLauncher {
                 warn!("Loading instances failed: {error}");
                 Task::none()
             }
+            LodestoneAppMessage::InstanceDeleteAnswered { instance, confirmed } => self.answer_instance_delete(instance, confirmed),
+            LodestoneAppMessage::InstanceDeleted { instance, result } => self.instance_deleted(instance, result),
+            LodestoneAppMessage::FolderOpened(result) => self.folder_opened(result),
             // Only `Navigate` exists today; when the page grows more
             // variants, add the delegation arm per the `pages` contract.
             LodestoneAppMessage::Settings(SettingsMessage::Navigate(page)) => self.navigate(page),
