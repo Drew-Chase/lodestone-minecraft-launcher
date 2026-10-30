@@ -134,8 +134,8 @@ fn artifact_files<'a>(artifacts: impl IntoIterator<Item = &'a Artifact>, default
 }
 
 /// Installs a fabric-shaped loader from its profile. Fetches `<meta_base>/<mc>/<loader>/profile/json`,
-/// writes the version JSON under `game_dir/versions`, and downloads the profile's libraries into
-/// `game_dir/libraries`.
+/// downloads the profile's libraries into `game_dir/libraries`, and then writes the version JSON
+/// under `game_dir/versions`.
 pub(crate) async fn install_profile(
     http: &reqwest::Client,
     meta_base: &str,
@@ -152,10 +152,11 @@ pub(crate) async fn install_profile(
     let url = format!("{meta_base}/{minecraft}/{}/profile/json", version.version);
     let json = get_json(http, &url).await?;
     let profile: Profile = serde_json::from_value(json.clone()).map_err(|source| LoaderError::Json { url: url.clone(), source })?;
-    let installed = write_version(game_dir, &profile.id, &json)?;
+    // The libraries land before the version JSON, so a JSON on disk means the install finished:
+    // an interrupted install leaves no JSON for a launch to trust.
     let files = artifact_files(&profile.libraries, default_maven, &game_dir.join("libraries"));
     download_files(files, progress).await?;
-    Ok(installed)
+    write_version(game_dir, &profile.id, &json)
 }
 
 /// Maven repository paths are slash-separated; destinations should use the

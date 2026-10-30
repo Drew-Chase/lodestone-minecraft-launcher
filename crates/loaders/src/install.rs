@@ -63,6 +63,34 @@ pub(crate) fn installer_jar(jars: &[PathBuf]) -> Option<&PathBuf> {
         .find(|jar| jar.file_name().is_some_and(|name| name.to_string_lossy().ends_with("-installer.jar")))
 }
 
+/// The marker a finished installer run leaves under `game_dir/installs`, named for the
+/// loader build. It holds the id of the version the run wrote, so the next install of the
+/// same build reads it back and skips the installer.
+pub(crate) fn installer_marker(game_dir: &Path, loader: &str, minecraft: &str, version: &str) -> PathBuf {
+    game_dir.join("installs").join(format!("{loader}-{minecraft}-{version}.id"))
+}
+
+/// The version a finished install recorded, when its version JSON is still on disk.
+pub(crate) fn finished_install(game_dir: &Path, marker: &Path) -> Option<InstalledVersion> {
+    let id = std::fs::read_to_string(marker).ok()?.trim().to_string();
+    let json = game_dir.join("versions").join(&id).join(format!("{id}.json"));
+    json.is_file().then_some(InstalledVersion { id, json })
+}
+
+/// Records a finished install so the next one of the same build can skip the installer.
+pub(crate) fn record_install(marker: &Path, installed: &InstalledVersion) -> Result<(), LoaderError> {
+    if let Some(parent) = marker.parent() {
+        std::fs::create_dir_all(parent).map_err(|source| LoaderError::Io {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    }
+    std::fs::write(marker, &installed.id).map_err(|source| LoaderError::Io {
+        path: marker.to_path_buf(),
+        source,
+    })
+}
+
 /// The folder names under `game_dir/versions`. A missing folder counts as empty.
 fn version_folders(game_dir: &Path) -> Result<BTreeSet<String>, LoaderError> {
     let versions = game_dir.join("versions");

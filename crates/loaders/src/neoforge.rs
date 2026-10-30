@@ -9,7 +9,9 @@ use tokio::sync::mpsc::Sender;
 use crate::LoaderKind;
 use crate::error::LoaderError;
 use crate::http::{download_files, get_json};
-use crate::install::{InstalledVersion, installer_jar, run_installer_task, seed_launcher_profiles};
+use crate::install::{
+    InstalledVersion, finished_install, installer_jar, installer_marker, record_install, run_installer_task, seed_launcher_profiles,
+};
 use crate::meta::{LoaderVersion, ModInfo};
 use crate::mod_info;
 use crate::sealed;
@@ -126,12 +128,18 @@ impl LoaderKind for NeoForge {
                 version: version.version.clone(),
             });
         };
+        let marker = installer_marker(game_dir, Self::NAME, minecraft, &version.version);
+        if let Some(finished) = finished_install(game_dir, &marker) {
+            return Ok(finished);
+        }
         let jars = Self::download_client(http, version, &game_dir.join("libraries"), progress).await?;
         let Some(installer) = installer_jar(&jars) else {
             return Err(LoaderError::InstallerMissing { loader: Self::NAME });
         };
         seed_launcher_profiles(game_dir)?;
-        run_installer_task(Self::NAME, minecraft, java, installer, "--install-client", game_dir, lines).await
+        let installed = run_installer_task(Self::NAME, minecraft, java, installer, "--install-client", game_dir, lines).await?;
+        record_install(&marker, &installed)?;
+        Ok(installed)
     }
 
     fn extract_mod_info(jar: &Path) -> Result<ModInfo, LoaderError> {

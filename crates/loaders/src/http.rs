@@ -1,6 +1,6 @@
 //! Shared HTTP and download helpers (private).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use reqwest::Client;
 use simple_download_utility::{DownloadProgress, download_file};
@@ -34,8 +34,12 @@ pub(crate) async fn get_json(http: &Client, url: &str) -> Result<serde_json::Val
     })
 }
 
-/// Downloads `(url, destination)` pairs sequentially, creating parent directories
-/// as needed, and returns the destination paths in order.
+/// How many files a loader download fetches at once.
+const PARALLEL: usize = 64;
+
+/// Downloads `(url, destination)` pairs concurrently, creating parent directories as
+/// needed, and returns the destination paths in the order given. A file already on disk
+/// is kept, so a repeat install downloads nothing it already has.
 ///
 /// A progress channel, when given, receives per-byte progress for each file —
 /// the same `DownloadProgress` events piston-mc's downloader emits, so gui can
@@ -44,23 +48,46 @@ pub(crate) async fn download_files(
     files: impl IntoIterator<Item = (String, PathBuf)>,
     progress: Option<&Sender<DownloadProgress>>,
 ) -> Result<Vec<PathBuf>, LoaderError> {
-    let mut downloaded = Vec::new();
-    for (url, path) in files {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|source| LoaderError::Io {
-                path: parent.to_path_buf(),
-                source,
-            })?;
-        }
-        download_file(&url, &path, progress.cloned())
-            .await
-            .map_err(|source| LoaderError::Download {
-                url: url.clone(),
-                source: source.into(),
-            })?;
-        downloaded.push(path);
+    use futures_util::{StreamExt, TryStreamExt};
+
+    let progress = progress.cloned();
+    futures_util::stream::iter(files)
+        .map(move |(url, path)| {
+            let progress = progress.clone();
+            async move {
+                fetch(&url, &path, progress).await?;
+                Ok::<PathBuf, LoaderError>(path)
+            }
+        })
+        .buffered(PARALLEL)
+        .try_collect::<Vec<PathBuf>>()
+        .await
+}
+
+/// Fetches one file into `path` unless a non-empty copy is already there. The download
+/// lands in a `.part` file that is renamed once complete, so an interrupted download is
+/// never mistaken for a finished one.
+async fn fetch(url: &str, path: &Path, progress: Option<Sender<DownloadProgress>>) -> Result<(), LoaderError> {
+    if std::fs::metadata(path).is_ok_and(|meta| meta.is_file() && meta.len() > 0) {
+        return Ok(());
     }
-    Ok(downloaded)
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|source| LoaderError::Io {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    }
+    let mut partial = path.as_os_str().to_owned();
+    partial.push(".part");
+    let partial = PathBuf::from(partial);
+    download_file(url, &partial, progress).await.map_err(|source| LoaderError::Download {
+        url: url.to_string(),
+        source: source.into(),
+    })?;
+    std::fs::rename(&partial, path).map_err(|source| LoaderError::Io {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 /// Turns a maven coordinate `"group:artifact:version[:classifier]"` into its
