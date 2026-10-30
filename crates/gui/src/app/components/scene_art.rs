@@ -3,10 +3,10 @@
 //! the binary and served as cached svg handles.
 //!
 //! The variant is picked by the instance's `art_seed`, so the grid mixes
-//! scenes without any runtime generation. The masthead and the screenshot
-//! thumbnails are the exception: they are wrapped at the exact pixel size
-//! they are drawn at, so the art is never stretched and their rounded corners
-//! stay circular. Those wrappers are cached per size.
+//! scenes without any runtime generation. The masthead, the grid card and the
+//! screenshot thumbnails are the exception: they are wrapped at the exact pixel
+//! size they are drawn at, so the art is never stretched and their rounded
+//! corners stay circular. Those wrappers are cached per size.
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex, OnceLock, PoisonError};
@@ -83,6 +83,9 @@ const MOON_Y: f32 = 122.0;
 /// Generated widths are rounded to this step, so resizing reuses handles
 /// instead of building a new one for every pixel.
 const SIZE_STEP: f32 = 4.0;
+/// The grid card's art corner radius. The card's border is 14px and the art sits one pixel
+/// inside it, so the art's top corners use 13px to stay concentric with the border.
+pub const CARD_RADIUS: f32 = 13.0;
 
 /// The scene slot a biome occupies — must follow the [`SCENES`] grouping.
 fn slot(biome: Biome) -> usize {
@@ -131,6 +134,8 @@ static GENERATED: LazyLock<Mutex<HashMap<GeneratedKey, Handle>>> = LazyLock::new
 enum Wrapper {
     /// The masthead band.
     Banner,
+    /// The grid card's art box, rounded at the top.
+    Card,
 }
 
 /// The scene artwork for an instance — deterministic per `(biome, seed)`:
@@ -158,6 +163,11 @@ pub fn banner_handle(biome: Biome, seed: u64, size: Size) -> Handle {
     generated(Wrapper::Banner, biome, seed, size)
 }
 
+/// The grid card's artwork at `size`, the art box's exact pixel size, with its top corners rounded.
+pub fn card_handle(biome: Biome, seed: u64, size: Size) -> Handle {
+    generated(Wrapper::Card, biome, seed, size)
+}
+
 /// The cached wrapper for `wrapper` at `size`, built on first use.
 fn generated(wrapper: Wrapper, biome: Biome, seed: u64, size: Size) -> Handle {
     let index = scene_index(biome, seed);
@@ -171,6 +181,7 @@ fn generated(wrapper: Wrapper, biome: Biome, seed: u64, size: Size) -> Handle {
             let (scene, width, height) = (SCENES[index].1, width as f32, height as f32);
             let svg = match wrapper {
                 Wrapper::Banner => banner_wrapped(scene, width, height),
+                Wrapper::Card => card_wrapped(scene, width, height),
             };
             Handle::from_memory(svg.into_bytes())
         })
@@ -248,6 +259,28 @@ fn banner_wrapped(scene: &str, width: f32, height: f32) -> String {
 {inner}
   </g>
 </svg>"##,
+        inner = scene_inner(scene),
+    )
+}
+
+/// The grid card's art at `width`×`height`: the scene covered and cropped by [`cover`], clipped to
+/// a shape with its top corners rounded by [`CARD_RADIUS`]. The bottom corners stay square, since
+/// the card's information block continues below the art.
+fn card_wrapped(scene: &str, width: f32, height: f32) -> String {
+    let (scale, x, y) = cover(width, height);
+    let r = CARD_RADIUS;
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
+  <defs>
+    <clipPath id="card"><path d="M0,{r} A{r},{r} 0 0 1 {r},0 H{right} A{r},{r} 0 0 1 {width},{r} V{height} H0 Z"/></clipPath>
+  </defs>
+  <g clip-path="url(#card)">
+  <g transform="translate({x} {y}) scale({scale})">
+{inner}
+  </g>
+  </g>
+</svg>"##,
+        right = width - r,
         inner = scene_inner(scene),
     )
 }

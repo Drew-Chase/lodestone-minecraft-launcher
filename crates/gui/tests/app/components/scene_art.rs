@@ -32,3 +32,10 @@ fn sizes_are_quantised_to_four_pixels() {
     assert_eq!(quantise(391.0), 392);
     assert_eq!(quantise(0.0), 4);
 }
+
+#[test]
+fn the_card_art_is_exact_size_with_rounded_top_corners_only() {
+    let svg = card_wrapped("", 400.0, 178.0);
+    assert!(svg.contains(r#"width="400" height="178""#), "{svg}");
+    assert!(svg.contains(r#"d="M0,13 A13,13 0 0 1 13,0 H387 A13,13 0 0 1 400,13 V178 H0 Z""#), "{svg}");
+}

@@ -5,11 +5,12 @@
 use std::f32::consts::FRAC_PI_2;
 use std::path::Path;
 
-use iced::widget::{Space, container, image, stack, svg};
+use iced::border::Radius;
+use iced::widget::{Space, container, image, responsive, stack, svg};
 use iced::{Background, Border, ContentFit, Element, Fill, Gradient, gradient};
 use iced_color_extension::rgb;
 
-use crate::app::components::scene_art::{hero_handle, scene_handle};
+use crate::app::components::scene_art::{CARD_RADIUS, card_handle, hero_handle, scene_handle};
 use crate::app::pages::library::instance::Instance;
 
 /// The uploaded banner, covering its box. Callers clip it to their own corners.
@@ -21,8 +22,39 @@ pub fn custom_banner<'a, M: 'a>(path: &Path) -> Element<'a, M> {
         .into()
 }
 
-/// The banner as a card shows it: the uploaded image, or the scene art, covering the box.
+/// The banner a grid card shows: the uploaded image, or the scene art generated at the box's exact
+/// size. Both are rounded at the top to the card's border. A container cannot clip them that way,
+/// since its clip is rectangular, so the rounding is part of the image itself.
 pub fn card_banner<'a, M: 'a>(instance: &Instance) -> Element<'a, M> {
+    match &instance.art_path {
+        Some(path) => image(image::Handle::from_path(path))
+            .width(Fill)
+            .height(Fill)
+            .content_fit(ContentFit::Cover)
+            .border_radius(Radius {
+                top_left: CARD_RADIUS,
+                top_right: CARD_RADIUS,
+                bottom_right: 0.0,
+                bottom_left: 0.0,
+            })
+            .into(),
+        None => {
+            let (biome, seed) = (instance.biome, instance.art_seed);
+            responsive(move |size| {
+                svg(card_handle(biome, seed, size))
+                    .content_fit(ContentFit::Cover)
+                    .width(Fill)
+                    .height(Fill)
+                    .into()
+            })
+            .into()
+        }
+    }
+}
+
+/// The square thumbnail the Compact row shows: the uploaded image, or the scene art, covering the
+/// box. Its corners stay square, as the row's art always has.
+pub fn thumbnail<'a, M: 'a>(instance: &Instance) -> Element<'a, M> {
     match &instance.art_path {
         Some(path) => custom_banner(path),
         None => svg(scene_handle(instance.biome, instance.art_seed))
