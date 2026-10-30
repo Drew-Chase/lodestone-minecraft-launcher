@@ -1,2 +1,5 @@
 [env]
 ICONIFY_API_URL="https://iconify.dclabs.app"
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
