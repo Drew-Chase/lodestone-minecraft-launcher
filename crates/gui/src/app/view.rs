@@ -68,8 +68,14 @@ impl LodestoneLauncher {
             Some(alert) => alert.map(LodestoneAppMessage::Alert),
             None => Space::new().into(),
         };
+        // The New Instance dialog covers the page the way an alert does, under alerts.
+        let dialog: Element<'_, LodestoneAppMessage> = match self.library.modal() {
+            Some(dialog) => dialog.map(LodestoneAppMessage::Library),
+            None => Space::new().into(),
+        };
         stack![
             content,
+            dialog,
             alert,
             ResizeHandles::new(LodestoneAppMessage::WindowStartResize)
                 .gutter(4.0)

@@ -1,12 +1,12 @@
 //! The Library hero banner for the most-recent instance, and the quick-action
 //! cards beneath it.
 
-use crate::app::components::scene_art::hero_handle;
+use crate::app::components::instance_art;
 use crate::app::components::{IconButton, PulseDot, TextButton};
 use crate::app::theme::{color, fonts};
 use aurora_leaf::Icon;
 use chrono::{DateTime, Local};
-use iced::widget::{Text, column, container, mouse_area, row, stack, svg};
+use iced::widget::{Text, column, container, mouse_area, row, stack};
 use iced::{Background, Border, Color, Element, Fill, Padding, alignment};
 use iced_color_extension::rgb;
 
@@ -59,14 +59,7 @@ impl Library {
                 stack![
                     // The biome scene fills the banner behind everything — the
                     // hero variant clips the corners and bakes the left fade.
-                    container(
-                        svg(hero_handle(hero.biome, hero.art_seed))
-                            .content_fit(iced::ContentFit::Cover)
-                            .width(Fill)
-                            .height(Fill)
-                    )
-                    .width(Fill)
-                    .height(Fill),
+                    container(instance_art::hero_banner(hero)).width(Fill).height(Fill),
                     container(
                         column![
                             mouse_area(
@@ -159,9 +152,14 @@ impl Library {
                 "3 friends online now",
             ),
         ];
-        row(cards
-            .into_iter()
-            .map(|(icon_markup, ink, fill, title, subtitle)| quick_action_card(icon_markup, ink, fill, title, subtitle, Message::QuickAction(title))))
+        row(cards.into_iter().map(|(icon_markup, ink, fill, title, subtitle)| {
+            let on_press = if title == "New Instance" {
+                Message::OpenNewInstance
+            } else {
+                Message::QuickAction(title)
+            };
+            quick_action_card(icon_markup, ink, fill, title, subtitle, on_press)
+        }))
         .spacing(20)
         .width(Fill)
         .into()

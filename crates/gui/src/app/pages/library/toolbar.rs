@@ -49,7 +49,7 @@ impl Library {
             )
             .variant(crate::app::components::button::Variant::Primary)
             .padding(Padding::new(0.0).left(18).right(18).top(12).bottom(12))
-            .on_press(Message::QuickAction("New Instance")),
+            .on_press(Message::OpenNewInstance),
         ]
         .spacing(12)
         .align_y(alignment::Vertical::Center)

@@ -73,7 +73,7 @@ impl LodestoneLauncher {
             // pushes the route — the page itself never owns navigation.
             LodestoneAppMessage::Library(LibraryMessage::OpenInstance(id)) => match self.library.instance(&id) {
                 Some(instance) => {
-                    let folder = self.instances_dir.join(&instance.directory_name);
+                    let folder = self.paths.instance(&instance.directory_name);
                     let scan = self.instance_page.show(instance, folder);
                     Task::batch([self.navigate(Page::Instance), scan.map(LodestoneAppMessage::Instance)])
                 }
@@ -82,6 +82,8 @@ impl LodestoneLauncher {
                     Task::none()
                 }
             },
+            LodestoneAppMessage::Library(LibraryMessage::OpenNewInstance) => self.open_new_instance(),
+            LodestoneAppMessage::Library(LibraryMessage::NewInstance(message)) => self.new_instance_message(message),
             LodestoneAppMessage::Library(message) => {
                 self.library.update(message);
                 Task::none()
@@ -201,20 +203,22 @@ impl LodestoneLauncher {
     }
 
     /// Loads the instance list from the database.
-    fn load_instances(&mut self) -> Task<LodestoneAppMessage> {
+    pub(super) fn load_instances(&mut self) -> Task<LodestoneAppMessage> {
         let Some(db) = self.db.clone() else {
             return Task::none();
         };
-        Task::perform(read_instances(db, self.instances_dir.clone()), LodestoneAppMessage::InstancesLoaded)
+        Task::perform(read_instances(db, self.paths.instances()), LodestoneAppMessage::InstancesLoaded)
     }
 }
 
-/// Reads the instance rows, then counts each instance's mods from its
-/// `mods/` folder, so the library card and the detail page agree.
+/// Reads the instance rows, makes their file paths absolute, then counts each
+/// instance's mods from its `mods/` folder, so the library card and the detail
+/// page agree.
 async fn read_instances(db: Database, instances_dir: PathBuf) -> Result<Vec<Instance>, String> {
     let mut instances = db.instances().await?;
     tokio::task::spawn_blocking(move || {
         for instance in &mut instances {
+            instance.resolve_files(&instances_dir);
             instance.mod_count = files::count_mods(&instances_dir.join(&instance.directory_name)) as u32;
         }
         instances

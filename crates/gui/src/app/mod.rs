@@ -3,8 +3,11 @@ mod boot;
 pub mod components;
 pub mod database;
 pub mod face;
+mod install;
 mod message;
+mod new_instance;
 pub mod pages;
+pub mod paths;
 pub mod router;
 pub mod storage;
 mod subscription;
@@ -20,6 +23,7 @@ use crate::app::pages::library::Library;
 use crate::app::pages::login::Login;
 use crate::app::pages::settings::Settings;
 use crate::app::pages::showcase::Showcase;
+use crate::app::paths::LauncherPaths;
 use crate::app::router::Router;
 use crate::app::storage::{CredentialWriter, StoredCredentials};
 use crate::app::titlebar::Titlebar;
@@ -27,7 +31,6 @@ use iced::Size;
 use iced::widget::image;
 use iced::window::Id;
 use lodestone_minecraft_authentication::{AuthProbe, Authentication, Session};
-use std::path::PathBuf;
 use std::sync::OnceLock;
 
 pub use message::{LodestoneAppMessage, NavGroup};
@@ -79,8 +82,9 @@ pub struct LodestoneLauncher {
     login: Login,
     /// The launcher database — `None` until the boot-time connect lands.
     db: Option<Database>,
-    /// Where instance folders live (`<data>/lodestone/instances`).
-    instances_dir: PathBuf,
+    /// Where the launcher keeps its folders: instances, and the shared Java
+    /// and asset downloads.
+    paths: LauncherPaths,
     /// The window's inner size — the Library's virtualized list uses it
     /// for the grid's column count and the windowed row count.
     window_size: Size,
@@ -120,7 +124,7 @@ impl Default for LodestoneLauncher {
             showcase: Showcase::default(),
             login: Login::default(),
             db: None,
-            instances_dir: dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("lodestone").join("instances"),
+            paths: LauncherPaths::default(),
             window_size: Size::new(1280.0, 720.0),
             account: None,
             credentials: StoredCredentials::load(),

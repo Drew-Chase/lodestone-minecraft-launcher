@@ -11,8 +11,9 @@ use iced_color_extension::rgb;
 use crate::app::components::badge::{Badge, loader_palette};
 use crate::app::components::button::Variant;
 use crate::app::components::icon_button::IconButtonStyle;
-use crate::app::components::scene_art::{banner_handle, icon_handle};
+use crate::app::components::scene_art::banner_handle;
 use crate::app::components::{IconButton, TextButton};
+use crate::app::components::{instance_art, instance_icon};
 use crate::app::pages::library::instance::{Instance, InstanceState};
 use crate::app::theme::{color, fonts, utility};
 
@@ -45,12 +46,14 @@ pub fn hero<'a>(instance: &'a Instance, files: Option<&InstanceFiles>, controls:
     // The art is generated at the masthead's exact pixel size, so it fills
     // the band without stretching.
     let (biome, seed) = (instance.biome, instance.art_seed);
-    let art = responsive(move |size| {
-        svg(banner_handle(biome, seed, size))
+    let upload = instance.art_path.clone();
+    let art = responsive(move |size| match &upload {
+        Some(path) => instance_art::custom_banner(path),
+        None => svg(banner_handle(biome, seed, size))
             .content_fit(ContentFit::Fill)
             .width(Fill)
             .height(Fill)
-            .into()
+            .into(),
     })
     .height(HERO_HEIGHT);
 
@@ -148,28 +151,23 @@ pub fn hero<'a>(instance: &'a Instance, files: Option<&InstanceFiles>, controls:
 /// shell layers it over the whole page, since inside the masthead it would be
 /// clamped to the 70px beneath its top offset.
 pub fn hero_icon(instance: &Instance) -> Element<'static, Message> {
-    let icon = container(
-        svg(icon_handle(instance.biome, instance.art_seed))
-            .content_fit(ContentFit::Fill)
-            .width(Fill)
-            .height(Fill),
-    )
-    .width(ICON_SIZE)
-    .height(ICON_SIZE)
-    .style(|_| container::Style {
-        background: Some(Background::Color(color::Surface::APPLICATION)),
-        border: Border {
-            radius: 18.0.into(),
-            width: 3.0,
-            color: color::Surface::APPLICATION,
-        },
-        shadow: Shadow {
-            color: rgb!(0, 0, 0, 80%),
-            offset: iced::Vector::new(0.0, 20.0),
-            blur_radius: 40.0,
-        },
-        ..container::Style::default()
-    });
+    let icon = container(instance_icon::icon(&instance.icon, ICON_SIZE))
+        .width(ICON_SIZE)
+        .height(ICON_SIZE)
+        .style(|_| container::Style {
+            background: Some(Background::Color(color::Surface::APPLICATION)),
+            border: Border {
+                radius: 18.0.into(),
+                width: 3.0,
+                color: color::Surface::APPLICATION,
+            },
+            shadow: Shadow {
+                color: rgb!(0, 0, 0, 80%),
+                offset: iced::Vector::new(0.0, 20.0),
+                blur_radius: 40.0,
+            },
+            ..container::Style::default()
+        });
 
     layer(
         icon.into(),

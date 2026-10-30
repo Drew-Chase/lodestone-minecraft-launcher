@@ -7,14 +7,18 @@
 mod hero;
 pub mod instance;
 mod list;
+pub mod new_instance;
 mod toolbar;
 
 use instance::{Instance, Loader};
+use new_instance::NewInstance;
 
 use crate::app::components::instance_card::{CARD_HEIGHT, COMPACT_ROW_HEIGHT, TABLE_ROW_HEIGHT};
+use crate::app::database::Database;
+use crate::app::paths::LauncherPaths;
 use crate::app::theme::fonts;
 use iced::widget::{Column, Text, container, scrollable, svg};
-use iced::{Background, Border, Color, Element, Fill, Padding, Size};
+use iced::{Background, Border, Color, Element, Fill, Padding, Size, Task};
 use tracing::info;
 
 /// Messages the Library page handles.
@@ -34,10 +38,14 @@ pub enum Message {
     OpenInstance(String),
     /// A per-instance menu button (folder/settings/kebab) — dummy.
     InstanceMenu { instance: String, action: &'static str },
-    /// A header/quick action (New Instance, Import, ...) — dummy.
+    /// A header/quick action (Import, Join Server, ...) — dummy.
     QuickAction(&'static str),
     /// The refresh button — the root re-queries the database.
     Reload,
+    /// The New Instance button opens the dialog. The root loads its lists.
+    OpenNewInstance,
+    /// A message for the New Instance dialog.
+    NewInstance(new_instance::Message),
 }
 
 /// The Library's view modes.
@@ -148,6 +156,8 @@ pub struct Library {
     view: LibraryView,
     /// The page scroll offset — drives the virtualized windowing.
     scroll_y: f32,
+    /// The New Instance dialog, while it is open.
+    new_instance: Option<NewInstance>,
 }
 
 impl Library {
@@ -164,7 +174,8 @@ impl Library {
             Message::OpenInstance(id) => info!("Open instance {id} requested"),
             Message::InstanceMenu { instance, action } => info!("Instance '{instance}' menu: {action} (dummy)"),
             Message::QuickAction(action) => info!("Quick action '{action}' (dummy)"),
-            Message::Reload => {} // handled by the root
+            // The root handles the reload and the New Instance messages: they need the database.
+            Message::Reload | Message::OpenNewInstance | Message::NewInstance(_) => {}
         }
     }
 
@@ -196,6 +207,66 @@ impl Library {
             .collect();
         visible.sort_by_key(|instance| std::cmp::Reverse(instance.recency()));
         visible
+    }
+
+    /// Opens the New Instance dialog at `paths`. The task loads the lists it offers.
+    pub fn open_new_instance(&mut self, paths: LauncherPaths) -> Task<Message> {
+        let dialog = NewInstance::new(paths);
+        let load = dialog.load().map(Message::NewInstance);
+        self.new_instance = Some(dialog);
+        load
+    }
+
+    /// Applies a dialog message that needs no database. Closing keeps an install running.
+    pub fn new_instance_update(&mut self, message: new_instance::Message) -> Task<Message> {
+        if let new_instance::Message::Close = message {
+            if self.new_instance.as_ref().is_some_and(|dialog| !dialog.is_installing()) {
+                self.new_instance = None;
+            }
+            return Task::none();
+        }
+        match self.new_instance.as_mut() {
+            Some(dialog) => dialog.update(message).map(Message::NewInstance),
+            None => Task::none(),
+        }
+    }
+
+    /// Starts the install the dialog describes. A form that cannot install says why.
+    pub fn start_new_instance(&mut self, db: Database) -> Task<Message> {
+        let Some(dialog) = self.new_instance.as_mut() else {
+            return Task::none();
+        };
+        match dialog.start_install(db) {
+            Ok(task) => task.map(Message::NewInstance),
+            Err(error) => {
+                dialog.install_failed(error);
+                Task::none()
+            }
+        }
+    }
+
+    /// Stops the running install. Its folder is removed as the install is dropped.
+    pub fn cancel_new_instance(&mut self) {
+        if let Some(dialog) = self.new_instance.as_mut() {
+            dialog.cancel_install();
+        }
+    }
+
+    /// Records why an install stopped. The dialog stays open to try again.
+    pub fn fail_new_instance(&mut self, error: String) {
+        if let Some(dialog) = self.new_instance.as_mut() {
+            dialog.install_failed(error);
+        }
+    }
+
+    /// Closes the dialog once its instance exists.
+    pub fn close_new_instance(&mut self) {
+        self.new_instance = None;
+    }
+
+    /// The New Instance dialog, when it is open, for the root to stack over the page.
+    pub fn modal(&self) -> Option<Element<'_, Message>> {
+        self.new_instance.as_ref().map(|dialog| dialog.view().map(Message::NewInstance))
     }
 
     /// The whole page as one scroll region — `viewport` is the window's
