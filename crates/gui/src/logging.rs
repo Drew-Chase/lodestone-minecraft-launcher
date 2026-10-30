@@ -29,10 +29,6 @@ const WAIT_LIMIT: Duration = Duration::from_secs(2);
 /// Roll a log file once it grows past this many bytes.
 const MAX_BYTES: u64 = 1024 * 1024 * 1024; // 1 GB
 
-/// `liblzma` extreme preset flag (`LZMA_PRESET_EXTREME`). OR'd with the
-/// numeric preset (9) this yields 7-zip "Ultra" LZMA2 compression.
-const LZMA_PRESET_EXTREME: u32 = 1 << 31;
-
 /// Log file names, ordered to match the [`Target`] indices below.
 const LOG_FILES: [&str; 4] = ["debug.log", "latest.log", "error.log", "logs.ndjson"];
 
@@ -409,7 +405,7 @@ fn compress_staged(archive_path: &Path, staging: &Path, names: &[String]) -> io:
     println!("log archive: compressing {label} ({total} bytes)");
 
     let output = File::create(archive_path)?;
-    let stream = Stream::new_easy_encoder(9 | LZMA_PRESET_EXTREME, Check::Crc64).map_err(io::Error::other)?;
+    let stream = Stream::new_easy_encoder(1, Check::Crc64).map_err(io::Error::other)?;
     let mut builder = Builder::new(XzEncoder::new_stream(output, stream));
 
     let mut processed = 0u64;
