@@ -11,12 +11,15 @@ fn main() -> ExitCode {
     if let Err(e) = color_eyre::install() {
         eprintln!("failed to install color-eyre: {e}");
     }
+    logging::flush_on_panic();
 
-    match lodestone_launcher::run() {
+    let code = match lodestone_launcher::run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("{}", e);
             ExitCode::FAILURE
         }
-    }
+    };
+    logging::flush();
+    code
 }

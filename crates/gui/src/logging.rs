@@ -1,17 +1,30 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::panic;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError};
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use chrono::{Local, Timelike};
+use lodestone_launcher::perf;
 use tar::Builder;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::{Layer, fmt, prelude::*};
 use xz2::stream::{Check, Stream};
 use xz2::write::XzEncoder;
+
+/// Lines the writer thread may hold before new ones are dropped and counted.
+const QUEUE_CAPACITY: usize = 16_384;
+
+/// How often the writer flushes when no line has arrived.
+const FLUSH_INTERVAL: Duration = Duration::from_millis(250);
+
+/// The longest a caller waits for the writer to drain the queue (errors and panics).
+const WAIT_LIMIT: Duration = Duration::from_secs(2);
 
 /// Roll a log file once it grows past this many bytes.
 const MAX_BYTES: u64 = 1024 * 1024 * 1024; // 1 GB
@@ -29,6 +42,8 @@ mod target {
     pub const LATEST: usize = 1;
     pub const ERROR: usize = 2;
     pub const JSON: usize = 3;
+    /// Console output, which goes to stdout rather than a file.
+    pub const CONSOLE: usize = 4;
 }
 
 /// Shared, mutex-guarded state backing every log layer.
@@ -80,17 +95,33 @@ impl RollingLogs {
     }
 }
 
-/// A `tracing` writer bound to one destination file in the shared state.
+/// Lines the logging path could not queue because the writer thread was behind. Counted rather than
+/// logged, so a flood of output cannot feed itself.
+static DROPPED_LINES: AtomicU64 = AtomicU64::new(0);
+
+/// The queue into the writer thread, kept so [`flush_on_panic`] can drain it.
+static QUEUE: OnceLock<SyncSender<Command>> = OnceLock::new();
+
+/// One unit of work for the writer thread.
+enum Command {
+    /// Bytes for one destination: a [`target`] index.
+    Write { target: usize, bytes: Vec<u8> },
+    /// Flush every file, then signal the sender.
+    Flush(SyncSender<()>),
+}
+
+/// A `tracing` writer that hands each formatted event to the writer thread. Only that thread touches
+/// the files and stdout, so a slow disk or console never stalls the caller.
 #[derive(Clone)]
 struct LogWriter {
-    inner: Arc<Mutex<RollingLogs>>,
+    queue: SyncSender<Command>,
     target: usize,
 }
 
 impl LogWriter {
-    fn new(inner: &Arc<Mutex<RollingLogs>>, target: usize) -> Self {
+    fn new(queue: &SyncSender<Command>, target: usize) -> Self {
         Self {
-            inner: Arc::clone(inner),
+            queue: queue.clone(),
             target,
         }
     }
@@ -98,15 +129,108 @@ impl LogWriter {
 
 impl Write for LogWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut logs = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        logs.write_to(self.target, buf)?;
+        let command = Command::Write {
+            target: self.target,
+            bytes: buf.to_vec(),
+        };
+        // Errors are rare, so they wait until they are on disk: a later abort cannot lose them. Every
+        // other line never waits for room, and a full queue drops it.
+        let is_error = self.target == target::ERROR;
+        let limit = if is_error { WAIT_LIMIT } else { Duration::ZERO };
+        if !send_within(&self.queue, command, limit) {
+            DROPPED_LINES.fetch_add(1, Ordering::Relaxed);
+        } else if is_error {
+            wait_for_queue(&self.queue, WAIT_LIMIT);
+        }
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        let mut logs = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        logs.files[self.target].flush()
+        // The writer thread flushes at least every `FLUSH_INTERVAL`, so there is nothing to wait for.
+        Ok(())
     }
+}
+
+/// Drains the queue into the files and stdout until every sender is gone. Flushes when asked to, and
+/// whenever the queue has been quiet for [`FLUSH_INTERVAL`].
+fn run_writer(commands: Receiver<Command>, mut logs: RollingLogs) {
+    loop {
+        match commands.recv_timeout(FLUSH_INTERVAL) {
+            Ok(Command::Write { target, bytes }) if target == target::CONSOLE => {
+                let _ = io::stdout().lock().write_all(&bytes);
+            }
+            Ok(Command::Write { target, bytes }) => {
+                let _ = logs.write_to(target, &bytes);
+            }
+            Ok(Command::Flush(ack)) => {
+                flush_files(&mut logs);
+                let _ = ack.send(());
+            }
+            Err(RecvTimeoutError::Timeout) => flush_files(&mut logs),
+            Err(RecvTimeoutError::Disconnected) => {
+                flush_files(&mut logs);
+                return;
+            }
+        }
+    }
+}
+
+fn flush_files(logs: &mut RollingLogs) {
+    for file in &mut logs.files {
+        let _ = file.flush();
+    }
+}
+
+/// Sends `command`, waiting up to `limit` for room in the queue. Returns false when it gave up, which
+/// happens only when the queue stays full, or the writer thread has gone.
+fn send_within(queue: &SyncSender<Command>, mut command: Command, limit: Duration) -> bool {
+    let deadline = Instant::now() + limit;
+    loop {
+        match queue.try_send(command) {
+            Ok(()) => return true,
+            Err(TrySendError::Disconnected(_)) => return false,
+            Err(TrySendError::Full(returned)) if Instant::now() < deadline => {
+                command = returned;
+                thread::sleep(Duration::from_millis(1));
+            }
+            Err(TrySendError::Full(_)) => return false,
+        }
+    }
+}
+
+/// Blocks until the writer has drained everything queued before this call, or until [`WAIT_LIMIT`]
+/// passes. It never blocks indefinitely, so a stuck writer cannot hang a panicking process.
+fn wait_for_queue(queue: &SyncSender<Command>, limit: Duration) {
+    let (ack, done) = mpsc::sync_channel(1);
+    if send_within(queue, Command::Flush(ack), limit) {
+        let _ = done.recv_timeout(limit);
+    }
+}
+
+/// Waits until the writer has written every line queued so far. Call it before `main` returns: the writer
+/// thread does not outlive the process, so lines still in the queue would otherwise be lost.
+pub fn flush() {
+    if let Some(queue) = QUEUE.get() {
+        wait_for_queue(queue, WAIT_LIMIT);
+    }
+}
+
+/// Drains the queue before a panic ends the process. `panic = "abort"` runs no destructors, so without
+/// this the lines queued just before a panic could be lost. Call it after `color_eyre::install`, so the
+/// hook it wraps is the one that runs.
+pub fn flush_on_panic() {
+    let previous = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        if let Some(queue) = QUEUE.get() {
+            wait_for_queue(queue, WAIT_LIMIT);
+        }
+        previous(info);
+    }));
+}
+
+/// Lines dropped because the writer thread was behind.
+pub fn dropped_lines() -> u64 {
+    DROPPED_LINES.load(Ordering::Relaxed)
 }
 
 impl<'a> MakeWriter<'a> for LogWriter {
@@ -140,34 +264,42 @@ pub fn setup_logging() -> color_eyre::Result<()> {
         archive(&dir)?;
     }
 
-    let logs = Arc::new(Mutex::new(RollingLogs::open(dir)?));
+    let logs = RollingLogs::open(dir.clone())?;
+    let (queue, commands) = mpsc::sync_channel(QUEUE_CAPACITY);
+    thread::Builder::new()
+        .name("log-writer".into())
+        .spawn(move || run_writer(commands, logs))?;
+    let _ = QUEUE.set(queue.clone());
 
     let debug_layer = fmt::layer()
         .with_ansi(false)
         .with_thread_names(true)
-        .with_writer(LogWriter::new(&logs, target::DEBUG))
+        .with_writer(LogWriter::new(&queue, target::DEBUG))
         .with_filter(LevelFilter::TRACE);
 
     let latest_layer = fmt::layer()
         .with_ansi(false)
         .with_thread_names(true)
-        .with_writer(LogWriter::new(&logs, target::LATEST))
+        .with_writer(LogWriter::new(&queue, target::LATEST))
         .with_filter(LevelFilter::INFO);
 
     let error_layer = fmt::layer()
         .with_ansi(false)
         .with_thread_names(true)
-        .with_writer(LogWriter::new(&logs, target::ERROR))
+        .with_writer(LogWriter::new(&queue, target::ERROR))
         .with_filter(LevelFilter::ERROR);
 
     let json_layer = fmt::layer()
         .json()
         .with_thread_names(true)
-        .with_writer(LogWriter::new(&logs, target::JSON))
+        .with_writer(LogWriter::new(&queue, target::JSON))
         .with_filter(LevelFilter::TRACE);
 
     let console_filter = if cfg!(debug_assertions) { LevelFilter::DEBUG } else { LevelFilter::INFO };
-    let console_layer = fmt::layer().with_thread_names(true).with_writer(io::stdout).with_filter(console_filter);
+    let console_layer = fmt::layer()
+        .with_thread_names(true)
+        .with_writer(LogWriter::new(&queue, target::CONSOLE))
+        .with_filter(console_filter);
 
     tracing_subscriber::registry()
         .with(debug_layer)
@@ -175,8 +307,10 @@ pub fn setup_logging() -> color_eyre::Result<()> {
         .with(error_layer)
         .with(json_layer)
         .with(console_layer)
+        .with(perf::layer())
         .init();
 
+    perf::init(&dir, dropped_lines);
     Ok(())
 }
 
@@ -349,3 +483,7 @@ fn cleanup_old_logs_archives(dir: &Path) -> io::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../tests/logging.rs"]
+mod tests;
