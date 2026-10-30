@@ -8,7 +8,6 @@ use super::{LodestoneAppMessage, LodestoneLauncher};
 use crate::app::components::alert::Alert;
 use crate::app::lang;
 use crate::app::pages::library::Message as LibraryMessage;
-use crate::app::pages::library::instance::Instance;
 use crate::app::pages::library::new_instance::{InstallEvent, Message as DialogMessage, NewInstance};
 
 /// Wraps a dialog message for the root.
@@ -37,7 +36,7 @@ impl LodestoneLauncher {
                     Task::none()
                 }
             },
-            DialogMessage::Install(InstallEvent::Finished(Ok(instance))) => self.finish_new_instance(*instance),
+            DialogMessage::Install(InstallEvent::Finished(Ok(_))) => self.finish_new_instance(),
             DialogMessage::Install(InstallEvent::Finished(Err(error))) => {
                 self.library.fail_new_instance(error.clone());
                 self.alerts
@@ -60,13 +59,9 @@ impl LodestoneLauncher {
         }
     }
 
-    /// Closes the dialog, reloads the library so the new instance shows, and says so.
-    fn finish_new_instance(&mut self, instance: Instance) -> Task<LodestoneAppMessage> {
+    /// Closes the dialog and reloads the library so the new instance shows.
+    fn finish_new_instance(&mut self) -> Task<LodestoneAppMessage> {
         self.library.close_new_instance();
-        let announce = self
-            .alerts
-            .show(Alert::info(lang::t_with("new_instance.ready", &[("name", instance.name.as_str())])))
-            .discard();
-        Task::batch([self.load_instances(), announce])
+        self.load_instances()
     }
 }

@@ -1,7 +1,8 @@
 //! The root view: the login gate, or the titlebar, sidebar, and the routed page.
 
 use crate::app::components::backdrop::LoginBackdrop;
-use crate::app::components::sidebar::sidebar as sidebar_view;
+use crate::app::components::sidebar::{game_controls, sidebar as sidebar_view};
+use crate::app::launch::GameMessage;
 use crate::app::pages::Page;
 use crate::app::pages::login::AuthStatus;
 use crate::app::theme::color::Surface;
@@ -40,7 +41,7 @@ impl LodestoneLauncher {
                 LoginBackdrop::new(),
                 column![
                     self.titlebar
-                        .view(self.router.can_go_back(), self.router.can_go_forward(), true)
+                        .view(self.router.can_go_back(), self.router.can_go_forward(), true, false)
                         .map(LodestoneAppMessage::TitlebarMessage),
                     container(self.login.view(auth_status).map(LodestoneAppMessage::Login))
                         .width(Fill)
@@ -53,7 +54,12 @@ impl LodestoneLauncher {
         } else {
             column![
                 self.titlebar
-                    .view(self.router.can_go_back(), self.router.can_go_forward(), false)
+                    .view(
+                        self.router.can_go_back(),
+                        self.router.can_go_forward(),
+                        false,
+                        self.games.latest_running().is_some(),
+                    )
                     .map(LodestoneAppMessage::TitlebarMessage),
                 row![self.rail_column(), self.body()].width(Fill).height(Fill),
             ]
@@ -107,7 +113,20 @@ impl LodestoneLauncher {
                 group: NavGroup::Bottom,
                 index,
             },
+            self.rail_game_controls(),
         )
+    }
+
+    /// The running game's two buttons for the sidebar. They sit in the title bar on Windows, so
+    /// the sidebar shows them only elsewhere.
+    fn rail_game_controls(&self) -> Option<Element<'static, LodestoneAppMessage>> {
+        if cfg!(windows) || self.games.latest_running().is_none() {
+            return None;
+        }
+        Some(game_controls(
+            LodestoneAppMessage::Game(GameMessage::KillLatest),
+            LodestoneAppMessage::Game(GameMessage::ConsoleLatest),
+        ))
     }
 
     /// Left edge chrome — one rail slot per [`Page::RAIL_PAGES`] entry.
@@ -130,7 +149,10 @@ impl LodestoneLauncher {
         match self.router.current() {
             Page::Login => self.login.view(None).map(LodestoneAppMessage::Login),
             Page::Home => self.library.view(self.window_size).map(LodestoneAppMessage::Library),
-            Page::Instance => self.instance_page.view(self.window_size).map(LodestoneAppMessage::Instance),
+            Page::Instance => self
+                .instance_page
+                .view(self.window_size, self.page_game_view())
+                .map(LodestoneAppMessage::Instance),
             Page::Settings => self.settings.view().map(LodestoneAppMessage::Settings),
             Page::Showcase => self.showcase.view().map(LodestoneAppMessage::Showcase),
         }

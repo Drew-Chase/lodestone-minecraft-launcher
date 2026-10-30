@@ -5,10 +5,10 @@ use std::path::{Path, PathBuf};
 
 use piston_mc::java::{JavaManifest, JavaRuntime, Runtimes};
 use simple_download_utility::MultiDownloadProgress;
-use sipper::Sender as ProgressSender;
 use tokio::sync::mpsc;
 
-use super::{COMPLETE, InstallProgress, PARALLEL, Stage, drive, fraction};
+use super::COMPLETE;
+use super::download::{PARALLEL, Part, PartReport, relay};
 use crate::app::lang;
 use crate::app::paths::LauncherPaths;
 
@@ -23,7 +23,7 @@ pub(super) fn short_name(component: &str) -> &str {
 
 /// The Java program inside an installed runtime: `bin/java` on Linux, `bin/java.exe` on
 /// Windows, and the bundle's `Contents/Home/bin/java` on macOS.
-pub(super) fn binary(home: &Path) -> PathBuf {
+pub(crate) fn binary(home: &Path) -> PathBuf {
     if cfg!(target_os = "windows") {
         home.join("bin").join("java.exe")
     } else if cfg!(target_os = "macos") {
@@ -36,13 +36,10 @@ pub(super) fn binary(home: &Path) -> PathBuf {
 /// Makes sure the runtime for `component` is installed and returns its Java program and
 /// its short name. An install that finished earlier is reused. One that did not is run
 /// again.
-pub(super) async fn ensure(
-    paths: &LauncherPaths,
-    component: &str,
-    progress: &mut ProgressSender<InstallProgress>,
-) -> Result<(PathBuf, String), String> {
+pub(super) async fn ensure(paths: &LauncherPaths, component: &str, reports: &mpsc::Sender<PartReport>) -> Result<(PathBuf, String), String> {
     let name = short_name(component).to_string();
     let home = paths.java(&name);
+    let _runtime = super::ensure::lock(format!("java:{name}")).await;
     if home.join(COMPLETE).is_file() {
         return Ok((binary(&home), name));
     }
@@ -55,26 +52,9 @@ pub(super) async fn ensure(
         .ok_or_else(|| lang::t_with("install.java.not_published", &[("component", component)]))?;
     std::fs::create_dir_all(&home).map_err(|error| super::could_not_create(&home, error))?;
 
-    let (sender, reports) = mpsc::channel::<MultiDownloadProgress>(64);
+    let (sender, files) = mpsc::channel::<MultiDownloadProgress>(64);
     let work = async { runtime.install(&home, PARALLEL, Some(sender)).await.map_err(|error| error.to_string()) };
-    drive(
-        progress,
-        reports,
-        |report: MultiDownloadProgress| InstallProgress {
-            stage: Stage::Java,
-            fraction: fraction(report.files_downloaded, report.files_total),
-            detail: lang::t_with(
-                "install.java.progress",
-                &[
-                    ("name", name.as_str()),
-                    ("done", report.files_downloaded.to_string().as_str()),
-                    ("total", report.files_total.to_string().as_str()),
-                ],
-            ),
-        },
-        work,
-    )
-    .await?;
+    relay(reports, Part::Java, files, work).await?;
 
     apply_manifest_flags(runtime, &home).await?;
     std::fs::write(home.join(COMPLETE), b"").map_err(|error| super::path_failed("install.could_not_finish", &home, error))?;

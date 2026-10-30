@@ -3,6 +3,7 @@
 
 use crate::app::components::alert::Message as AlertMessage;
 use crate::app::database::Database;
+use crate::app::launch::GameMessage;
 use crate::app::pages::Page;
 use crate::app::pages::instance::Message as InstanceMessage;
 use crate::app::pages::library::Message as LibraryMessage;
@@ -76,6 +77,8 @@ pub enum LodestoneAppMessage {
     CredentialsSaved(Result<(), String>),
     /// The open alert was answered (see `components::alert`).
     Alert(AlertMessage),
+    /// A game session message: a launch, a running game's output or exit, or a stop.
+    Game(GameMessage),
 }
 
 /// Which sidebar group a nav selection came from.

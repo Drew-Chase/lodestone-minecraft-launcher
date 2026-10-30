@@ -201,7 +201,7 @@ impl LodestoneLauncher {
     /// Saves the current credentials without blocking the UI thread. Writes
     /// never overlap: a save requested while one runs waits for it, and the
     /// newest state is written next.
-    fn save_credentials(&mut self) -> Task<LodestoneAppMessage> {
+    pub(super) fn save_credentials(&mut self) -> Task<LodestoneAppMessage> {
         if self.credential_writer.request() {
             self.write_credentials()
         } else {

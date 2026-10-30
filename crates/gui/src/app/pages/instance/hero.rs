@@ -15,13 +15,14 @@ use crate::app::components::scene_art::banner_handle;
 use crate::app::components::{IconButton, TextButton};
 use crate::app::components::{instance_art, instance_icon};
 use crate::app::lang;
-use crate::app::pages::library::instance::{Instance, InstanceState};
+use crate::app::launch::games::LaunchStatus;
+use crate::app::pages::library::instance::Instance;
 use crate::app::theme::{color, fonts, utility};
 
 use super::files::InstanceFiles;
 use super::format::format_bytes;
 use super::worlds::format_saved;
-use super::{GUTTER, Message, layer};
+use super::{GUTTER, Message, Tab, layer};
 
 /// The masthead's height — the design's 230px scene band.
 const HERO_HEIGHT: f32 = 230.0;
@@ -34,11 +35,11 @@ const IDENTITY_LEFT: f32 = GUTTER + ICON_SIZE + 20.0;
 /// Below this width the session controls move under the identity block.
 const NARROW_WIDTH: f32 = 1020.0;
 
-/// The masthead's toggles, owned by the page.
+/// The masthead's controls: the favourite toggle, and the state of the instance's game.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Controls {
     pub favorite: bool,
-    pub paused: bool,
+    pub status: LaunchStatus,
 }
 
 /// The masthead for `instance`, laid out for a window of `viewport` size. `files`
@@ -99,7 +100,7 @@ pub fn hero<'a>(instance: &'a Instance, files: Option<&InstanceFiles>, controls:
 
     let identity = column![
         row![
-            status_badge(instance.state),
+            status_badge(controls.status),
             loader_badge(instance),
             Badge::new(format!("MC {}", instance.mc_version), color::Text::MUTED, rgb!(255, 255, 255, 6%)),
             Badge::new(mods_label(files), color::Accents::AMBER, color::Accents::AMBER_TINT),
@@ -118,16 +119,15 @@ pub fn hero<'a>(instance: &'a Instance, files: Option<&InstanceFiles>, controls:
     ]
     .spacing(7);
 
-    let playing = instance.state == InstanceState::Playing;
     let narrow = viewport.width < NARROW_WIDTH;
     let identity = if narrow {
-        identity.push(session_controls(playing, controls.paused)).spacing(12)
+        identity.push(session_controls(controls.status)).spacing(12)
     } else {
         identity
     };
     let actions_layer = (!narrow).then(|| {
         layer(
-            session_controls(playing, controls.paused),
+            session_controls(controls.status),
             alignment::Horizontal::Right,
             alignment::Vertical::Bottom,
             Padding::new(0.0).right(GUTTER).bottom(18.0),
@@ -178,47 +178,85 @@ pub fn hero_icon(instance: &Instance) -> Element<'static, Message> {
     )
 }
 
-/// Pause plus the running-session button.
-fn session_controls(playing: bool, paused: bool) -> Element<'static, Message> {
-    let pause_label = if paused {
-        lang::t("instance.hero.resume")
-    } else {
-        lang::t("instance.hero.pause")
-    };
+/// The session controls. While the game is stopped, Launch starts it. While it is being prepared,
+/// Launch shows how far the files have got and is disabled. While it runs, three buttons: Kill
+/// stops it in solid red, Restart starts it again, and Console opens its log.
+fn session_controls(status: LaunchStatus) -> Element<'static, Message> {
+    match status {
+        LaunchStatus::Idle => row![launch_button(lang::t("instance.hero.launch").to_owned(), Some(Message::Launch))]
+            .spacing(8)
+            .align_y(alignment::Vertical::Center)
+            .into(),
+        LaunchStatus::Preparing(fraction) => {
+            let label = match fraction {
+                Some(fraction) => lang::t_with(
+                    "instance.hero.preparing_percent",
+                    &[("percent", format!("{:.0}", fraction * 100.0).as_str())],
+                ),
+                None => lang::t("instance.hero.preparing").to_owned(),
+            };
+            row![launch_button(label, None)].spacing(8).align_y(alignment::Vertical::Center).into()
+        }
+        LaunchStatus::Running => row![
+            TextButton::content(
+                row![
+                    utility::icon(Icon::lucide().square(), 11.0, Some((color::Text::HEADLINE, color::Text::HEADLINE))),
+                    Text::new(lang::t("instance.hero.kill"))
+                        .size(13)
+                        .font(fonts::Inter::BOLD)
+                        .color(color::Text::HEADLINE),
+                ]
+                .spacing(8)
+                .align_y(alignment::Vertical::Center),
+            )
+            .variant(Variant::Destructive)
+            .padding(Padding::new(0.0).left(20).right(20).top(10).bottom(10))
+            .on_press(Message::Kill),
+            secondary_button(Icon::lucide().rotate_cw(), lang::t("instance.hero.restart"), Message::Restart),
+            secondary_button(
+                Icon::lucide().terminal(),
+                lang::t("instance.hero.console"),
+                Message::TabSelected(Tab::Logs)
+            ),
+        ]
+        .spacing(8)
+        .align_y(alignment::Vertical::Center)
+        .into(),
+    }
+}
 
-    row![
-        TextButton::content(
-            row![
-                utility::icon(Icon::lucide().pause(), 13.0, Some((color::Text::DEFAULT, color::Text::DEFAULT))),
-                Text::new(pause_label).size(13).font(fonts::Inter::MEDIUM).color(color::Text::DEFAULT),
-            ]
-            .spacing(8)
-            .align_y(alignment::Vertical::Center),
-        )
-        .variant(Variant::Ghost)
-        .padding(Padding::new(0.0).left(16).right(16).top(10).bottom(10))
-        .on_press(Message::TogglePause),
-        TextButton::content(
-            row![
-                utility::icon(Icon::lucide().play(), 12.0, Some((color::Primary::ON, color::Primary::ON))),
-                Text::new(if playing {
-                    lang::t("instance.hero.running")
-                } else {
-                    lang::t("instance.hero.launch")
-                })
-                .size(14)
-                .font(fonts::Inter::BOLD)
-                .color(color::Primary::ON),
-            ]
-            .spacing(8)
-            .align_y(alignment::Vertical::Center),
-        )
-        .variant(Variant::Primary)
-        .padding(Padding::new(0.0).left(22).right(22).top(11).bottom(11))
-        .on_press(Message::TogglePause),
-    ]
-    .spacing(8)
-    .align_y(alignment::Vertical::Center)
+/// The Launch button. Without a message it is disabled, as it is while the game is prepared.
+fn launch_button(label: String, on_press: Option<Message>) -> Element<'static, Message> {
+    let button = TextButton::content(
+        row![
+            utility::icon(Icon::lucide().play(), 12.0, Some((color::Primary::ON, color::Primary::ON))),
+            Text::new(label).size(14).font(fonts::Inter::BOLD).color(color::Primary::ON),
+        ]
+        .spacing(8)
+        .align_y(alignment::Vertical::Center),
+    )
+    .variant(Variant::Primary)
+    .padding(Padding::new(0.0).left(22).right(22).top(11).bottom(11))
+    .disabled(on_press.is_none());
+    match on_press {
+        Some(message) => button.on_press(message).into(),
+        None => button.into(),
+    }
+}
+
+/// A ghost session button with an icon and a label.
+fn secondary_button(icon: &'static str, label: &'static str, on_press: Message) -> Element<'static, Message> {
+    TextButton::content(
+        row![
+            utility::icon(icon, 13.0, Some((color::Text::DEFAULT, color::Text::DEFAULT))),
+            Text::new(label).size(13).font(fonts::Inter::MEDIUM).color(color::Text::DEFAULT),
+        ]
+        .spacing(8)
+        .align_y(alignment::Vertical::Center),
+    )
+    .variant(Variant::Ghost)
+    .padding(Padding::new(0.0).left(16).right(16).top(10).bottom(10))
+    .on_press(on_press)
     .into()
 }
 
@@ -273,11 +311,17 @@ fn favorite_style() -> IconButtonStyle {
     }
 }
 
-/// The launched/idle badge.
-fn status_badge(state: InstanceState) -> Element<'static, Message> {
-    let (label, ink, fill, pulsing) = match state {
-        InstanceState::Playing => (lang::t("instance.status.launched"), color::Primary::DEFAULT, color::Primary::TINT, true),
-        InstanceState::Idle => (lang::t("instance.status.idle"), color::Text::MUTED, rgb!(255, 255, 255, 6%), false),
+/// The status badge: launched while the game runs, preparing while it is prepared, idle otherwise.
+fn status_badge(status: LaunchStatus) -> Element<'static, Message> {
+    let (label, ink, fill, pulsing) = match status {
+        LaunchStatus::Running => (lang::t("instance.status.launched"), color::Primary::DEFAULT, color::Primary::TINT, true),
+        LaunchStatus::Preparing(_) => (
+            lang::t("instance.status.preparing"),
+            color::Accents::AMBER,
+            color::Accents::AMBER_TINT,
+            true,
+        ),
+        LaunchStatus::Idle => (lang::t("instance.status.idle"), color::Text::MUTED, rgb!(255, 255, 255, 6%), false),
     };
     Badge::new(label, ink, fill).with_pulse(pulsing).into()
 }

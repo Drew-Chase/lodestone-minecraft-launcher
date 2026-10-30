@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use super::download::Part;
 use super::*;
 
 /// A fresh folder for one test, named after the test so parallel runs do not share it.
@@ -12,17 +13,27 @@ fn scratch(name: &str) -> PathBuf {
 
 #[test]
 fn every_stage_has_a_label() {
-    for stage in [
-        Stage::Resolve,
-        Stage::Java,
-        Stage::Client,
-        Stage::Libraries,
-        Stage::Assets,
-        Stage::Loader,
-        Stage::Finish,
-    ] {
+    for stage in [Stage::Resolve, Stage::Download, Stage::Loader, Stage::Finish] {
         assert!(!stage.label().is_empty(), "{stage:?} needs a label");
     }
+}
+
+#[test]
+fn the_download_parts_add_up_to_one_bar() {
+    let mut totals = Totals::default();
+    let libraries = totals.apply(PartReport {
+        part: Part::Libraries,
+        done: 5,
+        total: 10,
+    });
+    assert_eq!(libraries, (5, 10));
+    let (done, total) = totals.apply(PartReport {
+        part: Part::Assets,
+        done: 10,
+        total: 30,
+    });
+    assert_eq!((done, total), (15, 40), "the parts count their files together");
+    assert_eq!(fraction(done, total), Some(15.0 / 40.0));
 }
 
 #[test]

@@ -1,12 +1,14 @@
-//! Creating an instance. The install lays down the instance's Java runtime, Minecraft
-//! files, assets and loader, writes the instance folder and inserts the database row.
-//! It runs as a sipper that reports progress. Whatever it created is removed again when
-//! it fails or is dropped, which is what cancelling the modal does.
+//! Creating an instance. The install makes sure the shared files its version needs are on disk
+//! (Java, the client jar, the libraries and the assets, side by side) and then the loader. It
+//! writes the instance folder and inserts the database row. Files already on disk are checked
+//! rather than downloaded again. The install runs as a sipper that reports progress. Whatever it
+//! created is removed again when it fails or is dropped, which is what cancelling the modal does.
 
 pub mod catalog;
-mod java;
-mod loader;
-mod minecraft;
+pub(crate) mod download;
+pub(crate) mod ensure;
+pub(crate) mod java;
+pub(crate) mod loader;
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -20,11 +22,12 @@ use tracing::warn;
 
 use crate::app::database::Database;
 use crate::app::lang;
+use crate::app::launch::libraries;
+use crate::app::launch::manifest::Manifest;
+use crate::app::launch::rules::Platform;
 use crate::app::pages::library::instance::{Biome, Instance, InstanceIcon, InstanceState, Loader};
 use crate::app::paths::LauncherPaths;
-
-/// The concurrent downloads each stage starts with.
-const PARALLEL: u16 = 32;
+use download::PartReport;
 
 /// The marker a finished shared install leaves behind. Without it the install runs again.
 const COMPLETE: &str = ".complete";
@@ -76,10 +79,7 @@ pub struct InstallRequest {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stage {
     Resolve,
-    Java,
-    Client,
-    Libraries,
-    Assets,
+    Download,
     Loader,
     Finish,
 }
@@ -89,10 +89,7 @@ impl Stage {
     pub fn label(self) -> &'static str {
         match self {
             Stage::Resolve => lang::t("install.stage.resolve"),
-            Stage::Java => lang::t("install.stage.java"),
-            Stage::Client => lang::t("install.stage.client"),
-            Stage::Libraries => lang::t("install.stage.libraries"),
-            Stage::Assets => lang::t("install.stage.assets"),
+            Stage::Download => lang::t("install.stage.download"),
             Stage::Loader => lang::t("install.stage.loader"),
             Stage::Finish => lang::t("install.stage.finish"),
         }
@@ -174,24 +171,112 @@ impl Drop for Folder {
     }
 }
 
-/// The stages, in order, writing into `game_dir`.
+/// The stages, in order, writing the instance into `game_dir`.
 async fn run(request: &InstallRequest, progress: &mut ProgressSender<InstallProgress>, game_dir: &Path, db: &Database) -> Result<Instance, String> {
     let mc = request.mc_version.as_str();
+    let paths = &request.paths;
+    let client = reqwest::Client::new();
     report(progress, Stage::Resolve, None, format!("Minecraft {mc}")).await;
-    let resolved = minecraft::resolve(mc).await?;
-    minecraft::write_version_json(game_dir, mc, &resolved.raw)?;
+    let vanilla = {
+        let _version = ensure::lock(format!("version:{mc}")).await;
+        ensure::vanilla(paths, &client, mc).await?
+    };
 
-    let component = request.java_component.as_deref().unwrap_or(&resolved.component);
-    let (java_binary, java_name) = java::ensure(&request.paths, component, progress).await?;
-    minecraft::download_client(&resolved.version, game_dir, progress).await?;
-    minecraft::download_libraries(&resolved.version, game_dir, progress).await?;
-    minecraft::download_assets(&resolved.version, &request.paths, progress).await?;
-
+    let component = request.java_component.clone().unwrap_or_else(|| {
+        vanilla
+            .java_version
+            .as_ref()
+            .map_or_else(|| "jre-legacy".to_string(), |java| java.component.clone())
+    });
+    let downloaded = download_stage(progress, paths, &client, &vanilla, &component).await?;
+    let (java_binary, java_name) = downloaded.java;
     let version_id = match request.loader {
         Loader::Vanilla => mc.to_string(),
-        _ => loader::install(request, game_dir, &java_binary, progress).await?,
+        _ => loader_stage(progress, request, &java_binary).await?,
     };
     finish(request, game_dir, version_id, java_name, progress, db).await
+}
+
+/// What the download stage left on disk.
+pub(crate) struct Downloaded {
+    /// The bundled Java program, and its short folder name.
+    pub(crate) java: (PathBuf, String),
+    /// The log4j config the version names, when it has one.
+    pub(crate) log_config: Option<PathBuf>,
+}
+
+/// The download stage: Java, the client jar, the libraries and the assets side by side. The
+/// stage reports the total of their files.
+async fn download_stage(
+    progress: &mut ProgressSender<InstallProgress>,
+    paths: &LauncherPaths,
+    client: &reqwest::Client,
+    vanilla: &Manifest,
+    component: &str,
+) -> Result<Downloaded, String> {
+    let (reports_tx, reports) = mpsc::channel::<PartReport>(256);
+    let mut totals = Totals::default();
+    let work = download(paths, client, vanilla, component, &reports_tx);
+    drive(
+        progress,
+        reports,
+        move |report| {
+            let (done, total) = totals.apply(report);
+            InstallProgress {
+                stage: Stage::Download,
+                fraction: fraction(done, total),
+                detail: lang::t_with(
+                    "install.files_count",
+                    &[("done", done.to_string().as_str()), ("total", total.to_string().as_str())],
+                ),
+            }
+        },
+        work,
+    )
+    .await
+}
+
+/// Makes sure every shared file of the version is on disk, the parts running side by side. The
+/// version's lock is held throughout, so a launch of the same version waits for it.
+pub(crate) async fn download(
+    paths: &LauncherPaths,
+    client: &reqwest::Client,
+    vanilla: &Manifest,
+    component: &str,
+    reports: &mpsc::Sender<PartReport>,
+) -> Result<Downloaded, String> {
+    let _version = ensure::lock(format!("version:{}", vanilla.id)).await;
+    let plan = libraries::plan(vanilla, &paths.libraries(), Platform::current());
+    let (java, (), (), (), log_config) = tokio::try_join!(
+        java::ensure(paths, component, reports),
+        ensure::client_jar(paths, client, vanilla, reports),
+        ensure::libraries(client, &plan, reports),
+        ensure::assets(paths, client, vanilla, reports),
+        ensure::log_config(paths, client, vanilla),
+    )?;
+    Ok(Downloaded { java, log_config })
+}
+
+/// The loader stage: installs the loader into the shared store and returns the version id it
+/// writes. The installer's output shows as the stage's detail lines.
+async fn loader_stage(progress: &mut ProgressSender<InstallProgress>, request: &InstallRequest, java: &Path) -> Result<String, String> {
+    let Some(loader_version) = request.loader_version.as_deref() else {
+        return Err(lang::t("install.loader.choose_version").to_owned());
+    };
+    let shared = request.paths.meta();
+    let (lines_tx, lines) = mpsc::channel::<String>(256);
+    let work = loader::install(&shared, &request.mc_version, request.loader, loader_version, java, Some(&lines_tx));
+    drive(
+        progress,
+        lines,
+        |line| InstallProgress {
+            stage: Stage::Loader,
+            fraction: None,
+            detail: line,
+        },
+        work,
+    )
+    .await
 }
 
 /// Writes the folders and the uploaded art, then inserts the database row.
@@ -269,12 +354,29 @@ async fn report(progress: &mut ProgressSender<InstallProgress>, stage: Stage, fr
     progress.send(InstallProgress { stage, fraction, detail }).await;
 }
 
-/// Runs `work` while the reports it sends on `reports` are forwarded as install progress.
-/// Returns what `work` returns.
-async fn drive<T, R>(
-    progress: &mut ProgressSender<InstallProgress>,
+/// The download parts' latest counts. A stage reports their sum, so the bar moves whichever part
+/// is working.
+#[derive(Default)]
+pub(crate) struct Totals {
+    parts: [(usize, usize); 4],
+}
+
+impl Totals {
+    /// Records the part's count and returns the sum of every part's `(done, total)`.
+    pub(crate) fn apply(&mut self, report: PartReport) -> (usize, usize) {
+        self.parts[report.part as usize] = (report.done, report.total);
+        self.parts
+            .iter()
+            .fold((0, 0), |(done, total), (part_done, part_total)| (done + part_done, total + part_total))
+    }
+}
+
+/// Runs `work` while the reports it sends on `reports` are forwarded as progress. Returns what
+/// `work` returns.
+pub(crate) async fn drive<P, T, R>(
+    progress: &mut ProgressSender<P>,
     mut reports: mpsc::Receiver<R>,
-    to_progress: impl Fn(R) -> InstallProgress,
+    mut to_progress: impl FnMut(R) -> P,
     work: impl Future<Output = T>,
 ) -> T {
     tokio::pin!(work);
@@ -291,7 +393,7 @@ async fn drive<T, R>(
 }
 
 /// `done` of `total` as a fraction, or `None` while the total is unknown.
-fn fraction(done: usize, total: usize) -> Option<f32> {
+pub(crate) fn fraction(done: usize, total: usize) -> Option<f32> {
     (total > 0).then(|| (done as f32 / total as f32).min(1.0))
 }
 

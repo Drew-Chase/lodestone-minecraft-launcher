@@ -129,6 +129,40 @@ impl Database {
         .map_err(|error| error.to_string())
     }
 
+    /// Sets an instance's state: `playing` while its game runs.
+    pub async fn set_state(&self, id: &str, state: InstanceState) -> Result<(), String> {
+        sqlx::query("UPDATE instances SET state = ? WHERE id = ?")
+            .bind(state.to_db())
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    /// Ends a play session: the instance goes idle, its playtime grows by `seconds`, and it was
+    /// last played when the session started.
+    pub async fn finish_session(&self, id: &str, started: DateTime<Local>, seconds: u32) -> Result<(), String> {
+        sqlx::query("UPDATE instances SET state = 'idle', playtime_seconds = playtime_seconds + ?, last_played_at = ? WHERE id = ?")
+            .bind(i64::from(seconds))
+            .bind(started.timestamp())
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    /// Sets every instance a previous run left `playing` back to idle. The launcher cannot follow a
+    /// game across a restart, so none can still be running.
+    pub async fn reset_playing(&self) -> Result<(), String> {
+        sqlx::query("UPDATE instances SET state = 'idle' WHERE state = 'playing'")
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
     /// Deletes an instance's row. The caller removes its folder; nothing else refers to the row.
     pub async fn delete_instance(&self, id: &str) -> Result<(), String> {
         sqlx::query("DELETE FROM instances WHERE id = ?")

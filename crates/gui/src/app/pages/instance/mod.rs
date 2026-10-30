@@ -11,13 +11,14 @@
 pub mod files;
 mod format;
 mod hero;
-mod logs;
+pub(crate) mod logs;
 mod mods;
 mod overview;
 mod screenshots;
 pub mod settings;
 mod worlds;
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -29,6 +30,7 @@ use iced::{Element, Fill, Padding, Size, Subscription, Task, alignment};
 use crate::app::components::Tabs;
 use crate::app::components::scrollbar;
 use crate::app::lang;
+use crate::app::launch::games::GameView;
 use crate::app::pages::Page;
 use crate::app::pages::library::instance::Instance;
 use crate::app::theme::{color, fonts};
@@ -77,8 +79,12 @@ pub enum Message {
     RevealFolder,
     /// The kebab menu — display-only until the instance actions land.
     More,
-    /// Pauses or resumes the running session (display state only).
-    TogglePause,
+    /// Starts the instance's game. The root launches it.
+    Launch,
+    /// Stops the instance's game. The root stops it.
+    Kill,
+    /// Starts the instance's game again. The root restarts it.
+    Restart,
     /// Requests navigation — the root intercepts this before the page's
     /// `update` runs (the `<Link>` of this framework).
     Navigate(Page),
@@ -114,7 +120,6 @@ pub struct InstancePage {
     folder: PathBuf,
     tab: Tab,
     favorite: bool,
-    paused: bool,
     /// Bumped by every [`InstancePage::show`]. Results from an older generation
     /// belong to an instance the page no longer shows, so they are dropped.
     generation: u64,
@@ -142,12 +147,19 @@ impl InstancePage {
         self.screenshots = screenshots::State::default();
         self.logs = logs::State::default();
         self.tab = Tab::Overview;
-        self.paused = false;
 
         Task::perform(
             async move { tokio::task::spawn_blocking(move || files::scan(&folder)).await.unwrap_or_default() },
             move |files| Message::Scanned { generation, files },
         )
+    }
+
+    /// Replaces the shown instance's copy with a reload of it, so its state and playtime are
+    /// current. A reload of any other instance is ignored.
+    pub fn refresh(&mut self, instance: Instance) {
+        if self.instance.as_ref().is_some_and(|shown| shown.id == instance.id) {
+            self.instance = Some(instance);
+        }
     }
 
     /// The instance the page shows, if one has been shown.
@@ -163,10 +175,6 @@ impl InstancePage {
             }
             Message::ToggleFavorite => {
                 self.favorite = !self.favorite;
-                Task::none()
-            }
-            Message::TogglePause => {
-                self.paused = !self.paused;
                 Task::none()
             }
             Message::Mods(message) => {
@@ -197,7 +205,9 @@ impl InstancePage {
             }
             // Navigation is intercepted by the root; the remaining actions
             // are display-only until the instance manager lands.
-            Message::Back | Message::RevealFolder | Message::More | Message::Navigate(_) => Task::none(),
+            Message::Back | Message::RevealFolder | Message::More | Message::Navigate(_) | Message::Launch | Message::Kill | Message::Restart => {
+                Task::none()
+            }
             // Results for an instance the page no longer shows, and ticks the
             // Logs tab no longer needs.
             Message::Scanned { .. } | Message::Thumbnail { .. } | Message::LogsTick | Message::LogsLoaded { .. } => Task::none(),
@@ -255,19 +265,19 @@ impl InstancePage {
     }
 
     /// The page: fixed masthead, fixed tab row, and the tab body.
-    pub fn view(&self, viewport: Size) -> Element<'_, Message> {
+    pub fn view<'a>(&'a self, viewport: Size, game: GameView<'a>) -> Element<'a, Message> {
         let Some(instance) = &self.instance else {
             return self.empty_state();
         };
 
         let controls = hero::Controls {
             favorite: self.favorite,
-            paused: self.paused,
+            status: game.status,
         };
         let page = column![
             hero::hero(instance, self.files.as_ref(), controls, viewport),
             self.tab_bar(),
-            self.tab_body(instance),
+            self.tab_body(instance, game.console),
         ]
         .width(Fill)
         .height(Fill);
@@ -322,13 +332,13 @@ impl InstancePage {
 
     /// The selected tab's content, padded to the page gutter. The log panel
     /// fills the height and scrolls itself; every other tab scrolls as a page.
-    fn tab_body<'a>(&'a self, instance: &'a Instance) -> Element<'a, Message> {
+    fn tab_body<'a>(&'a self, instance: &'a Instance, console: Option<&'a VecDeque<logs::LogLine>>) -> Element<'a, Message> {
         let content: Element<'a, Message> = match self.tab {
             Tab::Overview => overview::view(instance, &self.screenshots),
             Tab::Mods => self.mods.view().map(Message::Mods),
             Tab::Worlds => self.worlds.view().map(Message::Worlds),
             Tab::Screenshots => screenshots::view(&self.screenshots),
-            Tab::Logs => self.logs.view().map(Message::Logs),
+            Tab::Logs => self.logs.view(console).map(Message::Logs),
             Tab::Settings => self.settings.view(instance).map(Message::Settings),
         };
         let padded = container(content)

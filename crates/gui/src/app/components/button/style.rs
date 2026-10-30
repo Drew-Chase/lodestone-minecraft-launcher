@@ -34,6 +34,13 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
                     lift: 0.0,
                     glow: 0.0,
                 },
+                Variant::Destructive => Visual {
+                    background: anim::fade(DANGER, 0.4),
+                    foreground: color::Text::DISABLED,
+                    border: anim::fade(DANGER, 0.12),
+                    lift: 0.0,
+                    glow: 0.0,
+                },
                 Variant::Tab => Visual {
                     background: Color::TRANSPARENT,
                     foreground: color::Text::DISABLED,
@@ -115,6 +122,30 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
                     background: anim::fade(DANGER, 0.12),
                     foreground: DANGER,
                     border: anim::fade(DANGER, 0.3),
+                    lift: 0.0,
+                    glow: 0.0,
+                },
+            },
+            // Destructive — the solid red fill at rest, brightened on hover.
+            Variant::Destructive => match status {
+                Status::Hovered => Visual {
+                    background: DANGER,
+                    foreground: color::Text::HEADLINE,
+                    border: DANGER,
+                    lift: 1.0,
+                    glow: 0.0,
+                },
+                Status::Pressed => Visual {
+                    background: anim::fade(DANGER, 0.8),
+                    foreground: color::Text::HEADLINE,
+                    border: DANGER,
+                    lift: 0.0,
+                    glow: 0.0,
+                },
+                _ => Visual {
+                    background: DANGER,
+                    foreground: color::Text::HEADLINE,
+                    border: DANGER,
                     lift: 0.0,
                     glow: 0.0,
                 },

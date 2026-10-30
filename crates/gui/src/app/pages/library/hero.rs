@@ -86,7 +86,7 @@ impl Library {
                                 )
                                 .variant(crate::app::components::button::Variant::Primary)
                                 .padding(Padding::new(0.0).left(22).right(22).top(14).bottom(14))
-                                .on_press(Message::Play(hero.name.clone())),
+                                .on_press(Message::Play(hero.id.clone())),
                                 hero_icon_button(Icon::lucide().folder(), Message::RevealInstance(hero.id.clone())),
                                 hero_icon_button(Icon::lucide().settings(), Message::EditInstance(hero.id.clone())),
                                 hero_menu(&hero.id),

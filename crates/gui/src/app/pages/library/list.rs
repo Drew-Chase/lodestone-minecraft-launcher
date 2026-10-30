@@ -117,7 +117,7 @@ impl Library {
 fn instance_messages(instance: &Instance) -> InstanceMessages<Message> {
     let id = instance.id.clone();
     InstanceMessages {
-        play: Message::Play(instance.name.clone()),
+        play: Message::Play(id.clone()),
         open: Message::OpenInstance(id.clone()),
         enter: Message::Hover {
             instance: id.clone(),

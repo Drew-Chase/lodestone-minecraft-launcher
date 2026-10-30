@@ -157,7 +157,7 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for TextButton<'_, Mes
                         blur_radius,
                     }
                 }
-                Variant::Ghost | Variant::Danger => Shadow {
+                Variant::Ghost | Variant::Danger | Variant::Destructive => Shadow {
                     color: rgb!(0, 0, 0, 30%),
                     offset: Vector::new(0.0, 4.0 + visual.lift * 4.0),
                     blur_radius: 12.0 + visual.lift * 8.0,

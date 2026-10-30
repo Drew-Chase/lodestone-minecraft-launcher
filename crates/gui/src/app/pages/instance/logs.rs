@@ -84,10 +84,6 @@ impl LogBuffer {
     pub fn iter(&self) -> impl Iterator<Item = &LogLine> {
         self.lines.iter()
     }
-
-    pub fn is_empty(&self) -> bool {
-        self.lines.is_empty()
-    }
 }
 
 /// Messages the Logs tab emits.
@@ -135,11 +131,19 @@ impl State {
         }
     }
 
-    /// The log panel, filling the height it is given and scrolling itself.
-    pub fn view(&self) -> Element<'_, Message> {
+    /// The log panel, filling the height it is given and scrolling itself. While a game of the
+    /// instance has output, `console` is that output, which shows lines the moment they arrive,
+    /// including start-up errors the log file never gets. Otherwise the file's lines show.
+    pub fn view<'a>(&'a self, console: Option<&'a VecDeque<LogLine>>) -> Element<'a, Message> {
+        let console = console.filter(|lines| !lines.is_empty());
+        let title = if console.is_some() {
+            lang::t("instance.logs.console")
+        } else {
+            "latest.log"
+        };
         let header = row![
             utility::icon(Icon::lucide().terminal(), 14.0, Some((color::Primary::DEFAULT, color::Primary::DEFAULT))),
-            Text::new("latest.log")
+            Text::new(title)
                 .size(13)
                 .font(fonts::JetBrainsMono::SEMI_BOLD)
                 .color(color::Text::HEADLINE),
@@ -150,14 +154,18 @@ impl State {
         .spacing(10)
         .align_y(alignment::Vertical::Center);
 
-        let body: Element<'_, Message> = if self.buffer.is_empty() {
+        let rows: Vec<&LogLine> = match console {
+            Some(lines) => lines.iter().collect(),
+            None => self.buffer.iter().collect(),
+        };
+        let body: Element<'_, Message> = if rows.is_empty() {
             Text::new(lang::t("instance.logs.empty"))
                 .size(12)
                 .font(fonts::Inter::REGULAR)
                 .color(color::Text::MUTED)
                 .into()
         } else {
-            let lines: Vec<Element<'_, Message>> = self.buffer.iter().map(log_row).chain(std::iter::once(caret())).collect();
+            let lines: Vec<Element<'_, Message>> = rows.into_iter().map(log_row).chain(std::iter::once(caret())).collect();
             column(lines).spacing(5).width(Fill).into()
         };
         let scroll = scrollbar::scroll(body).width(Fill).height(Fill);

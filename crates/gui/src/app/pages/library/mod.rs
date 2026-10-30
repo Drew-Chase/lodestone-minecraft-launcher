@@ -35,7 +35,7 @@ pub enum Message {
     ViewChanged(LibraryView),
     /// The page scrolled — drives the virtualized windowing.
     Scrolled(f32),
-    /// Play was pressed on an instance (dummy until the game launcher).
+    /// Play was pressed on the instance with this id. The root launches it.
     Play(String),
     /// Open an instance's detail page — the root routes to it.
     OpenInstance(String),
@@ -194,7 +194,8 @@ impl Library {
                     self.hovered = None;
                 }
             }
-            Message::Play(name) => info!("Play requested for {name} (dummy)"),
+            // The root launches the game: it needs the launch state and the account.
+            Message::Play(_) => {}
             Message::OpenInstance(id) => info!("Open instance {id} requested"),
             // The root routes these: they need the database, the alerts or the instance page.
             Message::EditInstance(_) | Message::RevealInstance(_) | Message::InstanceMenu { .. } => {}

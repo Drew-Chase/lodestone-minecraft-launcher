@@ -1,6 +1,8 @@
 //! Where the launcher keeps its files. Every folder it writes hangs from one
-//! root, so the instance list, the shared Java runtimes and the shared asset
-//! indexes always move together.
+//! root. Instance folders hold what belongs to one instance: its mods, saves,
+//! config and logs. `meta/` holds what instances share, so a library or an asset
+//! is downloaded once: the Java runtimes, the version JSON and client jars, the
+//! libraries, the asset index and objects, extracted natives and log configs.
 
 use std::path::PathBuf;
 
@@ -36,9 +38,54 @@ impl LauncherPaths {
         self.meta().join("java").join(component)
     }
 
-    /// The asset index and objects of one Minecraft version: `<root>/meta/assets/<version>`.
-    pub fn assets(&self, mc_version: &str) -> PathBuf {
-        self.meta().join("assets").join(mc_version)
+    /// Every version folder: `<root>/meta/versions`.
+    pub fn versions(&self) -> PathBuf {
+        self.meta().join("versions")
+    }
+
+    /// One version's folder, which holds its JSON and its client jar.
+    pub fn version_dir(&self, id: &str) -> PathBuf {
+        self.versions().join(id)
+    }
+
+    /// One version's JSON: `meta/versions/<id>/<id>.json`.
+    pub fn version_json(&self, id: &str) -> PathBuf {
+        self.version_dir(id).join(format!("{id}.json"))
+    }
+
+    /// A Minecraft version's client jar: `meta/versions/<id>/<id>.jar`.
+    pub fn client_jar(&self, id: &str) -> PathBuf {
+        self.version_dir(id).join(format!("{id}.jar"))
+    }
+
+    /// Every library any version needs, laid out as Maven paths: `<root>/meta/libraries`.
+    pub fn libraries(&self) -> PathBuf {
+        self.meta().join("libraries")
+    }
+
+    /// The asset store, shared by every version: `<root>/meta/assets`.
+    pub fn assets(&self) -> PathBuf {
+        self.meta().join("assets")
+    }
+
+    /// The asset indexes, one JSON per index id: `meta/assets/indexes`.
+    pub fn asset_indexes(&self) -> PathBuf {
+        self.assets().join("indexes")
+    }
+
+    /// The asset objects, named by hash: `meta/assets/objects`.
+    pub fn asset_objects(&self) -> PathBuf {
+        self.assets().join("objects")
+    }
+
+    /// The natives a version extracts: `<root>/meta/natives/<id>`.
+    pub fn natives(&self, id: &str) -> PathBuf {
+        self.meta().join("natives").join(id)
+    }
+
+    /// The logging configs the version JSONs name: `<root>/meta/log_configs`.
+    pub fn log_configs(&self) -> PathBuf {
+        self.meta().join("log_configs")
     }
 }
 

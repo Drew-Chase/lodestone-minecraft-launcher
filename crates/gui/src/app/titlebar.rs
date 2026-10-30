@@ -8,6 +8,8 @@ use crate::app::components::icon_button;
 #[cfg(windows)]
 use crate::app::components::icon_button::IconButton;
 #[cfg(windows)]
+use crate::app::launch::GameMessage;
+#[cfg(windows)]
 use crate::app::theme::color;
 #[cfg(windows)]
 use aurora_leaf::Icon;
@@ -33,6 +35,10 @@ pub enum TitlebarMessage {
     ToggleMaximized,
     ToggleMinimize,
     StartDragWindow,
+    /// Stops the game the title bar acts on.
+    KillGame,
+    /// Opens the console of the game the title bar acts on.
+    OpenConsole,
 }
 
 #[cfg(not(windows))]
@@ -61,6 +67,8 @@ impl Titlebar {
                 debug!("Starting drag on window {window_id}");
                 window::drag(window_id)
             }
+            TitlebarMessage::KillGame => Task::done(LodestoneAppMessage::Game(GameMessage::KillLatest)),
+            TitlebarMessage::OpenConsole => Task::done(LodestoneAppMessage::Game(GameMessage::ConsoleLatest)),
         }
     }
     #[cfg(not(target_os = "windows"))]
@@ -68,8 +76,9 @@ impl Titlebar {
         Task::none()
     }
 
+    /// The bar. While a game runs, `running` adds the Kill and Console buttons before the window controls.
     #[cfg(windows)]
-    pub fn view(&self, can_go_back: bool, can_go_forward: bool, transparent: bool) -> Element<'_, TitlebarMessage> {
+    pub fn view(&self, can_go_back: bool, can_go_forward: bool, transparent: bool, running: bool) -> Element<'_, TitlebarMessage> {
         let window_buttons = row![
             IconButton::new(Icon::material_symbols().minimize_rounded())
                 .width(47)
@@ -89,6 +98,26 @@ impl Titlebar {
                 .on_press(TitlebarMessage::Close),
         ]
         .height(Fill);
+        let game_buttons = if running {
+            row![
+                IconButton::new(Icon::lucide().square())
+                    .width(47)
+                    .height(Fill)
+                    .icon_size(11.0)
+                    .style(icon_button::DANGER_BUTTON_STYLE)
+                    .on_press(TitlebarMessage::KillGame),
+                IconButton::new(Icon::lucide().terminal())
+                    .width(47)
+                    .height(Fill)
+                    .icon_size(12.0)
+                    .style(icon_button::SECONDARY_BUTTON_STYLE)
+                    .on_press(TitlebarMessage::OpenConsole),
+            ]
+            .height(Fill)
+        } else {
+            row![].height(Fill)
+        };
+        let window_buttons = row![game_buttons, window_buttons].height(Fill);
 
         let bar: Element<'_, TitlebarMessage> = if transparent {
             // Chrome floats over the login backdrop. The drag surface spans the whole bar,
@@ -160,7 +189,7 @@ impl Titlebar {
             .into()
     }
     #[cfg(not(target_os = "windows"))]
-    pub fn view(&self, _can_go_back: bool, _can_go_forward: bool, _transparent: bool) -> Element<'_, TitlebarMessage> {
+    pub fn view(&self, _can_go_back: bool, _can_go_forward: bool, _transparent: bool, _running: bool) -> Element<'_, TitlebarMessage> {
         row![].into()
     }
 }

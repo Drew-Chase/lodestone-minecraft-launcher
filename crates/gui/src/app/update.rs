@@ -5,6 +5,7 @@
 use crate::app::database::Database;
 use crate::app::face;
 use crate::app::lang;
+use crate::app::launch::GameMessage;
 use crate::app::pages::Page;
 use crate::app::pages::instance::Message as InstanceMessage;
 use crate::app::pages::instance::Tab;
@@ -74,6 +75,8 @@ impl LodestoneLauncher {
             // The reload button re-queries the database through the root;
             // every other Library message is pure display state.
             LodestoneAppMessage::Library(LibraryMessage::Reload) => self.load_instances(),
+            // Play starts the game, or opens the console of one already running.
+            LodestoneAppMessage::Library(LibraryMessage::Play(id)) => self.launch_game(&id),
             // Opening a card/hero hands the instance to the detail page and
             // pushes the route — the page itself never owns navigation.
             LodestoneAppMessage::Library(LibraryMessage::OpenInstance(id)) => self.open_instance_page(&id, Tab::Overview),
@@ -97,11 +100,23 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Instance(InstanceMessage::RevealFolder) => self.reveal_current_instance(),
             LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::RevealFolder)) => self.reveal_current_instance(),
             LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::DeleteInstance)) => self.ask_current_instance_delete(),
+            // The page's game controls act on the instance it shows.
+            LodestoneAppMessage::Instance(InstanceMessage::Launch) => self.current_game(GameMessage::Launch),
+            LodestoneAppMessage::Instance(InstanceMessage::Kill) => self.current_game(GameMessage::Kill),
+            LodestoneAppMessage::Instance(InstanceMessage::Restart) => self.current_game(GameMessage::Restart),
             LodestoneAppMessage::Instance(message) => self.instance_page.update(message).map(LodestoneAppMessage::Instance),
             LodestoneAppMessage::DatabaseReady(Ok(db)) => {
                 info!("Launcher database ready");
+                // The launcher starts with no game running, so no instance can still be playing.
+                let reset = db.clone();
                 self.db = Some(db);
-                self.load_instances()
+                let reset = Task::future(async move {
+                    if let Err(error) = reset.reset_playing().await {
+                        warn!("Could not reset the play states: {error}");
+                    }
+                })
+                .discard();
+                reset.chain(self.load_instances())
             }
             LodestoneAppMessage::DatabaseReady(Err(error)) => {
                 warn!("Launcher database unavailable: {error}");
@@ -110,6 +125,7 @@ impl LodestoneLauncher {
             LodestoneAppMessage::InstancesLoaded(Ok(instances)) => {
                 info!("Loaded {} instance(s)", instances.len());
                 self.library.set_instances(instances);
+                self.refresh_instance_page();
                 Task::none()
             }
             LodestoneAppMessage::InstancesLoaded(Err(error)) => {
@@ -196,6 +212,7 @@ impl LodestoneLauncher {
                 self.alerts.update(message);
                 Task::none()
             }
+            LodestoneAppMessage::Game(message) => self.game_message(message),
         }
     }
 

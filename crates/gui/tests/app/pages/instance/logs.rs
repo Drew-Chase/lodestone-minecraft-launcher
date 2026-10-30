@@ -45,8 +45,8 @@ fn levels_have_bracketed_tags() {
 
 #[test]
 fn an_empty_log_has_no_lines_yet() {
-    assert!(LogBuffer::default().is_empty());
-    assert!(!LogBuffer::from_lines([line("a")]).is_empty());
+    assert!(LogBuffer::default().iter().next().is_none());
+    assert!(LogBuffer::from_lines([line("a")]).iter().next().is_some());
 }
 
 #[test]

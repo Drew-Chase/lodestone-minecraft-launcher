@@ -55,6 +55,9 @@ pub enum Variant {
     Tab,
     /// Destructive action — red ink on a red tint that turns solid on hover.
     Danger,
+    /// Destructive action at full strength — a solid red fill with headline ink, for the one
+    /// control that ends something already running.
+    Destructive,
 }
 
 /// Widget-local interaction status.

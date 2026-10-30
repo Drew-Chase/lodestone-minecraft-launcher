@@ -34,13 +34,21 @@ impl LodestoneLauncher {
         ])
     }
 
+    /// Hands the reloaded copy of the instance the page shows to the page, so its state and
+    /// playtime are current.
+    pub(super) fn refresh_instance_page(&mut self) {
+        let Some(id) = self.instance_page.instance().map(|instance| instance.id.clone()) else {
+            return;
+        };
+        if let Some(instance) = self.library.instance(&id) {
+            self.instance_page.refresh(instance);
+        }
+    }
+
     /// Carries out the row of an instance's menu that was picked.
     pub(super) fn instance_menu_action(&mut self, id: &str, index: usize) -> Task<LodestoneAppMessage> {
         match instance_menu::action_at(index) {
-            Some(Action::Play) => {
-                info!("Play requested for {id} (dummy)");
-                Task::none()
-            }
+            Some(Action::Play) => self.launch_game(id),
             Some(Action::Edit) => self.open_instance_page(id, Tab::Settings),
             Some(Action::Reveal) => self.reveal_instance(id),
             Some(Action::Delete) => self.ask_instance_delete(id),
@@ -66,6 +74,9 @@ impl LodestoneLauncher {
 
     /// Asks before the instance `id` is deleted. The answer returns as `InstanceDeleteAnswered`.
     pub(super) fn ask_instance_delete(&mut self, id: &str) -> Task<LodestoneAppMessage> {
+        if self.games.is_active(id) {
+            return self.alerts.show(Alert::warn(lang::t("instance.delete.running"))).discard();
+        }
         let Some(instance) = self.library.instance(id) else {
             return Task::none();
         };

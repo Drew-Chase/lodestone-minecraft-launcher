@@ -3,9 +3,11 @@ mod boot;
 pub mod components;
 pub mod database;
 pub mod face;
+mod games;
 mod install;
 mod instances;
 mod lang;
+mod launch;
 mod message;
 mod new_instance;
 pub mod pages;
@@ -49,7 +51,7 @@ pub(crate) fn probe_enabled() -> bool {
 
 /// The Azure app registration backing Microsoft sign-in (public client,
 /// personal accounts, device-code flow).
-const AZURE_CLIENT_ID: &str = "b1156b7e-e0fe-4f86-a835-afed728d093d";
+pub(crate) const AZURE_CLIENT_ID: &str = "b1156b7e-e0fe-4f86-a835-afed728d093d";
 
 /// The kind of session the launcher is running under.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,6 +113,8 @@ pub struct LodestoneLauncher {
     auth_status: Option<Result<AuthProbe, String>>,
     /// The alert queue; the front alert covers the window (see `view.rs`).
     alerts: Alerts,
+    /// The game sessions: the instances being prepared and the games running.
+    games: launch::games::Games,
     /// TEMPORARY resize-latency probe counter (env-gated).
     probe_step: u32,
 }
@@ -138,6 +142,7 @@ impl Default for LodestoneLauncher {
             probe_step: 0,
             auth_status: None,
             alerts: Alerts::default(),
+            games: launch::games::Games::default(),
         }
     }
 }
