@@ -19,6 +19,7 @@ pub mod panel;
 pub mod progress;
 pub mod scene_art;
 pub mod screenshot_tile;
+pub mod scrollbar;
 pub mod search_field;
 pub mod segmented;
 pub mod select;
