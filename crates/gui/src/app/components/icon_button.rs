@@ -11,7 +11,9 @@ pub const PRIMARY_BUTTON_STYLE: IconButtonStyle = IconButtonStyle {
     foreground: color::buttons::Primary::FOREGROUND,
     foreground_hover: color::buttons::Primary::FOREGROUND,
     background: color::buttons::Primary::BACKGROUND,
+    border: Color::TRANSPARENT,
     background_hover: color::buttons::Primary::BACKGROUND_HOVER,
+    border_hover: Color::TRANSPARENT,
     foreground_disabled: color::buttons::Primary::FOREGROUND,
     background_disabled: color::buttons::Primary::BACKGROUND_DISABLED,
     foreground_pressed: color::buttons::Primary::FOREGROUND,
@@ -21,7 +23,9 @@ pub const SECONDARY_BUTTON_STYLE: IconButtonStyle = IconButtonStyle {
     foreground: color::buttons::Secondary::FOREGROUND,
     foreground_hover: color::buttons::Secondary::FOREGROUND,
     background: color::buttons::Secondary::BACKGROUND,
+    border: Color::TRANSPARENT,
     background_hover: color::buttons::Secondary::BACKGROUND_HOVER,
+    border_hover: Color::TRANSPARENT,
     // Disabled — the chip vanishes; only a dimmed icon remains.
     foreground_disabled: color::Text::DISABLED,
     background_disabled: Color::TRANSPARENT,
@@ -32,11 +36,27 @@ pub const DANGER_BUTTON_STYLE: IconButtonStyle = IconButtonStyle {
     foreground: color::buttons::Danger::FOREGROUND,
     foreground_hover: color::buttons::Danger::FOREGROUND_HOVER,
     background: color::buttons::Danger::BACKGROUND,
+    border: Color::TRANSPARENT,
     background_hover: color::buttons::Danger::BACKGROUND_HOVER,
+    border_hover: Color::TRANSPARENT,
     background_disabled: color::buttons::Danger::BACKGROUND_HOVER,
     foreground_disabled: color::buttons::Danger::FOREGROUND_HOVER,
     background_pressed: color::buttons::Danger::BACKGROUND_HOVER,
     foreground_pressed: color::buttons::Danger::FOREGROUND_HOVER,
+};
+/// `.btn-icon` — white 4% fill inside a hairline ring, `--ink-2` icon. Hover
+/// raises the fill to white 8%, the ring to `--line-strong` and the icon to `--ink-0`.
+pub const GHOST_BUTTON_STYLE: IconButtonStyle = IconButtonStyle {
+    foreground: color::Text::MUTED,
+    foreground_hover: color::Text::HEADLINE,
+    background: color::buttons::Secondary::BACKGROUND,
+    border: color::Surface::LINE,
+    background_hover: color::buttons::Secondary::BACKGROUND_HOVER,
+    border_hover: color::Surface::LINE_STRONG,
+    foreground_disabled: color::Text::DISABLED,
+    background_disabled: Color::TRANSPARENT,
+    foreground_pressed: color::Text::HEADLINE,
+    background_pressed: color::buttons::Secondary::BACKGROUND_HOVER,
 };
 
 pub struct IconButton<Message> {
@@ -55,11 +75,14 @@ pub struct IconButtonState {
     is_pressed: bool,
 }
 
+/// `border` and `border_hover` draw a 1px ring; a transparent ring draws none.
 pub struct IconButtonStyle {
     pub foreground: Color,
     pub background: Color,
+    pub border: Color,
     pub foreground_hover: Color,
     pub background_hover: Color,
+    pub border_hover: Color,
     pub background_disabled: Color,
     pub foreground_disabled: Color,
     pub background_pressed: Color,
@@ -152,22 +175,23 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for IconButton<Message
         _viewport: &Rectangle,
     ) {
         let state = tree.state.downcast_ref::<IconButtonState>();
-        let (fg, bg) = if self.disabled || self.on_press.is_none() {
-            (self.style.foreground_disabled, self.style.background_disabled)
+        let (fg, bg, border_color) = if self.disabled || self.on_press.is_none() {
+            (self.style.foreground_disabled, self.style.background_disabled, Color::TRANSPARENT)
         } else if state.is_pressed && state.is_hovered {
-            (self.style.foreground_pressed, self.style.background_pressed)
+            (self.style.foreground_pressed, self.style.background_pressed, self.style.border_hover)
         } else if state.is_hovered {
-            (self.style.foreground_hover, self.style.background_hover)
+            (self.style.foreground_hover, self.style.background_hover, self.style.border_hover)
         } else {
-            (self.style.foreground, self.style.background)
+            (self.style.foreground, self.style.background, self.style.border)
         };
         let bounds = layout.bounds();
         renderer.fill_quad(
             renderer::Quad {
                 bounds,
                 border: Border {
-                    width: 0.0,
-                    color: Color::TRANSPARENT,
+                    // No ring unless the style sets one, so borderless buttons draw as before.
+                    width: if border_color.a > 0.0 { 1.0 } else { 0.0 },
+                    color: border_color,
                     radius: self.radius,
                 },
                 ..Default::default()
