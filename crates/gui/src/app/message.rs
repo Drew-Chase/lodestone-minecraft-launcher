@@ -14,7 +14,7 @@ use crate::app::pages::showcase::Message as ShowcaseMessage;
 use crate::app::titlebar::TitlebarMessage;
 use iced::Size;
 use iced::window::{Direction, Id};
-use lodestone_minecraft_authentication::AuthProbe;
+use lodestone_minecraft_authentication::{AuthProbe, Session};
 
 #[derive(Debug, Clone)]
 pub enum LodestoneAppMessage {
@@ -79,6 +79,8 @@ pub enum LodestoneAppMessage {
     Alert(AlertMessage),
     /// A game session message: a launch, a running game's output or exit, or a stop.
     Game(GameMessage),
+    /// A Microsoft session refresh finished, with the new session or the reason it failed.
+    SessionRefreshed(Result<Session, String>),
 }
 
 /// Which sidebar group a nav selection came from.

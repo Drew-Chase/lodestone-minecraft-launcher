@@ -1,8 +1,10 @@
 //! The root view: the login gate, or the titlebar, sidebar, and the routed page.
 
 use crate::app::components::backdrop::LoginBackdrop;
-use crate::app::components::sidebar::{game_controls, sidebar as sidebar_view};
+use crate::app::components::game_controls::Actions;
+use crate::app::components::sidebar::{game_block, sidebar as sidebar_view};
 use crate::app::launch::GameMessage;
+use crate::app::launch::games::{GameBar, RunsPlace};
 use crate::app::pages::Page;
 use crate::app::pages::login::AuthStatus;
 use crate::app::theme::color::Surface;
@@ -41,7 +43,7 @@ impl LodestoneLauncher {
                 LoginBackdrop::new(),
                 column![
                     self.titlebar
-                        .view(self.router.can_go_back(), self.router.can_go_forward(), true, false)
+                        .view(self.router.can_go_back(), self.router.can_go_forward(), true, &GameBar::default(), false)
                         .map(LodestoneAppMessage::TitlebarMessage),
                     container(self.login.view(auth_status).map(LodestoneAppMessage::Login))
                         .width(Fill)
@@ -52,16 +54,18 @@ impl LodestoneLauncher {
             ]
             .into()
         } else {
+            let bar = self.game_bar();
             column![
                 self.titlebar
                     .view(
                         self.router.can_go_back(),
                         self.router.can_go_forward(),
                         false,
-                        self.games.latest_running().is_some(),
+                        &bar,
+                        self.runs_open.is_open(RunsPlace::Titlebar),
                     )
                     .map(LodestoneAppMessage::TitlebarMessage),
-                row![self.rail_column(), self.body()].width(Fill).height(Fill),
+                row![self.rail_column(&bar), self.body()].width(Fill).height(Fill),
             ]
             .width(Fill)
             .height(Fill)
@@ -92,10 +96,10 @@ impl LodestoneLauncher {
         .into()
     }
 
-    /// The full sidebar — logo, all nav groups, and the player avatar. The
+    /// The full sidebar — logo, all nav groups, the game block, and the player avatar. The
     /// top group's first item (Library) navigates; the rest are display-only
     /// until their pages exist.
-    fn rail_column(&self) -> Element<'_, LodestoneAppMessage> {
+    fn rail_column(&self, bar: &GameBar) -> Element<'_, LodestoneAppMessage> {
         sidebar_view(
             self.face.clone(),
             self.account.as_ref().map(Account::username).map(str::to_string),
@@ -113,20 +117,18 @@ impl LodestoneLauncher {
                 group: NavGroup::Bottom,
                 index,
             },
-            self.rail_game_controls(),
+            game_block(
+                bar,
+                self.runs_open.is_open(RunsPlace::Sidebar),
+                &Actions {
+                    toggle: LodestoneAppMessage::Game(GameMessage::ToggleRuns(RunsPlace::Sidebar)),
+                    dismiss: LodestoneAppMessage::Game(GameMessage::DismissRuns(RunsPlace::Sidebar)),
+                    kill: |serial: u64| LodestoneAppMessage::Game(GameMessage::KillRun(serial)),
+                    console: |serial: u64| LodestoneAppMessage::Game(GameMessage::ConsoleRun(serial)),
+                    launch: |id: String| LodestoneAppMessage::Game(GameMessage::LaunchNew(id)),
+                },
+            ),
         )
-    }
-
-    /// The running game's two buttons for the sidebar. They sit in the title bar on Windows, so
-    /// the sidebar shows them only elsewhere.
-    fn rail_game_controls(&self) -> Option<Element<'static, LodestoneAppMessage>> {
-        if cfg!(windows) || self.games.latest_running().is_none() {
-            return None;
-        }
-        Some(game_controls(
-            LodestoneAppMessage::Game(GameMessage::KillLatest),
-            LodestoneAppMessage::Game(GameMessage::ConsoleLatest),
-        ))
     }
 
     /// Left edge chrome — one rail slot per [`Page::RAIL_PAGES`] entry.

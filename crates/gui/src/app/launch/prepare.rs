@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use lodestone_launch::Launcher;
-use lodestone_minecraft_authentication::{Authentication, Session};
 use sipper::Sender as ProgressSender;
 use sipper::{Sipper, sipper};
 use tokio::sync::mpsc;
@@ -45,12 +44,12 @@ pub struct Target {
     pub directory: PathBuf,
 }
 
-/// Everything a preparation needs.
+/// Everything a preparation needs. The account's session must already be fresh: the root refreshes
+/// it first (see [`session_check`]), so only one refresh ever spends a refresh token.
 pub struct Request {
     pub paths: LauncherPaths,
     pub target: Target,
     pub account: Account,
-    pub auth: Authentication,
 }
 
 /// One progress report: the fraction of the files on disk, when known, and a detail line.
@@ -60,11 +59,10 @@ pub struct Progress {
     pub detail: String,
 }
 
-/// A ready launch: the launcher to spawn, and the Microsoft session that was refreshed on the way.
+/// A ready launch: the launcher to spawn.
 #[derive(Debug, Clone)]
 pub struct Prepared {
     pub launcher: Launcher,
-    pub refreshed: Option<Session>,
 }
 
 /// Prepares the launch described by `request`, reporting its progress as it goes.
@@ -74,14 +72,8 @@ pub fn prepare(request: Request) -> impl Sipper<Result<Prepared, String>, Progre
 
 /// The stages, in order.
 async fn run(request: Request, progress: &mut ProgressSender<Progress>) -> Result<Prepared, String> {
-    let Request {
-        paths,
-        target,
-        account,
-        auth,
-    } = request;
+    let Request { paths, target, account } = request;
     let client = reqwest::Client::new();
-    let (account, refreshed) = fresh_account(&auth, account).await?;
     let identity = identity_for(&account);
     let mc = target.mc_version.as_str();
 
@@ -113,7 +105,7 @@ async fn run(request: Request, progress: &mut ProgressSender<Progress>) -> Resul
         java,
         natives,
     })?;
-    Ok(Prepared { launcher, refreshed })
+    Ok(Prepared { launcher })
 }
 
 /// Makes sure the version's shared files are on disk, the parts running side by side.
@@ -190,20 +182,27 @@ fn merged_manifest(paths: &LauncherPaths, version_id: &str, vanilla: &Manifest) 
     Ok(Manifest::parse(&text)?.over(vanilla.clone()))
 }
 
-/// The account with a Microsoft session refreshed when it is close to expiry. The refreshed
-/// session is returned so the root can keep it.
-async fn fresh_account(auth: &Authentication, account: Account) -> Result<(Account, Option<Session>), String> {
-    let expiring = match &account {
-        Account::Microsoft { session } => (session.expires_at <= unix_now() + REFRESH_WITHIN).then(|| session.refresh_token.clone()),
-        Account::Offline { .. } => None,
-    };
-    let refresh_token = match expiring {
-        None => return Ok((account, None)),
-        Some(None) => return Err(lang::t("launch.sign_in_again").to_owned()),
-        Some(Some(token)) => token,
-    };
-    let fresh = auth.login_with_refresh_token(&refresh_token).await.map_err(|error| error.to_string())?;
-    Ok((Account::Microsoft { session: fresh.clone() }, Some(fresh)))
+/// What a launch with an account needs before it can prepare.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionCheck {
+    /// The session is good for the launch, or the account is offline.
+    Fresh,
+    /// The Microsoft session is close to expiry. It must be refreshed with this refresh token first.
+    Refresh(String),
+    /// The Microsoft session is close to expiry and holds no refresh token, so the player must sign in again.
+    SignInAgain,
+}
+
+/// What a launch with `account` needs at `now`, in seconds since the Unix epoch.
+pub fn session_check(account: &Account, now: u64) -> SessionCheck {
+    match account {
+        Account::Offline { .. } => SessionCheck::Fresh,
+        Account::Microsoft { session } if session.expires_at > now + REFRESH_WITHIN => SessionCheck::Fresh,
+        Account::Microsoft { session } => match &session.refresh_token {
+            Some(token) => SessionCheck::Refresh(token.clone()),
+            None => SessionCheck::SignInAgain,
+        },
+    }
 }
 
 /// The player the game starts as, for the account it was launched with.
@@ -215,7 +214,7 @@ fn identity_for(account: &Account) -> Identity {
 }
 
 /// The current time in whole seconds since the Unix epoch.
-fn unix_now() -> u64 {
+pub fn unix_now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |elapsed| elapsed.as_secs())
 }
 
@@ -295,3 +294,7 @@ fn build(parts: Build<'_>) -> Result<Launcher, String> {
         .build()
         .map_err(|error| error.to_string())
 }
+
+#[cfg(test)]
+#[path = "../../../tests/app/launch/prepare.rs"]
+mod tests;

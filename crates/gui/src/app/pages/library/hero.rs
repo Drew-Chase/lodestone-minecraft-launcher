@@ -2,6 +2,7 @@
 //! cards beneath it.
 
 use crate::app::components::badge::{Badge, loader_palette};
+use crate::app::components::hint::hint;
 use crate::app::components::instance_art;
 use crate::app::components::{Dropdown, IconButton, PulseDot, TextButton};
 use crate::app::lang;
@@ -68,31 +69,7 @@ impl Library {
                                 .spacing(14),
                             )
                             .on_press(Message::OpenInstance(hero.id.clone())),
-                            row![
-                                TextButton::content(
-                                    row![
-                                        icon(Icon::lucide().play(), 14.0, color::Primary::ON, 1.0),
-                                        Text::new(if playing {
-                                            lang::t("library.hero.resume")
-                                        } else {
-                                            lang::t("common.play")
-                                        })
-                                        .size(13)
-                                        .font(fonts::Inter::BOLD)
-                                        .color(color::Primary::ON),
-                                    ]
-                                    .spacing(8)
-                                    .align_y(alignment::Vertical::Center)
-                                )
-                                .variant(crate::app::components::button::Variant::Primary)
-                                .padding(Padding::new(0.0).left(22).right(22).top(14).bottom(14))
-                                .on_press(Message::Play(hero.id.clone())),
-                                hero_icon_button(Icon::lucide().folder(), Message::RevealInstance(hero.id.clone())),
-                                hero_icon_button(Icon::lucide().settings(), Message::EditInstance(hero.id.clone())),
-                                hero_menu(&hero.id),
-                            ]
-                            .spacing(10)
-                            .align_y(alignment::Vertical::Center),
+                            hero_actions(&hero.id, playing),
                         ]
                         .spacing(14)
                         .padding(Padding::new(0.0).left(28).right(28).bottom(28)),
@@ -171,6 +148,45 @@ fn hero_icon_button(icon_markup: &'static str, on_press: Message) -> Element<'st
         .height(44)
         .icon_size(16.0)
         .on_press(on_press)
+        .into()
+}
+
+/// The hero's action row: Resume (or Play), a button that starts another process of the instance while
+/// it plays, the folder and settings buttons, and the instance menu.
+fn hero_actions(instance: &str, playing: bool) -> Element<'static, Message> {
+    let id = instance.to_owned();
+    let resume = TextButton::content(
+        row![
+            icon(Icon::lucide().play(), 14.0, color::Primary::ON, 1.0),
+            Text::new(if playing {
+                lang::t("library.hero.resume")
+            } else {
+                lang::t("common.play")
+            })
+            .size(13)
+            .font(fonts::Inter::BOLD)
+            .color(color::Primary::ON),
+        ]
+        .spacing(8)
+        .align_y(alignment::Vertical::Center),
+    )
+    .variant(crate::app::components::button::Variant::Primary)
+    .padding(Padding::new(0.0).left(22).right(22).top(14).bottom(14))
+    .on_press(Message::Play(id.clone()));
+
+    let mut actions = row![resume];
+    if playing {
+        actions = actions.push(hint(
+            hero_icon_button(Icon::lucide().copy(), Message::LaunchNew(id.clone())),
+            lang::t("game.new_process"),
+        ));
+    }
+    actions
+        .push(hero_icon_button(Icon::lucide().folder(), Message::RevealInstance(id.clone())))
+        .push(hero_icon_button(Icon::lucide().settings(), Message::EditInstance(id.clone())))
+        .push(hero_menu(&id))
+        .spacing(10)
+        .align_y(alignment::Vertical::Center)
         .into()
 }
 

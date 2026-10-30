@@ -140,10 +140,10 @@ impl Database {
             .map_err(|error| error.to_string())
     }
 
-    /// Ends a play session: the instance goes idle, its playtime grows by `seconds`, and it was
-    /// last played when the session started.
+    /// Ends a run: the instance's playtime grows by `seconds`, and it was last played when the run
+    /// started. The state is left alone, because the instance may have other runs still going.
     pub async fn finish_session(&self, id: &str, started: DateTime<Local>, seconds: u32) -> Result<(), String> {
-        sqlx::query("UPDATE instances SET state = 'idle', playtime_seconds = playtime_seconds + ?, last_played_at = ? WHERE id = ?")
+        sqlx::query("UPDATE instances SET playtime_seconds = playtime_seconds + ?, last_played_at = ? WHERE id = ?")
             .bind(i64::from(seconds))
             .bind(started.timestamp())
             .bind(id)

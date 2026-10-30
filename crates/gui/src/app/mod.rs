@@ -115,6 +115,8 @@ pub struct LodestoneLauncher {
     alerts: Alerts,
     /// The game sessions: the instances being prepared and the games running.
     games: launch::games::Games,
+    /// Which panels of running games are open, beside the sidebar and under the title bar.
+    runs_open: launch::games::RunsOpen,
     /// TEMPORARY resize-latency probe counter (env-gated).
     probe_step: u32,
 }
@@ -143,6 +145,7 @@ impl Default for LodestoneLauncher {
             auth_status: None,
             alerts: Alerts::default(),
             games: launch::games::Games::default(),
+            runs_open: launch::games::RunsOpen::default(),
         }
     }
 }

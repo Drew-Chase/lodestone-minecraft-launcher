@@ -23,7 +23,8 @@ const ASSET_HOST: &str = "https://resources.download.minecraft.net";
 
 /// The lock that serialises work on one shared folder. Installs and launches take it before they
 /// write there, so the second one waits and then finds the files already on disk. Callers take
-/// the locks in the order version, then Java, then loader, so no two of them wait on each other.
+/// the locks in the order version, then Java, then loader, then natives, so no two of them wait on
+/// each other.
 pub async fn lock(key: String) -> OwnedMutexGuard<()> {
     static LOCKS: OnceLock<Mutex<HashMap<String, Arc<AsyncMutex<()>>>>> = OnceLock::new();
     let locks = LOCKS.get_or_init(Default::default);
@@ -173,12 +174,19 @@ pub async fn log_config(paths: &LauncherPaths, client: &reqwest::Client, vanilla
     Ok(Some(path))
 }
 
-/// Extracts the natives in `natives` into `dir`, unless a previous launch already did. The
-/// marker written afterwards is what the next launch checks.
+/// Extracts the natives in `natives` into `dir`, unless a previous launch already did. The marker
+/// written afterwards is what the next launch checks. The folder's lock is held throughout, so a
+/// launch that starts while another is extracting waits for it, then finds the marker and skips.
 pub async fn natives(dir: PathBuf, natives: Vec<Native>) -> Result<(), String> {
+    let _extracting = lock(natives_key(&dir)).await;
     tokio::task::spawn_blocking(move || extract_natives(&dir, &natives))
         .await
         .map_err(|error| error.to_string())?
+}
+
+/// The lock key of one natives folder.
+fn natives_key(dir: &Path) -> String {
+    format!("natives:{}", dir.display())
 }
 
 fn extract_natives(dir: &Path, natives: &[Native]) -> Result<(), String> {

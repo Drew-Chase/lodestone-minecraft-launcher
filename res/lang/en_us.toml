@@ -379,6 +379,10 @@ launch.no_main_class = "The version names no main class."
 launch.sign_in_again = "Sign in again to play this instance."
 launch.version_read_failed = "could not read the version {id}: {error}"
 
+# --- game controls ---
+game.none_running = "No instances running"
+game.new_process = "Start a new process of this instance"
+
 # --- new instance alerts ---
 new_instance.database_missing = "The launcher database is not ready yet."
 new_instance.not_created = "The instance was not created. {error}"

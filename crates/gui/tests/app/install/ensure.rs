@@ -52,3 +52,19 @@ async fn the_same_key_waits_for_its_first_holder() {
     drop(first);
     let _second = lock("test:serial-lock".to_string()).await;
 }
+
+#[tokio::test]
+async fn a_launch_waits_for_another_extraction_of_the_same_folder() {
+    let dir = scratch("natives-wait");
+    let holder = lock(natives_key(&dir)).await;
+    let waiting = tokio::time::timeout(Duration::from_millis(50), natives(dir.clone(), Vec::new())).await;
+    assert!(waiting.is_err(), "a second extraction waits while the first holds the folder");
+    assert!(!dir.join(COMPLETE).exists(), "nothing is written while the folder is held");
+
+    drop(holder);
+    natives(dir.clone(), Vec::new())
+        .await
+        .expect("the folder extracts once the holder lets go");
+    assert!(dir.join(COMPLETE).is_file(), "the marker is written when extraction finishes");
+    let _ = std::fs::remove_dir_all(&dir);
+}

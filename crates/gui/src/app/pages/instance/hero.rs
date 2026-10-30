@@ -10,6 +10,7 @@ use iced_color_extension::rgb;
 
 use crate::app::components::badge::{Badge, loader_palette};
 use crate::app::components::button::Variant;
+use crate::app::components::hint::hint;
 use crate::app::components::icon_button::IconButtonStyle;
 use crate::app::components::scene_art::banner_handle;
 use crate::app::components::{IconButton, TextButton};
@@ -35,8 +36,8 @@ const IDENTITY_LEFT: f32 = GUTTER + ICON_SIZE + 20.0;
 /// Below this width the session controls move under the identity block.
 const NARROW_WIDTH: f32 = 1020.0;
 
-/// The masthead's controls: the favourite toggle, and the state of the instance's game.
-#[derive(Debug, Clone, Copy, Default)]
+/// The masthead's controls: the favourite toggle and the state of the instance's game.
+#[derive(Debug, Clone, Default)]
 pub struct Controls {
     pub favorite: bool,
     pub status: LaunchStatus,
@@ -121,13 +122,13 @@ pub fn hero<'a>(instance: &'a Instance, files: Option<&InstanceFiles>, controls:
 
     let narrow = viewport.width < NARROW_WIDTH;
     let identity = if narrow {
-        identity.push(session_controls(controls.status)).spacing(12)
+        identity.push(session_controls(controls.status, &instance.id)).spacing(12)
     } else {
         identity
     };
     let actions_layer = (!narrow).then(|| {
         layer(
-            session_controls(controls.status),
+            session_controls(controls.status, &instance.id),
             alignment::Horizontal::Right,
             alignment::Vertical::Bottom,
             Padding::new(0.0).right(GUTTER).bottom(18.0),
@@ -179,9 +180,9 @@ pub fn hero_icon(instance: &Instance) -> Element<'static, Message> {
 }
 
 /// The session controls. While the game is stopped, Launch starts it. While it is being prepared,
-/// Launch shows how far the files have got and is disabled. While it runs, three buttons: Kill
-/// stops it in solid red, Restart starts it again, and Console opens its log.
-fn session_controls(status: LaunchStatus) -> Element<'static, Message> {
+/// Launch shows how far the files have got and is disabled. While it runs: a button that starts another
+/// process of the instance, Restart and Console as icon buttons, and Kill at the far right.
+fn session_controls(status: LaunchStatus, instance: &str) -> Element<'static, Message> {
     match status {
         LaunchStatus::Idle => row![launch_button(lang::t("instance.hero.launch").to_owned(), Some(Message::Launch))]
             .spacing(8)
@@ -198,30 +199,99 @@ fn session_controls(status: LaunchStatus) -> Element<'static, Message> {
             row![launch_button(label, None)].spacing(8).align_y(alignment::Vertical::Center).into()
         }
         LaunchStatus::Running => row![
-            TextButton::content(
-                row![
-                    utility::icon(Icon::lucide().square(), 11.0, Some((color::Text::HEADLINE, color::Text::HEADLINE))),
-                    Text::new(lang::t("instance.hero.kill"))
-                        .size(13)
-                        .font(fonts::Inter::BOLD)
-                        .color(color::Text::HEADLINE),
-                ]
-                .spacing(8)
-                .align_y(alignment::Vertical::Center),
-            )
-            .variant(Variant::Destructive)
-            .padding(Padding::new(0.0).left(20).right(20).top(10).bottom(10))
-            .on_press(Message::Kill),
-            secondary_button(Icon::lucide().rotate_cw(), lang::t("instance.hero.restart"), Message::Restart),
-            secondary_button(
-                Icon::lucide().terminal(),
-                lang::t("instance.hero.console"),
-                Message::TabSelected(Tab::Logs)
-            ),
+            hint(new_process_button(instance), lang::t("game.new_process")),
+            hint(restart_button(), lang::t("instance.hero.restart")),
+            hint(console_button(), lang::t("instance.hero.console")),
+            kill_button(),
         ]
         .spacing(8)
         .align_y(alignment::Vertical::Center)
         .into(),
+    }
+}
+
+/// Restart: an icon-only button in warning amber.
+fn restart_button() -> Element<'static, Message> {
+    IconButton::new(Icon::lucide().rotate_cw())
+        .size(36)
+        .radius(12.0)
+        .icon_size(14.0)
+        .style(restart_style())
+        .on_press(Message::Restart)
+        .into()
+}
+
+/// Starts another process of the instance: an icon-only ghost button, beside Console.
+fn new_process_button(instance: &str) -> Element<'static, Message> {
+    IconButton::new(Icon::lucide().copy())
+        .size(36)
+        .radius(12.0)
+        .icon_size(14.0)
+        .style(ghost_style())
+        .on_press(Message::LaunchNew(instance.to_owned()))
+        .into()
+}
+
+/// Console: an icon-only ghost button with no background and no border.
+fn console_button() -> Element<'static, Message> {
+    IconButton::new(Icon::lucide().terminal())
+        .size(36)
+        .radius(12.0)
+        .icon_size(14.0)
+        .style(ghost_style())
+        .on_press(Message::TabSelected(Tab::Logs))
+        .into()
+}
+
+/// Kill: the solid red button that ends the game, labelled, at the far right of the row.
+fn kill_button() -> Element<'static, Message> {
+    TextButton::content(
+        row![
+            utility::icon(Icon::lucide().square(), 11.0, Some((color::Text::HEADLINE, color::Text::HEADLINE))),
+            Text::new(lang::t("instance.hero.kill"))
+                .size(13)
+                .font(fonts::Inter::BOLD)
+                .color(color::Text::HEADLINE),
+        ]
+        .spacing(8)
+        .align_y(alignment::Vertical::Center),
+    )
+    .variant(Variant::Destructive)
+    .padding(Padding::new(0.0).left(20).right(20).top(10).bottom(10))
+    .on_press(Message::Kill)
+    .into()
+}
+
+/// Restart in warning amber: amber ink on an amber tint, with a faint amber ring.
+fn restart_style() -> IconButtonStyle {
+    IconButtonStyle {
+        foreground: color::Accents::AMBER,
+        foreground_hover: color::Accents::AMBER,
+        background: color::Accents::AMBER_TINT,
+        border: rgb!(255, 181, 69, 30%),
+        background_hover: rgb!(255, 181, 69, 22%),
+        border_hover: rgb!(255, 181, 69, 55%),
+        foreground_disabled: color::Text::DISABLED,
+        background_disabled: Color::TRANSPARENT,
+        foreground_pressed: color::Accents::AMBER,
+        background_pressed: rgb!(255, 181, 69, 26%),
+    }
+}
+
+/// Ghost: no background and no border, as the new-process and console buttons have. Hover changes only
+/// the icon's colour.
+fn ghost_style() -> IconButtonStyle {
+    IconButtonStyle {
+        foreground: color::Text::MUTED,
+        foreground_hover: color::Text::HEADLINE,
+        background: Color::TRANSPARENT,
+        border: Color::TRANSPARENT,
+        background_hover: Color::TRANSPARENT,
+        border_hover: Color::TRANSPARENT,
+        foreground_disabled: color::Text::DISABLED,
+        background_disabled: Color::TRANSPARENT,
+        foreground_pressed: color::Text::HEADLINE,
+        background_pressed: Color::TRANSPARENT,
     }
 }
 
@@ -242,22 +312,6 @@ fn launch_button(label: String, on_press: Option<Message>) -> Element<'static, M
         Some(message) => button.on_press(message).into(),
         None => button.into(),
     }
-}
-
-/// A ghost session button with an icon and a label.
-fn secondary_button(icon: &'static str, label: &'static str, on_press: Message) -> Element<'static, Message> {
-    TextButton::content(
-        row![
-            utility::icon(icon, 13.0, Some((color::Text::DEFAULT, color::Text::DEFAULT))),
-            Text::new(label).size(13).font(fonts::Inter::MEDIUM).color(color::Text::DEFAULT),
-        ]
-        .spacing(8)
-        .align_y(alignment::Vertical::Center),
-    )
-    .variant(Variant::Ghost)
-    .padding(Padding::new(0.0).left(16).right(16).top(10).bottom(10))
-    .on_press(on_press)
-    .into()
 }
 
 /// A 36px glass chrome button over the masthead art.

@@ -35,8 +35,10 @@ pub enum Message {
     ViewChanged(LibraryView),
     /// The page scrolled — drives the virtualized windowing.
     Scrolled(f32),
-    /// Play was pressed on the instance with this id. The root launches it.
+    /// Play was pressed on the instance with this id. The root launches it, or opens its console while it runs.
     Play(String),
+    /// Another process of the playing instance with this id was asked for from the hero. The root starts it.
+    LaunchNew(String),
     /// Open an instance's detail page — the root routes to it.
     OpenInstance(String),
     /// Edit an instance: open its detail page on the Settings tab — the root routes to it.
@@ -195,7 +197,7 @@ impl Library {
                 }
             }
             // The root launches the game: it needs the launch state and the account.
-            Message::Play(_) => {}
+            Message::Play(_) | Message::LaunchNew(_) => {}
             Message::OpenInstance(id) => info!("Open instance {id} requested"),
             // The root routes these: they need the database, the alerts or the instance page.
             Message::EditInstance(_) | Message::RevealInstance(_) | Message::InstanceMenu { .. } => {}
@@ -214,6 +216,14 @@ impl Library {
     /// page when a card or the hero is clicked.
     pub fn instance(&self, id: &str) -> Option<Instance> {
         self.instances.iter().find(|instance| instance.id == id).cloned()
+    }
+
+    /// The name of the instance `id`, when the library lists it.
+    pub fn instance_name(&self, id: &str) -> Option<&str> {
+        self.instances
+            .iter()
+            .find(|instance| instance.id == id)
+            .map(|instance| instance.name.as_str())
     }
 
     /// Overrides the initial view mode (the `LODESTONE_LIBRARY_VIEW` probe).

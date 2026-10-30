@@ -83,8 +83,11 @@ pub enum Message {
     Launch,
     /// Stops the instance's game. The root stops it.
     Kill,
-    /// Starts the instance's game again. The root restarts it.
+    /// Starts the instance's runs again. The root restarts them.
     Restart,
+    /// Starts another process of an instance, from the button beside its running game. The root launches
+    /// it.
+    LaunchNew(String),
     /// Requests navigation — the root intercepts this before the page's
     /// `update` runs (the `<Link>` of this framework).
     Navigate(Page),
@@ -130,9 +133,22 @@ pub struct InstancePage {
     screenshots: screenshots::State,
     logs: logs::State,
     settings: settings::State,
+    /// The run whose console the Logs tab shows, when the runs panel opened one. `None` shows the
+    /// newest run.
+    console_run: Option<u64>,
 }
 
 impl InstancePage {
+    /// Shows the console of the run `serial` on the Logs tab, or the newest run's when `None`.
+    pub fn focus_console(&mut self, serial: Option<u64>) {
+        self.console_run = serial;
+    }
+
+    /// The run whose console the Logs tab was asked to show, if any.
+    pub fn focused_run(&self) -> Option<u64> {
+        self.console_run
+    }
+
     /// Points the page at `instance`, whose files live in `folder`. Resets the
     /// transient controls and every tab, and returns the task that reads the folder.
     pub fn show(&mut self, instance: Instance, folder: PathBuf) -> Task<Message> {
@@ -147,6 +163,7 @@ impl InstancePage {
         self.screenshots = screenshots::State::default();
         self.logs = logs::State::default();
         self.tab = Tab::Overview;
+        self.console_run = None;
 
         Task::perform(
             async move { tokio::task::spawn_blocking(move || files::scan(&folder)).await.unwrap_or_default() },
@@ -205,9 +222,14 @@ impl InstancePage {
             }
             // Navigation is intercepted by the root; the remaining actions
             // are display-only until the instance manager lands.
-            Message::Back | Message::RevealFolder | Message::More | Message::Navigate(_) | Message::Launch | Message::Kill | Message::Restart => {
-                Task::none()
-            }
+            Message::Back
+            | Message::RevealFolder
+            | Message::More
+            | Message::Navigate(_)
+            | Message::Launch
+            | Message::Kill
+            | Message::Restart
+            | Message::LaunchNew(_) => Task::none(),
             // Results for an instance the page no longer shows, and ticks the
             // Logs tab no longer needs.
             Message::Scanned { .. } | Message::Thumbnail { .. } | Message::LogsTick | Message::LogsLoaded { .. } => Task::none(),

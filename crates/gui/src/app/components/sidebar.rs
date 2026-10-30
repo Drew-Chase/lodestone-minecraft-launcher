@@ -11,12 +11,13 @@
 use std::sync::OnceLock;
 
 use crate::app::components::NavRail;
-use crate::app::components::icon_button::{self, IconButton};
+use crate::app::components::game_controls;
+use crate::app::launch::games::GameBar;
 use crate::app::theme::color;
 use crate::app::theme::fonts;
 use aurora_leaf::Icon;
 use iced::widget::image::Handle;
-use iced::widget::{Space, Text, column, container, image, row, stack, svg};
+use iced::widget::{Space, Text, column, container, image, stack, svg};
 use iced::{Background, Border, Element, Fill, Length, Padding, alignment};
 use iced_color_extension::rgb;
 
@@ -55,7 +56,7 @@ fn rail_items(names: &[&'static str]) -> Vec<crate::app::components::NavItem> {
 
 /// The full sidebar: logo, nav groups, and the player avatar. `active` is
 /// the highlighted index in the top group; the closures route the two
-/// groups' selections. `game` is the running game's controls, placed above the bottom group.
+/// groups' selections. `game` is the game block, placed above the bottom group.
 pub fn sidebar<Message: Clone + 'static>(
     face: Option<Handle>,
     username: Option<String>,
@@ -63,16 +64,15 @@ pub fn sidebar<Message: Clone + 'static>(
     active: usize,
     on_top_nav: impl Fn(usize) -> Message + 'static,
     on_bottom_nav: impl Fn(usize) -> Message + 'static,
-    game: Option<Element<'static, Message>>,
+    game: Element<'static, Message>,
 ) -> Element<'static, Message> {
     let top_rail = NavRail::new(rail_items(&TOP_ICONS)).active(active).indicator(false).on_select(on_top_nav);
     let bottom_rail = NavRail::new(rail_items(&BOTTOM_ICONS)).indicator(false).on_select(on_bottom_nav);
 
-    let mut rail = column![logo(), divider(), top_rail, Space::new().height(Fill)].spacing(6);
-    if let Some(game) = game {
-        rail = rail.push(game);
-    }
-    let rail = rail.push(bottom_rail).push(avatar(face, username, online));
+    let rail = column![logo(), divider(), top_rail, Space::new().height(Fill), game]
+        .spacing(6)
+        .push(bottom_rail)
+        .push(avatar(face, username, online));
 
     container(rail.padding(Padding::new(0.0).top(18).bottom(18)))
         .width(WIDTH)
@@ -84,29 +84,16 @@ pub fn sidebar<Message: Clone + 'static>(
         .into()
 }
 
-/// The two small buttons that stop the running game and open its console, side by side above the
-/// Downloads item.
-pub fn game_controls<Message: Clone + 'static>(kill: Message, console: Message) -> Element<'static, Message> {
-    container(
-        row![
-            IconButton::new(Icon::lucide().square())
-                .width(28)
-                .height(28)
-                .icon_size(11.0)
-                .style(icon_button::DANGER_BUTTON_STYLE)
-                .on_press(kill),
-            IconButton::new(Icon::lucide().terminal())
-                .width(28)
-                .height(28)
-                .icon_size(12.0)
-                .style(icon_button::SECONDARY_BUTTON_STYLE)
-                .on_press(console),
-        ]
-        .spacing(6),
-    )
-    .width(Fill)
-    .center_x(Fill)
-    .into()
+/// The game block above the Downloads item: the indicator, whose panel lists the running games with
+/// their console and kill buttons, and a button on each row that starts another run of its instance.
+/// Starting a run of an instance that is not running is left to the instance and library pages.
+pub fn game_block<Message: Clone + 'static>(bar: &GameBar, open: bool, actions: &game_controls::Actions<Message>) -> Element<'static, Message> {
+    centered(game_controls::runs_popover(bar, open, actions))
+}
+
+/// Centres `content` across the rail.
+fn centered<Message: 'static>(content: impl Into<Element<'static, Message>>) -> Element<'static, Message> {
+    container(content).width(Fill).center_x(Fill).into()
 }
 
 /// The Lodestone mark with its glow halo.

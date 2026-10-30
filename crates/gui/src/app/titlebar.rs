@@ -4,11 +4,16 @@ use crate::app::LodestoneLauncher;
 #[cfg(windows)]
 use crate::app::components::brand_tag::brand_tag;
 #[cfg(windows)]
+use crate::app::components::game_controls;
+#[cfg(windows)]
 use crate::app::components::icon_button;
 #[cfg(windows)]
 use crate::app::components::icon_button::IconButton;
 #[cfg(windows)]
 use crate::app::launch::GameMessage;
+use crate::app::launch::games::GameBar;
+#[cfg(windows)]
+use crate::app::launch::games::RunsPlace;
 #[cfg(windows)]
 use crate::app::theme::color;
 #[cfg(windows)]
@@ -35,10 +40,16 @@ pub enum TitlebarMessage {
     ToggleMaximized,
     ToggleMinimize,
     StartDragWindow,
-    /// Stops the game the title bar acts on.
-    KillGame,
-    /// Opens the console of the game the title bar acts on.
-    OpenConsole,
+    /// Opens or shuts the panel of running games under the title bar.
+    ToggleRuns,
+    /// Shuts the panel of running games.
+    DismissRuns,
+    /// Stops the run with this serial.
+    KillRun(u64),
+    /// Opens the console of the run with this serial.
+    ConsoleRun(u64),
+    /// Starts another run of the instance `id`.
+    LaunchNew(String),
 }
 
 #[cfg(not(windows))]
@@ -67,8 +78,11 @@ impl Titlebar {
                 debug!("Starting drag on window {window_id}");
                 window::drag(window_id)
             }
-            TitlebarMessage::KillGame => Task::done(LodestoneAppMessage::Game(GameMessage::KillLatest)),
-            TitlebarMessage::OpenConsole => Task::done(LodestoneAppMessage::Game(GameMessage::ConsoleLatest)),
+            TitlebarMessage::ToggleRuns => Task::done(LodestoneAppMessage::Game(GameMessage::ToggleRuns(RunsPlace::Titlebar))),
+            TitlebarMessage::DismissRuns => Task::done(LodestoneAppMessage::Game(GameMessage::DismissRuns(RunsPlace::Titlebar))),
+            TitlebarMessage::KillRun(serial) => Task::done(LodestoneAppMessage::Game(GameMessage::KillRun(serial))),
+            TitlebarMessage::ConsoleRun(serial) => Task::done(LodestoneAppMessage::Game(GameMessage::ConsoleRun(serial))),
+            TitlebarMessage::LaunchNew(id) => Task::done(LodestoneAppMessage::Game(GameMessage::LaunchNew(id))),
         }
     }
     #[cfg(not(target_os = "windows"))]
@@ -76,9 +90,10 @@ impl Titlebar {
         Task::none()
     }
 
-    /// The bar. While a game runs, `running` adds the Kill and Console buttons before the window controls.
+    /// The bar. While a game runs, the game controls sit before the window controls: the indicator, whose
+    /// panel lists every running game with its new-process, console and kill buttons.
     #[cfg(windows)]
-    pub fn view(&self, can_go_back: bool, can_go_forward: bool, transparent: bool, running: bool) -> Element<'_, TitlebarMessage> {
+    pub fn view(&self, can_go_back: bool, can_go_forward: bool, transparent: bool, game: &GameBar, runs_open: bool) -> Element<'_, TitlebarMessage> {
         let window_buttons = row![
             IconButton::new(Icon::material_symbols().minimize_rounded())
                 .width(47)
@@ -98,26 +113,7 @@ impl Titlebar {
                 .on_press(TitlebarMessage::Close),
         ]
         .height(Fill);
-        let game_buttons = if running {
-            row![
-                IconButton::new(Icon::lucide().square())
-                    .width(47)
-                    .height(Fill)
-                    .icon_size(11.0)
-                    .style(icon_button::DANGER_BUTTON_STYLE)
-                    .on_press(TitlebarMessage::KillGame),
-                IconButton::new(Icon::lucide().terminal())
-                    .width(47)
-                    .height(Fill)
-                    .icon_size(12.0)
-                    .style(icon_button::SECONDARY_BUTTON_STYLE)
-                    .on_press(TitlebarMessage::OpenConsole),
-            ]
-            .height(Fill)
-        } else {
-            row![].height(Fill)
-        };
-        let window_buttons = row![game_buttons, window_buttons].height(Fill);
+        let window_buttons = row![Self::game_buttons(game, runs_open), window_buttons].height(Fill);
 
         let bar: Element<'_, TitlebarMessage> = if transparent {
             // Chrome floats over the login backdrop. The drag surface spans the whole bar,
@@ -189,7 +185,37 @@ impl Titlebar {
             .into()
     }
     #[cfg(not(target_os = "windows"))]
-    pub fn view(&self, _can_go_back: bool, _can_go_forward: bool, _transparent: bool, _running: bool) -> Element<'_, TitlebarMessage> {
+    pub fn view(
+        &self,
+        _can_go_back: bool,
+        _can_go_forward: bool,
+        _transparent: bool,
+        _game: &GameBar,
+        _runs_open: bool,
+    ) -> Element<'_, TitlebarMessage> {
         row![].into()
+    }
+
+    /// The game controls on the bar, or an empty row while no game runs: the indicator, whose panel lists
+    /// the running games with their new-process, console and kill buttons.
+    #[cfg(windows)]
+    fn game_buttons(bar: &GameBar, runs_open: bool) -> Element<'static, TitlebarMessage> {
+        if bar.runs.is_empty() {
+            return row![].height(Fill).into();
+        }
+        let actions = game_controls::Actions {
+            toggle: TitlebarMessage::ToggleRuns,
+            dismiss: TitlebarMessage::DismissRuns,
+            kill: TitlebarMessage::KillRun,
+            console: TitlebarMessage::ConsoleRun,
+            launch: TitlebarMessage::LaunchNew,
+        };
+        Self::slot(game_controls::runs_popover(bar, runs_open, &actions))
+    }
+
+    /// Centres one game control vertically in the bar.
+    #[cfg(windows)]
+    fn slot(content: Element<'static, TitlebarMessage>) -> Element<'static, TitlebarMessage> {
+        container(content).height(Fill).center_y(Fill).into()
     }
 }
