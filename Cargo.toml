@@ -26,3 +26,14 @@ codegen-units = 1
 panic = "abort"
 opt-level = "z"
 strip = true
+
+# Dependencies (iced, wgpu, resvg, image, cosmic-text) run optimised in debug builds too, so
+# `cargo run` is usable. Workspace crates keep the default debug settings.
+[profile.dev.package."*"]
+opt-level = 3
+
+# Release optimisation and LTO with symbols, for sampling profilers (`just profile`).
+[profile.profiling]
+inherits = "release"
+debug = "line-tables-only"
+strip = "none"

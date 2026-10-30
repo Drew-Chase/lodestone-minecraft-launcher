@@ -2,6 +2,14 @@
 name = "lodestone_launcher"
 version = "0.1.0"
 edition = "2024"
+# Tests mirror src/ under tests/ and are wired in with #[path], so top-level files there are not
+# separate test targets.
+autotests = false
+
+[features]
+# Measures where the launcher spends its time: scope timers, iced event counters, a Chrome trace
+# and an F3 overlay. Off by default, so normal builds carry none of it. See `just perf`.
+perf = []
 
 [dependencies]
 piston-mc = { version = "0.1.5-beta", features = ["assets", "downloads", "java"] }
