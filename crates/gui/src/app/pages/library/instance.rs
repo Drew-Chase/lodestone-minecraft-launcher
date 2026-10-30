@@ -1,5 +1,7 @@
 //! The launchable Minecraft instance — the Library's domain model.
 
+use std::path::{Path, PathBuf};
+
 use chrono::{DateTime, Local};
 
 /// The mod loader an instance runs through.
@@ -34,8 +36,6 @@ impl Loader {
         }
     }
 
-    /// Only the tests write rows until the New Instance flow exists.
-    #[cfg(test)]
     pub(crate) fn to_db(self) -> &'static str {
         match self {
             Loader::Vanilla => "vanilla",
@@ -62,8 +62,6 @@ impl InstanceState {
         }
     }
 
-    /// Only the tests write rows until the New Instance flow exists.
-    #[cfg(test)]
     pub(crate) fn to_db(self) -> &'static str {
         match self {
             InstanceState::Idle => "idle",
@@ -99,8 +97,6 @@ impl Biome {
         }
     }
 
-    /// Only the tests write rows until the New Instance flow exists.
-    #[cfg(test)]
     pub(crate) fn to_db(self) -> &'static str {
         match self {
             Biome::End => "end",
@@ -111,6 +107,41 @@ impl Biome {
             Biome::Snow => "snow",
             Biome::Nether => "nether",
             Biome::Mushroom => "mushroom",
+        }
+    }
+}
+
+/// The instance's square icon: a background preset with a symbol, or an
+/// uploaded image.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InstanceIcon {
+    /// Composed from the icon catalog, both parts by id. An unknown id falls
+    /// back to the catalog's first entry when it is drawn.
+    Composed { background: String, symbol: String },
+    /// An uploaded square image. Stored relative to the instance folder;
+    /// [`Instance::resolve_files`] makes it absolute after a load.
+    Custom(PathBuf),
+}
+
+impl InstanceIcon {
+    /// The icon's `(background, symbol, custom path)` columns.
+    pub(crate) fn to_db(&self) -> (Option<&str>, Option<&str>, Option<String>) {
+        match self {
+            InstanceIcon::Composed { background, symbol } => (Some(background.as_str()), Some(symbol.as_str()), None),
+            InstanceIcon::Custom(path) => (None, None, Some(path.to_string_lossy().into_owned())),
+        }
+    }
+
+    /// Reads the icon columns back. A row without a custom path is composed,
+    /// and a missing background or symbol is left empty for the catalog to
+    /// fill in.
+    pub(crate) fn from_db(background: Option<String>, symbol: Option<String>, custom: Option<String>) -> Self {
+        match custom {
+            Some(path) => InstanceIcon::Custom(PathBuf::from(path)),
+            None => InstanceIcon::Composed {
+                background: background.unwrap_or_default(),
+                symbol: symbol.unwrap_or_default(),
+            },
         }
     }
 }
@@ -139,14 +170,35 @@ pub struct Instance {
     pub biome: Biome,
     /// The terrain-silhouette variation for the generated scene art.
     pub art_seed: u64,
+    /// The uploaded banner. Stored relative to the instance folder;
+    /// [`Instance::resolve_files`] makes it absolute after a load. `None`
+    /// shows the scene art.
+    pub art_path: Option<PathBuf>,
+    /// The square icon shown on cards and the instance page.
+    pub icon: InstanceIcon,
     /// The instance's folder name inside the instances directory.
     pub directory_name: String,
+    /// The bundled Java runtime's short name ("delta"), once installed.
+    pub java_component: Option<String>,
+    /// The version the launcher starts ("fabric-loader-0.16.10-1.21.4"), once installed.
+    pub version_id: Option<String>,
 }
 
 impl Instance {
     /// The sort key for "most recent": last played, else installed.
     pub fn recency(&self) -> DateTime<Local> {
         self.last_played.unwrap_or(self.installed_at)
+    }
+
+    /// Makes the stored file paths absolute, against the instances directory.
+    pub fn resolve_files(&mut self, instances_dir: &Path) {
+        let folder = instances_dir.join(&self.directory_name);
+        if let Some(path) = &mut self.art_path {
+            *path = folder.join(&*path);
+        }
+        if let InstanceIcon::Custom(path) = &mut self.icon {
+            *path = folder.join(&*path);
+        }
     }
 }
 
@@ -167,7 +219,14 @@ pub(crate) fn fixture(id: &str, name: &str, loader: Loader) -> Instance {
         state: InstanceState::Idle,
         biome: Biome::Forest,
         art_seed: 1,
+        art_path: None,
+        icon: InstanceIcon::Composed {
+            background: "rose".to_string(),
+            symbol: "grass".to_string(),
+        },
         directory_name: id.to_string(),
+        java_component: None,
+        version_id: None,
     }
 }
 

@@ -2,11 +2,16 @@
 //! database file next to the credential store, schema versioned through
 //! sqlx migrations.
 
+use std::path::PathBuf;
+
 use chrono::{DateTime, Local, Utc};
 use sqlx::Row;
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
-use crate::app::pages::library::instance::{Biome, Instance, InstanceState, Loader};
+use crate::app::pages::library::instance::{Biome, Instance, InstanceIcon, InstanceState, Loader};
+
+/// How many icon recents are kept. The icon editor shows the newest few.
+const RECENT_ICON_LIMIT: i64 = 8;
 
 /// The launcher's database handle. Cheap to clone; the pool owns the
 /// connections.
@@ -40,10 +45,14 @@ impl Database {
     }
 
     /// Loads every instance, most recently installed first.
+    ///
+    /// File paths come back relative to the instance folder; the root makes
+    /// them absolute with [`Instance::resolve_files`].
     pub async fn instances(&self) -> Result<Vec<Instance>, String> {
         let rows = sqlx::query(
             "SELECT id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
-             last_played_at, installed_at, pinned, state, biome, art_seed, directory_name \
+             last_played_at, installed_at, pinned, state, biome, art_seed, art_path, \
+             icon_background, icon_symbol, icon_path, directory_name, java_component, version_id \
              FROM instances",
         )
         .fetch_all(&self.pool)
@@ -73,10 +82,92 @@ impl Database {
                     state: InstanceState::from_db(&row.get::<String, _>("state")),
                     biome: Biome::from_db(&row.get::<String, _>("biome")),
                     art_seed: row.get::<i64, _>("art_seed") as u64,
+                    art_path: row.get::<Option<String>, _>("art_path").map(PathBuf::from),
+                    icon: InstanceIcon::from_db(row.get("icon_background"), row.get("icon_symbol"), row.get("icon_path")),
                     directory_name: row.get("directory_name"),
+                    java_component: row.get("java_component"),
+                    version_id: row.get("version_id"),
                 }
             })
             .collect())
+    }
+
+    /// Writes a new instance row. The caller has already created the folder
+    /// and written its files.
+    pub async fn insert_instance(&self, instance: &Instance) -> Result<(), String> {
+        let (icon_background, icon_symbol, icon_path) = instance.icon.to_db();
+        sqlx::query(
+            "INSERT INTO instances \
+             (id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
+              last_played_at, installed_at, pinned, state, biome, art_seed, art_path, \
+              icon_background, icon_symbol, icon_path, directory_name, java_component, version_id) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&instance.id)
+        .bind(&instance.name)
+        .bind(&instance.mc_version)
+        .bind(instance.loader.to_db())
+        .bind(&instance.loader_version)
+        .bind(instance.playtime_seconds as i64)
+        .bind(instance.mod_count as i64)
+        .bind(instance.last_played.map(|at| at.timestamp()))
+        .bind(instance.installed_at.timestamp())
+        .bind(instance.pinned as i64)
+        .bind(instance.state.to_db())
+        .bind(instance.biome.to_db())
+        .bind(instance.art_seed as i64)
+        .bind(instance.art_path.as_ref().map(|path| path.to_string_lossy().into_owned()))
+        .bind(icon_background)
+        .bind(icon_symbol)
+        .bind(icon_path)
+        .bind(&instance.directory_name)
+        .bind(&instance.java_component)
+        .bind(&instance.version_id)
+        .execute(&self.pool)
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+    }
+
+    /// The icon recents, most recently used first.
+    pub async fn recent_icons(&self) -> Result<Vec<InstanceIcon>, String> {
+        let rows = sqlx::query("SELECT background, symbol FROM icon_recents ORDER BY used_at DESC, id DESC LIMIT ?")
+            .bind(RECENT_ICON_LIMIT)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(rows
+            .into_iter()
+            .map(|row| InstanceIcon::Composed {
+                background: row.get("background"),
+                symbol: row.get("symbol"),
+            })
+            .collect())
+    }
+
+    /// Records a composed icon as the most recent recent. A repeat moves to
+    /// the front, and the list is capped at [`RECENT_ICON_LIMIT`].
+    pub async fn record_recent_icon(&self, background: &str, symbol: &str) -> Result<(), String> {
+        let mut transaction = self.pool.begin().await.map_err(|error| error.to_string())?;
+        sqlx::query("DELETE FROM icon_recents WHERE background = ? AND symbol = ?")
+            .bind(background)
+            .bind(symbol)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| error.to_string())?;
+        sqlx::query("INSERT INTO icon_recents (background, symbol, used_at) VALUES (?, ?, ?)")
+            .bind(background)
+            .bind(symbol)
+            .bind(Utc::now().timestamp())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| error.to_string())?;
+        sqlx::query("DELETE FROM icon_recents WHERE id NOT IN (SELECT id FROM icon_recents ORDER BY used_at DESC, id DESC LIMIT ?)")
+            .bind(RECENT_ICON_LIMIT)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| error.to_string())?;
+        transaction.commit().await.map_err(|error| error.to_string())
     }
 }
 

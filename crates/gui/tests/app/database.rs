@@ -12,34 +12,13 @@ impl Database {
         sqlx::migrate!("./migrations").run(&pool).await.map_err(|error| error.to_string())?;
         Ok(Self { pool })
     }
+}
 
-    /// Writes `instance` the way the New Instance flow will. Only the tests
-    /// insert rows until that flow exists.
-    async fn insert_for_test(&self, instance: &Instance) -> Result<(), String> {
-        sqlx::query(
-            "INSERT INTO instances \
-             (id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
-              last_played_at, installed_at, pinned, state, biome, art_seed, directory_name) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(&instance.id)
-        .bind(&instance.name)
-        .bind(&instance.mc_version)
-        .bind(instance.loader.to_db())
-        .bind(&instance.loader_version)
-        .bind(instance.playtime_seconds as i64)
-        .bind(instance.mod_count as i64)
-        .bind(instance.last_played.map(|at| at.timestamp()))
-        .bind(instance.installed_at.timestamp())
-        .bind(instance.pinned as i64)
-        .bind(instance.state.to_db())
-        .bind(instance.biome.to_db())
-        .bind(instance.art_seed as i64)
-        .bind(&instance.directory_name)
-        .execute(&self.pool)
-        .await
-        .map(|_| ())
-        .map_err(|error| error.to_string())
+/// A composed icon with the given catalog ids.
+fn composed(background: &str, symbol: &str) -> InstanceIcon {
+    InstanceIcon::Composed {
+        background: background.to_string(),
+        symbol: symbol.to_string(),
     }
 }
 
@@ -63,7 +42,7 @@ async fn instances_round_trip_through_the_table() {
     played.last_played = Some(Local::now());
     let idle = fixture("9a1b-idle", "Vanilla Survival", Loader::Vanilla);
     for instance in [&played, &idle] {
-        db.insert_for_test(instance).await.expect("insert succeeds");
+        db.insert_instance(instance).await.expect("insert succeeds");
     }
 
     let loaded = db.instances().await.expect("instances load");
@@ -90,12 +69,64 @@ async fn instances_round_trip_through_the_table() {
 }
 
 #[tokio::test]
+async fn composed_icons_and_runtime_columns_round_trip() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    let mut instance = fixture("0c1d-art", "Dragon Survival v2", Loader::NeoForge);
+    instance.icon = composed("sunset", "fox");
+    instance.art_path = Some(PathBuf::from(".lodestone/banner.png"));
+    instance.java_component = Some("delta".to_string());
+    instance.version_id = Some("neoforge-21.1.77".to_string());
+    db.insert_instance(&instance).await.expect("insert succeeds");
+
+    let restored = db.instances().await.expect("instances load").remove(0);
+    assert_eq!(restored.icon, instance.icon);
+    assert_eq!(restored.art_path, instance.art_path);
+    assert_eq!(restored.java_component, instance.java_component);
+    assert_eq!(restored.version_id, instance.version_id);
+}
+
+#[tokio::test]
+async fn uploaded_icons_round_trip_as_their_path() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    let mut instance = fixture("7e2a-upload", "Uploaded", Loader::Quilt);
+    instance.icon = InstanceIcon::Custom(PathBuf::from(".lodestone/icon.png"));
+    db.insert_instance(&instance).await.expect("insert succeeds");
+
+    let restored = db.instances().await.expect("instances load").remove(0);
+    assert_eq!(restored.icon, InstanceIcon::Custom(PathBuf::from(".lodestone/icon.png")));
+    assert!(restored.art_path.is_none(), "an instance without an upload has no banner path");
+}
+
+#[tokio::test]
+async fn recent_icons_put_the_latest_first_without_repeats() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    db.record_recent_icon("rose", "grass").await.expect("first recent records");
+    db.record_recent_icon("azure", "fox").await.expect("second recent records");
+    db.record_recent_icon("rose", "grass").await.expect("a repeat records");
+
+    let recents = db.recent_icons().await.expect("recents load");
+    assert_eq!(recents, vec![composed("rose", "grass"), composed("azure", "fox")]);
+}
+
+#[tokio::test]
+async fn recent_icons_are_capped() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    for index in 0..RECENT_ICON_LIMIT + 3 {
+        db.record_recent_icon("rose", &format!("symbol-{index}")).await.expect("recent records");
+    }
+
+    let recents = db.recent_icons().await.expect("recents load");
+    assert_eq!(recents.len(), RECENT_ICON_LIMIT as usize);
+    assert_eq!(recents[0], composed("rose", &format!("symbol-{}", RECENT_ICON_LIMIT + 2)));
+}
+
+#[tokio::test]
 async fn migration_0002_removes_the_seeded_demo_rows_only() {
     let db = Database::connect_in_memory().await.expect("in-memory db opens");
     let demo = fixture("seed-000", "Aether Legacy", Loader::Fabric);
     let real = fixture("3c9e4f0a-6b1d-4f7e-9c2a-8d5b1e7f0a42", "My Pack", Loader::Quilt);
-    db.insert_for_test(&demo).await.expect("demo row inserts");
-    db.insert_for_test(&real).await.expect("real row inserts");
+    db.insert_instance(&demo).await.expect("demo row inserts");
+    db.insert_instance(&real).await.expect("real row inserts");
 
     sqlx::query(include_str!("../../migrations/0002_remove_seed_instances.sql"))
         .execute(&db.pool)

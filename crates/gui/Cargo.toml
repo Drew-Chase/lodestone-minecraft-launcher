@@ -10,9 +10,14 @@ lodestone_minecraft_authentication = { path = "../auth" }
 open = "5"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "time", "macros"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+rfd = "0.17"
 dirs = "6"
 lodestone_loaders = { path = "../loaders" }
+reqwest = { workspace = true }
+simple_download_utility = { workspace = true }
+fastrand = "2"
+sipper = "0.1"
 fastnbt = "2.6"
 flate2 = "1.1"
 serde = { workspace = true }
