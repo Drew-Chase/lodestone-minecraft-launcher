@@ -7,6 +7,7 @@ use iced_color_extension::rgb;
 
 use crate::app::components::scene_art::scene_handle;
 use crate::app::components::tile::tile;
+use crate::app::lang;
 use crate::app::pages::library::instance::Biome;
 
 /// The scene slots in artwork order. Each slot has a base scene and two variants.
@@ -39,19 +40,20 @@ pub fn random_scene() -> usize {
 pub fn scene_name(index: usize) -> String {
     let (biome, seed) = scene(index);
     let name = match biome {
-        Biome::End => "End",
-        Biome::Forest => "Forest",
-        Biome::Cherry => "Cherry",
-        Biome::Ocean => "Ocean",
-        Biome::Desert => "Desert",
-        Biome::Snow => "Snow",
-        Biome::Nether => "Nether",
-        Biome::Mushroom => "Mushroom",
+        Biome::End => lang::t("biome.end"),
+        Biome::Forest => lang::t("biome.forest"),
+        Biome::Cherry => lang::t("biome.cherry"),
+        Biome::Ocean => lang::t("biome.ocean"),
+        Biome::Desert => lang::t("biome.desert"),
+        Biome::Snow => lang::t("biome.snow"),
+        Biome::Nether => lang::t("biome.nether"),
+        Biome::Mushroom => lang::t("biome.mushroom"),
     };
     if seed == 0 {
-        format!("{name}, base scene")
+        lang::t_with("banner.scene_base", &[("name", name)])
     } else {
-        format!("{name}, variant {seed}")
+        let variant = seed.to_string();
+        lang::t_with("banner.scene_variant", &[("name", name), ("seed", variant.as_str())])
     }
 }
 

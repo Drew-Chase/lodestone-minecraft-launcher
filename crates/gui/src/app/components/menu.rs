@@ -15,6 +15,7 @@
 //! The engine is deliberately internal; the public surface lives in
 //! [`select`](super::select) and [`dropdown`](super::dropdown).
 
+use crate::app::lang;
 use crate::app::theme::{color, fonts};
 use iced::advanced::layout::Node;
 use iced::advanced::overlay::Element as OverlayElement;
@@ -645,7 +646,7 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
                 if self.searchable && self.state.visible.is_empty() {
                     renderer.fill_text(
                         text::Text {
-                            content: "No matches".to_owned(),
+                            content: lang::t("common.no_matches").to_owned(),
                             bounds: Size::new(rows.width, rows.height),
                             size: Pixels::from(12.0),
                             line_height: text::LineHeight::Relative(1.4),

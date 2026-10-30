@@ -6,6 +6,7 @@ use iced::widget::{Space, Text, column, container, row};
 use iced::{Element, Fill, Padding};
 
 use crate::app::components::TextButton;
+use crate::app::lang;
 use crate::app::theme::{color as palette, fonts};
 
 use super::widgets::{icon, ms_tiles, rule};
@@ -42,7 +43,10 @@ impl Login {
                 body = body.push(self.cancel_button());
             }
             Flow::Opening => {
-                body = body.push(self.microsoft_button("Opening Microsoft…", Message::SignInMicrosoft).disabled(true));
+                body = body.push(
+                    self.microsoft_button(lang::t("login.opening_microsoft"), Message::SignInMicrosoft)
+                        .disabled(true),
+                );
             }
             // Offline mode asks for a username before entering.
             Flow::OfflinePrompt { username } => {
@@ -54,7 +58,7 @@ impl Login {
             }
             // Idle and Failed both offer the button (retry after a failure).
             Flow::Idle | Flow::Failed(_) => {
-                body = body.push(self.microsoft_button("Continue with Microsoft", Message::SignInMicrosoft));
+                body = body.push(self.microsoft_button(lang::t("login.sign_in_microsoft"), Message::SignInMicrosoft));
                 body = body.push(self.or_divider()).push(self.secondary_row());
             }
         }
@@ -88,7 +92,10 @@ impl Login {
         TextButton::content(
             row![
                 Space::new().width(Fill),
-                Text::new("Cancel").size(13).font(fonts::Inter::MEDIUM).color(palette::Text::DEFAULT),
+                Text::new(lang::t("common.cancel"))
+                    .size(13)
+                    .font(fonts::Inter::MEDIUM)
+                    .color(palette::Text::DEFAULT),
                 Space::new().width(Fill),
             ]
             .align_y(iced::Alignment::Center)
@@ -104,7 +111,10 @@ impl Login {
     fn or_divider(&self) -> Element<'_, Message> {
         row![
             rule(),
-            Text::new("OR").size(10).font(fonts::Inter::SEMI_BOLD).color(palette::Text::PLACEHOLDER),
+            Text::new(lang::t("login.or"))
+                .size(10)
+                .font(fonts::Inter::SEMI_BOLD)
+                .color(palette::Text::PLACEHOLDER),
             rule(),
         ]
         .spacing(12)
@@ -119,7 +129,7 @@ impl Login {
                 container(
                     row![
                         icon(Icon::lucide().user(), 15.0, palette::Text::MUTED, 0.68),
-                        Text::new("Offline Mode")
+                        Text::new(lang::t("login.offline_mode"))
                             .size(13)
                             .font(fonts::Inter::MEDIUM)
                             .color(palette::Text::DEFAULT),
@@ -137,7 +147,10 @@ impl Login {
                 container(
                     row![
                         icon(Icon::lucide().shield(), 15.0, palette::Text::MUTED, 0.68),
-                        Text::new("Demo Mode").size(13).font(fonts::Inter::MEDIUM).color(palette::Text::DEFAULT),
+                        Text::new(lang::t("login.demo_mode"))
+                            .size(13)
+                            .font(fonts::Inter::MEDIUM)
+                            .color(palette::Text::DEFAULT),
                     ]
                     .spacing(8)
                     .align_y(iced::Alignment::Center),

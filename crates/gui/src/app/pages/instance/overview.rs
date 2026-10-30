@@ -12,6 +12,7 @@ use super::screenshots;
 use crate::app::components::grid::grid;
 use crate::app::components::panel::panel;
 use crate::app::components::screenshot_tile::{Caption, photo_tile};
+use crate::app::lang;
 use crate::app::pages::library::instance::{Instance, Loader};
 use crate::app::theme::{color, fonts};
 
@@ -32,7 +33,10 @@ pub fn view<'a, M: 'static>(instance: &'a Instance, screenshots: &'a screenshots
 fn about_panel<M: 'static>(instance: &Instance) -> Element<'static, M> {
     panel(
         column![
-            Text::new("About").size(13).font(fonts::Inter::SEMI_BOLD).color(color::Text::HEADLINE),
+            Text::new(lang::t("instance.overview.about"))
+                .size(13)
+                .font(fonts::Inter::SEMI_BOLD)
+                .color(color::Text::HEADLINE),
             Text::new(about_text(instance))
                 .size(12)
                 .line_height(1.6)
@@ -47,18 +51,28 @@ fn about_panel<M: 'static>(instance: &Instance) -> Element<'static, M> {
 /// The loader and the Minecraft version the instance runs.
 fn about_text(instance: &Instance) -> String {
     if instance.loader == Loader::Vanilla {
-        return format!("Vanilla Minecraft {}.", instance.mc_version);
+        return lang::t_with("instance.overview.vanilla", &[("version", instance.mc_version.as_str())]);
     }
     match &instance.loader_version {
-        Some(version) => format!("{} {version} on Minecraft {}.", instance.loader.label(), instance.mc_version),
-        None => format!("{} on Minecraft {}.", instance.loader.label(), instance.mc_version),
+        Some(version) => lang::t_with(
+            "instance.overview.modded",
+            &[
+                ("loader", instance.loader.label()),
+                ("loader_version", version.as_str()),
+                ("version", instance.mc_version.as_str()),
+            ],
+        ),
+        None => lang::t_with(
+            "instance.overview.modded_no_version",
+            &[("loader", instance.loader.label()), ("version", instance.mc_version.as_str())],
+        ),
     }
 }
 
 /// The newest captures, three to a row. Until one is read, the strip says so.
 fn screenshot_strip<'a, M: 'a>(screenshots: &'a screenshots::State) -> Element<'a, M> {
     let body: Element<'a, M> = if screenshots.shots().is_empty() {
-        Text::new("No screenshots yet.")
+        Text::new(lang::t("instance.overview.no_screenshots"))
             .size(12)
             .font(fonts::Inter::REGULAR)
             .color(color::Text::MUTED)
@@ -74,7 +88,7 @@ fn screenshot_strip<'a, M: 'a>(screenshots: &'a screenshots::State) -> Element<'
     };
 
     column![
-        Text::new("Screenshots")
+        Text::new(lang::t("instance.overview.screenshots"))
             .size(13)
             .font(fonts::Inter::SEMI_BOLD)
             .color(color::Text::HEADLINE),
@@ -89,9 +103,13 @@ fn screenshot_strip<'a, M: 'a>(screenshots: &'a screenshots::State) -> Element<'
 fn session_panel<M: 'static>(instance: &Instance) -> Element<'static, M> {
     panel(
         column![
-            section_label("SESSION"),
+            section_label(lang::t("instance.overview.session")),
             Space::new().height(2),
-            session_row("Total", format_playtime(instance.playtime_seconds), color::Text::HEADLINE),
+            session_row(
+                lang::t("instance.overview.total"),
+                format_playtime(instance.playtime_seconds),
+                color::Text::HEADLINE
+            ),
         ]
         .spacing(0),
     )

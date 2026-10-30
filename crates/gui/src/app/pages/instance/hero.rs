@@ -14,6 +14,7 @@ use crate::app::components::icon_button::IconButtonStyle;
 use crate::app::components::scene_art::banner_handle;
 use crate::app::components::{IconButton, TextButton};
 use crate::app::components::{instance_art, instance_icon};
+use crate::app::lang;
 use crate::app::pages::library::instance::{Instance, InstanceState};
 use crate::app::theme::{color, fonts, utility};
 
@@ -179,7 +180,11 @@ pub fn hero_icon(instance: &Instance) -> Element<'static, Message> {
 
 /// Pause plus the running-session button.
 fn session_controls(playing: bool, paused: bool) -> Element<'static, Message> {
-    let pause_label = if paused { "Resume" } else { "Pause" };
+    let pause_label = if paused {
+        lang::t("instance.hero.resume")
+    } else {
+        lang::t("instance.hero.pause")
+    };
 
     row![
         TextButton::content(
@@ -196,10 +201,14 @@ fn session_controls(playing: bool, paused: bool) -> Element<'static, Message> {
         TextButton::content(
             row![
                 utility::icon(Icon::lucide().play(), 12.0, Some((color::Primary::ON, color::Primary::ON))),
-                Text::new(if playing { "Running" } else { "Launch" })
-                    .size(14)
-                    .font(fonts::Inter::BOLD)
-                    .color(color::Primary::ON),
+                Text::new(if playing {
+                    lang::t("instance.hero.running")
+                } else {
+                    lang::t("instance.hero.launch")
+                })
+                .size(14)
+                .font(fonts::Inter::BOLD)
+                .color(color::Primary::ON),
             ]
             .spacing(8)
             .align_y(alignment::Vertical::Center),
@@ -267,8 +276,8 @@ fn favorite_style() -> IconButtonStyle {
 /// The launched/idle badge.
 fn status_badge(state: InstanceState) -> Element<'static, Message> {
     let (label, ink, fill, pulsing) = match state {
-        InstanceState::Playing => ("LAUNCHED", color::Primary::DEFAULT, color::Primary::TINT, true),
-        InstanceState::Idle => ("IDLE", color::Text::MUTED, rgb!(255, 255, 255, 6%), false),
+        InstanceState::Playing => (lang::t("instance.status.launched"), color::Primary::DEFAULT, color::Primary::TINT, true),
+        InstanceState::Idle => (lang::t("instance.status.idle"), color::Text::MUTED, rgb!(255, 255, 255, 6%), false),
     };
     Badge::new(label, ink, fill).with_pulse(pulsing).into()
 }
@@ -293,13 +302,16 @@ fn meta_line(instance: &Instance, files: Option<&InstanceFiles>) -> String {
         .iter()
         .filter_map(|world| world.saved)
         .max()
-        .map_or_else(|| "No saves yet".to_string(), |saved| format_saved(saved, Local::now()));
+        .map_or_else(|| lang::t("instance.hero.no_saves").to_owned(), |saved| format_saved(saved, Local::now()));
     format!("/instances/{} · {} · {saved}", instance.directory_name, format_bytes(files.folder_bytes))
 }
 
 /// The mod count for the masthead badge, or a dash until the folder is read.
 fn mods_label(files: Option<&InstanceFiles>) -> String {
-    files.map_or_else(|| "— MODS".to_string(), |files| format!("{} MODS", files.mods.len()))
+    files.map_or_else(
+        || lang::t("instance.hero.mods_unknown").to_owned(),
+        |files| lang::t_count("instance.mods_caps", files.mods.len()),
+    )
 }
 
 #[cfg(test)]

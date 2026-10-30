@@ -21,6 +21,7 @@ use crate::app::components::input;
 use crate::app::components::panel::{panel, panel_with_padding};
 use crate::app::components::screenshot_tile::placeholder_art;
 use crate::app::components::{IconButton, TextButton};
+use crate::app::lang;
 use crate::app::theme::{color, fonts, utility};
 
 /// A card's height, per the reference.
@@ -42,10 +43,10 @@ pub enum GameMode {
 impl GameMode {
     pub fn label(self) -> &'static str {
         match self {
-            GameMode::Survival => "SURVIVAL",
-            GameMode::Creative => "CREATIVE",
-            GameMode::Adventure => "ADVENTURE",
-            GameMode::Hardcore => "HARDCORE",
+            GameMode::Survival => lang::t("instance.worlds.mode.survival"),
+            GameMode::Creative => lang::t("instance.worlds.mode.creative"),
+            GameMode::Adventure => lang::t("instance.worlds.mode.adventure"),
+            GameMode::Hardcore => lang::t("instance.worlds.mode.hardcore"),
         }
     }
 }
@@ -62,10 +63,10 @@ pub enum Difficulty {
 impl Difficulty {
     pub fn label(self) -> &'static str {
         match self {
-            Difficulty::Peaceful => "PEACEFUL",
-            Difficulty::Easy => "EASY",
-            Difficulty::Normal => "NORMAL",
-            Difficulty::Hard => "HARD",
+            Difficulty::Peaceful => lang::t("instance.worlds.difficulty.peaceful"),
+            Difficulty::Easy => lang::t("instance.worlds.difficulty.easy"),
+            Difficulty::Normal => lang::t("instance.worlds.difficulty.normal"),
+            Difficulty::Hard => lang::t("instance.worlds.difficulty.hard"),
         }
     }
 }
@@ -75,12 +76,12 @@ impl Difficulty {
 pub fn format_saved(saved: DateTime<Local>, now: DateTime<Local>) -> String {
     let days = now.date_naive().signed_duration_since(saved.date_naive()).num_days();
     match days {
-        ..=0 => format!("Saved {} today", saved.format("%H:%M")),
-        1 => "Saved Yesterday".to_string(),
-        2..=6 => format!("Saved {days} days ago"),
-        7..=13 => "Saved Last week".to_string(),
-        14..=29 => format!("Saved {} weeks ago", days / 7),
-        _ => format!("Saved {}", saved.format("%b %-d, %Y")),
+        ..=0 => lang::t_with("instance.saved.today", &[("time", saved.format("%H:%M").to_string().as_str())]),
+        1 => lang::t("instance.saved.yesterday").to_owned(),
+        2..=6 => lang::t_with("instance.saved.days_ago", &[("days", days.to_string().as_str())]),
+        7..=13 => lang::t("instance.saved.last_week").to_owned(),
+        14..=29 => lang::t_with("instance.saved.weeks_ago", &[("weeks", (days / 7).to_string().as_str())]),
+        _ => lang::t_with("instance.saved.on", &[("date", saved.format("%b %-d, %Y").to_string().as_str())]),
     }
 }
 
@@ -157,9 +158,9 @@ impl State {
         let cards: Vec<Element<'_, Message>> = self.visible.iter().map(|&index| self.world_card(&self.worlds[index])).collect();
         let body = if cards.is_empty() {
             let message = if self.worlds.is_empty() {
-                "No worlds yet. Worlds you create in the game appear here."
+                lang::t("instance.worlds.empty")
             } else {
-                "No worlds match your search."
+                lang::t("instance.worlds.no_match")
             };
             panel(Text::new(message).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED))
         } else {
@@ -173,7 +174,7 @@ impl State {
         let search = container(
             row![
                 utility::icon(Icon::lucide().search(), 14.0, Some((color::Text::PLACEHOLDER, color::Text::PLACEHOLDER))),
-                text_input("Search worlds…", &self.query)
+                text_input(lang::t("instance.worlds.search_placeholder"), &self.query)
                     .on_input(Message::Search)
                     .style(bare_input)
                     .padding(Padding::new(0.0).top(9.0).bottom(9.0).right(12.0))
@@ -200,8 +201,8 @@ impl State {
         row![
             search,
             Space::new().width(Fill),
-            TextButton::labeled_icon(Icon::lucide().upload(), "Import", Variant::Ghost).on_press(Message::Import),
-            TextButton::labeled_icon(Icon::lucide().plus(), "New world", Variant::Ghost).on_press(Message::NewWorld),
+            TextButton::labeled_icon(Icon::lucide().upload(), lang::t("instance.worlds.import"), Variant::Ghost).on_press(Message::Import),
+            TextButton::labeled_icon(Icon::lucide().plus(), lang::t("instance.worlds.new"), Variant::Ghost).on_press(Message::NewWorld),
         ]
         .spacing(10)
         .align_y(alignment::Vertical::Center)
@@ -223,7 +224,10 @@ impl State {
         }
         let seed = world.seed.map_or_else(|| "# —".to_string(), |seed| format!("# {seed}"));
         let size = format_bytes(world.size_bytes);
-        let saved = world.saved.map_or_else(|| "Saved —".to_string(), |saved| format_saved(saved, self.now));
+        let saved = world.saved.map_or_else(
+            || lang::t("instance.worlds.saved_unknown").to_owned(),
+            |saved| format_saved(saved, self.now),
+        );
 
         let body = column![
             Text::new(world.name.as_str())
@@ -231,10 +235,13 @@ impl State {
                 .font(fonts::Inter::SEMI_BOLD)
                 .color(color::Text::HEADLINE),
             row(tags).spacing(6),
-            Text::new(format!("{seed} · size {size}"))
-                .size(11)
-                .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::Text::PLACEHOLDER),
+            Text::new(lang::t_with(
+                "instance.worlds.seed_size",
+                &[("seed", seed.as_str()), ("size", size.as_str())]
+            ))
+            .size(11)
+            .font(fonts::JetBrainsMono::REGULAR)
+            .color(color::Text::PLACEHOLDER),
             Space::new().height(Fill),
             row![
                 Text::new(saved).size(11).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
@@ -251,7 +258,7 @@ impl State {
                     .icon_size(13.0)
                     .style(SECONDARY_BUTTON_STYLE)
                     .on_press(Message::More),
-                TextButton::primary("Play")
+                TextButton::primary(lang::t("common.play"))
                     .padding(Padding::new(0.0).left(14).right(14).top(7).bottom(7))
                     .on_press(Message::Play),
             ]

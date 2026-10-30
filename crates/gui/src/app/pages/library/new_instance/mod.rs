@@ -20,6 +20,7 @@ use lodestone_loaders::LoaderVersion;
 use crate::app::database::Database;
 use crate::app::install::catalog::{self, BundledJava, Releases, VersionInfo};
 use crate::app::install::{self, IconSource, InstallProgress, InstallRequest};
+use crate::app::lang;
 use crate::app::pages::library::instance::{Instance, InstanceIcon, Loader};
 use crate::app::paths::LauncherPaths;
 
@@ -442,13 +443,13 @@ impl NewInstance {
     fn install_request(&self) -> Result<InstallRequest, String> {
         let name = self.name.trim();
         if name.is_empty() {
-            return Err("Give the instance a name.".to_string());
+            return Err(lang::t("new_instance.error.name").to_owned());
         }
-        let mc = self.mc_version.clone().ok_or("Choose a Minecraft version.")?;
-        let info = self.version_info.as_ref().ok_or("Minecraft's version details are still loading.")?;
+        let mc = self.mc_version.clone().ok_or(lang::t("new_instance.error.minecraft_version"))?;
+        let info = self.version_info.as_ref().ok_or(lang::t("new_instance.error.version_loading"))?;
         let loader_version = match self.loader {
             Loader::Vanilla => None,
-            _ => Some(self.loader_version.clone().ok_or("Choose a loader version.")?),
+            _ => Some(self.loader_version.clone().ok_or(lang::t("new_instance.error.loader_version"))?),
         };
         let java_component = Some(self.java_override.clone().unwrap_or_else(|| info.component.clone()));
         let directory_name = naming::unique_directory_name(&self.paths.instances(), &naming::clean_directory_name(name));

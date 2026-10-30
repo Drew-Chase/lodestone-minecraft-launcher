@@ -9,6 +9,7 @@ use iced_color_extension::rgb;
 use crate::app::components::button;
 use crate::app::components::input;
 use crate::app::components::{ProgressBar, TextButton};
+use crate::app::lang;
 use crate::app::theme::{color as palette, fonts};
 
 use super::widgets::{icon, rule_under_link};
@@ -98,9 +99,9 @@ impl Login {
                 .align_y(iced::Alignment::Center),
                 ProgressBar::new(0.0).indeterminate(true).height(3.0).width(Fill),
                 Text::new(if copied {
-                    "Copied to clipboard — waiting for you to finish signing in…"
+                    lang::t("login.copied_hint")
                 } else {
-                    "Click the code to copy it — waiting for you to finish signing in…"
+                    lang::t("login.copy_hint")
                 })
                 .size(11)
                 .font(fonts::Inter::REGULAR)
@@ -130,7 +131,7 @@ impl Login {
         }
         column![
             stack![
-                text_input("Your username", username)
+                text_input(lang::t("login.username_placeholder"), username)
                     .on_input(Message::OfflineUsernameChanged)
                     .on_submit(Message::OfflineConfirm {
                         username: username.to_string()
@@ -150,7 +151,10 @@ impl Login {
                     row![
                         Space::new().width(Fill),
                         icon(Icon::material_symbols().play_arrow(), 14.0, palette::Primary::ON, 1.0),
-                        Text::new("Play offline").size(13).font(fonts::Inter::MEDIUM).color(palette::Primary::ON),
+                        Text::new(lang::t("login.play_offline"))
+                            .size(13)
+                            .font(fonts::Inter::MEDIUM)
+                            .color(palette::Primary::ON),
                         Space::new().width(Fill),
                     ]
                     .spacing(8)
@@ -167,7 +171,7 @@ impl Login {
                 TextButton::content(
                     row![
                         Space::new().width(Fill),
-                        Text::new("Cancel").size(13).font(fonts::Inter::MEDIUM),
+                        Text::new(lang::t("common.cancel")).size(13).font(fonts::Inter::MEDIUM),
                         Space::new().width(Fill),
                     ]
                     .spacing(8)
@@ -188,18 +192,10 @@ impl Login {
     pub(super) fn restoring_panel(&self, username: &str) -> Element<'_, Message> {
         container(
             column![
-                row![
-                    Text::new("Signing in as ")
-                        .size(13)
-                        .font(fonts::Inter::MEDIUM)
-                        .color(palette::Text::MUTED),
-                    Text::new(username.to_string())
-                        .size(13)
-                        .font(fonts::Inter::SEMI_BOLD)
-                        .color(palette::Text::HEADLINE),
-                    Text::new("…").size(13).font(fonts::Inter::MEDIUM).color(palette::Text::MUTED),
-                ]
-                .align_y(iced::Alignment::Center),
+                Text::new(lang::t_with("login.restoring", &[("name", username)]))
+                    .size(13)
+                    .font(fonts::Inter::MEDIUM)
+                    .color(palette::Text::MUTED),
                 ProgressBar::new(0.0).indeterminate(true).height(3.0).width(Fill),
             ]
             .spacing(8),

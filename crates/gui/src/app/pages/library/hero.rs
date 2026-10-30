@@ -4,6 +4,7 @@
 use crate::app::components::badge::{Badge, loader_palette};
 use crate::app::components::instance_art;
 use crate::app::components::{IconButton, PulseDot, TextButton};
+use crate::app::lang;
 use crate::app::theme::{color, fonts};
 use aurora_leaf::Icon;
 use chrono::{DateTime, Local};
@@ -39,12 +40,12 @@ impl Library {
         ]
         .spacing(8);
 
-        let mut meta = format!("{} mods", hero.mod_count);
-        if let Some(played) = hero.last_played {
-            meta.push_str(&format!(" · last played {}", relative_time(played)));
-        } else {
-            meta.push_str(" · never played");
-        }
+        let played = match hero.last_played {
+            Some(played) => lang::t_with("library.hero.last_played", &[("time", relative_time(played).as_str())]),
+            None => lang::t("library.hero.never_played").to_owned(),
+        };
+        let mods = lang::t_count("instance.mods", hero.mod_count as usize);
+        let meta = lang::t_with("library.hero.meta", &[("mods", mods.as_str()), ("played", played.as_str())]);
 
         Some(
             container(
@@ -70,10 +71,14 @@ impl Library {
                                 TextButton::content(
                                     row![
                                         icon(Icon::lucide().play(), 14.0, color::Primary::ON, 1.0),
-                                        Text::new(if playing { "Resume Session" } else { "Play" })
-                                            .size(13)
-                                            .font(fonts::Inter::BOLD)
-                                            .color(color::Primary::ON),
+                                        Text::new(if playing {
+                                            lang::t("library.hero.resume")
+                                        } else {
+                                            lang::t("common.play")
+                                        })
+                                        .size(13)
+                                        .font(fonts::Inter::BOLD)
+                                        .color(color::Primary::ON),
                                     ]
                                     .spacing(8)
                                     .align_y(alignment::Vertical::Center)
@@ -114,44 +119,44 @@ impl Library {
 
     /// The four quick-action cards — dummy entries until the features land.
     pub(super) fn quick_actions(&self) -> Element<'_, Message> {
-        let cards: [(&'static str, Color, Color, &'static str, &'static str); 4] = [
+        // Each card's text comes from the catalogue; its action carries its own id.
+        let cards: [(&'static str, Color, Color, &'static str, &'static str, Message); 4] = [
             (
                 Icon::lucide().plus(),
                 color::Primary::DEFAULT,
                 color::Primary::TINT,
-                "New Instance",
-                "From modpack, CurseForge, or scratch",
+                lang::t("library.quick.new_instance.title"),
+                lang::t("library.quick.new_instance.subtitle"),
+                Message::OpenNewInstance,
             ),
             (
                 Icon::lucide().download(),
                 color::Accents::CYAN,
                 color::Accents::CYAN_TINT,
-                "Import",
-                ".zip, .mrpack, CurseForge",
+                lang::t("library.quick.import.title"),
+                lang::t("library.quick.import.subtitle"),
+                Message::QuickAction("library.quick.import"),
             ),
             (
                 Icon::lucide().server(),
                 color::Accents::AMBER,
                 color::Accents::AMBER_TINT,
-                "Join Server",
-                "Realms · hosted · friends",
+                lang::t("library.quick.join_server.title"),
+                lang::t("library.quick.join_server.subtitle"),
+                Message::QuickAction("library.quick.join_server"),
             ),
             (
                 Icon::lucide().users(),
                 color::Accents::VIOLET_LIGHT,
                 color::Accents::VIOLET_TINT,
-                "Co-op Sync",
-                "3 friends online now",
+                lang::t("library.quick.co_op.title"),
+                lang::t("library.quick.co_op.subtitle"),
+                Message::QuickAction("library.quick.co_op"),
             ),
         ];
-        row(cards.into_iter().map(|(icon_markup, ink, fill, title, subtitle)| {
-            let on_press = if title == "New Instance" {
-                Message::OpenNewInstance
-            } else {
-                Message::QuickAction(title)
-            };
-            quick_action_card(icon_markup, ink, fill, title, subtitle, on_press)
-        }))
+        row(cards
+            .into_iter()
+            .map(|(icon_markup, ink, fill, title, subtitle, on_press)| quick_action_card(icon_markup, ink, fill, title, subtitle, on_press)))
         .spacing(20)
         .width(Fill)
         .into()
@@ -214,8 +219,8 @@ fn quick_action_card(
 /// The status chip — the pulsing dot plus the uppercase label.
 fn status_chip(state: InstanceState) -> Element<'static, Message> {
     let (label, ink, fill, pulsing) = match state {
-        InstanceState::Playing => ("PLAYING", color::Primary::DEFAULT, color::Primary::TINT, true),
-        InstanceState::Idle => ("IDLE", color::Text::MUTED, rgb!(255, 255, 255, 6%), false),
+        InstanceState::Playing => (lang::t("library.status.playing"), color::Primary::DEFAULT, color::Primary::TINT, true),
+        InstanceState::Idle => (lang::t("library.status.idle"), color::Text::MUTED, rgb!(255, 255, 255, 6%), false),
     };
     container(
         row![
@@ -242,12 +247,12 @@ fn relative_time(then: DateTime<Local>) -> String {
     let delta = Local::now() - then;
     let minutes = delta.num_minutes().max(0);
     if minutes < 1 {
-        "just now".to_string()
+        lang::t("time.just_now").to_owned()
     } else if minutes < 60 {
-        format!("{minutes} minutes ago")
+        lang::t_count("time.minutes_ago", minutes as usize)
     } else if minutes < 60 * 24 {
-        format!("{} hours ago", minutes / 60)
+        lang::t_count("time.hours_ago", (minutes / 60) as usize)
     } else {
-        format!("{} days ago", minutes / (60 * 24))
+        lang::t_count("time.days_ago", (minutes / (60 * 24)) as usize)
     }
 }

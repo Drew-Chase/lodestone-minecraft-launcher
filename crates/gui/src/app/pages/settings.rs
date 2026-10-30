@@ -1,6 +1,7 @@
 //! Settings — placeholder page for launcher preferences.
 
 use crate::app::components::TextButton;
+use crate::app::lang;
 use crate::app::pages::Page;
 use iced::widget::{column, container, row};
 use iced::{Element, Fill, Padding};
@@ -26,13 +27,13 @@ impl Settings {
     pub fn view(&self) -> Element<'_, Message> {
         container(
             column![
-                crate::eyebrow!("Launcher"),
-                crate::display!("Settings"),
-                crate::body!("Preferences will live here."),
-                crate::small!("Nothing to configure yet."),
+                crate::eyebrow!(lang::t("settings.eyebrow")),
+                crate::display!(lang::t("settings.title")),
+                crate::body!(lang::t("settings.intro")),
+                crate::small!(lang::t("settings.empty")),
                 row![
-                    TextButton::ghost("Home").on_press(Message::Navigate(Page::Home)),
-                    TextButton::ghost("Component gallery").on_press(Message::Navigate(Page::Showcase)),
+                    TextButton::ghost(lang::t("common.home")).on_press(Message::Navigate(Page::Home)),
+                    TextButton::ghost(lang::t("settings.component_gallery")).on_press(Message::Navigate(Page::Showcase)),
                 ]
                 .spacing(12),
             ]

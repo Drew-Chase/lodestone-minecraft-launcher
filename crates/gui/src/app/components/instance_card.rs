@@ -12,6 +12,7 @@ use iced::{Background, Border, Color, Element, Fill, Length, Padding, alignment,
 
 use crate::app::components::TextButton;
 use crate::app::components::badge::{Badge, loader_palette};
+use crate::app::lang;
 
 /// The grid card's fixed height — art box plus info block. Fixed so the
 /// virtualized rows keep an exact pitch.
@@ -49,9 +50,37 @@ fn version_line(instance: &Instance) -> Text<'static> {
     .color(color::Text::MUTED)
 }
 
+/// Whole hours of playtime, as the `{hours}h` unit.
+fn playtime_hours(playtime_seconds: u32) -> String {
+    let hours = (playtime_seconds / 3600).to_string();
+    lang::t_with("common.hours", &[("hours", hours.as_str())])
+}
+
+/// The grid card's footer: playtime and the mod count.
+fn stats_line(instance: &Instance) -> String {
+    let hours = playtime_hours(instance.playtime_seconds);
+    let mods = lang::t_count("instance.mods", instance.mod_count as usize);
+    lang::t_with("instance.stats", &[("hours", hours.as_str()), ("mods", mods.as_str())])
+}
+
+/// The Compact row's line: playtime, loader, game version, and mod count.
+fn compact_stats(instance: &Instance) -> String {
+    let hours = playtime_hours(instance.playtime_seconds);
+    let mods = lang::t_count("instance.mods", instance.mod_count as usize);
+    lang::t_with(
+        "instance.compact_stats",
+        &[
+            ("hours", hours.as_str()),
+            ("loader", instance.loader.label()),
+            ("version", instance.mc_version.as_str()),
+            ("mods", mods.as_str()),
+        ],
+    )
+}
+
 /// The small green play button used by every view.
 fn play_button<Message: Clone + 'static>(on_press: Message) -> Element<'static, Message> {
-    TextButton::primary("Play")
+    TextButton::primary(lang::t("common.play"))
         .padding(Padding::new(0.0).left(16).right(16).top(8).bottom(8))
         .on_press(on_press)
         .into()
@@ -92,7 +121,7 @@ pub fn instance_card<Message: Clone + 'static>(instance: &Instance, on_play: Mes
                     ]
                     .align_y(alignment::Vertical::Center),
                     row![
-                        Text::new(format!("{}h · {} mods", instance.playtime_seconds / 3600, instance.mod_count))
+                        Text::new(stats_line(instance))
                             .size(11)
                             .font(fonts::Inter::REGULAR)
                             .color(color::Text::MUTED),
@@ -123,16 +152,10 @@ pub fn compact_row<Message: Clone + 'static>(instance: &Instance, on_play: Messa
             mouse_area(
                 column![
                     title_block(instance),
-                    Text::new(format!(
-                        "{}h · {} · {} · {} mods",
-                        instance.playtime_seconds / 3600,
-                        instance.loader.label(),
-                        instance.mc_version,
-                        instance.mod_count
-                    ))
-                    .size(11)
-                    .font(fonts::JetBrainsMono::REGULAR)
-                    .color(color::Text::MUTED),
+                    Text::new(compact_stats(instance))
+                        .size(11)
+                        .font(fonts::JetBrainsMono::REGULAR)
+                        .color(color::Text::MUTED),
                 ]
                 .spacing(2),
             )
@@ -173,11 +196,11 @@ pub fn table_header<Message: 'static>() -> Element<'static, Message> {
         .width(width)
     };
     row![
-        header("NAME", Fill),
-        header("VERSION", Length::Fixed(COL_VERSION)),
-        header("LOADER", Length::Fixed(COL_LOADER)),
-        header("MODS", Length::Fixed(COL_MODS)),
-        header("PLAYTIME", Length::Fixed(COL_PLAYTIME)),
+        header(lang::t("library.table.name"), Fill),
+        header(lang::t("library.table.version"), Length::Fixed(COL_VERSION)),
+        header(lang::t("library.table.loader"), Length::Fixed(COL_LOADER)),
+        header(lang::t("library.table.mods"), Length::Fixed(COL_MODS)),
+        header(lang::t("library.table.playtime"), Length::Fixed(COL_PLAYTIME)),
         header("", Length::Fixed(COL_ACTIONS)),
     ]
     .spacing(12)
@@ -211,7 +234,7 @@ pub fn table_row<Message: Clone + 'static>(index: usize, instance: &Instance, on
                 .size(12)
                 .color(color::Text::MUTED)
                 .width(Length::Fixed(COL_MODS)),
-            Text::new(format!("{}h", instance.playtime_seconds / 3600))
+            Text::new(playtime_hours(instance.playtime_seconds))
                 .size(12)
                 .color(color::Text::MUTED)
                 .width(Length::Fixed(COL_PLAYTIME)),

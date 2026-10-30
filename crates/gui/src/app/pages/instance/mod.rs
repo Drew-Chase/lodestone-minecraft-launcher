@@ -28,6 +28,7 @@ use iced::{Element, Fill, Padding, Size, Subscription, Task, alignment};
 
 use crate::app::components::Tabs;
 use crate::app::components::scrollbar;
+use crate::app::lang;
 use crate::app::pages::Page;
 use crate::app::pages::library::instance::Instance;
 use crate::app::theme::{color, fonts};
@@ -53,12 +54,12 @@ impl Tab {
 
     pub fn label(self) -> &'static str {
         match self {
-            Tab::Overview => "Overview",
-            Tab::Mods => "Mods",
-            Tab::Worlds => "Worlds",
-            Tab::Screenshots => "Screenshots",
-            Tab::Logs => "Logs",
-            Tab::Settings => "Settings",
+            Tab::Overview => lang::t("instance.tab.overview"),
+            Tab::Mods => lang::t("instance.tab.mods"),
+            Tab::Worlds => lang::t("instance.tab.worlds"),
+            Tab::Screenshots => lang::t("instance.tab.screenshots"),
+            Tab::Logs => lang::t("instance.tab.logs"),
+            Tab::Settings => lang::t("instance.tab.settings"),
         }
     }
 }
@@ -275,15 +276,15 @@ impl InstancePage {
     fn empty_state(&self) -> Element<'_, Message> {
         container(
             column![
-                Text::new("No instance selected")
+                Text::new(lang::t("instance.none_selected"))
                     .size(18)
                     .font(fonts::Inter::EXTRA_BOLD)
                     .color(color::Text::HEADLINE),
-                Text::new("Choose an instance in the Library to open its detail view.")
+                Text::new(lang::t("instance.none_selected_hint"))
                     .size(12)
                     .font(fonts::Inter::REGULAR)
                     .color(color::Text::MUTED),
-                crate::app::components::TextButton::ghost("Back to Library").on_press(Message::Back),
+                crate::app::components::TextButton::ghost(lang::t("instance.back_to_library")).on_press(Message::Back),
             ]
             .spacing(12)
             .align_x(alignment::Horizontal::Center),

@@ -6,6 +6,8 @@ use std::io::Cursor;
 use image::ImageFormat;
 use image::imageops::FilterType;
 
+use crate::app::lang;
+
 /// The largest file taken. Anything bigger is refused before it is decoded.
 const MAX_BYTES: usize = 25 * 1024 * 1024;
 /// The icon's edge, in pixels.
@@ -35,8 +37,8 @@ pub async fn pick_banner() -> Result<Option<Vec<u8>>, String> {
 /// The file the user picks, read into memory.
 async fn pick() -> Result<Option<Vec<u8>>, String> {
     let Some(file) = rfd::AsyncFileDialog::new()
-        .set_title("Choose an image")
-        .add_filter("Images", &["png", "jpg", "jpeg"])
+        .set_title(lang::t("upload.dialog_title"))
+        .add_filter(lang::t("upload.filter_images"), &["png", "jpg", "jpeg"])
         .pick_file()
         .await
     else {
@@ -44,7 +46,7 @@ async fn pick() -> Result<Option<Vec<u8>>, String> {
     };
     let bytes = file.read().await;
     if bytes.len() > MAX_BYTES {
-        return Err("That image is larger than 25 MB.".to_string());
+        return Err(lang::t("upload.too_large").to_owned());
     }
     Ok(Some(bytes))
 }
@@ -52,12 +54,13 @@ async fn pick() -> Result<Option<Vec<u8>>, String> {
 /// Decodes `bytes`, covers a `width` by `height` frame with it, and encodes the result as PNG.
 async fn encode(bytes: Vec<u8>, width: u32, height: u32) -> Result<Vec<u8>, String> {
     tokio::task::spawn_blocking(move || {
-        let decoded = image::load_from_memory(&bytes).map_err(|error| format!("could not read that image: {error}"))?;
+        let decoded =
+            image::load_from_memory(&bytes).map_err(|error| lang::t_with("upload.read_failed", &[("error", error.to_string().as_str())]))?;
         let framed = decoded.resize_to_fill(width, height, FilterType::Lanczos3);
         let mut png = Cursor::new(Vec::new());
         framed
             .write_to(&mut png, ImageFormat::Png)
-            .map_err(|error| format!("could not encode the image: {error}"))?;
+            .map_err(|error| lang::t_with("upload.encode_failed", &[("error", error.to_string().as_str())]))?;
         Ok(png.into_inner())
     })
     .await

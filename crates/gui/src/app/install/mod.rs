@@ -19,6 +19,7 @@ use tokio::sync::mpsc;
 use tracing::warn;
 
 use crate::app::database::Database;
+use crate::app::lang;
 use crate::app::pages::library::instance::{Biome, Instance, InstanceIcon, InstanceState, Loader};
 use crate::app::paths::LauncherPaths;
 
@@ -87,13 +88,13 @@ impl Stage {
     /// The line the install dialog shows while this stage runs.
     pub fn label(self) -> &'static str {
         match self {
-            Stage::Resolve => "Resolving the version",
-            Stage::Java => "Installing Java",
-            Stage::Client => "Downloading the client",
-            Stage::Libraries => "Downloading libraries",
-            Stage::Assets => "Downloading assets",
-            Stage::Loader => "Installing the loader",
-            Stage::Finish => "Writing the instance",
+            Stage::Resolve => lang::t("install.stage.resolve"),
+            Stage::Java => lang::t("install.stage.java"),
+            Stage::Client => lang::t("install.stage.client"),
+            Stage::Libraries => lang::t("install.stage.libraries"),
+            Stage::Assets => lang::t("install.stage.assets"),
+            Stage::Loader => lang::t("install.stage.loader"),
+            Stage::Finish => lang::t("install.stage.finish"),
         }
     }
 }
@@ -117,6 +118,19 @@ pub fn install(request: InstallRequest, db: Database) -> impl Sipper<Result<Inst
     })
 }
 
+/// The message for a folder the install could not create.
+fn could_not_create(path: &Path, error: impl std::fmt::Display) -> String {
+    path_failed("install.could_not_create", path, error)
+}
+
+/// The message for an install step that failed on `path`, from the catalogue key `key`.
+fn path_failed(key: &'static str, path: &Path, error: impl std::fmt::Display) -> String {
+    lang::t_with(
+        key,
+        &[("path", path.display().to_string().as_str()), ("error", error.to_string().as_str())],
+    )
+}
+
 /// The instance folder an install created. Unless it is kept, dropping it deletes the
 /// folder, so a failed or cancelled install leaves nothing behind.
 struct Folder {
@@ -129,9 +143,9 @@ impl Folder {
     /// here is what lets the install delete it later without touching anything else.
     fn create(path: &Path) -> Result<Self, String> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|error| format!("could not create {}: {error}", parent.display()))?;
+            std::fs::create_dir_all(parent).map_err(|error| could_not_create(parent, error))?;
         }
-        std::fs::create_dir(path).map_err(|error| format!("could not create {}: {error}", path.display()))?;
+        std::fs::create_dir(path).map_err(|error| could_not_create(path, error))?;
         Ok(Self {
             path: path.to_path_buf(),
             kept: false,
@@ -192,7 +206,7 @@ async fn finish(
     report(progress, Stage::Finish, None, request.directory_name.clone()).await;
     for folder in FOLDERS {
         let path = game_dir.join(folder);
-        std::fs::create_dir_all(&path).map_err(|error| format!("could not create {}: {error}", path.display()))?;
+        std::fs::create_dir_all(&path).map_err(|error| could_not_create(&path, error))?;
     }
 
     let art_dir = game_dir.join(ART_DIR);
@@ -245,9 +259,9 @@ async fn finish(
 
 /// Writes one piece of uploaded art into `dir`, creating `dir` first.
 fn write_art(dir: &Path, file: &str, png: &[u8]) -> Result<(), String> {
-    std::fs::create_dir_all(dir).map_err(|error| format!("could not create {}: {error}", dir.display()))?;
+    std::fs::create_dir_all(dir).map_err(|error| could_not_create(dir, error))?;
     let path = dir.join(file);
-    std::fs::write(&path, png).map_err(|error| format!("could not write {}: {error}", path.display()))
+    std::fs::write(&path, png).map_err(|error| path_failed("install.could_not_write", &path, error))
 }
 
 /// Reports one progress update.

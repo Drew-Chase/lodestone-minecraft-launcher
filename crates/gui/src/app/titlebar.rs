@@ -2,23 +2,21 @@ use crate::app::LodestoneAppMessage;
 #[cfg(windows)]
 use crate::app::LodestoneLauncher;
 #[cfg(windows)]
+use crate::app::components::brand_tag::brand_tag;
+#[cfg(windows)]
 use crate::app::components::icon_button;
 #[cfg(windows)]
 use crate::app::components::icon_button::IconButton;
 #[cfg(windows)]
 use crate::app::theme::color;
 #[cfg(windows)]
-use crate::eyebrow;
-#[cfg(windows)]
 use aurora_leaf::Icon;
 use iced::widget::row;
 #[cfg(windows)]
 use iced::widget::{Space, Text, container, mouse_area, stack};
 #[cfg(windows)]
-use iced::{Background, Border, Fill, Padding};
+use iced::{Background, Fill, Padding};
 use iced::{Element, Task, window};
-#[cfg(windows)]
-use iced_color_extension::rgb;
 #[cfg(windows)]
 use tracing::{debug, info};
 
@@ -72,56 +70,7 @@ impl Titlebar {
 
     #[cfg(windows)]
     pub fn view(&self, can_go_back: bool, can_go_forward: bool, transparent: bool) -> Element<'_, TitlebarMessage> {
-        container(row![
-            if transparent {
-                // Chrome floats over the login backdrop: a bare drag surface
-                // with the window buttons on the right (the login page owns
-                // the centered brand line).
-                row![
-                    stack![
-                        container(self.language_chip()).width(Fill).align_x(iced::alignment::Horizontal::Left),
-                        container(eyebrow!(format!("LODESTONE · v{}", LodestoneLauncher::VERSION)))
-                            .width(Fill)
-                            .align_x(iced::alignment::Horizontal::Center),
-                    ],
-                    mouse_area(Space::new().width(Fill).height(Fill))
-                        .on_double_click(TitlebarMessage::ToggleMaximized)
-                        .on_press(TitlebarMessage::StartDragWindow),
-                ]
-                .width(Fill)
-                .height(Fill)
-            } else {
-                row![
-                    IconButton::new(Icon::lucide().chevron_left())
-                        .width(34)
-                        .height(Fill)
-                        .icon_size(13.0)
-                        .style(icon_button::SECONDARY_BUTTON_STYLE)
-                        .disabled(!can_go_back)
-                        .on_press(TitlebarMessage::NavBack),
-                    IconButton::new(Icon::lucide().chevron_right())
-                        .width(34)
-                        .height(Fill)
-                        .icon_size(13.0)
-                        .style(icon_button::SECONDARY_BUTTON_STYLE)
-                        .disabled(!can_go_forward)
-                        .on_press(TitlebarMessage::NavForward),
-                    mouse_area(row![
-                        container(
-                            Text::new(LodestoneLauncher::TITLE)
-                                .size(18)
-                                .font(crate::app::theme::fonts::Inter::EXTRA_BOLD)
-                        )
-                        .padding(Padding::new(0.0).left(8).right(8).top(4))
-                        .width(Fill)
-                        .height(Fill),
-                    ])
-                    .on_double_click(TitlebarMessage::ToggleMaximized)
-                    .on_press(TitlebarMessage::StartDragWindow),
-                ]
-                .width(Fill)
-                .height(Fill)
-            },
+        let window_buttons = row![
             IconButton::new(Icon::material_symbols().minimize_rounded())
                 .width(47)
                 .height(Fill)
@@ -138,47 +87,80 @@ impl Titlebar {
                 .height(Fill)
                 .style(icon_button::DANGER_BUTTON_STYLE)
                 .on_press(TitlebarMessage::Close),
-        ])
-        .width(Fill)
-        .height(32)
-        .style(move |_| {
-            if transparent {
-                // The login backdrop shows through the chrome.
-                container::Style::default()
-            } else {
-                container::Style {
-                    background: Some(Background::from(color::Surface::TITLEBAR)),
-                    ..Default::default()
+        ]
+        .height(Fill);
+
+        let bar: Element<'_, TitlebarMessage> = if transparent {
+            // Chrome floats over the login backdrop. The drag surface spans the whole bar,
+            // and the tag is centred over it. The window buttons sit on top, so their clicks
+            // never start a drag.
+            stack![
+                mouse_area(Space::new().width(Fill).height(Fill))
+                    .on_double_click(TitlebarMessage::ToggleMaximized)
+                    .on_press(TitlebarMessage::StartDragWindow),
+                container(brand_tag())
+                    .width(Fill)
+                    .height(Fill)
+                    .align_x(iced::alignment::Horizontal::Center)
+                    .align_y(iced::alignment::Vertical::Center),
+                row![Space::new().width(Fill), window_buttons].width(Fill).height(Fill),
+            ]
+            .width(Fill)
+            .height(Fill)
+            .into()
+        } else {
+            row![
+                IconButton::new(Icon::lucide().chevron_left())
+                    .width(34)
+                    .height(Fill)
+                    .icon_size(13.0)
+                    .style(icon_button::SECONDARY_BUTTON_STYLE)
+                    .disabled(!can_go_back)
+                    .on_press(TitlebarMessage::NavBack),
+                IconButton::new(Icon::lucide().chevron_right())
+                    .width(34)
+                    .height(Fill)
+                    .icon_size(13.0)
+                    .style(icon_button::SECONDARY_BUTTON_STYLE)
+                    .disabled(!can_go_forward)
+                    .on_press(TitlebarMessage::NavForward),
+                mouse_area(row![
+                    container(
+                        Text::new(LodestoneLauncher::TITLE)
+                            .size(18)
+                            .font(crate::app::theme::fonts::Inter::EXTRA_BOLD)
+                    )
+                    .padding(Padding::new(0.0).left(8).right(8).top(4))
+                    .width(Fill)
+                    .height(Fill),
+                ])
+                .on_double_click(TitlebarMessage::ToggleMaximized)
+                .on_press(TitlebarMessage::StartDragWindow),
+                window_buttons,
+            ]
+            .width(Fill)
+            .height(Fill)
+            .into()
+        };
+
+        container(bar)
+            .width(Fill)
+            .height(32)
+            .style(move |_| {
+                if transparent {
+                    // The login backdrop shows through the chrome.
+                    container::Style::default()
+                } else {
+                    container::Style {
+                        background: Some(Background::from(color::Surface::TITLEBAR)),
+                        ..Default::default()
+                    }
                 }
-            }
-        })
-        .into()
+            })
+            .into()
     }
     #[cfg(not(target_os = "windows"))]
     pub fn view(&self, _can_go_back: bool, _can_go_forward: bool, _transparent: bool) -> Element<'_, TitlebarMessage> {
         row![].into()
-    }
-
-    #[cfg(windows)]
-    fn language_chip(&self) -> Element<'_, TitlebarMessage> {
-        container(
-            row![
-            //                icon(Icon::lucide().globe(), 14.0, palette::Text::MUTED, 0.68),
-            //                body!("English US"),
-            //                icon(Icon::lucide().chevron_down(), 12.0, palette::Text::MUTED, 0.68),
-                        ]
-            .spacing(8)
-            .align_y(iced::Alignment::Center),
-        )
-        .padding(Padding::new(0.0).left(16).right(12).top(10).bottom(10))
-        .style(|_| container::Style {
-            background: Some(Background::Color(rgb!(0, 0, 0, 40%))),
-            border: Border {
-                radius: 12.0.into(),
-                ..Border::default()
-            },
-            ..container::Style::default()
-        })
-        .into()
     }
 }

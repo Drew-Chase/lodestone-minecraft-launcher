@@ -1,5 +1,7 @@
 //! Display formatting for the instance tabs: byte sizes and play times.
 
+use crate::app::lang;
+
 /// A byte count in the launcher's compact style: `2.1 MB`, `412 MB`, `1.4 GB`.
 /// Values under 10 keep one decimal place; larger values round to whole units.
 pub fn format_bytes(bytes: u64) -> String {
@@ -29,9 +31,19 @@ pub fn format_playtime(seconds: u32) -> String {
     let hours = minutes / 60;
     if hours > 0 {
         let rest = minutes % 60;
-        if rest == 0 { format!("{hours}h") } else { format!("{hours}h {rest}m") }
+        let hours = hours.to_string();
+        if rest == 0 {
+            lang::t_with("instance.playtime.hours", &[("hours", hours.as_str())])
+        } else {
+            let rest = rest.to_string();
+            lang::t_with(
+                "instance.playtime.hours_minutes",
+                &[("hours", hours.as_str()), ("minutes", rest.as_str())],
+            )
+        }
     } else if minutes > 0 {
-        format!("{minutes} min")
+        let minutes = minutes.to_string();
+        lang::t_with("instance.playtime.minutes", &[("minutes", minutes.as_str())])
     } else {
         "—".to_string()
     }

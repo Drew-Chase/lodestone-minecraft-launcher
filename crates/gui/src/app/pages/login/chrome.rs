@@ -1,60 +1,47 @@
-//! The page chrome around the sign-in card: top bar, language chip, the card
-//! frame with its logo row and headline, the footer, and the status bar.
+//! The page chrome around the sign-in card: the top bar with the brand tag and the language
+//! picker, the card frame with its logo row and headline, the footer, and the status bar.
 
-use aurora_leaf::Icon;
-use iced::widget::{Space, Text, column, container, mouse_area, row, stack, svg};
+use iced::widget::{Column, Space, Text, column, container, mouse_area, rich_text, row, span, stack, svg};
 use iced::{Background, Border, Element, Fill, Padding, Radians, Shadow, Vector, gradient};
 use iced_color_extension::rgb;
 
 use crate::app::LodestoneLauncher;
 use crate::app::components::PulseDot;
 use crate::app::components::backdrop::logo_glow_handle;
+use crate::app::components::brand_tag::brand_tag;
+use crate::app::components::language_picker::{LanguagePicker, PickerStyle};
+use crate::app::lang;
 use crate::app::theme::{color as palette, fonts};
 
-use super::widgets::{icon, logo_handle, mono, rgb_line, rule};
+use super::widgets::{logo_handle, mono, rgb_line, rule};
 use super::{AuthStatus, Login, Message};
 
-impl Login {
-    /// Language chip left, window brand centered — the reference's top edge.
-    pub(super) fn top_bar(&self) -> Element<'_, Message> {
-        #[cfg(not(windows))]
-        {
-            stack![
-                container(self.language_chip()).width(Fill).align_x(iced::alignment::Horizontal::Left),
-                container(mono(format!("LODESTONE · v{}", LodestoneLauncher::VERSION), 11.0))
-                    .width(Fill)
-                    .align_x(iced::alignment::Horizontal::Center),
-            ]
-            .into()
-        }
-        #[cfg(windows)]
-        row![].into()
-    }
+/// The height of the strip the brand tag sits in. The Windows titlebar is the same height, so
+/// the picker lands at the same spot on every platform: 12px below the strip.
+const TAG_STRIP_HEIGHT: f32 = 32.0;
+/// The picker's inset from the window's left edge, and from the bottom of the tag strip.
+const PICKER_LEFT: f32 = 24.0;
+const PICKER_TOP: f32 = 12.0;
 
-    /// The "English · US" chip — decorative until localization lands.
-    fn language_chip(&self) -> Element<'_, Message> {
-        container(
-            row![
-                icon(Icon::lucide().globe(), 14.0, palette::Text::MUTED, 0.68),
-                Text::new("English · US")
-                    .size(12)
-                    .font(fonts::Inter::MEDIUM)
-                    .color(palette::Text::DEFAULT),
-                icon(Icon::lucide().chevron_down(), 12.0, palette::Text::MUTED, 0.68),
-            ]
-            .spacing(8)
-            .align_y(iced::Alignment::Center),
-        )
-        .padding(Padding::new(0.0).left(16).right(12).top(10).bottom(10))
-        .style(|_| container::Style {
-            background: Some(Background::Color(rgb!(0, 0, 0, 40%))),
-            border: Border {
-                radius: 12.0.into(),
-                ..Border::default()
-            },
-            ..container::Style::default()
-        })
-        .into()
+impl Login {
+    /// The login's top bar: the brand tag centred in a strip, with the language picker below it
+    /// at the left. Windows draws the tag in its own titlebar, so only the picker row is left
+    /// there.
+    pub(super) fn top_bar(&self) -> Element<'_, Message> {
+        let picker_row = container(LanguagePicker::new(Message::SelectLanguage).style(PickerStyle::Chip))
+            .width(Fill)
+            .padding(Padding::new(0.0).left(PICKER_LEFT).top(PICKER_TOP));
+        let mut bar = Column::new().width(Fill);
+        if !cfg!(windows) {
+            bar = bar.push(
+                container(brand_tag())
+                    .width(Fill)
+                    .height(TAG_STRIP_HEIGHT)
+                    .align_x(iced::alignment::Horizontal::Center)
+                    .align_y(iced::alignment::Vertical::Center),
+            );
+        }
+        bar.push(picker_row).into()
     }
 
     /// The floating sign-in card.
@@ -99,7 +86,7 @@ impl Login {
             self.logo_row(),
             Space::new().height(22),
             self.headline(),
-            Text::new("Sign in to sync your worlds, instances, and friends across devices.")
+            Text::new(lang::t("login.subtitle"))
                 .size(13)
                 .font(fonts::Inter::REGULAR)
                 .color(palette::Text::MUTED)
@@ -130,11 +117,11 @@ impl Login {
             .width(52)
             .height(52),
             column![
-                Text::new("Lodestone")
+                Text::new(lang::t("application.title"))
                     .size(22)
                     .font(fonts::Inter::EXTRA_BOLD)
                     .color(palette::Text::HEADLINE),
-                mono(format!("THIRD-PARTY LAUNCHER · v{}", LodestoneLauncher::VERSION), 11.0),
+                mono(lang::t_with("login.brand_subtitle", &[("VERSION", LodestoneLauncher::VERSION)]), 11.0),
             ]
             .spacing(2),
         ]
@@ -143,32 +130,32 @@ impl Login {
         .into()
     }
 
-    /// "Welcome back, crafter" — Inter ExtraBold, per the reference.
+    /// The headline from `login.title`, with its `%P` run in Lode Green.
     fn headline(&self) -> Element<'_, Message> {
-        row![
-            Text::new("Welcome back, ")
-                .size(26)
-                .font(fonts::Inter::EXTRA_BOLD)
-                .color(palette::Text::HEADLINE),
-            Text::new("crafter")
-                .size(26)
-                .font(fonts::Inter::EXTRA_BOLD)
-                .color(palette::Primary::DEFAULT),
-        ]
-        .align_y(iced::Alignment::Center)
-        .into()
+        let spans: Vec<_> = lang::rich_segments("login.title")
+            .into_iter()
+            .map(|segment| {
+                let ink = if segment.primary {
+                    palette::Primary::DEFAULT
+                } else {
+                    palette::Text::HEADLINE
+                };
+                span::<(), iced::Font>(segment.text).font(fonts::Inter::EXTRA_BOLD).size(26).color(ink)
+            })
+            .collect();
+        rich_text(spans).into()
     }
 
     /// The card's legal line.
     fn footer(&self) -> Element<'_, Message> {
         row![
-            Text::new("Not affiliated with Mojang or Microsoft")
+            Text::new(lang::t("login.not_affiliated"))
                 .size(11)
                 .font(fonts::Inter::REGULAR)
                 .color(palette::Text::PLACEHOLDER),
             Space::new().width(Fill),
             mouse_area(
-                Text::new("Learn more ↗")
+                Text::new(lang::t("login.learn_more"))
                     .size(11)
                     .font(fonts::Inter::MEDIUM)
                     .color(palette::Primary::DEFAULT)
@@ -187,19 +174,19 @@ impl Login {
     pub(super) fn status_bar(&self, auth_status: Option<AuthStatus>) -> Element<'_, Message> {
         let (label, dot, delay, region) = match auth_status {
             Some(status) if status.online => (
-                "AUTH SERVICES ONLINE",
+                lang::t("login.status_online"),
                 PulseDot::new().size(6.0).pulsing(true),
                 Some(status.delay_ms),
                 status.region,
             ),
             Some(_) => (
-                "AUTH SERVICES UNREACHABLE",
+                lang::t("login.status_unreachable"),
                 PulseDot::with_color(palette::Accents::AMBER).size(6.0).pulsing(true),
                 None,
                 None,
             ),
             None => (
-                "CHECKING AUTH SERVICES",
+                lang::t("login.status_checking"),
                 PulseDot::with_color(palette::Text::DISABLED).size(6.0).pulsing(false),
                 None,
                 None,
@@ -208,7 +195,10 @@ impl Login {
 
         let mut bar = row![dot, mono(label, 11.0),];
         if let Some(delay_ms) = delay {
-            bar = bar.push(mono("·", 11.0)).push(mono(format!("{delay_ms}ms"), 11.0));
+            let ms = delay_ms.to_string();
+            bar = bar
+                .push(mono("·", 11.0))
+                .push(mono(lang::t_with("login.status_delay", &[("ms", ms.as_str())]), 11.0));
         }
         if let Some(region) = region {
             bar = bar.push(mono("·", 11.0)).push(mono(region.to_uppercase(), 11.0));

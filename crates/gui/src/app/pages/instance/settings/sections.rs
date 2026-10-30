@@ -12,12 +12,13 @@ use crate::app::components::segmented::segmented;
 use crate::app::components::setting_row::{described_setting, setting};
 use crate::app::components::slider::style as slider_style;
 use crate::app::components::{Select, TextButton, Toggle, anim, input};
+use crate::app::lang;
 use crate::app::pages::library::instance::Instance;
 use crate::app::theme::{color, fonts};
 
 use super::{
-    Axis, Choice, GARBAGE_COLLECTORS, JAVA_RUNTIMES, LAUNCH_MODES, MEMORY_RANGE, MINECRAFT_VERSIONS, Message, SYSTEM_MEMORY_GB, Section, Settings,
-    Switch, parse_dimension,
+    Axis, Choice, GARBAGE_COLLECTORS, JAVA_RUNTIMES, MEMORY_RANGE, MINECRAFT_VERSIONS, Message, SYSTEM_MEMORY_GB, Section, Settings, Switch,
+    launch_modes, parse_dimension,
 };
 
 /// The body of `section`, built from the tab's settings and the instance.
@@ -66,21 +67,28 @@ fn java_memory(settings: &Settings) -> Element<'_, Message> {
     ]
     .spacing(14)
     .align_y(alignment::Vertical::Center);
-    let allocation = format!(
-        "{} GB of {SYSTEM_MEMORY_GB} GB available · Minecraft recommends 4–8 GB for modded.",
-        settings.memory_gb
+    let allocation = lang::t_with(
+        "instance.settings.memory_hint",
+        &[
+            ("allocated", settings.memory_gb.to_string().as_str()),
+            ("total", SYSTEM_MEMORY_GB.to_string().as_str()),
+        ],
     );
 
     divided_panel(
         vec![
-            described_setting("Java runtime", "Auto-detected from your system installations.", java),
-            described_setting("Allocated memory", allocation, memory),
             described_setting(
-                "Garbage collector",
-                "G1GC is recommended for most modpacks. Use ZGC for pause-sensitive gameplay.",
+                lang::t("instance.settings.java_runtime"),
+                lang::t("instance.settings.java_runtime_hint"),
+                java,
+            ),
+            described_setting(lang::t("instance.settings.allocated_memory"), allocation, memory),
+            described_setting(
+                lang::t("instance.settings.garbage_collector"),
+                lang::t("instance.settings.garbage_collector_hint"),
                 collector,
             ),
-            setting("Use system Java instead of bundled", toggle(settings.system_java, Switch::SystemJava)),
+            setting(lang::t("instance.settings.system_java"), toggle(settings.system_java, Switch::SystemJava)),
             jvm_arguments(),
         ],
         panel_padding(),
@@ -100,7 +108,7 @@ fn jvm_arguments() -> Element<'static, Message> {
     .size(11);
 
     column![
-        Text::new("JVM ARGUMENTS")
+        Text::new(lang::t("instance.settings.jvm_arguments"))
             .size(10)
             .font(fonts::JetBrainsMono::REGULAR)
             .color(color::Text::PLACEHOLDER),
@@ -134,14 +142,20 @@ fn window(settings: &Settings) -> Element<'_, Message> {
 
     divided_panel(
         vec![
-            setting("Launch mode", segmented(&LAUNCH_MODES, settings.launch_mode, Message::LaunchMode)),
-            setting("Resolution", resolution),
+            setting(
+                lang::t("instance.settings.launch_mode_label"),
+                segmented(&launch_modes(), settings.launch_mode, Message::LaunchMode),
+            ),
+            setting(lang::t("instance.settings.resolution"), resolution),
             described_setting(
-                "Hide launcher while playing",
-                "Minimize Lodestone until you quit the game.",
+                lang::t("instance.settings.hide_launcher"),
+                lang::t("instance.settings.hide_launcher_hint"),
                 toggle(settings.hide_launcher, Switch::HideLauncher),
             ),
-            setting("Quit launcher after game exits", toggle(settings.quit_after_exit, Switch::QuitAfterExit)),
+            setting(
+                lang::t("instance.settings.quit_after_exit"),
+                toggle(settings.quit_after_exit, Switch::QuitAfterExit),
+            ),
         ],
         panel_padding(),
     )
@@ -177,8 +191,8 @@ fn launch_args(settings: &Settings) -> Element<'_, Message> {
 
     divided_panel(
         vec![described_setting(
-            "Game arguments",
-            "Appended after the default arguments when the game launches.",
+            lang::t("instance.settings.game_arguments"),
+            lang::t("instance.settings.game_arguments_hint"),
             arguments,
         )],
         panel_padding(),
@@ -202,8 +216,8 @@ fn game_version<'a>(settings: &'a Settings, instance: &'a Instance) -> Element<'
     divided_panel(
         vec![
             setting("Minecraft", minecraft),
-            setting("Mod loader", loader),
-            setting("Include snapshots and pre-releases", toggle(settings.snapshots, Switch::Snapshots)),
+            setting(lang::t("instance.settings.mod_loader"), loader),
+            setting(lang::t("instance.settings.snapshots"), toggle(settings.snapshots, Switch::Snapshots)),
         ],
         panel_padding(),
     )
@@ -213,9 +227,9 @@ fn paths_files(instance: &Instance) -> Element<'_, Message> {
     let folder = format!("/instances/{}", instance.directory_name);
     divided_panel(
         vec![described_setting(
-            "Instance folder",
+            lang::t("instance.settings.instance_folder"),
             folder,
-            TextButton::ghost("Reveal").on_press(Message::RevealFolder),
+            TextButton::ghost(lang::t("common.reveal")).on_press(Message::RevealFolder),
         )],
         panel_padding(),
     )
@@ -225,21 +239,28 @@ fn advanced(settings: &Settings) -> Element<'_, Message> {
     divided_panel(
         vec![
             described_setting(
-                "Environment variables",
-                "Passed to the JVM process at launch.",
-                TextButton::ghost(format!("{} set · Edit", settings.environment_variables)).on_press(Message::EditEnvironment),
+                lang::t("instance.settings.env_vars"),
+                lang::t("instance.settings.env_vars_hint"),
+                TextButton::ghost(lang::t_with(
+                    "instance.settings.env_set",
+                    &[("count", settings.environment_variables.to_string().as_str())],
+                ))
+                .on_press(Message::EditEnvironment),
             ),
             described_setting(
-                "Pre-launch hook",
-                "Run a shell command before the game starts.",
-                TextButton::ghost("Add script").on_press(Message::AddScript),
+                lang::t("instance.settings.pre_launch_hook"),
+                lang::t("instance.settings.pre_launch_hook_hint"),
+                TextButton::ghost(lang::t("instance.settings.add_script")).on_press(Message::AddScript),
             ),
             described_setting(
-                "Verbose logging",
-                "Emit DEBUG-level output to the console.",
+                lang::t("instance.settings.verbose_logging"),
+                lang::t("instance.settings.verbose_logging_hint"),
                 toggle(settings.verbose_logging, Switch::VerboseLogging),
             ),
-            setting("Skip integrity check on launch", toggle(settings.skip_integrity, Switch::SkipIntegrity)),
+            setting(
+                lang::t("instance.settings.skip_integrity"),
+                toggle(settings.skip_integrity, Switch::SkipIntegrity),
+            ),
         ],
         panel_padding(),
     )
@@ -250,15 +271,20 @@ fn danger_zone() -> Element<'static, Message> {
     let red = color::buttons::Danger::BACKGROUND_HOVER;
     let delete = row![
         column![
-            Text::new("Delete instance").size(13).font(fonts::Inter::MEDIUM).color(red),
-            Text::new("Permanently remove this instance and all of its worlds, mods, and screenshots.")
+            Text::new(lang::t("instance.settings.delete_title"))
+                .size(13)
+                .font(fonts::Inter::MEDIUM)
+                .color(red),
+            Text::new(lang::t("instance.settings.delete_hint"))
                 .size(11)
                 .font(fonts::Inter::REGULAR)
                 .color(color::Text::MUTED),
         ]
         .spacing(3),
         Space::new().width(Fill),
-        TextButton::ghost("Delete").variant(Variant::Danger).on_press(Message::DeleteInstance),
+        TextButton::ghost(lang::t("common.delete"))
+            .variant(Variant::Danger)
+            .on_press(Message::DeleteInstance),
     ]
     .spacing(16)
     .align_y(alignment::Vertical::Center)
@@ -267,14 +293,14 @@ fn danger_zone() -> Element<'static, Message> {
     bordered_panel(
         divided(vec![
             described_setting(
-                "Reinstall game files",
-                "Redownload vanilla Minecraft jars for this version. Mods and worlds are preserved.",
-                TextButton::ghost("Reinstall").on_press(Message::Reinstall),
+                lang::t("instance.settings.reinstall_title"),
+                lang::t("instance.settings.reinstall_hint"),
+                TextButton::ghost(lang::t("instance.settings.reinstall")).on_press(Message::Reinstall),
             ),
             described_setting(
-                "Reset settings to defaults",
-                "Revert this instance back to global defaults.",
-                TextButton::ghost("Reset").on_press(Message::ResetSettings),
+                lang::t("instance.settings.reset_title"),
+                lang::t("instance.settings.reset_hint"),
+                TextButton::ghost(lang::t("instance.settings.reset")).on_press(Message::ResetSettings),
             ),
             delete.into(),
         ]),

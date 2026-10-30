@@ -1,8 +1,10 @@
 //! Startup: the initial state and boot tasks, and the main window settings.
 
 use crate::app::database::Database;
+use crate::app::lang;
 use crate::app::pages::library::LibraryView;
 use crate::app::pages::login::Message as LoginMessage;
+use crate::app::preferences::Preferences;
 use iced::window::{Level, Position};
 use iced::{Size, Task, window};
 use tracing::info;
@@ -11,6 +13,12 @@ use super::{LodestoneAppMessage, LodestoneLauncher, probe_enabled};
 
 impl LodestoneLauncher {
     pub fn boot() -> (Self, Task<LodestoneAppMessage>) {
+        // The saved language goes live before the first view, so the first frame is already translated.
+        if let Some(code) = Preferences::load().language
+            && !lang::set_active(&code)
+        {
+            info!("Saved language {code} is not bundled; using the default");
+        }
         let id = window::latest();
         let mut app = Self { ..Self::default() };
         let mut tasks = vec![id.map(LodestoneAppMessage::WindowCreation)];

@@ -12,6 +12,7 @@ use crate::app::components::TextButton;
 use crate::app::components::button::Variant;
 use crate::app::components::modal::Modal;
 use crate::app::components::tile::tile;
+use crate::app::lang;
 use crate::app::theme::{color, fonts};
 
 /// The card's width: five thumbnails and the gaps between them, inside the body's padding.
@@ -98,8 +99,8 @@ pub fn modal(editor: &BannerEditor) -> Element<'_, Message> {
     let grid = container(column(rows).spacing(GAP)).width(Fill).align_x(alignment::Horizontal::Center);
 
     let body = column![preview, caption, grid].spacing(12);
-    Modal::new("Banner", body)
-        .subtitle("Choose the artwork for this instance, or upload your own image.")
+    Modal::new(lang::t("banner.title"), body)
+        .subtitle(lang::t("banner.subtitle"))
         .icon(Icon::lucide().image(), color::Primary::DEFAULT, color::Primary::TINT)
         .footer(footer())
         .on_close(Message::Cancel)
@@ -119,7 +120,7 @@ fn preview_art(editor: &BannerEditor) -> Element<'_, Message> {
 fn caption_text(editor: &BannerEditor) -> String {
     match &editor.choice {
         BannerChoice::Scene(index) => banner::scene_name(*index),
-        BannerChoice::Uploaded(_) => "Uploaded image".to_string(),
+        BannerChoice::Uploaded(_) => lang::t("banner.uploaded_image").to_owned(),
     }
 }
 
@@ -156,7 +157,10 @@ fn upload_cell(editor: &BannerEditor) -> Element<'_, Message> {
 fn placeholder<'a>() -> Element<'a, Message> {
     let face = column![
         glyph(Icon::lucide().upload(), 16.0, color::Text::MUTED),
-        Text::new("Upload").size(11).font(fonts::Inter::SEMI_BOLD).color(color::Text::MUTED),
+        Text::new(lang::t("banner.upload"))
+            .size(11)
+            .font(fonts::Inter::SEMI_BOLD)
+            .color(color::Text::MUTED),
     ]
     .spacing(6)
     .align_x(alignment::Horizontal::Center);
@@ -179,7 +183,10 @@ fn footer<'a>() -> Element<'a, Message> {
         TextButton::content(
             row![
                 glyph(Icon::lucide().x(), 13.0, color::Text::DEFAULT),
-                Text::new("Cancel").size(13).font(fonts::Inter::SEMI_BOLD).color(color::Text::DEFAULT),
+                Text::new(lang::t("common.cancel"))
+                    .size(13)
+                    .font(fonts::Inter::SEMI_BOLD)
+                    .color(color::Text::DEFAULT),
             ]
             .spacing(8)
             .align_y(alignment::Vertical::Center),
@@ -190,7 +197,10 @@ fn footer<'a>() -> Element<'a, Message> {
         TextButton::content(
             row![
                 glyph(Icon::lucide().save(), 14.0, color::Primary::ON),
-                Text::new("Save banner").size(13).font(fonts::Inter::BOLD).color(color::Primary::ON),
+                Text::new(lang::t("banner.save"))
+                    .size(13)
+                    .font(fonts::Inter::BOLD)
+                    .color(color::Primary::ON),
             ]
             .spacing(8)
             .align_y(alignment::Vertical::Center),

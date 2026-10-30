@@ -4,8 +4,10 @@
 //! Deliberately self-contained: it owns its own state and messages, and can
 //! be swapped for real pages without touching the components module.
 
+use crate::app::components::language_picker::{LanguagePicker, PickerStyle};
 use crate::app::components::scrollbar;
 use crate::app::components::{Card, Dropdown, MenuItem, NavItem, NavRail, ProgressBar, PulseDot, Select, Tabs, TextButton, Toggle, input};
+use crate::app::lang;
 use crate::app::pages::Page;
 use crate::app::theme::color;
 use aurora_leaf::Icon;
@@ -40,6 +42,8 @@ pub enum Message {
     /// Requests navigation — the root model intercepts this before it
     /// reaches [`Showcase::update`] (see the contract in `pages/mod.rs`).
     Navigate(Page),
+    /// The language picker chose a catalogue — the root applies and saves it.
+    SelectLanguage(&'static str),
     /// For controls demonstrated without app behavior.
     Nop,
 }
@@ -51,13 +55,15 @@ impl Showcase {
             Message::ToggleSnapshots(value) => self.toggle_snapshots = value,
             Message::SimulateDownload => self.progress = (self.progress + 0.17) % 1.0,
             Message::Selected(index) => self.selected = Some(index),
+            // The root applies and saves the language before it reaches the gallery.
+            Message::SelectLanguage(_) => {}
             Message::NavSelected(index) => self.nav_active = index,
             Message::TabSelected(index) => self.tab_active = index,
             Message::SearchChanged(value) => self.search = value,
             Message::InstanceAction(index) => {
                 self.last_action = match index {
-                    0 => Some("Duplicate"),
-                    2 => Some("Delete"),
+                    0 => Some(lang::t("showcase.menu.duplicate")),
+                    2 => Some(lang::t("showcase.menu.delete")),
                     _ => None,
                 };
             }
@@ -83,14 +89,15 @@ impl Showcase {
     fn gallery(&self) -> Element<'_, Message> {
         column![
             self.header(),
-            self.section("Buttons", self.buttons()),
-            self.section("Tabs", self.tabs()),
-            self.section("Inputs", self.inputs()),
-            self.section("Toggles & status", self.toggles()),
-            self.section("Progress", self.progress_row()),
-            self.section("Sidebar nav", self.nav()),
-            self.section("Select & dropdown", self.menus()),
-            self.section("Cards", self.cards()),
+            self.section(lang::t("showcase.section.buttons"), self.buttons()),
+            self.section(lang::t("showcase.section.tabs"), self.tabs()),
+            self.section(lang::t("showcase.section.inputs"), self.inputs()),
+            self.section(lang::t("showcase.section.toggles"), self.toggles()),
+            self.section(lang::t("showcase.section.progress"), self.progress_row()),
+            self.section(lang::t("showcase.section.sidebar_nav"), self.nav()),
+            self.section(lang::t("showcase.section.select"), self.menus()),
+            self.section(lang::t("showcase.section.language_picker"), self.language_pickers()),
+            self.section(lang::t("showcase.section.cards"), self.cards()),
         ]
         .spacing(20)
         .width(Fill)
@@ -98,12 +105,9 @@ impl Showcase {
     }
 
     fn header(&self) -> Element<'_, Message> {
-        column![
-            crate::display!("Component gallery"),
-            crate::body!("Every core control from the style guide, live. Hover, click and flip things.")
-        ]
-        .spacing(6)
-        .into()
+        column![crate::display!(lang::t("showcase.title")), crate::body!(lang::t("showcase.intro"))]
+            .spacing(6)
+            .into()
     }
 
     /// A section — an eyebrow label above a panel with the given content.
@@ -116,10 +120,10 @@ impl Showcase {
 
     fn buttons(&self) -> Element<'_, Message> {
         row![
-            TextButton::primary("Play").on_press(Message::Nop),
-            TextButton::ghost("Edit instance").on_press(Message::Nop),
-            TextButton::ghost("Simulate download").on_press(Message::SimulateDownload),
-            TextButton::primary("Disabled").disabled(true),
+            TextButton::primary(lang::t("common.play")).on_press(Message::Nop),
+            TextButton::ghost(lang::t("showcase.edit_instance")).on_press(Message::Nop),
+            TextButton::ghost(lang::t("showcase.simulate_download")).on_press(Message::SimulateDownload),
+            TextButton::primary(lang::t("showcase.disabled")).disabled(true),
         ]
         .spacing(12)
         .align_y(Alignment::Center)
@@ -127,15 +131,20 @@ impl Showcase {
     }
 
     fn tabs(&self) -> Element<'_, Message> {
-        Tabs::new(["Mods", "Resource packs", "Worlds", "Logs"])
-            .active(self.tab_active)
-            .on_select(Message::TabSelected)
-            .into()
+        Tabs::new([
+            lang::t("showcase.tabs.mods"),
+            lang::t("showcase.tabs.resource_packs"),
+            lang::t("showcase.tabs.worlds"),
+            lang::t("showcase.tabs.logs"),
+        ])
+        .active(self.tab_active)
+        .on_select(Message::TabSelected)
+        .into()
     }
 
     fn inputs(&self) -> Element<'_, Message> {
         column![
-            text_input("Search 48,000 mods…", &self.search)
+            text_input(lang::t("showcase.search_placeholder"), &self.search)
                 .on_input(Message::SearchChanged)
                 .style(input::style)
                 .size(13.0)
@@ -148,10 +157,16 @@ impl Showcase {
 
     fn toggles(&self) -> Element<'_, Message> {
         row![
-            labeled("Auto-update", Toggle::new(self.toggle_auto).on_toggle_with(Message::ToggleAuto),),
-            labeled("Snapshots", Toggle::new(self.toggle_snapshots).on_toggle_with(Message::ToggleSnapshots),),
-            labeled("Online", PulseDot::new()),
-            labeled("Stale", PulseDot::with_color(color::Accents::AMBER).pulsing(false),),
+            labeled(
+                lang::t("showcase.auto_update"),
+                Toggle::new(self.toggle_auto).on_toggle_with(Message::ToggleAuto),
+            ),
+            labeled(
+                lang::t("showcase.snapshots"),
+                Toggle::new(self.toggle_snapshots).on_toggle_with(Message::ToggleSnapshots),
+            ),
+            labeled(lang::t("showcase.online"), PulseDot::new()),
+            labeled(lang::t("showcase.stale"), PulseDot::with_color(color::Accents::AMBER).pulsing(false),),
         ]
         .spacing(32)
         .align_y(Alignment::Center)
@@ -161,13 +176,13 @@ impl Showcase {
     fn progress_row(&self) -> Element<'_, Message> {
         column![
             row![
-                crate::body!("Downloading Create 6.0"),
+                crate::body!(lang::t("showcase.downloading")),
                 spacer(),
                 crate::code!(format!("{}%", (self.progress * 100.0) as usize)),
             ]
             .width(Fill),
             ProgressBar::new(self.progress).height(6.0),
-            crate::small!("Indeterminate:"),
+            crate::small!(lang::t("showcase.indeterminate")),
             ProgressBar::new(0.0).indeterminate(true).height(6.0),
         ]
         .spacing(10)
@@ -186,11 +201,7 @@ impl Showcase {
             .active(self.nav_active)
             .on_select(Message::NavSelected),
             spacer(),
-            column![
-                crate::h3!("Slide, don't jump"),
-                crate::body!("The active indicator glides between items; hover leaves a soft highlight.")
-            ]
-            .spacing(6),
+            column![crate::h3!(lang::t("showcase.slide_title")), crate::body!(lang::t("showcase.slide_body"))].spacing(6),
         ]
         .width(Fill)
         .align_y(Alignment::Center)
@@ -203,21 +214,42 @@ impl Showcase {
             column![Select::new(["Vanilla", "Fabric", "Quilt", "NeoForge"], self.selected).on_select(Message::Selected),].width(Fill),
             Dropdown::new(Icon::lucide().ellipsis_vertical())
                 .item(MenuItem::Action {
-                    label: String::from("Duplicate instance"),
+                    label: String::from(lang::t("showcase.menu.duplicate_instance")),
                     icon: Some(Icon::lucide().copy()),
                     danger: false,
                 })
                 .separator()
                 .item(MenuItem::Action {
-                    label: String::from("Delete instance"),
+                    label: String::from(lang::t("showcase.menu.delete_instance")),
                     icon: Some(Icon::lucide().trash()),
                     danger: true,
                 })
                 .on_select(Message::InstanceAction),
-            column![crate::small!("Last action"), crate::code!(action_label),],
+            column![crate::small!(lang::t("showcase.last_action")), crate::code!(action_label),],
         ]
         .spacing(16)
         .align_y(Alignment::Center)
+        .width(Fill)
+        .into()
+    }
+
+    /// The language picker in both looks: the chip the login page uses, and the field a settings
+    /// row uses. Both route their choice through the root, as the login page does.
+    fn language_pickers(&self) -> Element<'_, Message> {
+        row![
+            column![
+                crate::small!(lang::t("showcase.language_chip")),
+                LanguagePicker::new(Message::SelectLanguage).style(PickerStyle::Chip),
+            ]
+            .spacing(8),
+            column![
+                crate::small!(lang::t("showcase.language_field")),
+                LanguagePicker::new(Message::SelectLanguage),
+            ]
+            .spacing(8),
+        ]
+        .spacing(32)
+        .align_y(Alignment::Start)
         .width(Fill)
         .into()
     }
@@ -228,7 +260,7 @@ impl Showcase {
                 Some(cover(color!(0x2D8A3F), color!(0x0F3017), 120.0)),
                 column![
                     row![crate::h3!("Vanilla+"), spacer(), crate::code!("1.21.4"),].width(Fill),
-                    crate::small!("Played 2h ago"),
+                    crate::small!(lang::t("showcase.played_2h")),
                 ]
                 .spacing(6),
             )
@@ -237,7 +269,7 @@ impl Showcase {
                 Some(cover(color!(0xFF6B3D), color!(0x3D0A08), 120.0)),
                 column![
                     row![crate::h3!("Better Nether"), spacer(), crate::code!("Fabric"),].width(Fill),
-                    crate::small!("Played yesterday"),
+                    crate::small!(lang::t("showcase.played_yesterday")),
                 ]
                 .spacing(6),
             )

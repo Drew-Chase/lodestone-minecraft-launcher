@@ -9,6 +9,7 @@ use sipper::Sender as ProgressSender;
 use tokio::sync::mpsc;
 
 use super::{InstallProgress, InstallRequest, Stage, fraction};
+use crate::app::lang;
 use crate::app::pages::library::instance::Loader;
 
 /// Installs the loader `request` asks for into `game_dir` and returns the version id the
@@ -20,11 +21,11 @@ pub(super) async fn install(
     progress: &mut ProgressSender<InstallProgress>,
 ) -> Result<String, String> {
     let Some(loader_version) = request.loader_version.as_deref() else {
-        return Err("Choose a loader version first.".to_string());
+        return Err(lang::t("install.loader.choose_version").to_owned());
     };
     let mc = request.mc_version.as_str();
     match request.loader {
-        Loader::Vanilla => Err("Vanilla has no loader to install.".to_string()),
+        Loader::Vanilla => Err(lang::t("install.loader.vanilla").to_owned()),
         Loader::Fabric => run::<loaders::Fabric>(mc, loader_version, game_dir, java, progress).await,
         Loader::Forge => run::<loaders::Forge>(mc, loader_version, game_dir, java, progress).await,
         Loader::Quilt => run::<loaders::Quilt>(mc, loader_version, game_dir, java, progress).await,
@@ -48,7 +49,12 @@ async fn run<K: LoaderKind>(
         .map_err(|error| error.to_string())?
         .into_iter()
         .find(|candidate| candidate.version == loader_version)
-        .ok_or_else(|| format!("{} {loader_version} is not available for Minecraft {mc}", K::NAME))?;
+        .ok_or_else(|| {
+            lang::t_with(
+                "install.loader.unavailable",
+                &[("loader", K::NAME), ("version", loader_version), ("mc", mc)],
+            )
+        })?;
 
     // The installer's output and the library downloads reach the dialog while the
     // install runs. The senders live until it finishes, so neither channel closes early.
@@ -62,7 +68,7 @@ async fn run<K: LoaderKind>(
                 progress.send(InstallProgress { stage: Stage::Loader, fraction: None, detail: line }).await;
             }
             Some(report) = downloads.recv() => {
-                let detail = "loader libraries".to_string();
+                let detail = lang::t("install.loader.libraries").to_owned();
                 progress.send(InstallProgress {
                     stage: Stage::Loader,
                     fraction: fraction(report.bytes_downloaded, report.bytes_to_download),

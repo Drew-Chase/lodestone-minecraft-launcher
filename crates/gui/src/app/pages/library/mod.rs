@@ -16,6 +16,7 @@ use new_instance::NewInstance;
 use crate::app::components::instance_card::{CARD_HEIGHT, COMPACT_ROW_HEIGHT, TABLE_ROW_HEIGHT};
 use crate::app::components::scrollbar;
 use crate::app::database::Database;
+use crate::app::lang;
 use crate::app::paths::LauncherPaths;
 use crate::app::theme::fonts;
 use iced::widget::{Column, Text, container, svg};
@@ -96,9 +97,9 @@ impl LibraryView {
 
     fn label(self) -> &'static str {
         match self {
-            LibraryView::Grid => "Grid",
-            LibraryView::Compact => "Compact",
-            LibraryView::Table => "Table",
+            LibraryView::Grid => lang::t("library.view.grid"),
+            LibraryView::Compact => lang::t("library.view.compact"),
+            LibraryView::Table => lang::t("library.view.table"),
         }
     }
 }
@@ -120,10 +121,10 @@ pub enum LibraryFilter {
 impl LibraryFilter {
     fn label(self) -> &'static str {
         match self {
-            LibraryFilter::Recent => "Recent",
-            LibraryFilter::Pinned => "Pinned",
-            LibraryFilter::Modded => "Modded",
-            LibraryFilter::Vanilla => "Vanilla",
+            LibraryFilter::Recent => lang::t("library.filter.recent"),
+            LibraryFilter::Pinned => lang::t("library.filter.pinned"),
+            LibraryFilter::Modded => lang::t("library.filter.modded"),
+            LibraryFilter::Vanilla => lang::t("library.filter.vanilla"),
         }
     }
 

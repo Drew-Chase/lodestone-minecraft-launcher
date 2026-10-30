@@ -15,6 +15,7 @@ use crate::app::components::modal::Modal;
 use crate::app::components::scene_art::scene_handle;
 use crate::app::components::tile::{INSET, tile};
 use crate::app::components::{ProgressBar, Select, TextButton, input};
+use crate::app::lang;
 use crate::app::pages::library::instance::Loader;
 use crate::app::theme::{color, fonts};
 
@@ -25,14 +26,17 @@ const ICON_TILE: f32 = 72.0;
 /// The banner preview's height. Its width fills the card.
 const BANNER_HEIGHT: f32 = 120.0;
 
-/// The loaders in the order the cards show them, with their captions.
-const LOADERS: [(Loader, &str, &str); 5] = [
-    (Loader::Vanilla, "Vanilla", "Unmodded Minecraft"),
-    (Loader::Fabric, "Fabric", "Lightweight, fast startup"),
-    (Loader::Forge, "Forge", "Largest mod ecosystem"),
-    (Loader::NeoForge, "NeoForge", "Modern Forge fork"),
-    (Loader::Quilt, "Quilt", "Fabric-compatible"),
-];
+/// The loaders in the order the cards show them, with their captions. The names are
+/// product names, so only the captions come from the catalogue.
+fn loaders() -> [(Loader, &'static str, &'static str); 5] {
+    [
+        (Loader::Vanilla, "Vanilla", lang::t("new_instance.caption.vanilla")),
+        (Loader::Fabric, "Fabric", lang::t("new_instance.caption.fabric")),
+        (Loader::Forge, "Forge", lang::t("new_instance.caption.forge")),
+        (Loader::NeoForge, "NeoForge", lang::t("new_instance.caption.neoforge")),
+        (Loader::Quilt, "Quilt", lang::t("new_instance.caption.quilt")),
+    ]
+}
 
 /// The dialog card.
 pub fn modal(dialog: &NewInstance) -> Element<'_, Message> {
@@ -45,8 +49,8 @@ pub fn modal(dialog: &NewInstance) -> Element<'_, Message> {
     }
 
     // The modal scrolls its own body once the form outgrows the window, so the form adds none.
-    Modal::new("New Instance", body)
-        .subtitle("Spin up a fresh Minecraft profile. Pick version and loader, we'll do the rest.")
+    Modal::new(lang::t("new_instance.title"), body)
+        .subtitle(lang::t("new_instance.subtitle"))
         .icon(Icon::lucide().plus(), color::Primary::DEFAULT, color::Primary::TINT)
         .footer(footer(dialog))
         .on_close(Message::Close)
@@ -67,13 +71,13 @@ fn name_row(dialog: &NewInstance) -> Element<'_, Message> {
     );
 
     let hint = if dialog.name.trim().is_empty() {
-        "The folder is named once you type a name".to_string()
+        lang::t("new_instance.folder_hint").to_owned()
     } else {
         format!("instances/{}", naming::clean_directory_name(&dialog.name))
     };
     let name = column![
-        label("INSTANCE NAME"),
-        text_input("Name your instance", &dialog.name)
+        label(lang::t("new_instance.name_label")),
+        text_input(lang::t("new_instance.name_placeholder"), &dialog.name)
             .on_input(Message::NameChanged)
             .size(14)
             .padding(Padding::new(0.0).left(14).right(14).top(11).bottom(11))
@@ -97,16 +101,16 @@ fn version_row(dialog: &NewInstance) -> Element<'_, Message> {
         .and_then(|releases| releases.latest.as_ref())
         .is_some_and(|latest| dialog.mc_version.as_ref() == Some(latest));
     let version_placeholder = if dialog.releases_error.is_some() {
-        "Could not load versions"
+        lang::t("new_instance.versions_failed")
     } else {
-        "Loading versions…"
+        lang::t("new_instance.versions_loading")
     };
     let version = Select::new(versions, selected)
         .on_select(Message::MinecraftPicked)
         .placeholder(version_placeholder)
         .searchable()
         .width(Fill);
-    let version_caption = latest.then(|| "LATEST RELEASE".to_string());
+    let version_caption = latest.then(|| lang::t("new_instance.latest_release").to_owned());
 
     let mut java_options = vec![auto_java_label(dialog)];
     java_options.extend(dialog.bundled.iter().map(|java| java.label.clone()));
@@ -118,11 +122,14 @@ fn version_row(dialog: &NewInstance) -> Element<'_, Message> {
         .on_select(Message::JavaPicked)
         .searchable()
         .width(Fill);
-    let java_caption = dialog.java_override.is_none().then(|| "Auto-matched to version".to_string());
+    let java_caption = dialog
+        .java_override
+        .is_none()
+        .then(|| lang::t("new_instance.java_auto_matched").to_owned());
 
     row![
-        field("MINECRAFT VERSION", version.into(), version_caption),
-        field("JAVA", java.into(), java_caption),
+        field(lang::t("new_instance.minecraft_version"), version.into(), version_caption),
+        field(lang::t("new_instance.java"), java.into(), java_caption),
     ]
     .spacing(16)
     .into()
@@ -135,22 +142,23 @@ fn auto_java_label(dialog: &NewInstance) -> String {
         .as_ref()
         .and_then(|info| info.major.map(|major| (major, &info.component)))
     {
-        Some((major, _)) => format!("Auto · Java {major} (bundled)"),
-        None => "Auto · Java (bundled)".to_string(),
+        Some((major, _)) => {
+            let major = major.to_string();
+            lang::t_with("new_instance.java_auto", &[("major", major.as_str())])
+        }
+        None => lang::t("new_instance.java_auto_unknown").to_owned(),
     }
 }
 
 /// The five loader cards in one row.
 fn loader_section(dialog: &NewInstance) -> Element<'_, Message> {
-    let cards: Vec<Element<'_, Message>> = LOADERS
-        .iter()
-        .map(|(loader, name, caption)| {
-            container(loader_card(*loader, name, caption, dialog.loader == *loader))
-                .width(Fill)
-                .into()
-        })
+    let cards: Vec<Element<'_, Message>> = loaders()
+        .into_iter()
+        .map(|(loader, name, caption)| container(loader_card(loader, name, caption, dialog.loader == loader)).width(Fill).into())
         .collect();
-    column![label("MOD LOADER"), row(cards).spacing(10)].spacing(8).into()
+    column![label(lang::t("new_instance.mod_loader")), row(cards).spacing(10)]
+        .spacing(8)
+        .into()
 }
 
 /// One loader card: its mark, its name and its caption. The chosen card is outlined.
@@ -192,7 +200,7 @@ fn build_section(dialog: &NewInstance) -> Element<'_, Message> {
                     if build.stable {
                         build.version.clone()
                     } else {
-                        format!("{} · beta", build.version)
+                        lang::t_with("new_instance.beta", &[("version", build.version.as_str())])
                     }
                 })
                 .collect()
@@ -203,16 +211,16 @@ fn build_section(dialog: &NewInstance) -> Element<'_, Message> {
         _ => None,
     };
     let placeholder = if dialog.builds.is_none() {
-        "Loading builds…"
+        lang::t("new_instance.builds_loading")
     } else {
-        "No builds for this Minecraft version"
+        lang::t("new_instance.no_builds")
     };
     let select = Select::new(options, selected)
         .on_select(Message::BuildPicked)
         .placeholder(placeholder)
         .searchable()
         .width(Fill);
-    field("LOADER VERSION", select.into(), None)
+    field(lang::t("new_instance.loader_version"), select.into(), None)
 }
 
 /// The banner, as a small strip across the top of the form. Clicking it opens the banner
@@ -230,7 +238,7 @@ fn banner_section(dialog: &NewInstance) -> Element<'_, Message> {
         BannerChoice::Uploaded(upload) => banner::uploaded(upload.handle.clone()),
     };
     let pill = container(
-        Text::new("Change banner")
+        Text::new(lang::t("new_instance.change_banner"))
             .size(11)
             .font(fonts::Inter::SEMI_BOLD)
             .color(color::Text::HEADLINE),
@@ -254,9 +262,12 @@ fn banner_section(dialog: &NewInstance) -> Element<'_, Message> {
             },
             ..container::Style::default()
         });
-    column![label("BANNER"), tile(strip, Fill, BANNER_HEIGHT, 12.0, false, Message::OpenBannerEditor)]
-        .spacing(8)
-        .into()
+    column![
+        label(lang::t("new_instance.banner")),
+        tile(strip, Fill, BANNER_HEIGHT, 12.0, false, Message::OpenBannerEditor)
+    ]
+    .spacing(8)
+    .into()
 }
 
 /// The icon as the form draws it.
@@ -273,7 +284,10 @@ fn footer(dialog: &NewInstance) -> Element<'_, Message> {
         let mut create = TextButton::content(
             row![
                 icon(Icon::lucide().plus(), 14.0, color::Primary::ON),
-                Text::new("Create Instance").size(13).font(fonts::Inter::BOLD).color(color::Primary::ON),
+                Text::new(lang::t("new_instance.create"))
+                    .size(13)
+                    .font(fonts::Inter::BOLD)
+                    .color(color::Primary::ON),
             ]
             .spacing(8)
             .align_y(alignment::Vertical::Center),
@@ -285,10 +299,15 @@ fn footer(dialog: &NewInstance) -> Element<'_, Message> {
         }
         return row![
             Space::new().width(Fill),
-            TextButton::content(Text::new("Cancel").size(13).font(fonts::Inter::SEMI_BOLD).color(color::Text::DEFAULT),)
-                .variant(Variant::Ghost)
-                .padding(Padding::new(0.0).left(18).right(18).top(12).bottom(12))
-                .on_press(Message::Close),
+            TextButton::content(
+                Text::new(lang::t("common.cancel"))
+                    .size(13)
+                    .font(fonts::Inter::SEMI_BOLD)
+                    .color(color::Text::DEFAULT),
+            )
+            .variant(Variant::Ghost)
+            .padding(Padding::new(0.0).left(18).right(18).top(12).bottom(12))
+            .on_press(Message::Close),
             create,
         ]
         .spacing(10)
@@ -298,7 +317,7 @@ fn footer(dialog: &NewInstance) -> Element<'_, Message> {
 
     let (stage, fraction, detail) = match &installing.progress {
         Some(progress) => (progress.stage.label(), progress.fraction, progress.detail.clone()),
-        None => ("Starting", None, String::new()),
+        None => (lang::t("new_instance.starting"), None, String::new()),
     };
     let progress = column![
         Text::new(stage).size(12).font(fonts::Inter::SEMI_BOLD).color(color::Text::DEFAULT),
@@ -310,7 +329,7 @@ fn footer(dialog: &NewInstance) -> Element<'_, Message> {
     row![
         progress,
         TextButton::content(
-            Text::new("Cancel install")
+            Text::new(lang::t("new_instance.cancel_install"))
                 .size(13)
                 .font(fonts::Inter::SEMI_BOLD)
                 .color(color::Text::DEFAULT),

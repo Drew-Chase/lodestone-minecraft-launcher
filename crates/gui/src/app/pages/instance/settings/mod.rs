@@ -16,6 +16,7 @@ use iced_color_extension::rgb;
 use crate::app::components::TextButton;
 use crate::app::components::button::Variant;
 use crate::app::components::setting_row::section_header;
+use crate::app::lang;
 use crate::app::pages::library::instance::Instance;
 use crate::app::theme::{color, fonts, utility};
 
@@ -35,11 +36,13 @@ pub const MEMORY_RANGE: RangeInclusive<u8> = 2..=16;
 /// The machine's installed memory, shown beside the slider.
 pub const SYSTEM_MEMORY_GB: u8 = 16;
 /// The launch modes the segmented control offers.
-pub const LAUNCH_MODES: [(LaunchMode, &str); 3] = [
-    (LaunchMode::Windowed, "Windowed"),
-    (LaunchMode::Borderless, "Borderless"),
-    (LaunchMode::Fullscreen, "Fullscreen"),
-];
+pub fn launch_modes() -> [(LaunchMode, &'static str); 3] {
+    [
+        (LaunchMode::Windowed, lang::t("instance.settings.launch_mode.windowed")),
+        (LaunchMode::Borderless, lang::t("instance.settings.launch_mode.borderless")),
+        (LaunchMode::Fullscreen, lang::t("instance.settings.launch_mode.fullscreen")),
+    ]
+}
 
 /// The sections of the sub-nav, in order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -67,25 +70,25 @@ impl Section {
 
     pub fn label(self) -> &'static str {
         match self {
-            Section::JavaMemory => "Java & Memory",
-            Section::Window => "Window",
-            Section::LaunchArgs => "Launch Args",
-            Section::GameVersion => "Game Version",
-            Section::PathsFiles => "Paths & Files",
-            Section::Advanced => "Advanced",
-            Section::DangerZone => "Danger Zone",
+            Section::JavaMemory => lang::t("instance.settings.section.java_memory"),
+            Section::Window => lang::t("instance.settings.section.window"),
+            Section::LaunchArgs => lang::t("instance.settings.section.launch_args"),
+            Section::GameVersion => lang::t("instance.settings.section.game_version"),
+            Section::PathsFiles => lang::t("instance.settings.section.paths_files"),
+            Section::Advanced => lang::t("instance.settings.section.advanced"),
+            Section::DangerZone => lang::t("instance.settings.section.danger_zone"),
         }
     }
 
     pub fn subtitle(self) -> &'static str {
         match self {
-            Section::JavaMemory => "Runtime selection and heap allocation for this instance.",
-            Section::Window => "How Minecraft appears when this instance launches.",
-            Section::LaunchArgs => "Extra arguments passed to the game when it starts.",
-            Section::GameVersion => "Change Minecraft or mod-loader versions. Requires rebuild.",
-            Section::PathsFiles => "Where this instance keeps its files.",
-            Section::Advanced => "Power-user options. Change with care.",
-            Section::DangerZone => "Destructive actions. These cannot be undone.",
+            Section::JavaMemory => lang::t("instance.settings.subtitle.java_memory"),
+            Section::Window => lang::t("instance.settings.subtitle.window"),
+            Section::LaunchArgs => lang::t("instance.settings.subtitle.launch_args"),
+            Section::GameVersion => lang::t("instance.settings.subtitle.game_version"),
+            Section::PathsFiles => lang::t("instance.settings.subtitle.paths_files"),
+            Section::Advanced => lang::t("instance.settings.subtitle.advanced"),
+            Section::DangerZone => lang::t("instance.settings.subtitle.danger_zone"),
         }
     }
 
@@ -339,12 +342,13 @@ fn nav_item(section: Section, active: bool) -> Element<'static, Message> {
 fn inherited_note(count: usize) -> Element<'static, Message> {
     container(
         column![
-            Text::new("INHERITED")
+            Text::new(lang::t("instance.settings.inherited_label"))
                 .size(10)
                 .font(fonts::JetBrainsMono::SEMI_BOLD)
                 .color(color::Text::PLACEHOLDER),
-            Text::new(format!(
-                "{count} settings inherited from Global defaults. Override anything by toggling it here."
+            Text::new(lang::t_with(
+                "instance.settings.inherited",
+                &[("settings", lang::t_count("instance.settings_count", count).as_str())],
             ))
             .size(11)
             .font(fonts::Inter::REGULAR)

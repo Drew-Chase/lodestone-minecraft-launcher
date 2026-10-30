@@ -9,6 +9,7 @@ use sipper::Sender as ProgressSender;
 use tokio::sync::mpsc;
 
 use super::{COMPLETE, InstallProgress, PARALLEL, Stage, drive, fraction};
+use crate::app::lang;
 use crate::app::paths::LauncherPaths;
 
 /// The folder name of a Mojang runtime component: `java-runtime-delta` is `delta`, and
@@ -48,11 +49,11 @@ pub(super) async fn ensure(
 
     let manifest = JavaManifest::fetch()
         .await
-        .map_err(|error| format!("could not fetch the Java runtime list: {error}"))?;
+        .map_err(|error| lang::t_with("install.java.fetch_list", &[("error", error.to_string().as_str())]))?;
     let runtime = platform_runtimes(&manifest)
         .and_then(|runtimes| runtime(runtimes, component))
-        .ok_or_else(|| format!("{component} is not published for this platform"))?;
-    std::fs::create_dir_all(&home).map_err(|error| format!("could not create {}: {error}", home.display()))?;
+        .ok_or_else(|| lang::t_with("install.java.not_published", &[("component", component)]))?;
+    std::fs::create_dir_all(&home).map_err(|error| super::could_not_create(&home, error))?;
 
     let (sender, reports) = mpsc::channel::<MultiDownloadProgress>(64);
     let work = async { runtime.install(&home, PARALLEL, Some(sender)).await.map_err(|error| error.to_string()) };
@@ -62,14 +63,21 @@ pub(super) async fn ensure(
         |report: MultiDownloadProgress| InstallProgress {
             stage: Stage::Java,
             fraction: fraction(report.files_downloaded, report.files_total),
-            detail: format!("{name} · {}/{} files", report.files_downloaded, report.files_total),
+            detail: lang::t_with(
+                "install.java.progress",
+                &[
+                    ("name", name.as_str()),
+                    ("done", report.files_downloaded.to_string().as_str()),
+                    ("total", report.files_total.to_string().as_str()),
+                ],
+            ),
         },
         work,
     )
     .await?;
 
     apply_manifest_flags(runtime, &home).await?;
-    std::fs::write(home.join(COMPLETE), b"").map_err(|error| format!("could not finish {}: {error}", home.display()))?;
+    std::fs::write(home.join(COMPLETE), b"").map_err(|error| super::path_failed("install.could_not_finish", &home, error))?;
     Ok((binary(&home), name))
 }
 
@@ -110,7 +118,7 @@ const COMPONENTS: [&str; 7] = [
 pub(super) async fn platform_components() -> Result<Vec<(String, Option<u8>)>, String> {
     let manifest = JavaManifest::fetch()
         .await
-        .map_err(|error| format!("could not fetch the Java runtime list: {error}"))?;
+        .map_err(|error| lang::t_with("install.java.fetch_list", &[("error", error.to_string().as_str())]))?;
     let Some(runtimes) = platform_runtimes(&manifest) else {
         return Ok(Vec::new());
     };
@@ -157,10 +165,10 @@ async fn apply_manifest_flags(runtime: &JavaRuntime, home: &Path) -> Result<(), 
     let text = reqwest::get(url)
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|error| format!("could not fetch {url}: {error}"))?
+        .map_err(|error| lang::t_with("install.java.fetch_file", &[("url", url.as_str()), ("error", error.to_string().as_str())]))?
         .text()
         .await
-        .map_err(|error| format!("could not read {url}: {error}"))?;
+        .map_err(|error| lang::t_with("install.java.read_file", &[("url", url.as_str()), ("error", error.to_string().as_str())]))?;
     let entries = parse_entries(&text)?;
     let home = home.to_path_buf();
     tokio::task::spawn_blocking(move || apply(&home, &entries))
@@ -170,11 +178,12 @@ async fn apply_manifest_flags(runtime: &JavaRuntime, home: &Path) -> Result<(), 
 
 /// Reads the `files` map of a runtime's file list.
 fn parse_entries(text: &str) -> Result<Vec<Entry>, String> {
-    let json: serde_json::Value = serde_json::from_str(text).map_err(|error| format!("the Java file list did not parse: {error}"))?;
+    let json: serde_json::Value =
+        serde_json::from_str(text).map_err(|error| lang::t_with("install.java.list_parse", &[("error", error.to_string().as_str())]))?;
     let files = json
         .get("files")
         .and_then(serde_json::Value::as_object)
-        .ok_or_else(|| "the Java file list has no files".to_string())?;
+        .ok_or_else(|| lang::t("install.java.list_empty").to_owned())?;
     Ok(files
         .iter()
         .map(|(name, entry)| Entry {
@@ -192,7 +201,7 @@ fn apply(home: &Path, entries: &[Entry]) -> Result<(), String> {
         let path = home.join(&entry.name);
         match (entry.kind.as_str(), &entry.target) {
             ("directory", _) => {
-                std::fs::create_dir_all(&path).map_err(|error| format!("could not create {}: {error}", path.display()))?;
+                std::fs::create_dir_all(&path).map_err(|error| super::could_not_create(&path, error))?;
             }
             ("link", Some(target)) => link(&path, target)?,
             _ if entry.executable => make_executable(&path)?,
@@ -206,7 +215,7 @@ fn apply(home: &Path, entries: &[Entry]) -> Result<(), String> {
 fn make_executable(path: &Path) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
-        .map_err(|error| format!("could not make {} executable: {error}", path.display()))
+        .map_err(|error| super::path_failed("install.could_not_make_executable", path, error))
 }
 
 #[cfg(not(unix))]
@@ -217,12 +226,12 @@ fn make_executable(_path: &Path) -> Result<(), String> {
 #[cfg(unix)]
 fn link(path: &Path, target: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| format!("could not create {}: {error}", parent.display()))?;
+        std::fs::create_dir_all(parent).map_err(|error| super::could_not_create(parent, error))?;
     }
     if path.symlink_metadata().is_ok() {
-        std::fs::remove_file(path).map_err(|error| format!("could not replace {}: {error}", path.display()))?;
+        std::fs::remove_file(path).map_err(|error| super::path_failed("install.could_not_replace", path, error))?;
     }
-    std::os::unix::fs::symlink(target, path).map_err(|error| format!("could not link {}: {error}", path.display()))
+    std::os::unix::fs::symlink(target, path).map_err(|error| super::path_failed("install.could_not_link", path, error))
 }
 
 #[cfg(not(unix))]

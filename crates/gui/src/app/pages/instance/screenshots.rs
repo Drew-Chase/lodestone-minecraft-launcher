@@ -14,6 +14,7 @@ use super::files::ScreenshotFile;
 use crate::app::components::grid::grid;
 use crate::app::components::panel::panel;
 use crate::app::components::screenshot_tile::{Caption, photo_tile};
+use crate::app::lang;
 use crate::app::theme::{color, fonts};
 
 /// Tiles per row.
@@ -73,7 +74,7 @@ impl State {
 pub fn view<'a, M: 'a>(state: &'a State) -> Element<'a, M> {
     if state.shots.is_empty() {
         return panel(
-            Text::new("No screenshots yet. Captures taken in the game appear here.")
+            Text::new(lang::t("instance.screenshots.empty"))
                 .size(12)
                 .font(fonts::Inter::REGULAR)
                 .color(color::Text::MUTED),

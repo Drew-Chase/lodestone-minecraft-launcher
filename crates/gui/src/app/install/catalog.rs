@@ -8,6 +8,7 @@ use lodestone_loaders::{self as loaders, LoaderKind, LoaderVersion};
 use piston_mc::manifest_v2::ManifestV2;
 use piston_mc::version_manifest::VersionManifest;
 
+use crate::app::lang;
 use crate::app::pages::library::instance::Loader;
 
 /// Mojang's release versions, newest first, with the one it marks as the latest. The
@@ -38,7 +39,7 @@ pub struct BundledJava {
 pub async fn releases() -> Result<Releases, String> {
     let manifest = ManifestV2::fetch()
         .await
-        .map_err(|error| format!("could not fetch Mojang's version list: {error}"))?;
+        .map_err(|error| lang::t_with("install.version_list_failed", &[("error", error.to_string().as_str())]))?;
     let ids = manifest.releases().into_iter().map(|version| version.id).collect();
     let latest = Some(manifest.latest.release.clone());
     Ok(Releases { ids, latest, manifest })
@@ -50,8 +51,8 @@ pub async fn version_info(releases: &Releases, mc: &str) -> Result<VersionInfo, 
         .manifest
         .version(mc)
         .await
-        .map_err(|error| format!("could not fetch Minecraft {mc}: {error}"))?;
-    let version = manifest.ok_or_else(|| format!("Minecraft {mc} is not in Mojang's version list"))?;
+        .map_err(|error| lang::t_with("install.version_fetch_failed", &[("mc", mc), ("error", error.to_string().as_str())]))?;
+    let version = manifest.ok_or_else(|| lang::t_with("install.version_missing", &[("mc", mc)]))?;
     Ok(VersionInfo {
         component: version
             .java_version
@@ -69,7 +70,10 @@ pub async fn bundled_java() -> Result<Vec<BundledJava>, String> {
         .into_iter()
         .map(|(component, major)| BundledJava {
             label: match major {
-                Some(major) => format!("Java {major} · {}", super::java::short_name(&component)),
+                Some(major) => lang::t_with(
+                    "install.java_option",
+                    &[("major", major.to_string().as_str()), ("runtime", super::java::short_name(&component))],
+                ),
                 None => super::java::short_name(&component).to_string(),
             },
             component,

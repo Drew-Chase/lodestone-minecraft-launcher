@@ -19,6 +19,7 @@ mod host;
 
 use crate::app::components::button::{TextButton, Variant};
 use crate::app::components::modal::Modal;
+use crate::app::lang;
 use crate::app::theme::color;
 use aurora_leaf::Icon;
 use iced::widget::{Space, row};
@@ -46,10 +47,10 @@ pub enum Kind {
 impl Kind {
     pub fn title(self) -> &'static str {
         match self {
-            Kind::Info => "Info",
-            Kind::Warning => "Warning",
-            Kind::Error => "Error",
-            Kind::Danger => "Are you sure?",
+            Kind::Info => lang::t("alert.title.info"),
+            Kind::Warning => lang::t("alert.title.warning"),
+            Kind::Error => lang::t("alert.title.error"),
+            Kind::Danger => lang::t("alert.title.danger"),
         }
     }
 
@@ -96,17 +97,17 @@ impl Buttons {
     /// The affirmative label, which answers `true`.
     pub fn affirmative(self) -> &'static str {
         match self {
-            Buttons::YesNo => "Yes",
-            Buttons::OkCancel => "Okay",
-            Buttons::Close => "Close",
+            Buttons::YesNo => lang::t("common.yes"),
+            Buttons::OkCancel => lang::t("common.okay"),
+            Buttons::Close => lang::t("common.close"),
         }
     }
 
     /// The negative label, which answers `false`. `Close` has none.
     pub fn negative(self) -> Option<&'static str> {
         match self {
-            Buttons::YesNo => Some("No"),
-            Buttons::OkCancel => Some("Cancel"),
+            Buttons::YesNo => Some(lang::t("common.no")),
+            Buttons::OkCancel => Some(lang::t("common.cancel")),
             Buttons::Close => None,
         }
     }

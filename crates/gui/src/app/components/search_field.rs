@@ -18,6 +18,7 @@ use iced::{Background, Border, Pixels, Point, Radians, Rectangle, Renderer as Ba
 use iced_color_extension::rgb;
 
 use super::anim;
+use crate::app::lang;
 use crate::app::theme::{color, fonts};
 
 /// Each half of the caret's blink, in milliseconds: shown for one, hidden for the next.
@@ -214,7 +215,7 @@ pub(crate) fn draw(renderer: &mut BaseRenderer, field: Rectangle, query: &Query,
     let scroll = (caret_x + CARET_WIDTH - area.width).max(0.0);
     let origin = Point::new(area.x - scroll, field.center_y());
     let (content, ink) = if query.is_empty() {
-        ("Search…", color::Text::PLACEHOLDER)
+        (lang::t("common.search"), color::Text::PLACEHOLDER)
     } else {
         (query.text(), color::Text::DEFAULT)
     };

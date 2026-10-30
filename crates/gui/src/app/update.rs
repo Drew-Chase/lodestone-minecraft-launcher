@@ -4,13 +4,16 @@
 
 use crate::app::database::Database;
 use crate::app::face;
+use crate::app::lang;
 use crate::app::pages::Page;
 use crate::app::pages::instance::Message as InstanceMessage;
 use crate::app::pages::instance::files;
 use crate::app::pages::library::Message as LibraryMessage;
 use crate::app::pages::library::instance::Instance;
+use crate::app::pages::login::Message as LoginMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
 use crate::app::pages::showcase::Message as ShowcaseMessage;
+use crate::app::preferences::Preferences;
 use iced::widget::image;
 use iced::{Size, Task, window};
 use iced_borderless_window_resize_handle_widget::drag_resize;
@@ -118,6 +121,9 @@ impl LodestoneLauncher {
             // variants, add the delegation arm per the `pages` contract.
             LodestoneAppMessage::Settings(SettingsMessage::Navigate(page)) => self.navigate(page),
             LodestoneAppMessage::Showcase(ShowcaseMessage::Navigate(page)) => self.navigate(page),
+            // Every page's language picker routes through the same handler.
+            LodestoneAppMessage::Showcase(ShowcaseMessage::SelectLanguage(code)) => select_language(code),
+            LodestoneAppMessage::Login(LoginMessage::SelectLanguage(code)) => select_language(code),
             // Sign-in and account handling lives in `auth.rs`.
             LodestoneAppMessage::Login(message) => self.update_login(message),
             LodestoneAppMessage::RestoreStart { username, refresh_token } => self.restore_sign_in(username, refresh_token),
@@ -209,6 +215,27 @@ impl LodestoneLauncher {
         };
         Task::perform(read_instances(db, self.paths.instances()), LodestoneAppMessage::InstancesLoaded)
     }
+}
+
+/// Makes `code` the active language, then saves the choice. The catalogue switches
+/// at once, so the next view is already translated. The save runs on the blocking
+/// pool and only logs a failure.
+fn select_language(code: &'static str) -> Task<LodestoneAppMessage> {
+    if !lang::set_active(code) {
+        warn!("Language {code} is not bundled; keeping the current one");
+        return Task::none();
+    }
+    let preferences = Preferences {
+        language: Some(code.to_owned()),
+    };
+    Task::future(async move {
+        match tokio::task::spawn_blocking(move || preferences.store()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => warn!("Saving the language choice failed: {error}"),
+            Err(error) => warn!("Saving the language choice failed: {error}"),
+        }
+    })
+    .discard()
 }
 
 /// Reads the instance rows, makes their file paths absolute, then counts each

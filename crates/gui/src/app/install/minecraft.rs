@@ -10,6 +10,7 @@ use sipper::Sender as ProgressSender;
 use tokio::sync::mpsc;
 
 use super::{COMPLETE, InstallProgress, PARALLEL, Stage, drive, fraction};
+use crate::app::lang;
 use crate::app::paths::LauncherPaths;
 
 /// A version as Mojang lists it: parsed, with the JSON text it came from, and the Java
@@ -24,20 +25,21 @@ pub(super) struct Resolved {
 pub(super) async fn resolve(mc: &str) -> Result<Resolved, String> {
     let manifest = ManifestV2::fetch()
         .await
-        .map_err(|error| format!("could not fetch Mojang's version list: {error}"))?;
+        .map_err(|error| lang::t_with("install.version_list_failed", &[("error", error.to_string().as_str())]))?;
     let entry = manifest
         .versions
         .iter()
         .find(|entry| entry.id == mc)
-        .ok_or_else(|| format!("Minecraft {mc} is not in Mojang's version list"))?;
+        .ok_or_else(|| lang::t_with("install.version_missing", &[("mc", mc)]))?;
     let raw = reqwest::get(&entry.url)
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|error| format!("could not fetch the {mc} version: {error}"))?
+        .map_err(|error| lang::t_with("install.version_fetch_failed", &[("mc", mc), ("error", error.to_string().as_str())]))?
         .text()
         .await
-        .map_err(|error| format!("could not read the {mc} version: {error}"))?;
-    let version: VersionManifest = serde_json::from_str(&raw).map_err(|error| format!("the {mc} version did not parse: {error}"))?;
+        .map_err(|error| lang::t_with("install.version_read_failed", &[("mc", mc), ("error", error.to_string().as_str())]))?;
+    let version: VersionManifest = serde_json::from_str(&raw)
+        .map_err(|error| lang::t_with("install.version_parse_failed", &[("mc", mc), ("error", error.to_string().as_str())]))?;
     let component = version
         .java_version
         .as_ref()
@@ -49,9 +51,9 @@ pub(super) async fn resolve(mc: &str) -> Result<Resolved, String> {
 /// installers read.
 pub(super) fn write_version_json(game_dir: &Path, mc: &str, raw: &str) -> Result<(), String> {
     let dir = game_dir.join("versions").join(mc);
-    std::fs::create_dir_all(&dir).map_err(|error| format!("could not create {}: {error}", dir.display()))?;
+    std::fs::create_dir_all(&dir).map_err(|error| super::could_not_create(&dir, error))?;
     let path = dir.join(format!("{mc}.json"));
-    std::fs::write(&path, raw).map_err(|error| format!("could not write {}: {error}", path.display()))
+    std::fs::write(&path, raw).map_err(|error| super::path_failed("install.could_not_write", &path, error))
 }
 
 /// Downloads and checks the client jar into `versions/<mc>/<mc>.jar`.
@@ -69,7 +71,7 @@ pub(super) async fn download_client(
         |report: DownloadProgress| InstallProgress {
             stage: Stage::Client,
             fraction: fraction(report.bytes_downloaded, report.bytes_to_download),
-            detail: format!("client {}", version.id),
+            detail: lang::t_with("install.client_progress", &[("id", version.id.as_str())]),
         },
         work,
     )
@@ -104,17 +106,25 @@ pub(super) async fn download_assets(
 ) -> Result<(), String> {
     let folder = paths.assets(&version.id);
     if folder.join(COMPLETE).is_file() {
-        super::report(progress, Stage::Assets, Some(1.0), format!("{} already downloaded", version.id)).await;
+        super::report(
+            progress,
+            Stage::Assets,
+            Some(1.0),
+            lang::t_with("install.already_downloaded", &[("id", version.id.as_str())]),
+        )
+        .await;
         return Ok(());
     }
-    let mut assets = version
-        .assets()
-        .await
-        .map_err(|error| format!("could not fetch the {} asset index: {error}", version.id))?;
+    let mut assets = version.assets().await.map_err(|error| {
+        lang::t_with(
+            "install.asset_index_failed",
+            &[("id", version.id.as_str()), ("error", error.to_string().as_str())],
+        )
+    })?;
     let (sender, reports) = mpsc::channel::<MultiDownloadProgress>(64);
     let work = async { assets.download(&folder, PARALLEL, Some(sender)).await.map_err(|error| error.to_string()) };
     drive(progress, reports, multi_progress(Stage::Assets), work).await?;
-    std::fs::write(folder.join(COMPLETE), b"").map_err(|error| format!("could not finish {}: {error}", folder.display()))
+    std::fs::write(folder.join(COMPLETE), b"").map_err(|error| super::path_failed("install.could_not_finish", &folder, error))
 }
 
 /// Turns a multi-file download report into install progress for `stage`.
@@ -122,7 +132,13 @@ fn multi_progress(stage: Stage) -> impl Fn(MultiDownloadProgress) -> InstallProg
     move |report| InstallProgress {
         stage,
         fraction: fraction(report.files_downloaded, report.files_total),
-        detail: format!("{}/{} files", report.files_downloaded, report.files_total),
+        detail: lang::t_with(
+            "install.files_count",
+            &[
+                ("done", report.files_downloaded.to_string().as_str()),
+                ("total", report.files_total.to_string().as_str()),
+            ],
+        ),
     }
 }
 

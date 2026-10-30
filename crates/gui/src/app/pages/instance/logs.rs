@@ -17,6 +17,7 @@ use crate::app::components::badge::Badge;
 use crate::app::components::button::Variant;
 use crate::app::components::panel::{hairline, panel_with_padding};
 use crate::app::components::scrollbar;
+use crate::app::lang;
 use crate::app::theme::{color, fonts, utility};
 
 /// How many lines the buffer keeps; the oldest are dropped first.
@@ -144,13 +145,13 @@ impl State {
                 .color(color::Text::HEADLINE),
             Space::new().width(Fill),
             live_pill(self.follow),
-            TextButton::labeled_icon(Icon::lucide().download(), "Export", Variant::Ghost).on_press(Message::Export),
+            TextButton::labeled_icon(Icon::lucide().download(), lang::t("instance.logs.export"), Variant::Ghost).on_press(Message::Export),
         ]
         .spacing(10)
         .align_y(alignment::Vertical::Center);
 
         let body: Element<'_, Message> = if self.buffer.is_empty() {
-            Text::new("No latest.log yet. Launch the game to create one.")
+            Text::new(lang::t("instance.logs.empty"))
                 .size(12)
                 .font(fonts::Inter::REGULAR)
                 .color(color::Text::MUTED)
@@ -174,9 +175,9 @@ impl State {
 /// The LIVE/PAUSED pill; pressing it toggles following.
 fn live_pill<'a>(following: bool) -> Element<'a, Message> {
     let (label, ink, fill) = if following {
-        ("LIVE", color::Primary::DEFAULT, color::Primary::TINT)
+        (lang::t("instance.logs.live"), color::Primary::DEFAULT, color::Primary::TINT)
     } else {
-        ("PAUSED", color::Text::MUTED, rgb!(255, 255, 255, 6%))
+        (lang::t("instance.logs.paused"), color::Text::MUTED, rgb!(255, 255, 255, 6%))
     };
 
     TextButton::content(Badge::new(label, ink, fill).with_pulse(following))

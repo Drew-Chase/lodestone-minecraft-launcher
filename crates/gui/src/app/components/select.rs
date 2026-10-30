@@ -10,6 +10,7 @@
 //!     .on_select(|i| Message::LoaderSelected(i))
 //! ```
 
+use crate::app::lang;
 use crate::app::theme::{color, fonts};
 use aurora_leaf::Icon;
 use iced::Vector;
@@ -25,7 +26,8 @@ use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::border::Radius;
 use iced::mouse::{Cursor, Interaction};
 use iced::{
-    Border, Element, Event, Length, Pixels, Point, Radians, Rectangle, Renderer as BaseRenderer, Size, Theme, alignment, mouse, overlay, window,
+    Border, Color, Element, Event, Length, Pixels, Point, Radians, Rectangle, Renderer as BaseRenderer, Size, Theme, alignment, mouse, overlay,
+    window,
 };
 use iced_anim::Animated;
 use iced_color_extension::rgb;
@@ -41,6 +43,13 @@ const TRIGGER_HEIGHT: f32 = 36.0;
 const CHEVRON_GAP: f32 = 8.0;
 /// Chevron icon size.
 const CHEVRON_SIZE: f32 = 16.0;
+/// The chip's insets and chevron. The chip is the language picker's look.
+const CHIP_LEFT: f32 = 16.0;
+const CHIP_RIGHT: f32 = 12.0;
+const CHIP_CHEVRON_SIZE: f32 = 12.0;
+/// Size of a leading icon, and the gap between it and the label.
+const LEADING_SIZE: f32 = 14.0;
+const LEADING_GAP: f32 = 8.0;
 
 /// An animated select dropdown (`.select` + floating menu).
 pub struct Select<'a, Message> {
@@ -56,6 +65,10 @@ pub struct Select<'a, Message> {
     disabled: bool,
     /// Whether the menu carries a filter field.
     searchable: bool,
+    /// Whether the trigger draws as the dark chip (see [`Select::chip`]).
+    chip: bool,
+    /// Markup of an icon drawn before the label, when set.
+    leading_icon: Option<&'static str>,
 }
 
 #[derive(Debug)]
@@ -83,11 +96,13 @@ impl<'a, Message: 'a> Select<'a, Message> {
             items,
             selected,
             on_select: None,
-            placeholder: String::from("Select…"),
+            placeholder: lang::t("common.select").to_owned(),
             width: Length::Fill,
             height: Length::Fixed(TRIGGER_HEIGHT),
             disabled: false,
             searchable: false,
+            chip: false,
+            leading_icon: None,
         }
     }
 
@@ -127,6 +142,19 @@ impl<'a, Message: 'a> Select<'a, Message> {
     /// opens.
     pub fn searchable(mut self) -> Self {
         self.searchable = true;
+        self
+    }
+
+    /// Draws the trigger as a chip: a dark fill with no border, deepening on hover and
+    /// while the menu is open. The language picker's chip style draws it.
+    pub fn chip(mut self) -> Self {
+        self.chip = true;
+        self
+    }
+
+    /// Draws `markup` as an icon before the label.
+    pub fn leading_icon(mut self, markup: &'static str) -> Self {
+        self.leading_icon = Some(markup);
         self
     }
 
@@ -257,19 +285,27 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
 
         // Trigger — `.select`: white 4% fill, hairline border; hover and open
         // states lift to white 6% with a `--line-strong` border (§07 spec).
-        let (background, border) = if !self.interactive() {
-            (rgb!(255, 255, 255, 2%), color::Surface::LINE)
-        } else if !state.menu.is_closed() || state.hovered {
-            (rgb!(255, 255, 255, 6%), color::Surface::LINE_STRONG)
+        let lifted = !state.menu.is_closed() || state.hovered;
+        let (background, border, border_width) = if self.chip {
+            let fill = if self.interactive() && lifted {
+                rgb!(0, 0, 0, 55%)
+            } else {
+                rgb!(0, 0, 0, 40%)
+            };
+            (fill, Color::TRANSPARENT, 0.0)
+        } else if !self.interactive() {
+            (rgb!(255, 255, 255, 2%), color::Surface::LINE, 1.0)
+        } else if lifted {
+            (rgb!(255, 255, 255, 6%), color::Surface::LINE_STRONG, 1.0)
         } else {
-            (rgb!(255, 255, 255, 4%), color::Surface::LINE)
+            (rgb!(255, 255, 255, 4%), color::Surface::LINE, 1.0)
         };
         renderer.fill_quad(
             renderer::Quad {
                 bounds,
                 border: Border {
                     radius: Radius::from(12.0),
-                    width: 1.0,
+                    width: border_width,
                     color: border,
                 },
                 ..renderer::Quad::default()
@@ -280,12 +316,34 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
         // Label — `fill_text` with owned content: a paragraph built locally
         // during draw is only weakly held by the render pass and is silently
         // skipped once dropped (see the menu engine note).
+        // The chip keeps its own insets and smaller type; the field keeps the `.select` spec.
+        let (left, right, text_size, chevron_size) = if self.chip {
+            (CHIP_LEFT, CHIP_RIGHT, 12.0, CHIP_CHEVRON_SIZE)
+        } else {
+            (H_PADDING, H_PADDING, 13.0, CHEVRON_SIZE)
+        };
+        // A leading icon sits at the left inset, and the label follows it.
+        let leading = if self.leading_icon.is_some() { LEADING_SIZE + LEADING_GAP } else { 0.0 };
+        if let Some(markup) = self.leading_icon {
+            let icon_svg = Svg {
+                handle: Handle::from_memory(markup.as_bytes()),
+                opacity: 0.68,
+                rotation: Radians(0.0),
+                color: Some(color::Text::MUTED),
+            };
+            let icon_bounds = Rectangle::new(
+                Point::new(bounds.x + left, bounds.center_y() - LEADING_SIZE / 2.0),
+                Size::new(LEADING_SIZE, LEADING_SIZE),
+            );
+            renderer.draw_svg(icon_svg, icon_bounds, bounds);
+        }
+
         let label = self.label();
         renderer.fill_text(
             text::Text {
                 content: label.to_owned(),
-                bounds: Size::new(bounds.width - H_PADDING * 2.0 - CHEVRON_SIZE - CHEVRON_GAP, bounds.height),
-                size: Pixels::from(13.0),
+                bounds: Size::new(bounds.width - left - right - chevron_size - CHEVRON_GAP - leading, bounds.height),
+                size: Pixels::from(text_size),
                 line_height: text::LineHeight::Relative(1.4),
                 font: fonts::Inter::MEDIUM,
                 align_x: text::Alignment::Default,
@@ -293,7 +351,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
                 shaping: text::Shaping::Basic,
                 wrapping: text::Wrapping::default(),
             },
-            Point::new(bounds.x + H_PADDING, bounds.center_y()),
+            Point::new(bounds.x + left + leading, bounds.center_y()),
             if self.has_value() {
                 color::Text::DEFAULT
             } else {
@@ -310,8 +368,8 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
             color: Some(color::Text::MUTED),
         };
         let chevron_bounds = Rectangle::new(
-            Point::new(bounds.x + bounds.width - H_PADDING - CHEVRON_SIZE, bounds.center_y() - CHEVRON_SIZE / 2.0),
-            Size::new(CHEVRON_SIZE, CHEVRON_SIZE),
+            Point::new(bounds.x + bounds.width - right - chevron_size, bounds.center_y() - chevron_size / 2.0),
+            Size::new(chevron_size, chevron_size),
         );
         renderer.draw_svg(chevron_svg, chevron_bounds, bounds);
     }

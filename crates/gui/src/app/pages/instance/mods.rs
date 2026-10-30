@@ -16,6 +16,7 @@ use crate::app::components::icon_button::SECONDARY_BUTTON_STYLE;
 use crate::app::components::input;
 use crate::app::components::panel::{divided_panel, panel};
 use crate::app::components::{IconButton, TextButton, Toggle};
+use crate::app::lang;
 use crate::app::theme::{color, fonts, utility};
 
 /// The active filter: a case-insensitive match on name or author.
@@ -98,9 +99,9 @@ impl State {
         let rows: Vec<Element<'_, Message>> = self.visible.iter().map(|&index| mod_row(index, &self.entries[index])).collect();
         let list = if rows.is_empty() {
             let message = if self.entries.is_empty() {
-                "No mods in this instance yet."
+                lang::t("instance.mods.empty")
             } else {
-                "No mods match this filter."
+                lang::t("instance.mods.no_match")
             };
             panel(Text::new(message).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED))
         } else {
@@ -112,13 +113,13 @@ impl State {
 
     fn toolbar(&self) -> Element<'_, Message> {
         row![
-            text_input("Filter mods…", &self.filter.query)
+            text_input(lang::t("instance.mods.filter_placeholder"), &self.filter.query)
                 .on_input(Message::Query)
                 .style(input::style)
                 .padding(Padding::new(0.0).left(14).right(14).top(10).bottom(10))
                 .size(13)
                 .width(Fill),
-            TextButton::labeled_icon(Icon::lucide().plus(), "Add Mod", Variant::Primary).on_press(Message::Add),
+            TextButton::labeled_icon(Icon::lucide().plus(), lang::t("instance.mods.add"), Variant::Primary).on_press(Message::Add),
         ]
         .spacing(10)
         .align_y(alignment::Vertical::Center)
@@ -150,7 +151,7 @@ fn mod_row(index: usize, entry: &ModFile) -> Element<'_, Message> {
     .spacing(8)
     .align_y(alignment::Vertical::Center);
     if !entry.enabled {
-        title = title.push(Badge::new("DISABLED", color::Text::MUTED, rgb!(255, 255, 255, 6%)).compact());
+        title = title.push(Badge::new(lang::t("instance.mods.disabled"), color::Text::MUTED, rgb!(255, 255, 255, 6%)).compact());
     }
 
     let details = column![
@@ -183,9 +184,12 @@ fn mod_row(index: usize, entry: &ModFile) -> Element<'_, Message> {
 /// The line under a mod's name.
 fn subtitle(entry: &ModFile) -> String {
     match (&entry.author, &entry.version) {
-        (Some(author), Some(version)) => format!("by {author} · v{version}"),
-        (Some(author), None) => format!("by {author}"),
-        (None, Some(version)) => format!("v{version}"),
+        (Some(author), Some(version)) => lang::t_with(
+            "instance.mods.by_author_version",
+            &[("author", author.as_str()), ("version", version.as_str())],
+        ),
+        (Some(author), None) => lang::t_with("instance.mods.by_author", &[("author", author.as_str())]),
+        (None, Some(version)) => lang::t_with("instance.mods.version", &[("version", version.as_str())]),
         (None, None) => entry.file_name.clone(),
     }
 }

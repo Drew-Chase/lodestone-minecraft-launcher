@@ -3,6 +3,7 @@
 
 use crate::app::components::icon_button::GHOST_BUTTON_STYLE;
 use crate::app::components::{IconButton, TextButton, input};
+use crate::app::lang;
 use crate::app::theme::{color, fonts};
 use aurora_leaf::Icon;
 use iced::widget::{Space, Text, column, container, row, stack, text_input};
@@ -13,22 +14,27 @@ use super::{Library, LibraryFilter, LibraryView, Message, icon};
 /// The search field's width — the reference's 240px search.
 const SEARCH_WIDTH: f32 = 240.0;
 
+/// The header's summary: the instance count and the total playtime.
+fn summary(instances: usize, total_hours: u32) -> String {
+    let count = lang::t_count("library.instances", instances);
+    let hours = total_hours.to_string();
+    lang::t_with("library.summary", &[("instances", count.as_str()), ("hours", hours.as_str())])
+}
+
 impl Library {
     /// The page header — title, stats, search and actions.
     pub(super) fn header(&self) -> Element<'_, Message> {
         let total_hours: u32 = self.instances.iter().map(|instance| instance.playtime_seconds / 3600).sum();
         row![
             column![
-                Text::new("Library").size(24).font(fonts::Inter::EXTRA_BOLD).color(color::Text::HEADLINE),
-                Text::new(format!(
-                    "{} instance{} · {}h total playtime",
-                    self.instances.len(),
-                    if self.instances.len() == 1 { "" } else { "s" },
-                    total_hours
-                ))
-                .size(12)
-                .font(fonts::Inter::REGULAR)
-                .color(color::Text::MUTED),
+                Text::new(lang::t("library.title"))
+                    .size(24)
+                    .font(fonts::Inter::EXTRA_BOLD)
+                    .color(color::Text::HEADLINE),
+                Text::new(summary(self.instances.len(), total_hours))
+                    .size(12)
+                    .font(fonts::Inter::REGULAR)
+                    .color(color::Text::MUTED),
             ]
             .spacing(2),
             Space::new().width(Fill),
@@ -48,7 +54,10 @@ impl Library {
             TextButton::content(
                 row![
                     icon(Icon::lucide().plus(), 14.0, color::Primary::ON, 1.0),
-                    Text::new("New Instance").size(13).font(fonts::Inter::BOLD).color(color::Primary::ON),
+                    Text::new(lang::t("library.new_instance"))
+                        .size(13)
+                        .font(fonts::Inter::BOLD)
+                        .color(color::Primary::ON),
                 ]
                 .spacing(8)
                 .align_y(alignment::Vertical::Center)
@@ -66,7 +75,7 @@ impl Library {
     /// The search input with its leading icon, in the `.input` field style.
     pub(super) fn search_box(&self) -> Element<'_, Message> {
         stack![
-            text_input("Search instances...", &self.search)
+            text_input(lang::t("library.search_placeholder"), &self.search)
                 .on_input(Message::SearchChanged)
                 .style(input::style)
                 .size(13)

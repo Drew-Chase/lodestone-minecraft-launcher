@@ -22,6 +22,7 @@ fastnbt = "2.6"
 flate2 = "1.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml = "1"
 iced = { version = "0.14", default-features = false, features = ["canvas", "advanced", "svg", "lazy", "sipper", "advanced-shaping", "web-colors", "crisp", "wgpu", "thread-pool", "tokio", "image", "x11", "wayland"] }
 iced_borderless_window_resize_handle_widget = { version = "0.1" }
 iced_color_extension = {version = "0.1.1"}

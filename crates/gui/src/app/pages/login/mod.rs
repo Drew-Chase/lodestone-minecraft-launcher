@@ -17,7 +17,7 @@ mod sign_in;
 mod widgets;
 
 use iced::widget::{column, container};
-use iced::{Element, Fill, Padding};
+use iced::{Element, Fill};
 use lodestone_minecraft_authentication::{DeviceCodeStart, Session};
 
 use crate::app::pages::Page;
@@ -91,6 +91,8 @@ pub enum Message {
     OfflineMode,
     /// "Demo Mode" — the root enters the launcher without an account.
     DemoMode,
+    /// The language picker chose a catalogue — the root applies and saves it.
+    SelectLanguage(&'static str),
     /// "Learn more ↗" — informational link.
     LearnMore,
     /// The device code was clicked — the root copies it to the clipboard.
@@ -178,6 +180,7 @@ impl Login {
             | Message::SignInMicrosoft
             | Message::OfflineMode
             | Message::DemoMode
+            | Message::SelectLanguage(_)
             | Message::LearnMore
             | Message::CopyCode { .. }
             | Message::OpenVerificationLink { .. }
@@ -190,10 +193,8 @@ impl Login {
 
     pub fn view(&self, auth_status: Option<AuthStatus>) -> Element<'_, Message> {
         column![
-            // Top chrome overlays: language chip left, brand centered.
-            container(self.top_bar())
-                .width(Fill)
-                .padding(Padding::new(0.0).left(24).right(24).top(12)),
+            // The top bar: the brand tag strip, then the language picker below it.
+            container(self.top_bar()).width(Fill),
             // The card, centered in the remaining space.
             container(self.card()).width(Fill).height(Fill).center(Fill),
             self.status_bar(auth_status),

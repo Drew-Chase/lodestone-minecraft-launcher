@@ -6,6 +6,7 @@ use iced::Task;
 
 use super::{LodestoneAppMessage, LodestoneLauncher};
 use crate::app::components::alert::Alert;
+use crate::app::lang;
 use crate::app::pages::library::Message as LibraryMessage;
 use crate::app::pages::library::instance::Instance;
 use crate::app::pages::library::new_instance::{InstallEvent, Message as DialogMessage, NewInstance};
@@ -32,18 +33,23 @@ impl LodestoneLauncher {
             DialogMessage::Submit => match self.db.clone() {
                 Some(db) => self.library.start_new_instance(db).map(LodestoneAppMessage::Library),
                 None => {
-                    self.library.fail_new_instance("The launcher database is not ready yet.".to_string());
+                    self.library.fail_new_instance(lang::t("new_instance.database_missing").to_owned());
                     Task::none()
                 }
             },
             DialogMessage::Install(InstallEvent::Finished(Ok(instance))) => self.finish_new_instance(*instance),
             DialogMessage::Install(InstallEvent::Finished(Err(error))) => {
                 self.library.fail_new_instance(error.clone());
-                self.alerts.show(Alert::error(format!("The instance was not created. {error}"))).discard()
+                self.alerts
+                    .show(Alert::error(lang::t_with(
+                        "new_instance.not_created",
+                        &[("error", error.to_string().as_str())],
+                    )))
+                    .discard()
             }
             DialogMessage::CancelInstall => self
                 .alerts
-                .show(Alert::warn("Cancel the install? The files it has written are removed.").yes_no())
+                .show(Alert::warn(lang::t("new_instance.cancel_confirm")).yes_no())
                 .map(|yes| dialog(DialogMessage::CancelAnswered(yes))),
             DialogMessage::CancelAnswered(true) => {
                 self.library.cancel_new_instance();
@@ -57,7 +63,10 @@ impl LodestoneLauncher {
     /// Closes the dialog, reloads the library so the new instance shows, and says so.
     fn finish_new_instance(&mut self, instance: Instance) -> Task<LodestoneAppMessage> {
         self.library.close_new_instance();
-        let announce = self.alerts.show(Alert::info(format!("{} is ready.", instance.name))).discard();
+        let announce = self
+            .alerts
+            .show(Alert::info(lang::t_with("new_instance.ready", &[("name", instance.name.as_str())])))
+            .discard();
         Task::batch([self.load_instances(), announce])
     }
 }

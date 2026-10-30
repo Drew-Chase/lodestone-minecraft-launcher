@@ -14,6 +14,7 @@ use crate::app::components::modal::Modal;
 use crate::app::components::scrollbar;
 use crate::app::components::tile::{INSET, tile};
 use crate::app::components::{TextButton, button::Variant};
+use crate::app::lang;
 use crate::app::pages::library::instance::InstanceIcon;
 use crate::app::theme::{color, fonts};
 
@@ -192,7 +193,7 @@ impl IconEditor {
             TextButton::content(
                 row![
                     glyph(Icon::lucide().upload(), 14.0, color::Text::DEFAULT),
-                    Text::new("Upload image")
+                    Text::new(lang::t("icon.upload"))
                         .size(12)
                         .font(fonts::Inter::SEMI_BOLD)
                         .color(color::Text::DEFAULT),
@@ -203,15 +204,20 @@ impl IconEditor {
             .padding(Padding::new(0.0).left(14).right(14).top(9).bottom(9))
             .width(Fill)
             .on_press(Message::Upload),
-            label("Recents"),
+            label(lang::t("icon.recents")),
             self.recents_row(),
         ]
         .spacing(14)
         .width(220);
 
-        let right = column![label("Background"), self.swatches(), label("Symbol"), self.symbols()]
-            .spacing(12)
-            .width(Fill);
+        let right = column![
+            label(lang::t("icon.background")),
+            self.swatches(),
+            label(lang::t("icon.symbol")),
+            self.symbols()
+        ]
+        .spacing(12)
+        .width(Fill);
 
         row![left, right].spacing(24).width(Fill).into()
     }
@@ -295,8 +301,8 @@ impl IconEditor {
 
 /// The editor's modal card, over the dialog beneath it.
 pub fn modal(editor: &IconEditor) -> Element<'_, Message> {
-    Modal::new("Icon editor", editor.view())
-        .subtitle("Mix and match elements to create a custom icon.")
+    Modal::new(lang::t("icon.title"), editor.view())
+        .subtitle(lang::t("icon.subtitle"))
         .icon(Icon::lucide().pencil(), color::Primary::DEFAULT, color::Primary::TINT)
         .footer(
             row![

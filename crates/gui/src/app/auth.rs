@@ -166,6 +166,8 @@ impl LodestoneLauncher {
                 info!("'Learn more' requested — opening a browser is not wired yet");
                 Task::none()
             }
+            // The root applies and saves the language before it reaches here (see `update.rs`).
+            LoginMessage::SelectLanguage(_) => Task::none(),
             // Display-state messages: pure page state, forwarded as-is.
             message @ (LoginMessage::Opening
             | LoginMessage::CodeReady { .. }

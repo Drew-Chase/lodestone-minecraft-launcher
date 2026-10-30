@@ -2,6 +2,7 @@
 //! against the page scroll.
 
 use crate::app::components::instance_card::{compact_row, instance_card, table_header, table_row};
+use crate::app::lang;
 use crate::app::theme::{color, fonts};
 use iced::widget::{Space, Text, column, container, row};
 use iced::{Element, Fill, Length, Size, alignment};
@@ -14,7 +15,7 @@ impl Library {
     pub(super) fn instances_section(&self, viewport: Size) -> Element<'_, Message> {
         column![
             row![
-                Text::new("Your Instances")
+                Text::new(lang::t("library.your_instances"))
                     .size(18)
                     .font(fonts::Inter::EXTRA_BOLD)
                     .color(color::Text::HEADLINE),
@@ -41,9 +42,9 @@ impl Library {
         if visible.is_empty() {
             return container(
                 Text::new(if self.instances.is_empty() {
-                    "No instances yet — create your first one above."
+                    lang::t("library.empty")
                 } else {
-                    "No instances match the current search or filter."
+                    lang::t("library.no_matches")
                 })
                 .size(13)
                 .font(fonts::Inter::REGULAR)
