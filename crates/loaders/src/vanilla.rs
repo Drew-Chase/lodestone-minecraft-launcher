@@ -9,6 +9,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::LoaderKind;
 use crate::error::LoaderError;
+use crate::install::InstalledVersion;
 use crate::meta::{LoaderVersion, ModInfo};
 use crate::sealed;
 
@@ -79,6 +80,17 @@ impl LoaderKind for Vanilla {
             .await
             .map_err(vanilla_error)?;
         Ok(vec![destination])
+    }
+
+    async fn install(
+        _http: &reqwest::Client,
+        _version: &LoaderVersion,
+        _game_dir: &Path,
+        _java: &Path,
+        _lines: Option<&Sender<String>>,
+        _progress: Option<&Sender<DownloadProgress>>,
+    ) -> Result<InstalledVersion, LoaderError> {
+        Err(LoaderError::InstallUnsupported { loader: Self::NAME })
     }
 
     fn extract_mod_info(_jar: &Path) -> Result<ModInfo, LoaderError> {

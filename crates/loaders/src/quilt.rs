@@ -8,6 +8,7 @@ use tokio::sync::mpsc::Sender;
 use crate::LoaderKind;
 use crate::error::LoaderError;
 use crate::fabric;
+use crate::install::InstalledVersion;
 use crate::meta::{LoaderVersion, ModInfo};
 use crate::mod_info;
 use crate::sealed;
@@ -70,6 +71,17 @@ impl LoaderKind for Quilt {
     /// support yet). Jars without it but with `fabric.mod.json` are quilt's own
     /// fabric-compatibility case, so the fabric path is used instead — and the
     /// returned `ModInfo.loader` honestly reports `"fabric"`.
+    async fn install(
+        http: &reqwest::Client,
+        version: &LoaderVersion,
+        game_dir: &Path,
+        _java: &Path,
+        _lines: Option<&Sender<String>>,
+        progress: Option<&Sender<DownloadProgress>>,
+    ) -> Result<InstalledVersion, LoaderError> {
+        fabric::install_profile(http, META_BASE, DEFAULT_MAVEN, version, game_dir, progress).await
+    }
+
     fn extract_mod_info(jar: &Path) -> Result<ModInfo, LoaderError> {
         match mod_info::quilt::extract(jar) {
             Ok(info) => Ok(info),

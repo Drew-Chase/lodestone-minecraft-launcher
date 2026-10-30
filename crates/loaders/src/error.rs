@@ -98,4 +98,48 @@ pub enum LoaderError {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+
+    /// The loader has no install step of its own. Vanilla installs through piston-mc.
+    #[error("the {loader} loader has no install step of its own")]
+    InstallUnsupported {
+        /// The loader that was asked to install.
+        loader: &'static str,
+    },
+
+    /// The Java program that runs a loader installer could not be started.
+    #[error("could not start {}: {source}", program.display())]
+    InstallerLaunch {
+        /// The Java program meant to run the installer.
+        program: PathBuf,
+        /// The underlying failure.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// A loader installer ran and did not succeed. `output` holds the last lines it printed.
+    #[error("the {loader} installer failed ({status}):\n{output}")]
+    InstallerFailed {
+        /// The loader whose installer failed.
+        loader: &'static str,
+        /// The exit code, or a note that the installer was stopped.
+        status: String,
+        /// The last lines the installer printed.
+        output: String,
+    },
+
+    /// A loader installer exited cleanly but left no new version folder behind.
+    #[error("the {loader} installer did not create a version in {}", directory.display())]
+    InstallerVersionMissing {
+        /// The loader whose installer finished.
+        loader: &'static str,
+        /// The game folder the installer wrote into.
+        directory: PathBuf,
+    },
+
+    /// A loader's install did not download the installer jar it runs.
+    #[error("the {loader} installer was not downloaded")]
+    InstallerMissing {
+        /// The loader whose installer is missing.
+        loader: &'static str,
+    },
 }

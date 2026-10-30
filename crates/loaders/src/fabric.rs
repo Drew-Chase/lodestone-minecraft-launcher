@@ -9,6 +9,7 @@ use tokio::sync::mpsc::Sender;
 use crate::LoaderKind;
 use crate::error::LoaderError;
 use crate::http::{download_files, get_json, maven_base, maven_jar_path};
+use crate::install::{InstalledVersion, write_version};
 use crate::meta::{LoaderVersion, ModInfo};
 use crate::mod_info;
 use crate::sealed;
@@ -69,6 +70,17 @@ pub(crate) struct Artifact {
     pub(crate) url: Option<String>,
 }
 
+/// The profile the meta API serves for one loader build: a version JSON that inherits
+/// from the Minecraft version and lists the libraries the loader needs.
+#[derive(Debug, Deserialize)]
+pub(crate) struct Profile {
+    /// The version id, such as `fabric-loader-0.16.10-1.21.4`.
+    pub(crate) id: String,
+    /// Every library the profile needs, the loader jar among them.
+    #[serde(default)]
+    pub(crate) libraries: Vec<Artifact>,
+}
+
 pub(crate) async fn list(http: &reqwest::Client, url: &str) -> Result<Vec<Entry>, LoaderError> {
     let json = get_json(http, url).await?;
     serde_json::from_value(json).map_err(|source| LoaderError::Json {
@@ -94,11 +106,7 @@ pub(crate) async fn download_libraries(
     progress: Option<&Sender<DownloadProgress>>,
 ) -> Result<Vec<PathBuf>, LoaderError> {
     let libraries = &entry.launcher_meta.libraries;
-    let mut artifacts: Vec<&Artifact> = Vec::with_capacity(libraries.client.len() + libraries.common.len());
-    artifacts.extend(&libraries.client);
-    artifacts.extend(&libraries.common);
-
-    let mut files = Vec::with_capacity(artifacts.len() + 1);
+    let mut files = Vec::with_capacity(libraries.client.len() + libraries.common.len() + 1);
     // The loader jar comes first: it is referenced by `loader.maven`, not by the
     // launcherMeta library lists, and lives on the kind's default maven.
     if let Some(maven) = &entry.loader.maven
@@ -106,15 +114,48 @@ pub(crate) async fn download_libraries(
     {
         files.push((format!("{}{relative}", maven_base(default_maven)), into.join(native(relative))));
     }
-    for artifact in artifacts {
-        if let Some(relative) = maven_jar_path(&artifact.name) {
-            // Per-artifact base urls are authoritative: quilt entries share
-            // libraries that live on maven.fabricmc.net.
-            let base = maven_base(artifact.url.as_deref().unwrap_or(default_maven));
-            files.push((format!("{base}{relative}"), into.join(native(relative))));
-        }
-    }
+    files.extend(artifact_files(libraries.client.iter().chain(&libraries.common), default_maven, into));
     download_files(files, progress).await
+}
+
+/// The `(url, destination)` pairs for `artifacts`, each downloaded from its own base url
+/// and falling back to `default_maven`. Per-artifact base urls are authoritative: quilt
+/// entries share libraries that live on maven.fabricmc.net. Names that are not maven
+/// coordinates are skipped.
+fn artifact_files<'a>(artifacts: impl IntoIterator<Item = &'a Artifact>, default_maven: &str, into: &Path) -> Vec<(String, PathBuf)> {
+    artifacts
+        .into_iter()
+        .filter_map(|artifact| {
+            let relative = maven_jar_path(&artifact.name)?;
+            let base = maven_base(artifact.url.as_deref().unwrap_or(default_maven));
+            Some((format!("{base}{relative}"), into.join(native(relative))))
+        })
+        .collect()
+}
+
+/// Installs a fabric-shaped loader from its profile. Fetches `<meta_base>/<mc>/<loader>/profile/json`,
+/// writes the version JSON under `game_dir/versions`, and downloads the profile's libraries into
+/// `game_dir/libraries`.
+pub(crate) async fn install_profile(
+    http: &reqwest::Client,
+    meta_base: &str,
+    default_maven: &str,
+    version: &LoaderVersion,
+    game_dir: &Path,
+    progress: Option<&Sender<DownloadProgress>>,
+) -> Result<InstalledVersion, LoaderError> {
+    let Some(minecraft) = version.minecraft.as_deref() else {
+        return Err(LoaderError::MinecraftVersionUnknown {
+            version: version.version.clone(),
+        });
+    };
+    let url = format!("{meta_base}/{minecraft}/{}/profile/json", version.version);
+    let json = get_json(http, &url).await?;
+    let profile: Profile = serde_json::from_value(json.clone()).map_err(|source| LoaderError::Json { url: url.clone(), source })?;
+    let installed = write_version(game_dir, &profile.id, &json)?;
+    let files = artifact_files(&profile.libraries, default_maven, &game_dir.join("libraries"));
+    download_files(files, progress).await?;
+    Ok(installed)
 }
 
 /// Maven repository paths are slash-separated; destinations should use the
@@ -175,6 +216,17 @@ impl LoaderKind for Fabric {
             }
         };
         download_libraries(entry, DEFAULT_MAVEN, into, progress).await
+    }
+
+    async fn install(
+        http: &reqwest::Client,
+        version: &LoaderVersion,
+        game_dir: &Path,
+        _java: &Path,
+        _lines: Option<&Sender<String>>,
+        progress: Option<&Sender<DownloadProgress>>,
+    ) -> Result<InstalledVersion, LoaderError> {
+        install_profile(http, META_BASE, DEFAULT_MAVEN, version, game_dir, progress).await
     }
 
     fn extract_mod_info(jar: &Path) -> Result<ModInfo, LoaderError> {

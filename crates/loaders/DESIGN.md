@@ -26,8 +26,9 @@ gui  ──▶  Loader<Fabric> / Loader<Forge> / Loader<NeoForge> / Loader<Quilt
 - **Runtime:** async, tokio-based. The API is `async fn`-first so iced `Task`s can
   await it directly.
 - **Dumb about instances, smart about loader ecosystems.** It knows the meta APIs and
-  maven layouts; it does not know what an instance is. It never writes instance profiles
-  or merges version JSONs (that is the follow-up install slice).
+  maven layouts; it does not know what an instance is. `install` writes a loader's version
+  JSON and libraries into the game folder it is handed, and runs installers; it never
+  launches the game.
 - It never launches the game (`lodestone_launch`) and never talks to content platforms.
 
 ## 2. Wheel audit (do not reinvent)
@@ -56,6 +57,7 @@ crates/loaders/
 │   ├── error.rs            # LoaderError
 │   ├── meta.rs             # LoaderVersion, ModInfo, ModDependency, ModDependencyKind
 │   ├── http.rs             # shared helpers: get_json, download_files, maven paths (private)
+│   ├── install.rs          # shared install steps: version JSON, launcher profile, installer runs (private)
 │   ├── fabric.rs           # pub struct Fabric   — meta.fabricmc.net/v2
 │   ├── quilt.rs            # pub struct Quilt    — meta.quiltmc.org/v3 (fabric-shaped)
 │   ├── neoforge.rs         # pub struct NeoForge — maven.neoforged.net versions API
@@ -67,6 +69,7 @@ crates/loaders/
 ├── examples/               # live-network smoke tests (run manually)
 │   ├── list_versions.rs
 │   ├── download_client.rs
+│   ├── install.rs
 │   └── mod_info.rs
 └── tests/
     └── mod_info.rs         # public extract_mod_info over fixture jars built in-test
@@ -102,6 +105,14 @@ impl<K: LoaderKind> Loader<K> {
         into: impl AsRef<Path>,
         progress: Option<&Sender<DownloadProgress>>,
     ) -> Result<Vec<PathBuf>, LoaderError>;
+    pub async fn install(
+        &self,
+        version: &LoaderVersion,
+        game_dir: impl AsRef<Path>,
+        java: impl AsRef<Path>,
+        lines: Option<&Sender<String>>,
+        progress: Option<&Sender<DownloadProgress>>,
+    ) -> Result<InstalledVersion, LoaderError>;
     pub fn extract_mod_info(&self, jar: impl AsRef<Path>) -> Result<ModInfo, LoaderError>;
 }
 ```
@@ -131,6 +142,20 @@ requires `minecraft: Some`; otherwise `MinecraftVersionUnknown` tells the caller
 - forge: always `true` (the maven JSON carries no stability metadata; promotions come later).
 - neoforge: `false` when the version carries a `-beta` / `-prerelease` / `-rc` suffix.
 - vanilla: Mojang release type `release`.
+
+### Install
+
+`install(version, game_dir, java, lines, progress)` turns a version into a `.minecraft`-style
+folder: the version JSON goes to `versions/<id>/<id>.json` and libraries to `libraries/`.
+
+| Kind | Install |
+|---|---|
+| `Fabric` / `Quilt` | Fetch `<meta>/<mc>/<loader>/profile/json`, which inherits the Minecraft version. Write it under `versions/<id>/`, then download its libraries from their own base urls. No installer runs. |
+| `Forge` / `NeoForge` | `download_client` fetches the installer jar into `libraries/`. Seed `launcher_profiles.json` with `{"profiles":{}}`, then run `java -jar <installer> --installClient <dir>` (NeoForge: `--install-client`). The new `versions/<id>` folder is the result. Output lines stream to `lines`; dropping that receiver stops the installer. |
+| `Vanilla` | `InstallUnsupported`. The gui installs vanilla through piston-mc: client jar, libraries, assets. |
+
+Installers run on a blocking thread. A failed run keeps the last 40 output lines in
+`LoaderError::InstallerFailed`.
 
 ## 6. Mod metadata extraction
 
@@ -168,6 +193,11 @@ convenience, not a filter.
 | `ModInfoUnsupported` | `Loader::<Vanilla>::extract_mod_info` | loader |
 | `ModMetadataMissing` | jar carries no client-mod metadata we support | path |
 | `ModParse` | metadata file found but unparsable | path + source |
+| `InstallUnsupported` | `install` on vanilla | loader |
+| `InstallerLaunch` | the Java program for an installer could not start | program + source |
+| `InstallerFailed` | an installer exited unsuccessfully or was stopped | loader + status + last output lines |
+| `InstallerVersionMissing` | an installer exited cleanly without creating a version folder | loader + directory |
+| `InstallerMissing` | the installer jar was not downloaded | loader |
 
 ## 8. Testing strategy
 
@@ -181,4 +211,7 @@ No network in CI:
   `src/fabric.rs` / `src/quilt.rs` (entry parsing, maven path building), and
   `src/mod_info/quilt.rs` (schema quirks: object versions, contributor map/list,
   license arrays) use recorded real API payloads.
+- `tests/install.rs` covers version JSON placement, launcher profile seeding, installer
+  discovery, and fake-`java` runs (unix) for success, failure, a missing version and a
+  missing program.
 - `examples/` are the live-network smoke tests, run manually.

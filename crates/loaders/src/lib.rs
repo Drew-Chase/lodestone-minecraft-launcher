@@ -35,12 +35,15 @@
 //! - List a loader's versions (`list_versions`)
 //! - Get versions for a Minecraft version (`versions_for_minecraft`)
 //! - Download a loader version's client libraries (`download_client`)
+//! - Install a loader version into a game folder (`install`): the version JSON under
+//!   `versions/`, the libraries under `libraries/`, and the installer run for Forge and
+//!   NeoForge
 //! - Extract mod information from a jar (`extract_mod_info`)
 //!
 //! ## What this crate does NOT do
 //!
 //! - Launch the game (see `lodestone_launch`)
-//! - Install loader profiles / merge version JSONs (follow-up slice)
+//! - Install vanilla (gui installs it through piston-mc)
 //! - Download or manage mods (see the platform crates)
 //! - Authenticate (see `auth`)
 
@@ -51,6 +54,7 @@ mod error;
 mod fabric;
 mod forge;
 mod http;
+mod install;
 mod meta;
 mod mod_info;
 mod neoforge;
@@ -60,6 +64,7 @@ mod vanilla;
 pub use error::LoaderError;
 pub use fabric::Fabric;
 pub use forge::Forge;
+pub use install::InstalledVersion;
 pub use meta::{LoaderVersion, ModDependency, ModDependencyKind, ModInfo};
 pub use neoforge::NeoForge;
 pub use quilt::Quilt;
@@ -101,6 +106,18 @@ pub trait LoaderKind: sealed::Sealed + Send + Sync + 'static {
         into: &Path,
         progress: Option<&Sender<DownloadProgress>>,
     ) -> impl Future<Output = Result<Vec<PathBuf>, LoaderError>> + Send;
+
+    /// Installs `version` into `game_dir`: writes its version JSON under `versions/`,
+    /// fetches its libraries into `libraries/`, and runs the loader's installer where it
+    /// has one. `java` runs installers, and `lines` receives the installer's output.
+    fn install(
+        http: &reqwest::Client,
+        version: &LoaderVersion,
+        game_dir: &Path,
+        java: &Path,
+        lines: Option<&Sender<String>>,
+        progress: Option<&Sender<DownloadProgress>>,
+    ) -> impl Future<Output = Result<InstalledVersion, LoaderError>> + Send;
 
     /// Extracts mod metadata from a jar file. The detected format wins:
     /// `ModInfo.loader` reports what was actually found, never the requested kind.
@@ -164,6 +181,25 @@ impl<K: LoaderKind> Loader<K> {
         progress: Option<&Sender<DownloadProgress>>,
     ) -> Result<Vec<PathBuf>, LoaderError> {
         K::download_client(&self.http, version, into.as_ref(), progress).await
+    }
+
+    /// Installs `version` into `game_dir`, which becomes a `.minecraft`-style folder:
+    /// the version JSON lands under `versions/<id>/`, libraries under `libraries/`, and
+    /// Forge and NeoForge run their installer with `java`. Installer output lines go to
+    /// `lines` when given; the installer is stopped if that receiver is dropped.
+    ///
+    /// Fabric and Quilt need a version bound to a Minecraft version, as
+    /// [`Loader::download_client`] does. Vanilla fails with
+    /// [`LoaderError::InstallUnsupported`].
+    pub async fn install(
+        &self,
+        version: &LoaderVersion,
+        game_dir: impl AsRef<Path>,
+        java: impl AsRef<Path>,
+        lines: Option<&Sender<String>>,
+        progress: Option<&Sender<DownloadProgress>>,
+    ) -> Result<InstalledVersion, LoaderError> {
+        K::install(&self.http, version, game_dir.as_ref(), java.as_ref(), lines, progress).await
     }
 
     /// Extracts mod metadata from a jar file.

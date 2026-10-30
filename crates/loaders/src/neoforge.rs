@@ -9,6 +9,7 @@ use tokio::sync::mpsc::Sender;
 use crate::LoaderKind;
 use crate::error::LoaderError;
 use crate::http::{download_files, get_json};
+use crate::install::{InstalledVersion, installer_jar, run_installer_task, seed_launcher_profiles};
 use crate::meta::{LoaderVersion, ModInfo};
 use crate::mod_info;
 use crate::sealed;
@@ -110,6 +111,27 @@ impl LoaderKind for NeoForge {
         }
         let files = artifact_urls(&version.version).map(|(url, name)| (url, into.join(name)));
         download_files(files, progress).await
+    }
+
+    async fn install(
+        http: &reqwest::Client,
+        version: &LoaderVersion,
+        game_dir: &Path,
+        java: &Path,
+        lines: Option<&Sender<String>>,
+        progress: Option<&Sender<DownloadProgress>>,
+    ) -> Result<InstalledVersion, LoaderError> {
+        let Some(minecraft) = version.minecraft.as_deref() else {
+            return Err(LoaderError::MinecraftVersionUnknown {
+                version: version.version.clone(),
+            });
+        };
+        let jars = Self::download_client(http, version, &game_dir.join("libraries"), progress).await?;
+        let Some(installer) = installer_jar(&jars) else {
+            return Err(LoaderError::InstallerMissing { loader: Self::NAME });
+        };
+        seed_launcher_profiles(game_dir)?;
+        run_installer_task(Self::NAME, minecraft, java, installer, "--install-client", game_dir, lines).await
     }
 
     fn extract_mod_info(jar: &Path) -> Result<ModInfo, LoaderError> {

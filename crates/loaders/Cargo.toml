@@ -13,7 +13,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 reqwest = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
 piston-mc = { workspace = true }
 simple_download_utility = { workspace = true }
 modcrawl = { workspace = true }
