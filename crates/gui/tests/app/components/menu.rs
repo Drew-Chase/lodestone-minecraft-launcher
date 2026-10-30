@@ -50,3 +50,29 @@ fn selectability() {
     assert!(items[0].is_selectable());
     assert!(!items[1].is_selectable());
 }
+
+#[test]
+fn an_empty_query_lists_every_item() {
+    assert_eq!(listed(&items(), ""), vec![0, 1, 2]);
+}
+
+#[test]
+fn a_query_lists_only_matching_actions_ignoring_case() {
+    assert_eq!(listed(&items(), "DEL"), vec![2]);
+    assert_eq!(listed(&items(), "open"), vec![0]);
+    assert!(listed(&items(), "zzz").is_empty(), "a query can match nothing");
+}
+
+#[test]
+fn a_query_hides_the_separators() {
+    let items = items();
+    assert!(listed(&items, "e").iter().all(|&index| items[index].is_selectable()));
+}
+
+#[test]
+fn opening_the_menu_clears_the_query() {
+    let mut state = MenuState::new();
+    state.query.insert("abc");
+    state.open();
+    assert!(state.query.is_empty());
+}

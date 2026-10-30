@@ -30,7 +30,7 @@ use iced_anim::Animated;
 use iced_color_extension::rgb;
 
 use super::anim;
-use super::menu::{self, MenuItem, MenuState};
+use super::menu::{self, Anchor, MenuItem, MenuState};
 
 /// Trigger size — the `.btn-icon` spec is 36×36 with a 12px radius.
 const TRIGGER_SIZE: f32 = 36.0;
@@ -279,9 +279,12 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Dropdown<Message
             &self.items,
             None,
             self.on_select.as_deref(),
-            Point::new(bounds.x + translation.x, bounds.y + translation.y),
-            bounds.height,
-            bounds.width.max(180.0),
+            Anchor {
+                origin: Point::new(bounds.x + translation.x, bounds.y + translation.y),
+                trigger_height: bounds.height,
+                width: bounds.width.max(180.0),
+            },
+            false,
         )
     }
 }

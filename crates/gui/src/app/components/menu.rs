@@ -6,6 +6,12 @@
 //! the elevation-3 shadow (§06), `bg-4` hover rows, Lode Green selected rows,
 //! and an open/close ease — fade plus a 6px slide (§08 Lift).
 //!
+//! A searchable menu adds a filter field on the side nearest its trigger: the
+//! top edge when the menu opens below, the bottom edge when it opens above.
+//! Typing narrows the rows, the arrow keys move the highlight that Enter picks,
+//! and Left, Right, Home, End, Backspace and Delete edit the query at a blinking
+//! caret. The query clears each time the menu opens.
+//!
 //! The engine is deliberately internal; the public surface lives in
 //! [`select`](super::select) and [`dropdown`](super::dropdown).
 
@@ -19,6 +25,7 @@ use iced::advanced::text;
 use iced::advanced::text::Renderer as _;
 use iced::advanced::{Clipboard, Layout, Overlay, Renderer as _, Shell};
 use iced::border::Radius;
+use iced::keyboard::key::{Named, Physical};
 use iced::mouse::{Cursor, Interaction};
 use iced::{
     Background, Border, Event, Pixels, Point, Radians, Rectangle, Renderer as BaseRenderer, Shadow, Size, Theme, Vector, alignment, keyboard, mouse,
@@ -26,8 +33,10 @@ use iced::{
 };
 use iced_anim::Animated;
 use iced_color_extension::rgb;
+use std::time::Instant;
 
 use super::anim;
+use super::search_field::{self, Query};
 
 /// Vertical gap between the trigger and the menu.
 const GAP: f32 = 6.0;
@@ -41,6 +50,10 @@ const SEPARATOR_HEIGHT: f32 = 9.0;
 const H_PADDING: f32 = 12.0;
 /// Inset applied to row highlight quads.
 const ROW_INSET: f32 = 4.0;
+/// Height of the search band, and the height of the field inside it. The field
+/// sits centred in the band, so the band's edge is the same on every side.
+const SEARCH_BAND: f32 = 46.0;
+const SEARCH_FIELD: f32 = 32.0;
 /// Hard cap on menu height; taller menus scroll.
 pub const MAX_MENU_HEIGHT: f32 = 320.0;
 
@@ -92,6 +105,16 @@ pub struct MenuState {
     pub(crate) hovered: Option<usize>,
     pub(crate) phase: Phase,
     pub(crate) open: Animated<f32>,
+    /// What the search field holds, and where its caret sits. Cleared each time the menu opens.
+    pub(crate) query: Query,
+    /// When the caret last moved or the text changed. Its blink counts from here.
+    pub(crate) caret_since: Instant,
+    /// The indices of the items the menu lists for `query`, in order.
+    pub(crate) visible: Vec<usize>,
+    /// Whether the menu opened below its trigger, which puts the search field on top.
+    pub(crate) below: bool,
+    /// The height of the rows window: the menu, less the search band.
+    pub(crate) window_height: f32,
 }
 
 impl MenuState {
@@ -102,6 +125,11 @@ impl MenuState {
             hovered: None,
             phase: Phase::Closed,
             open: Animated::new(0.0, anim::menu()),
+            query: Query::default(),
+            caret_since: Instant::now(),
+            visible: Vec::new(),
+            below: true,
+            window_height: 0.0,
         }
     }
 
@@ -118,6 +146,8 @@ impl MenuState {
         self.open.set_target(1.0);
         self.scroll = 0.0;
         self.hovered = None;
+        self.query.clear();
+        self.caret_since = Instant::now();
     }
 
     pub(crate) fn close(&mut self) {
@@ -134,6 +164,30 @@ impl Default for MenuState {
     }
 }
 
+/// The indices of the items a query leaves listed, in order. An empty query lists every
+/// item. Any other query lists only the actions whose labels contain it, ignoring case.
+pub(crate) fn listed(items: &[MenuItem], query: &str) -> Vec<usize> {
+    let needle = query.to_lowercase();
+    items
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| match item {
+            MenuItem::Action { label, .. } => needle.is_empty() || label.to_lowercase().contains(&needle),
+            MenuItem::Separator => needle.is_empty(),
+        })
+        .map(|(index, _)| index)
+        .collect()
+}
+
+/// Where the menu attaches to its trigger, in window space.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Anchor {
+    /// Top-left of the trigger.
+    pub(crate) origin: Point,
+    pub(crate) trigger_height: f32,
+    pub(crate) width: f32,
+}
+
 /// The floating menu overlay. Created fresh each frame by the host widget's
 /// `Widget::overlay` while the menu is not [`Phase::Closed`].
 pub(crate) struct MenuOverlay<'a, Message> {
@@ -142,25 +196,62 @@ pub(crate) struct MenuOverlay<'a, Message> {
     /// Highlighted row (the host's current value), if any.
     selected: Option<usize>,
     on_select: &'a dyn Fn(usize) -> Message,
-    /// Top-left of the trigger, already translated into window space.
-    origin: Point,
-    trigger_height: f32,
-    menu_width: f32,
+    anchor: Anchor,
+    searchable: bool,
 }
 
 impl<Message> MenuOverlay<'_, Message> {
-    /// Total unclipped height of all rows.
-    fn total_height(&self) -> f32 {
-        self.items.iter().map(MenuItem::height).sum()
+    /// The height the search band takes, or nothing for a plain menu.
+    fn chrome(&self) -> f32 {
+        if self.searchable { SEARCH_BAND } else { 0.0 }
     }
 
-    /// The row under the given window-space point, if any.
-    fn item_at(&self, menu_bounds: Rectangle, position: Point) -> Option<usize> {
-        if !menu_bounds.contains(position) {
+    /// Total unclipped height of the listed rows.
+    fn total_height(&self) -> f32 {
+        self.state.visible.iter().map(|&index| self.items[index].height()).sum()
+    }
+
+    /// The part of the menu the rows scroll in: the menu less the search band, which
+    /// sits on the side nearest the trigger.
+    fn rows_area(&self, menu_bounds: Rectangle) -> Rectangle {
+        let chrome = self.chrome();
+        let y = if self.state.below { menu_bounds.y + chrome } else { menu_bounds.y };
+        Rectangle::new(
+            Point::new(menu_bounds.x, y),
+            Size::new(menu_bounds.width, (menu_bounds.height - chrome).max(0.0)),
+        )
+    }
+
+    /// The search band, on the side nearest the trigger. `None` for a plain menu.
+    fn search_area(&self, menu_bounds: Rectangle) -> Option<Rectangle> {
+        if !self.searchable {
             return None;
         }
-        let mut y = menu_bounds.y - self.state.scroll;
-        for (index, item) in self.items.iter().enumerate() {
+        let y = if self.state.below {
+            menu_bounds.y
+        } else {
+            menu_bounds.y + menu_bounds.height - SEARCH_BAND
+        };
+        Some(Rectangle::new(Point::new(menu_bounds.x, y), Size::new(menu_bounds.width, SEARCH_BAND)))
+    }
+
+    /// The field inside the search band, inset evenly on every side.
+    fn field_area(band: Rectangle) -> Rectangle {
+        let edge = (SEARCH_BAND - SEARCH_FIELD) / 2.0;
+        Rectangle::new(
+            Point::new(band.x + edge, band.y + edge),
+            Size::new((band.width - edge * 2.0).max(0.0), SEARCH_FIELD),
+        )
+    }
+
+    /// The row under the window-space point, if any.
+    fn item_at(&self, rows: Rectangle, position: Point) -> Option<usize> {
+        if !rows.contains(position) {
+            return None;
+        }
+        let mut y = rows.y - self.state.scroll;
+        for &index in &self.state.visible {
+            let item = &self.items[index];
             let height = item.height();
             if position.y >= y && position.y < y + height {
                 return item.is_selectable().then_some(index);
@@ -170,26 +261,111 @@ impl<Message> MenuOverlay<'_, Message> {
         None
     }
 
-    /// Window-space bounds of one row, adjusted for scroll.
-    fn row_bounds(&self, menu_bounds: Rectangle, index: usize) -> Option<Rectangle> {
-        let mut y = menu_bounds.y - self.state.scroll;
-        for (i, item) in self.items.iter().enumerate() {
-            let height = item.height();
-            if i == index {
-                return Some(Rectangle::new(Point::new(menu_bounds.x, y), Size::new(menu_bounds.width, height)));
+    /// The actions the query leaves listed, in order: the rows a highlight can land on.
+    fn selectable(&self) -> impl Iterator<Item = usize> + '_ {
+        self.state.visible.iter().copied().filter(|&index| self.items[index].is_selectable())
+    }
+
+    /// Scrolls the rows so the listed row for `index` is inside the window.
+    fn reveal(&mut self, index: usize) {
+        let mut top = 0.0;
+        for &listed in &self.state.visible {
+            let height = self.items[listed].height();
+            if listed == index {
+                let bottom = top + height;
+                if top < self.state.scroll {
+                    self.state.scroll = top;
+                } else if bottom > self.state.scroll + self.state.window_height {
+                    self.state.scroll = bottom - self.state.window_height;
+                }
+                break;
             }
-            y += height;
+            top += height;
         }
-        None
+        self.state.scroll = self.state.scroll.clamp(0.0, self.state.max_scroll);
+    }
+
+    /// Moves the highlight `step` actions along, starting from the first when none is
+    /// highlighted, and keeps the highlighted row in view.
+    fn move_highlight(&mut self, step: isize) {
+        let candidates: Vec<usize> = self.selectable().collect();
+        if candidates.is_empty() {
+            self.state.hovered = None;
+            return;
+        }
+        let current = self
+            .state
+            .hovered
+            .and_then(|hovered| candidates.iter().position(|&index| index == hovered));
+        let next = match current {
+            Some(at) => (at as isize + step).clamp(0, candidates.len() as isize - 1) as usize,
+            None if step >= 0 => 0,
+            None => candidates.len() - 1,
+        };
+        self.state.hovered = Some(candidates[next]);
+        self.reveal(candidates[next]);
+    }
+
+    /// Applies a text edit to the query. An edit that changed the text refilters the rows,
+    /// returns to the top, and highlights the first match.
+    fn edit(&mut self, edit: impl FnOnce(&mut Query) -> bool) {
+        if edit(&mut self.state.query) {
+            self.state.visible = listed(self.items, self.state.query.text());
+            self.state.scroll = 0.0;
+            let first = self.selectable().next();
+            self.state.hovered = first;
+        }
+    }
+
+    /// Applies a key press to an open searchable menu. Returns whether the menu used the key.
+    fn press(
+        &mut self,
+        key: &keyboard::Key,
+        physical: Physical,
+        modifiers: keyboard::Modifiers,
+        text: Option<&str>,
+        shell: &mut Shell<'_, Message>,
+    ) -> bool {
+        // Typed text is read first, so a keypad key types even when NumLock is off and the key
+        // sends a navigation key instead.
+        if let Some(typed) = search_field::typed_text(key, physical, modifiers, text) {
+            self.edit(|query| query.insert(typed));
+        } else {
+            match key {
+                keyboard::Key::Named(Named::ArrowDown) => self.move_highlight(1),
+                keyboard::Key::Named(Named::ArrowUp) => self.move_highlight(-1),
+                keyboard::Key::Named(Named::ArrowLeft) => self.state.query.left(),
+                keyboard::Key::Named(Named::ArrowRight) => self.state.query.right(),
+                keyboard::Key::Named(Named::Home) => self.state.query.home(),
+                keyboard::Key::Named(Named::End) => self.state.query.end(),
+                keyboard::Key::Named(Named::Backspace) => self.edit(Query::backspace),
+                keyboard::Key::Named(Named::Delete) => self.edit(Query::delete),
+                keyboard::Key::Named(Named::Enter) => {
+                    if let Some(index) = self.state.hovered.or_else(|| self.selectable().next()) {
+                        shell.publish((self.on_select)(index));
+                        self.state.close();
+                    }
+                }
+                _ => return false,
+            }
+        }
+        // Using the field restarts the caret's blink, so the caret reads as solid while in use.
+        self.state.caret_since = Instant::now();
+        true
     }
 }
 
 impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message> {
     fn layout(&mut self, _renderer: &BaseRenderer, bounds: Size) -> Node {
-        let total = self.total_height();
+        // The listed rows follow the query, so refresh them before measuring.
+        self.state.visible = listed(self.items, self.state.query.text());
+        let chrome = self.chrome();
+        let total = self.total_height() + chrome;
 
-        let space_below = bounds.height - (self.origin.y + self.trigger_height) - GAP - SCREEN_MARGIN;
-        let space_above = self.origin.y - GAP - SCREEN_MARGIN;
+        let origin = self.anchor.origin;
+        let trigger_height = self.anchor.trigger_height;
+        let space_below = bounds.height - (origin.y + trigger_height) - GAP - SCREEN_MARGIN;
+        let space_above = origin.y - GAP - SCREEN_MARGIN;
         let (place_below, available) = if space_below >= space_above {
             (true, space_below)
         } else {
@@ -197,17 +373,19 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
         };
 
         let height = total.min(available).clamp(0.0, MAX_MENU_HEIGHT);
-        let width = self.menu_width.min(bounds.width - self.origin.x).max(0.0);
+        let width = self.anchor.width.min(bounds.width - origin.x).max(0.0);
         let size = Size::new(width, height);
 
         let position = if place_below {
-            Point::new(self.origin.x, self.origin.y + self.trigger_height + GAP)
+            Point::new(origin.x, origin.y + trigger_height + GAP)
         } else {
-            Point::new(self.origin.x, self.origin.y - height - GAP)
+            Point::new(origin.x, origin.y - height - GAP)
         };
 
         // Keep scroll in range for the (possibly changed) viewport height.
-        self.state.max_scroll = (total - height).max(0.0);
+        self.state.below = place_below;
+        self.state.window_height = (height - chrome).max(0.0);
+        self.state.max_scroll = (self.total_height() - self.state.window_height).max(0.0);
         self.state.scroll = self.state.scroll.clamp(0.0, self.state.max_scroll);
 
         Node::new(size).move_to(position)
@@ -223,6 +401,7 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
         shell: &mut Shell<'_, Message>,
     ) {
         let menu_bounds = layout.bounds();
+        let rows = self.rows_area(menu_bounds);
 
         match event {
             Event::Window(window::Event::RedrawRequested(now)) => {
@@ -231,12 +410,20 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
                 if self.state.phase == Phase::Closing && !self.state.open.is_animating() {
                     self.state.phase = Phase::Closed;
                 }
+                // An open search field keeps its caret blinking: wake again at the next flip.
+                if self.searchable && self.state.is_open() {
+                    shell.request_redraw_at(*now + search_field::next_blink(self.state.caret_since, *now));
+                }
             }
             Event::Mouse(mouse::Event::CursorMoved { .. }) => {
-                let hovered = cursor.position().and_then(|position| self.item_at(menu_bounds, position));
-                if self.state.hovered != hovered {
-                    self.state.hovered = hovered;
-                    shell.request_redraw();
+                // Only the rows take the pointer's highlight, so moving over the field or the
+                // rest of the menu leaves a keyboard highlight where it is.
+                if cursor.is_over(rows) {
+                    let hovered = cursor.position().and_then(|position| self.item_at(rows, position));
+                    if self.state.hovered != hovered {
+                        self.state.hovered = hovered;
+                        shell.request_redraw();
+                    }
                 }
             }
             Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
@@ -252,15 +439,19 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
             }
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
                 if cursor.is_over(menu_bounds) {
-                    // Click inside the menu: select the hovered row, or simply
-                    // dismiss when the click landed on a separator.
-                    if let Some(index) = self.state.hovered
-                        && self.items.get(index).is_some_and(MenuItem::is_selectable)
-                    {
-                        shell.publish((self.on_select)(index));
+                    let on_field = self.search_area(menu_bounds).is_some_and(|band| cursor.is_over(band));
+                    if on_field {
+                        // The field keeps the menu open so the query can be typed.
+                        shell.capture_event();
+                    } else {
+                        // Click inside the menu: pick the row under the pointer, or simply
+                        // dismiss when the click landed on a separator.
+                        if let Some(index) = cursor.position().and_then(|position| self.item_at(rows, position)) {
+                            shell.publish((self.on_select)(index));
+                        }
+                        self.state.close();
+                        shell.capture_event();
                     }
-                    self.state.close();
-                    shell.capture_event();
                 } else {
                     // Click outside the menu: dismiss, but let the click
                     // fall through to whatever was actually under the cursor.
@@ -268,11 +459,24 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
                 }
             }
             Event::Keyboard(keyboard::Event::KeyPressed {
-                key: keyboard::Key::Named(keyboard::key::Named::Escape),
+                key: keyboard::Key::Named(Named::Escape),
                 ..
             }) => {
                 self.state.close();
                 shell.capture_event();
+            }
+            Event::Keyboard(keyboard::Event::KeyPressed {
+                key,
+                physical_key,
+                modifiers,
+                text,
+                ..
+            }) if self.searchable && self.state.is_open() => {
+                let used = self.press(key, *physical_key, *modifiers, text.as_deref(), shell);
+                if used {
+                    shell.request_redraw();
+                    shell.capture_event();
+                }
             }
             _ => {}
         }
@@ -284,11 +488,15 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
 
     fn mouse_interaction(&self, layout: Layout<'_>, cursor: Cursor, _renderer: &BaseRenderer) -> Interaction {
         let menu_bounds = layout.bounds();
-        let over_row = cursor.position().and_then(|position| self.item_at(menu_bounds, position)).is_some();
+        if self.search_area(menu_bounds).is_some_and(|band| cursor.is_over(band)) {
+            return Interaction::Text;
+        }
+        let rows = self.rows_area(menu_bounds);
+        let over_row = cursor.position().and_then(|position| self.item_at(rows, position)).is_some();
         if over_row { Interaction::Pointer } else { Interaction::default() }
     }
 
-    fn draw(&self, renderer: &mut BaseRenderer, _theme: &Theme, _style: &renderer::Style, layout: Layout<'_>, cursor: Cursor) {
+    fn draw(&self, renderer: &mut BaseRenderer, _theme: &Theme, _style: &renderer::Style, layout: Layout<'_>, _cursor: Cursor) {
         let menu_bounds = layout.bounds();
         // The transition keeps the value in [0, 1]; the clamp is belt and
         // braces so a stray value can never produce out-of-range alphas.
@@ -320,108 +528,139 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
             Background::Color(anim::fade(color::Surface::BG3, alpha)),
         );
 
-        // Rows, clipped to the menu surface.
+        let rows = self.rows_area(menu_bounds);
         renderer.with_layer(menu_bounds, |renderer| {
-            for (index, item) in self.items.iter().enumerate() {
-                let Some(row) = self.row_bounds(menu_bounds, index) else {
-                    continue;
-                };
-                if row.intersection(&menu_bounds).is_none() {
-                    continue;
-                }
+            if let Some(band) = self.search_area(menu_bounds) {
+                let caret_on = search_field::caret_visible(self.state.caret_since, Instant::now());
+                search_field::draw(renderer, Self::field_area(band), &self.state.query, caret_on, alpha);
+            }
 
-                match item {
-                    MenuItem::Separator => {
-                        let line = Rectangle::new(
-                            Point::new(row.x + H_PADDING, row.y + row.height / 2.0 - 0.5),
-                            Size::new(row.width - H_PADDING * 2.0, 1.0),
-                        );
-                        renderer.fill_quad(
-                            renderer::Quad {
-                                bounds: line,
-                                ..renderer::Quad::default()
-                            },
-                            Background::Color(anim::fade(color::Surface::LINE, alpha)),
-                        );
+            // Rows, clipped to the rows window.
+            renderer.with_layer(rows, |renderer| {
+                let mut y = rows.y - self.state.scroll;
+                for &index in &self.state.visible {
+                    let item = &self.items[index];
+                    let row = Rectangle::new(Point::new(rows.x, y), Size::new(rows.width, item.height()));
+                    y += item.height();
+                    if row.intersection(&rows).is_none() {
+                        continue;
                     }
-                    MenuItem::Action { label, icon, danger } => {
-                        let is_hovered =
-                            self.state.hovered == Some(index) && cursor.position().is_some_and(|position| menu_bounds.contains(position));
-                        let is_selected = self.selected == Some(index);
 
-                        // Row highlight — hover bg-4, selected green tint.
-                        let highlight = if is_selected {
-                            Some(color::Primary::TINT)
-                        } else if is_hovered {
-                            Some(color::Surface::BG4)
-                        } else {
-                            None
-                        };
-                        if let Some(background) = highlight {
+                    match item {
+                        MenuItem::Separator => {
+                            let line = Rectangle::new(
+                                Point::new(row.x + H_PADDING, row.y + row.height / 2.0 - 0.5),
+                                Size::new(row.width - H_PADDING * 2.0, 1.0),
+                            );
                             renderer.fill_quad(
                                 renderer::Quad {
-                                    bounds: Rectangle::new(Point::new(row.x + ROW_INSET, row.y), Size::new(row.width - ROW_INSET * 2.0, row.height)),
-                                    border: Border {
-                                        radius: Radius::from(8.0),
-                                        ..Border::default()
-                                    },
+                                    bounds: line,
                                     ..renderer::Quad::default()
                                 },
-                                Background::Color(anim::fade(background, alpha)),
+                                Background::Color(anim::fade(color::Surface::LINE, alpha)),
                             );
                         }
+                        MenuItem::Action { label, icon, danger } => {
+                            let is_hovered = self.state.hovered == Some(index);
+                            let is_selected = self.selected == Some(index);
 
-                        // Ink — danger rows are pink; selected rows read green.
-                        let ink = if *danger {
-                            color::Accents::PINK
-                        } else if is_selected {
-                            color::Primary::DEFAULT
-                        } else {
-                            color::Text::DEFAULT
-                        };
-
-                        // Leading icon.
-                        let text_x = row.x + H_PADDING;
-                        if let Some(icon) = icon {
-                            let icon_size = 16.0;
-                            let icon_svg = Svg {
-                                handle: Handle::from_memory(icon.as_bytes()),
-                                opacity: 1.0,
-                                rotation: Radians(0.0),
-                                color: Some(anim::fade(ink, alpha)),
+                            // Row highlight — hover bg-4, selected green tint.
+                            let highlight = if is_selected {
+                                Some(color::Primary::TINT)
+                            } else if is_hovered {
+                                Some(color::Surface::BG4)
+                            } else {
+                                None
                             };
-                            let icon_bounds = Rectangle::new(
-                                Point::new(text_x, row.y + row.height / 2.0 - icon_size / 2.0),
-                                Size::new(icon_size, icon_size),
-                            );
-                            renderer.draw_svg(icon_svg, icon_bounds, row);
-                        }
+                            if let Some(background) = highlight {
+                                renderer.fill_quad(
+                                    renderer::Quad {
+                                        bounds: Rectangle::new(
+                                            Point::new(row.x + ROW_INSET, row.y),
+                                            Size::new(row.width - ROW_INSET * 2.0, row.height),
+                                        ),
+                                        border: Border {
+                                            radius: Radius::from(8.0),
+                                            ..Border::default()
+                                        },
+                                        ..renderer::Quad::default()
+                                    },
+                                    Background::Color(anim::fade(background, alpha)),
+                                );
+                            }
 
-                        // Label — drawn via `fill_text` with owned content.
-                        // A paragraph built locally during draw only downgrades
-                        // to a weak reference in the render pass and is silently
-                        // skipped once dropped; the cached path keys the buffer
-                        // on the content instead (the same reason iced's own
-                        // combo-box menu uses `fill_text`).
-                        renderer.fill_text(
-                            text::Text {
-                                content: label.clone(),
-                                bounds: Size::new(f32::INFINITY, row.height),
-                                size: Pixels::from(13.0),
-                                line_height: text::LineHeight::Relative(1.4),
-                                font: fonts::Inter::MEDIUM,
-                                align_x: text::Alignment::Default,
-                                align_y: alignment::Vertical::Center,
-                                shaping: text::Shaping::Basic,
-                                wrapping: text::Wrapping::default(),
-                            },
-                            Point::new(text_x + if icon.is_some() { 18.0 + 8.0 } else { 0.0 }, row.center_y()),
-                            anim::fade(ink, alpha),
-                            menu_bounds,
-                        );
+                            // Ink — danger rows are pink; selected rows read green.
+                            let ink = if *danger {
+                                color::Accents::PINK
+                            } else if is_selected {
+                                color::Primary::DEFAULT
+                            } else {
+                                color::Text::DEFAULT
+                            };
+
+                            // Leading icon.
+                            let text_x = row.x + H_PADDING;
+                            if let Some(icon) = icon {
+                                let icon_size = 16.0;
+                                let icon_svg = Svg {
+                                    handle: Handle::from_memory(icon.as_bytes()),
+                                    opacity: 1.0,
+                                    rotation: Radians(0.0),
+                                    color: Some(anim::fade(ink, alpha)),
+                                };
+                                let icon_bounds = Rectangle::new(
+                                    Point::new(text_x, row.y + row.height / 2.0 - icon_size / 2.0),
+                                    Size::new(icon_size, icon_size),
+                                );
+                                renderer.draw_svg(icon_svg, icon_bounds, row);
+                            }
+
+                            // Label — drawn via `fill_text` with owned content.
+                            // A paragraph built locally during draw only downgrades
+                            // to a weak reference in the render pass and is silently
+                            // skipped once dropped; the cached path keys the buffer
+                            // on the content instead (the same reason iced's own
+                            // combo-box menu uses `fill_text`).
+                            renderer.fill_text(
+                                text::Text {
+                                    content: label.clone(),
+                                    bounds: Size::new(f32::INFINITY, row.height),
+                                    size: Pixels::from(13.0),
+                                    line_height: text::LineHeight::Relative(1.4),
+                                    font: fonts::Inter::MEDIUM,
+                                    align_x: text::Alignment::Default,
+                                    align_y: alignment::Vertical::Center,
+                                    shaping: text::Shaping::Basic,
+                                    wrapping: text::Wrapping::default(),
+                                },
+                                Point::new(text_x + if icon.is_some() { 18.0 + 8.0 } else { 0.0 }, row.center_y()),
+                                anim::fade(ink, alpha),
+                                rows,
+                            );
+                        }
                     }
                 }
-            }
+
+                // A search that matches nothing says so in the empty window.
+                if self.searchable && self.state.visible.is_empty() {
+                    renderer.fill_text(
+                        text::Text {
+                            content: "No matches".to_owned(),
+                            bounds: Size::new(rows.width, rows.height),
+                            size: Pixels::from(12.0),
+                            line_height: text::LineHeight::Relative(1.4),
+                            font: fonts::Inter::MEDIUM,
+                            align_x: text::Alignment::Center,
+                            align_y: alignment::Vertical::Center,
+                            shaping: text::Shaping::Basic,
+                            wrapping: text::Wrapping::default(),
+                        },
+                        Point::new(rows.center_x(), rows.center_y()),
+                        anim::fade(color::Text::MUTED, alpha),
+                        rows,
+                    );
+                }
+            });
         });
     }
 }
@@ -432,9 +671,8 @@ pub(crate) fn overlay<'a, 'b, Message>(
     items: &'a [MenuItem],
     selected: Option<usize>,
     on_select: Option<&'a dyn Fn(usize) -> Message>,
-    origin: Point,
-    trigger_height: f32,
-    menu_width: f32,
+    anchor: Anchor,
+    searchable: bool,
 ) -> Option<OverlayElement<'b, Message, Theme, BaseRenderer>>
 where
     'a: 'b,
@@ -448,9 +686,8 @@ where
         items,
         selected,
         on_select,
-        origin,
-        trigger_height,
-        menu_width,
+        anchor,
+        searchable,
     })))
 }
 

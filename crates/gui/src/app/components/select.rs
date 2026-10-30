@@ -31,7 +31,7 @@ use iced_anim::Animated;
 use iced_color_extension::rgb;
 
 use super::anim;
-use super::menu::{self, MenuItem, MenuState};
+use super::menu::{self, Anchor, MenuItem, MenuState};
 
 /// Horizontal padding inside the trigger.
 const H_PADDING: f32 = 12.0;
@@ -54,6 +54,8 @@ pub struct Select<'a, Message> {
     width: Length,
     height: Length,
     disabled: bool,
+    /// Whether the menu carries a filter field.
+    searchable: bool,
 }
 
 #[derive(Debug)]
@@ -85,6 +87,7 @@ impl<'a, Message: 'a> Select<'a, Message> {
             width: Length::Fill,
             height: Length::Fixed(TRIGGER_HEIGHT),
             disabled: false,
+            searchable: false,
         }
     }
 
@@ -115,6 +118,15 @@ impl<'a, Message: 'a> Select<'a, Message> {
 
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self
+    }
+
+    /// Adds a filter field to the menu. Typing narrows the options to those whose labels
+    /// contain the text, ignoring case, and Enter picks the highlighted one. The field sits
+    /// on the side of the trigger the menu opens from. The query clears each time the menu
+    /// opens.
+    pub fn searchable(mut self) -> Self {
+        self.searchable = true;
         self
     }
 
@@ -328,9 +340,12 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
             &self.items,
             self.selected,
             self.on_select.as_deref(),
-            Point::new(bounds.x + translation.x, bounds.y + translation.y),
-            bounds.height,
-            bounds.width,
+            Anchor {
+                origin: Point::new(bounds.x + translation.x, bounds.y + translation.y),
+                trigger_height: bounds.height,
+                width: bounds.width,
+            },
+            self.searchable,
         )
     }
 }

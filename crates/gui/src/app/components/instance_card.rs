@@ -3,11 +3,11 @@
 //! (Compact), and the [`table`] (Table) — plus the shared loader chip and
 //! play button.
 
-use crate::app::components::scene_art::scene_handle;
+use crate::app::components::instance_art;
 use crate::app::pages::library::instance::{Instance, Loader};
 use crate::app::theme::color;
 use crate::app::theme::fonts;
-use iced::widget::{Space, Text, column, container, mouse_area, row, svg};
+use iced::widget::{Space, Text, column, container, mouse_area, row};
 use iced::{Background, Border, Color, Element, Fill, Length, Padding, alignment, color};
 
 use crate::app::components::TextButton;
@@ -23,19 +23,9 @@ pub const COMPACT_ROW_HEIGHT: f32 = 64.0;
 /// One table row's fixed height (the header is not virtualized).
 pub const TABLE_ROW_HEIGHT: f32 = 52.0;
 
-/// The generated biome scene art for an instance, as an svg handle
-/// (deterministic per the instance's biome and seed).
-fn scene_handle_of(instance: &Instance) -> svg::Handle {
-    scene_handle(instance.biome, instance.art_seed)
-}
-
-/// The generated biome scene art, covering its box.
+/// The instance's banner, covering its box: its uploaded image, or the generated scene art.
 fn scene_art<Message: 'static>(instance: &Instance) -> Element<'static, Message> {
-    svg(scene_handle_of(instance))
-        .content_fit(iced::ContentFit::Cover)
-        .width(Length::Fill)
-        .height(Fill)
-        .into()
+    instance_art::card_banner(instance)
 }
 
 /// The instance's display name.

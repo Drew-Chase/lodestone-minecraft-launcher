@@ -117,10 +117,6 @@ static HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
 /// alphas are sqrt-compensated here (0.80 → 0.894, 0.30 → 0.548).
 static HERO_HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
 
-/// The instance page's square icon — a centred crop of the scene's moon
-/// and peaks behind a rounded-rect clip.
-static ICON_HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
-
 /// Wrappers generated for the instance page, keyed by kind, scene index and
 /// size. A new `Handle` per call would re-rasterise on every redraw, so each
 /// size is built once.
@@ -160,18 +156,6 @@ pub fn hero_handle(biome: Biome, seed: u64) -> Handle {
 /// of the way down. The fade into the page is the page's overlay, not baked in.
 pub fn banner_handle(biome: Biome, seed: u64, size: Size) -> Handle {
     generated(Wrapper::Banner, biome, seed, size)
-}
-
-/// The instance page's square icon — a centred crop of the scene clipped
-/// to a rounded square.
-pub fn icon_handle(biome: Biome, seed: u64) -> Handle {
-    let handles = ICON_HANDLES.get_or_init(|| {
-        SCENES
-            .iter()
-            .map(|(_, svg)| Handle::from_memory(icon_wrapped(svg).into_bytes()))
-            .collect()
-    });
-    handles[scene_index(biome, seed)].clone()
 }
 
 /// The cached wrapper for `wrapper` at `size`, built on first use.
@@ -265,27 +249,6 @@ fn banner_wrapped(scene: &str, width: f32, height: f32) -> String {
   </g>
 </svg>"##,
         inner = scene_inner(scene),
-    )
-}
-
-/// The icon crop: a 280×280 window around the moon and peaks, clipped to
-/// a 56-unit radius (the rendered icon's 22px at 166px).
-fn icon_wrapped(scene: &str) -> String {
-    let inner = scene_inner(scene);
-    format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="280" height="280" viewBox="130 25 280 280">
-  <defs>
-    <clipPath id="icon-clip"><rect x="130" y="25" width="280" height="280" rx="56"/></clipPath>
-    <radialGradient id="icon-glow" cx="0.5" cy="0.42" r="0.72">
-      <stop offset="0.5" stop-color="#000000" stop-opacity="0"/>
-      <stop offset="1" stop-color="#000000" stop-opacity="0.35"/>
-    </radialGradient>
-  </defs>
-  <g clip-path="url(#icon-clip)">
-{inner}
-    <rect x="130" y="25" width="280" height="280" fill="url(#icon-glow)"/>
-  </g>
-</svg>"##
     )
 }
 
