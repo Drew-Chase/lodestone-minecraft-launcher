@@ -1,7 +1,7 @@
 # Lodestone Aurora Leaf
 This crate pins the icon sets and font families the launcher uses, re-exported as ready-to-use iced types.
 ## What this crate will do:
-- Generate the Lucide and Material Symbols icon sets via `aurora_iconify`
+- Generate the Lucide, Material Symbols, Mage, Material Icon Theme, selfh.st and `@icons` icon sets via `aurora_iconify`
 - Register the Roboto font family via `aurora_fonts`
 - Re-export `Icon` and `FontFamily` for the rest of the workspace
 
