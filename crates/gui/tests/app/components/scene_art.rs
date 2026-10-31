@@ -39,3 +39,11 @@ fn the_card_art_is_exact_size_with_rounded_top_corners_only() {
     assert!(svg.contains(r#"width="400" height="178""#), "{svg}");
     assert!(svg.contains(r#"d="M0,13 A13,13 0 0 1 13,0 H387 A13,13 0 0 1 400,13 V178 H0 Z""#), "{svg}");
 }
+
+/// The hero's clip is drawn in the frame's own pixels, so the cover crop cannot remove its corners.
+#[test]
+fn the_hero_is_exact_size_and_clipped_in_its_own_pixels() {
+    let svg = hero_wrapped("", 1156.0, 300.0);
+    assert!(svg.contains(r#"width="1156" height="300""#), "{svg}");
+    assert!(svg.contains(r#"<rect width="1156" height="300" rx="18"/>"#), "{svg}");
+}

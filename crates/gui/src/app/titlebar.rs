@@ -99,17 +99,20 @@ impl Titlebar {
                 .width(47)
                 .height(Fill)
                 .style(icon_button::SECONDARY_BUTTON_STYLE)
+                .radius(0.0)
                 .on_press(TitlebarMessage::ToggleMinimize),
             IconButton::new(Icon::material_symbols().square_outline_rounded())
                 .width(47)
                 .icon_size(11.5)
                 .height(Fill)
                 .style(icon_button::SECONDARY_BUTTON_STYLE)
+                .radius(0.0)
                 .on_press(TitlebarMessage::ToggleMaximized),
             IconButton::new(Icon::material_symbols().close_rounded())
                 .width(47)
                 .height(Fill)
                 .style(icon_button::DANGER_BUTTON_STYLE)
+                .radius(0.0)
                 .on_press(TitlebarMessage::Close),
         ]
         .height(Fill);
@@ -141,6 +144,7 @@ impl Titlebar {
                     .icon_size(13.0)
                     .style(icon_button::SECONDARY_BUTTON_STYLE)
                     .disabled(!can_go_back)
+                    .radius(0.0)
                     .on_press(TitlebarMessage::NavBack),
                 IconButton::new(Icon::lucide().chevron_right())
                     .width(34)
@@ -148,6 +152,7 @@ impl Titlebar {
                     .icon_size(13.0)
                     .style(icon_button::SECONDARY_BUTTON_STYLE)
                     .disabled(!can_go_forward)
+                    .radius(0.0)
                     .on_press(TitlebarMessage::NavForward),
                 mouse_area(row![
                     container(

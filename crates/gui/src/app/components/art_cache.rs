@@ -133,7 +133,7 @@ fn render(key: ArtKey) -> Option<Handle> {
     let scene = scene_text(key.biome, key.seed);
     let svg = match key.kind {
         Kind::Card => card_wrapped(scene, key.width as f32, key.height as f32),
-        Kind::Hero => hero_wrapped(scene),
+        Kind::Hero => hero_wrapped(scene, key.width as f32, key.height as f32),
         Kind::Thumb => scene.to_owned(),
     };
     rasterise(&svg, key.width, key.height)

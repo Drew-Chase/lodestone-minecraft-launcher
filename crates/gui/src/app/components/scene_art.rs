@@ -87,6 +87,8 @@ pub(crate) const SIZE_STEP: f32 = 4.0;
 /// The grid card's art corner radius. The card's border is 14px and the art sits one pixel
 /// inside it, so the art's top corners use 13px to stay concentric with the border.
 pub const CARD_RADIUS: f32 = 13.0;
+/// The library hero's corner radius (`--r-lg`). Its art is clipped to it in pixels, and the banner's border matches.
+pub const HERO_RADIUS: f32 = 18.0;
 
 /// The scene slot a biome occupies — must follow the [`SCENES`] grouping.
 fn slot(biome: Biome) -> usize {
@@ -208,16 +210,17 @@ fn scene_inner(scene: &str) -> String {
     }
 }
 
-/// Wraps a scene file's content in the hero treatment: a rounded-corner
-/// clip (12px in the 800×450 viewBox ≈ the banner's 18px radius at the
-/// default window) plus the left-dark fade. The banner's own border still
+/// Wraps a scene file's content in the hero treatment at `width`×`height`: the scene covered and cropped
+/// by [`cover`], clipped to a rounded rectangle of [`HERO_RADIUS`] pixels, plus the left-dark fade. The clip
+/// is drawn in the frame's own units, so the crop cannot remove its corners. The banner's own border still
 /// draws on the container; the transparent corners let the page show.
-pub(crate) fn hero_wrapped(scene: &str) -> String {
-    let inner = scene_inner(scene);
+pub(crate) fn hero_wrapped(scene: &str, width: f32, height: f32) -> String {
+    let (scale, x, y) = cover(width, height);
+    let r = HERO_RADIUS;
     format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
   <defs>
-    <clipPath id="banner"><rect width="800" height="450" rx="12"/></clipPath>
+    <clipPath id="banner"><rect width="{width}" height="{height}" rx="{r}"/></clipPath>
     <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#06080a" stop-opacity="0.92"/>
       <stop offset="0.4" stop-color="#06080a" stop-opacity="0.49"/>
@@ -225,10 +228,13 @@ pub(crate) fn hero_wrapped(scene: &str) -> String {
     </linearGradient>
   </defs>
   <g clip-path="url(#banner)">
+  <g transform="translate({x} {y}) scale({scale})">
 {inner}
-    <rect width="800" height="450" fill="url(#fade)"/>
   </g>
-</svg>"##
+    <rect width="{width}" height="{height}" fill="url(#fade)"/>
+  </g>
+</svg>"##,
+        inner = scene_inner(scene),
     )
 }
 

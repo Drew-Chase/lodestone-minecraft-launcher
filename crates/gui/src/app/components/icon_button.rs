@@ -96,7 +96,8 @@ impl<Message> Default for IconButton<Message> {
             width: Length::Fixed(50.0),
             height: Length::Fixed(50.0),
             icon_size: Length::Fixed(16.0),
-            radius: Default::default(),
+            // The `.btn-icon` radius (`--r-md`): an icon button is rounded unless it sets its own.
+            radius: Radius::from(12.0),
             on_press: None,
             style: Default::default(),
             disabled: false,

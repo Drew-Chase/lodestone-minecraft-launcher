@@ -11,7 +11,7 @@ use iced::widget::{Space, container, image, stack};
 use iced::{Background, Border, Color, ContentFit, Element, Fill, Gradient, gradient};
 use iced_color_extension::rgb;
 
-use crate::app::components::scene_art::CARD_RADIUS;
+use crate::app::components::scene_art::{CARD_RADIUS, HERO_RADIUS};
 use crate::app::pages::library::instance::Instance;
 
 /// The uploaded banner, covering its box. Callers clip it to their own corners.
@@ -38,7 +38,7 @@ pub fn card_banner<'a, M: 'a>(instance: &Instance, rendered: Option<Handle>) -> 
                 bottom_left: 0.0,
             })
             .into(),
-        None => picture(rendered),
+        None => picture(rendered, Radius::default()),
     }
 }
 
@@ -47,39 +47,43 @@ pub fn card_banner<'a, M: 'a>(instance: &Instance, rendered: Option<Handle>) -> 
 pub fn thumbnail<'a, M: 'a>(instance: &Instance, rendered: Option<Handle>) -> Element<'a, M> {
     match &instance.art_path {
         Some(path) => custom_banner(path),
-        None => picture(rendered),
+        None => picture(rendered, Radius::default()),
     }
 }
 
 /// The library hero's banner, rounded to its frame. The scene picture has its rounding and left fade
-/// baked in, so an uploaded image gets both here instead.
+/// baked in, so an uploaded image gets its rounding from the image widget and its fade from a rounded layer.
 pub fn hero_banner<'a, M: 'a>(instance: &Instance, rendered: Option<Handle>) -> Element<'a, M> {
     match &instance.art_path {
-        Some(path) => container(stack![custom_banner(path), readability_fade()])
-            .width(Fill)
-            .height(Fill)
-            .clip(true)
-            .style(|_| container::Style {
-                border: Border {
-                    radius: 18.0.into(),
-                    ..Border::default()
-                },
-                ..container::Style::default()
-            })
-            .into(),
-        None => picture(rendered),
+        Some(path) => stack![
+            image(image::Handle::from_path(path))
+                .width(Fill)
+                .height(Fill)
+                .content_fit(ContentFit::Cover)
+                .border_radius(Radius::from(HERO_RADIUS)),
+            readability_fade(),
+        ]
+        .width(Fill)
+        .height(Fill)
+        .into(),
+        None => picture(rendered, Radius::from(HERO_RADIUS)),
     }
 }
 
-/// A rendered scene picture filling its box, or the dark panel it shows while it renders.
-fn picture<'a, M: 'a>(rendered: Option<Handle>) -> Element<'a, M> {
+/// A rendered scene picture filling its box, or the dark panel it shows while it renders. The panel takes
+/// `corners`, so a hero's panel rounds like its picture.
+fn picture<'a, M: 'a>(rendered: Option<Handle>, corners: Radius) -> Element<'a, M> {
     match rendered {
         Some(handle) => image(handle).width(Fill).height(Fill).content_fit(ContentFit::Cover).into(),
         None => container(Space::new().width(Fill).height(Fill))
             .width(Fill)
             .height(Fill)
-            .style(|_| container::Style {
+            .style(move |_| container::Style {
                 background: Some(Background::Color(Color::from_rgb8(0x0D, 0x0F, 0x12))),
+                border: Border {
+                    radius: corners,
+                    ..Border::default()
+                },
                 ..container::Style::default()
             })
             .into(),
@@ -99,6 +103,10 @@ fn readability_fade<'a, M: 'a>() -> Element<'a, M> {
                     .add_stop(0.4, rgb!(6, 8, 10, 49%))
                     .add_stop(0.65, rgb!(6, 8, 10, 0%)),
             ))),
+            border: Border {
+                radius: HERO_RADIUS.into(),
+                ..Border::default()
+            },
             ..container::Style::default()
         })
         .into()
