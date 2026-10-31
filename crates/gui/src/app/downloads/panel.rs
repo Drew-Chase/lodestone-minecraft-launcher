@@ -20,7 +20,7 @@ use crate::app::pages::instance::format::format_bytes;
 use crate::app::theme::{color, fonts, utility};
 
 /// The popover's width.
-const WIDTH: f32 = 340.0;
+const WIDTH: f32 = 380.0;
 /// The tallest the job list grows before it scrolls.
 const LIST_HEIGHT: f32 = 420.0;
 
@@ -98,8 +98,7 @@ pub fn view(downloads: &Downloads) -> Element<'static, Message> {
     if downloads.running() > 0 {
         body = body.push(overall(downloads.summary()));
     }
-    body = body.push(jobs_list(downloads));
-    body = body.push(footer(downloads));
+    body = body.push(rule()).push(jobs_list(downloads)).push(rule()).push(footer(downloads));
     container(body)
         .padding(14)
         .width(WIDTH)
@@ -115,6 +114,16 @@ pub fn view(downloads: &Downloads) -> Element<'static, Message> {
                 offset: Vector::new(0.0, 10.0),
                 blur_radius: 28.0,
             },
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// A one-pixel hairline across the popover, between its sections.
+fn rule() -> Element<'static, Message> {
+    container(Space::new().width(Fill).height(1))
+        .style(|_| container::Style {
+            background: Some(Background::Color(color::Surface::LINE)),
             ..container::Style::default()
         })
         .into()
@@ -245,21 +254,17 @@ fn jobs_list(downloads: &Downloads) -> Element<'static, Message> {
     container(scrollbar::scroll(list).width(Fill)).max_height(LIST_HEIGHT).into()
 }
 
-/// One running install: its art, name and buttons, then its bar, stage and rate.
+/// One running install, in a tinted card: its art, name and buttons, its bar with the share done at the
+/// right, and its rate and time left.
 fn running_job(job: &Job) -> Element<'static, Message> {
     let progress = job.progress.as_ref();
     let fraction = progress.and_then(|progress| progress.fraction);
     let stage = progress.map_or_else(|| lang::t("downloads.starting").to_owned(), |progress| progress.stage.label().to_owned());
     let transfer = progress.map(|progress| progress.transfer).unwrap_or_default();
-    let eta = transfer_eta(transfer);
-    let detail = match fraction {
-        Some(fraction) if transfer.per_second == 0 => percent_label(fraction),
-        _ => rate_line(transfer.per_second, eta),
-    };
-    column![
+    let card = column![
         row![
             instance_icon::icon(&job.icon(), 40.0),
-            column![title(&job.request.name), subtitle(job)].spacing(2).width(Fill),
+            column![title(&job.request.name), running_subtitle(job, &stage)].spacing(2).width(Fill),
             small_button(
                 Icon::lucide().pause(),
                 Message::Pause(job.id),
@@ -275,16 +280,45 @@ fn running_job(job: &Job) -> Element<'static, Message> {
         ]
         .spacing(10)
         .align_y(alignment::Vertical::Center),
-        ProgressBar::new(fraction.unwrap_or(0.0)).indeterminate(fraction.is_none()).width(Fill),
         row![
-            Text::new(stage).size(11).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
-            Space::new().width(Fill),
-            Text::new(detail).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),
+            ProgressBar::new(fraction.unwrap_or(0.0)).indeterminate(fraction.is_none()).width(Fill),
+            Text::new(fraction.map_or_else(String::new, percent_label))
+                .size(11)
+                .font(fonts::JetBrainsMono::SEMI_BOLD)
+                .color(color::Text::HEADLINE),
         ]
+        .spacing(10)
         .align_y(alignment::Vertical::Center),
+        Text::new(rate_line(transfer.per_second, transfer_eta(transfer)))
+            .size(11)
+            .font(fonts::JetBrainsMono::REGULAR)
+            .color(color::Primary::DEFAULT),
     ]
-    .spacing(8)
-    .into()
+    .spacing(8);
+    container(card)
+        .padding(10)
+        .width(Fill)
+        .style(|_| container::Style {
+            background: Some(Background::Color(rgb!(34, 255, 132, 4%))),
+            border: Border {
+                radius: 12.0.into(),
+                width: 1.0,
+                color: Color {
+                    a: 0.35,
+                    ..color::Primary::DEFAULT
+                },
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// A running install's loader, version and stage, in the mono line under its name.
+fn running_subtitle(job: &Job, stage: &str) -> Text<'static> {
+    Text::new(format!("{} · {} · {}", job.request.loader.label(), job.request.mc_version, stage))
+        .size(11)
+        .font(fonts::JetBrainsMono::REGULAR)
+        .color(color::Text::MUTED)
 }
 
 /// One queued or paused install. A queued one shows its place in the queue; a paused one can resume.
@@ -399,7 +433,13 @@ fn subtitle(job: &Job) -> Text<'static> {
 /// An icon-only button with a hover hint that names it.
 fn small_button(icon: &'static str, message: Message, label: &'static str, style: icon_button::IconButtonStyle) -> Element<'static, Message> {
     hint(
-        IconButton::new(icon).width(28).height(28).icon_size(12.0).style(style).on_press(message),
+        IconButton::new(icon)
+            .width(28)
+            .height(28)
+            .icon_size(12.0)
+            .radius(10.0)
+            .style(style)
+            .on_press(message),
         label,
     )
 }
