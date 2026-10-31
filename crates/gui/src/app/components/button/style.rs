@@ -67,7 +67,7 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
                     foreground: color::Primary::ON,
                     border: rgb!(34, 255, 132, 30%),
                     lift: 0.0,
-                    glow: 0.6,
+                    glow: 0.4,
                 },
                 _ => Visual {
                     background: color::Primary::DEFAULT,
