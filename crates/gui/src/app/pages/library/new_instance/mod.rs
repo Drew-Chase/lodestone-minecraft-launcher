@@ -426,6 +426,9 @@ impl NewInstance {
             banner,
             id: install::new_id(),
             source_url: None,
+            source_platform: None,
+            source_project_id: None,
+            modpack: None,
         })
     }
 

@@ -9,6 +9,7 @@ use sqlx::Row;
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
 use crate::app::pages::library::instance::{Biome, Instance, InstanceIcon, InstanceState, Loader};
+use crate::app::shared_library::SharedRecord;
 
 /// How many icon recents are kept. The icon editor shows the newest few.
 const RECENT_ICON_LIMIT: i64 = 8;
@@ -60,7 +61,7 @@ impl Database {
             "SELECT id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
              last_played_at, installed_at, pinned, state, biome, art_seed, art_path, \
              icon_background, icon_symbol, icon_path, directory_name, java_component, version_id, \
-             source_url FROM instances",
+             source_url, source_platform, source_project_id FROM instances",
         )
         .fetch_all(&self.pool)
         .await
@@ -95,6 +96,8 @@ impl Database {
                     java_component: row.get("java_component"),
                     version_id: row.get("version_id"),
                     source_url: row.get("source_url"),
+                    source_platform: row.get("source_platform"),
+                    source_project_id: row.get("source_project_id"),
                 }
             })
             .collect())
@@ -109,8 +112,8 @@ impl Database {
              (id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
               last_played_at, installed_at, pinned, state, biome, art_seed, art_path, \
               icon_background, icon_symbol, icon_path, directory_name, java_component, version_id, \
-              source_url) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              source_url, source_platform, source_project_id) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&instance.id)
         .bind(&instance.name)
@@ -133,6 +136,8 @@ impl Database {
         .bind(&instance.java_component)
         .bind(&instance.version_id)
         .bind(&instance.source_url)
+        .bind(&instance.source_platform)
+        .bind(&instance.source_project_id)
         .execute(&self.pool)
         .await
         .map(|_| ())
@@ -255,6 +260,46 @@ impl Database {
             today: row.get::<i64, _>("today") as u64,
             week: row.get::<i64, _>("week") as u64,
         })
+    }
+
+    /// Every file the Discover page has downloaded into the shared folders.
+    pub async fn shared_content(&self) -> Result<Vec<SharedRecord>, String> {
+        let rows = sqlx::query("SELECT kind, platform, project_id, version_id, name, path, size FROM shared_content ORDER BY added_at DESC, id DESC")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(rows
+            .into_iter()
+            .map(|row| SharedRecord {
+                kind: row.get("kind"),
+                platform: row.get("platform"),
+                project_id: row.get("project_id"),
+                version_id: row.get("version_id"),
+                name: row.get("name"),
+                path: row.get("path"),
+                size: row.get::<Option<i64>, _>("size").map(|size| size as u64),
+            })
+            .collect())
+    }
+
+    /// Records a file downloaded into the shared folders. Downloading the same version again replaces its row.
+    pub async fn record_shared_content(&self, record: &SharedRecord) -> Result<(), String> {
+        sqlx::query(
+            "INSERT OR REPLACE INTO shared_content (kind, platform, project_id, version_id, name, path, size, added_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&record.kind)
+        .bind(&record.platform)
+        .bind(&record.project_id)
+        .bind(&record.version_id)
+        .bind(&record.name)
+        .bind(&record.path)
+        .bind(record.size.map(|size| size as i64))
+        .bind(Utc::now().timestamp())
+        .execute(&self.pool)
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string())
     }
 }
 

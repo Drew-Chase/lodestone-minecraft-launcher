@@ -20,6 +20,8 @@ pub enum Part {
     Client,
     Libraries,
     Assets,
+    /// The mod files a modpack lists.
+    Mods,
 }
 
 /// One part's progress: files on disk of the files it needs, and the bytes its downloads have moved.

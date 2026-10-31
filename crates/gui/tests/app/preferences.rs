@@ -9,6 +9,7 @@ fn preferences_round_trip() {
     let path = temp_path("round-trip");
     let preferences = Preferences {
         language: Some(String::from("ru_ru")),
+        discover_source: Some(String::from("ftb")),
     };
     Preferences::store_to(&path, &preferences).expect("store succeeds");
     assert_eq!(Preferences::load_from(&path), preferences);
@@ -31,5 +32,12 @@ fn a_corrupt_file_loads_the_defaults() {
 #[test]
 fn an_unset_language_serializes_as_null() {
     let json = serde_json::to_string(&Preferences::default()).expect("serializes");
-    assert_eq!(json, "{\"language\":null}");
+    assert_eq!(json, "{\"language\":null,\"discover_source\":null}");
+}
+
+#[test]
+fn a_file_without_the_discover_platform_still_loads() {
+    let preferences: Preferences = serde_json::from_str("{\"language\":\"en_us\"}").expect("older files parse");
+    assert_eq!(preferences.language.as_deref(), Some("en_us"));
+    assert_eq!(preferences.discover_source, None);
 }

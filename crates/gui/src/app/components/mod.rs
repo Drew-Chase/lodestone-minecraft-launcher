@@ -24,6 +24,7 @@ pub mod menu;
 pub mod modal;
 pub mod nav;
 pub mod panel;
+pub mod platform_logo;
 pub mod popover;
 pub mod progress;
 pub mod scene_art;

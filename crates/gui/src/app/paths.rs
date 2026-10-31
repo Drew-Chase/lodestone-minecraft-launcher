@@ -33,6 +33,12 @@ impl LauncherPaths {
         self.root.join("meta")
     }
 
+    /// The folders the Discover page downloads into, kept apart from the instances so that any
+    /// instance can import from them: `<root>/shared`.
+    pub fn shared(&self) -> PathBuf {
+        self.root.join("shared")
+    }
+
     /// A bundled Java runtime, named by its component: `<root>/meta/java/<component>`.
     pub fn java(&self, component: &str) -> PathBuf {
         self.meta().join("java").join(component)

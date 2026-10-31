@@ -206,7 +206,7 @@ pub(super) fn reveal_folder(folder: PathBuf) -> Task<LodestoneAppMessage> {
 }
 
 /// Opens `url` in the browser on the blocking pool. A failure returns as `SourceOpened`.
-fn open_source(url: String) -> Task<LodestoneAppMessage> {
+pub(super) fn open_source(url: String) -> Task<LodestoneAppMessage> {
     Task::perform(
         async move {
             match tokio::task::spawn_blocking(move || open::that_detached(&url)).await {

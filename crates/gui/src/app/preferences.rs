@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 pub struct Preferences {
     /// The language's catalogue code, such as `en_us`. `None` means the default.
     pub language: Option<String>,
+    /// The content platform the Discover page opened on last, by its key such as `modrinth`.
+    pub discover_source: Option<String>,
 }
 
 impl Preferences {

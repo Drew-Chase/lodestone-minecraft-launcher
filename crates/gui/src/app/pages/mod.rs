@@ -17,6 +17,7 @@
 //!    and a delegation arm for the rest.
 //! 6. Add an arm to the root's `outlet()` so the page renders.
 
+pub mod discover;
 pub mod instance;
 pub mod library;
 pub mod login;
@@ -35,6 +36,9 @@ pub enum Page {
     Login,
     /// Landing page — the instance Library.
     Home,
+    /// The content browser: modpacks, resource packs, shaders, worlds and data packs from the
+    /// platforms.
+    Discover,
     /// A single instance's detail view. The instance itself lives in the
     /// root's `InstancePage`; the route stays parameterless so the router
     /// keeps `Copy`/`Eq` history semantics.
@@ -51,6 +55,7 @@ impl Page {
         match self {
             Page::Login => "Login",
             Page::Home => "Library",
+            Page::Discover => "Discover",
             Page::Instance => "Instance",
             Page::Settings => "Settings",
             Page::Showcase => "Showcase",

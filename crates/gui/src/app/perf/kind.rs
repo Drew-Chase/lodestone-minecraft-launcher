@@ -43,6 +43,8 @@ pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
         M::Game(_) => "update.Game",
         M::SessionRefreshed(_) => "update.SessionRefreshed",
         M::Perf(_) => "update.Perf",
+        M::Discover(_) => "update.Discover",
+        M::SharedLoaded(_) => "update.SharedLoaded",
     }
 }
 

@@ -7,6 +7,7 @@ use crate::app::database::Database;
 use crate::app::downloads::Message as DownloadsMessage;
 use crate::app::launch::GameMessage;
 use crate::app::pages::Page;
+use crate::app::pages::discover::Message as DiscoverMessage;
 use crate::app::pages::instance::Message as InstanceMessage;
 use crate::app::pages::library::Message as LibraryMessage;
 use crate::app::pages::library::instance::Instance;
@@ -14,6 +15,7 @@ use crate::app::pages::login::Message as LoginMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
 use crate::app::pages::showcase::Message as ShowcaseMessage;
 use crate::app::perf;
+use crate::app::shared_library::SharedRecord;
 use crate::app::titlebar::TitlebarMessage;
 use iced::Size;
 use iced::widget::image::Handle;
@@ -36,6 +38,8 @@ pub enum LodestoneAppMessage {
     NavForward,
     Login(LoginMessage),
     Library(LibraryMessage),
+    /// The Discover page: a search, a filter or a layout change, and the answers the root sends back.
+    Discover(DiscoverMessage),
     Instance(InstanceMessage),
     Settings(SettingsMessage),
     Showcase(ShowcaseMessage),
@@ -45,6 +49,8 @@ pub enum LodestoneAppMessage {
     DatabaseReady(Result<Database, String>),
     /// The instance list finished loading, with each mod count read from disk.
     InstancesLoaded(Result<Vec<Instance>, String>),
+    /// The downloads the Discover page made into the shared folders, as they were recorded.
+    SharedLoaded(Result<Vec<SharedRecord>, String>),
     /// The delete alert was answered for `instance`.
     InstanceDeleteAnswered {
         instance: String,

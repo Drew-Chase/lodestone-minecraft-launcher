@@ -3,6 +3,7 @@ mod boot;
 mod clipboard;
 pub mod components;
 pub mod database;
+mod discover;
 mod downloads;
 pub mod face;
 mod games;
@@ -18,6 +19,7 @@ pub mod perf;
 mod preferences;
 pub mod router;
 mod screenshot_actions;
+mod shared_library;
 pub mod storage;
 mod subscription;
 pub mod theme;
@@ -28,6 +30,7 @@ mod world_actions;
 
 use crate::app::components::Alerts;
 use crate::app::database::Database;
+use crate::app::pages::discover::Discover;
 use crate::app::pages::instance::InstancePage;
 use crate::app::pages::library::Library;
 use crate::app::pages::login::Login;
@@ -89,6 +92,8 @@ pub struct LodestoneLauncher {
     instance_page: InstancePage,
     settings: Settings,
     showcase: Showcase,
+    /// The Discover page: the platform searches, and the results on screen.
+    discover: Discover,
     login: Login,
     /// The launcher database — `None` until the boot-time connect lands.
     db: Option<Database>,
@@ -144,6 +149,7 @@ impl Default for LodestoneLauncher {
             instance_page: InstancePage::default(),
             settings: Settings,
             showcase: Showcase::default(),
+            discover: Discover::new(discover::opening_source()),
             login: Login::default(),
             db: None,
             paths: LauncherPaths::default(),

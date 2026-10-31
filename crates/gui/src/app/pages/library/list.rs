@@ -1,5 +1,5 @@
 //! The "Your Instances" section and its virtualized list, which windows rows
-//! against the page scroll.
+//! against the scroll of the page's content.
 
 use std::ops::Range;
 use std::rc::Rc;
@@ -14,7 +14,7 @@ use iced::widget::image::Handle;
 use iced::widget::{Space, Text, column, container, row};
 use iced::{Element, Fill, Length, Size, alignment};
 
-use super::{LIST_TOP, Library, LibraryView, Message, card_art_size, content_width};
+use super::{HEADER_BLOCK, LIST_TOP, Library, LibraryView, Message, card_art_size, content_width};
 
 /// The rows the list builds at a window's size.
 pub(super) struct RowWindow {
@@ -29,7 +29,7 @@ pub(super) struct RowWindow {
 
 impl Library {
     /// The "Your Instances" section — title, filter tabs, view switcher,
-    /// and the virtualized list (which continues the page scroll).
+    /// and the virtualized list (which continues the scroll).
     pub(super) fn instances_section(&self, viewport: Size, art: &ArtCache) -> Element<'_, Message> {
         column![
             row![
@@ -51,7 +51,7 @@ impl Library {
         .into()
     }
 
-    /// The virtualized instance list — plain rows inside the page scroll.
+    /// The virtualized instance list — plain rows inside the scrolling content.
     /// Only the rows around the scroll offset are built; top/bottom
     /// spacers hold the page height stable so the scrollbar reflects the
     /// full list.
@@ -70,7 +70,7 @@ impl Library {
                 .color(color::Text::MUTED),
             )
             .width(Fill)
-            .height(Length::Fixed((viewport.height - LIST_TOP).max(160.0)))
+            .height(Length::Fixed((viewport.height - HEADER_BLOCK - LIST_TOP).max(160.0)))
             .align_x(alignment::Horizontal::Center)
             .align_y(alignment::Vertical::Center)
             .into();

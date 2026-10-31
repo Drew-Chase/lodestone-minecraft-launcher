@@ -144,11 +144,11 @@ impl LodestoneLauncher {
             self.face.clone(),
             self.account.as_ref().map(Account::username).map(str::to_string),
             matches!(self.account, Some(Account::Microsoft { .. })),
-            0,
-            |index| {
-                if index == 0 {
-                    LodestoneAppMessage::Navigate(Page::Home)
-                } else {
+            if self.router.current() == Page::Discover { 1 } else { 0 },
+            |index| match index {
+                0 => LodestoneAppMessage::Navigate(Page::Home),
+                1 => LodestoneAppMessage::Navigate(Page::Discover),
+                _ => {
                     debug!("Sidebar nav item {index} has no page yet");
                     LodestoneAppMessage::SidebarNav { group: NavGroup::Top, index }
                 }
@@ -185,6 +185,7 @@ impl LodestoneLauncher {
             Page::Instance => "view.instance",
             Page::Settings => "view.settings",
             Page::Showcase => "view.showcase",
+            Page::Discover => "view.discover",
         });
         match page {
             Page::Login => self.login.view(None).map(LodestoneAppMessage::Login),
@@ -195,6 +196,7 @@ impl LodestoneLauncher {
                 .map(LodestoneAppMessage::Instance),
             Page::Settings => self.settings.view().map(LodestoneAppMessage::Settings),
             Page::Showcase => self.showcase.view().map(LodestoneAppMessage::Showcase),
+            Page::Discover => self.discover.view(self.window_size).map(LodestoneAppMessage::Discover),
         }
     }
 }

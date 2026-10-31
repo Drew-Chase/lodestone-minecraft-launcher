@@ -11,6 +11,7 @@ use crate::app::components::anim;
 use crate::app::components::context_menu::ContextMenu;
 use crate::app::components::hover_scale::HoverScale;
 use crate::app::components::instance_art;
+use crate::app::components::instance_icon;
 use crate::app::lang;
 use crate::app::pages::library::instance::{Instance, InstanceState, Loader};
 use crate::app::pages::library::instance_menu;
@@ -39,6 +40,8 @@ pub const CARD_HEIGHT: f32 = CARD_ART_HEIGHT + 1.0 + FOOTER_HEIGHT;
 const CARD_CORNER: f32 = 14.0;
 /// The ⋯ button's side, on the art's top-right corner.
 const KEBAB_SIZE: f32 = 32.0;
+/// The side of the instance icon beside a grid card's title.
+const CARD_ICON_SIZE: f32 = 36.0;
 /// The compact row's fixed height.
 pub const COMPACT_ROW_HEIGHT: f32 = 64.0;
 /// The side of a compact row's square thumbnail.
@@ -335,7 +338,12 @@ pub fn instance_card<Message: Clone + 'static>(
             row![status, Space::new().width(Fill), kebab].align_y(alignment::Vertical::Top),
             Space::new().height(Fill),
             row![
-                column![title_block(instance), version_line(instance)].spacing(2),
+                row![
+                    instance_icon::icon(&instance.icon, CARD_ICON_SIZE),
+                    column![title_block(instance), version_line(instance)].spacing(2),
+                ]
+                .spacing(12)
+                .align_y(alignment::Vertical::Center),
                 Space::new().width(Fill),
                 play_slot(messages.play, install),
             ]

@@ -1,8 +1,8 @@
 //! The Library — the launcher's landing page: the most-recent instance
 //! hero, the quick actions, and the instance list (Grid / Compact / Table
-//! views, filter tabs, search). The WHOLE page scrolls as one — the
-//! instance list is virtualized against that page scroll, so nothing is
-//! trapped in its own viewport on short windows.
+//! views, filter tabs, search). The header stays in place, and everything
+//! under it scrolls as one — the instance list is virtualized against that
+//! scroll, so nothing is trapped in its own viewport on short windows.
 
 mod hero;
 pub mod instance;
@@ -157,12 +157,15 @@ impl LibraryFilter {
     }
 }
 
-/// Vertical distance from the top of the page content down to the first
-/// list row: top padding + header + hero + quick actions + section title,
-/// plus the spacings between them. The virtualized window only needs this
-/// within one row pitch — the overscan absorbs the drift — so it stays a
-/// constant instead of a measurement.
-const LIST_TOP: f32 = 570.0;
+/// The page header with its top padding. It stays above the scrolling content, and the content's own top
+/// padding is the gap below it. Like `LIST_TOP`, it is an estimate.
+const HEADER_BLOCK: f32 = 73.0;
+
+/// Vertical distance from the top of the scrolling content down to the first list row: top padding +
+/// hero + quick actions + section title, plus the spacings between them. The header is above the scroll,
+/// so it is not counted. The virtualized window only needs this within one row pitch — the overscan
+/// absorbs the drift — so it stays a constant instead of a measurement.
+const LIST_TOP: f32 = 497.0;
 
 /// The width of the page's content column in a window `window_width` wide: the window less the 68px rail
 /// and the page's 28px padding on each side.
@@ -241,6 +244,25 @@ impl Library {
     /// page when a card or the hero is clicked. An install still running counts.
     pub fn instance(&self, id: &str) -> Option<Instance> {
         self.every_instance().find(|instance| instance.id == id).cloned()
+    }
+
+    /// The folder names of every instance, including the installs still running. A new install must avoid them.
+    pub fn directory_names(&self) -> Vec<String> {
+        self.every_instance().map(|instance| instance.directory_name.clone()).collect()
+    }
+
+    /// The instances that came from a content platform, as (platform key, project id, instance id).
+    pub fn installed_projects(&self) -> Vec<(String, String, String)> {
+        self.instances
+            .iter()
+            .filter_map(|instance| {
+                Some((
+                    instance.source_platform.clone()?,
+                    instance.source_project_id.clone()?,
+                    instance.id.clone(),
+                ))
+            })
+            .collect()
     }
 
     /// The name of the instance `id`, when the library lists it.
@@ -336,27 +358,28 @@ impl Library {
         self.new_instance.as_ref().map(|dialog| dialog.view().map(Message::NewInstance))
     }
 
-    /// The whole page as one scroll region — `viewport` is the window's
-    /// inner size, used for the grid's column count and the windowed row
-    /// count.
+    /// The page: the header stays where it is, and the hero, the quick actions and the instance list
+    /// scroll beneath it. `viewport` is the window's inner size, used for the grid's column count and the
+    /// windowed row count.
     pub fn view<'a>(&'a self, viewport: Size, art: &'a ArtCache) -> Element<'a, Message> {
+        let fixed = container(self.header()).padding(Padding::new(0.0).top(24).left(28).right(28)).width(Fill);
         // The banner is optional, so the column takes its children one at a
         // time: a missing hero must not leave a spacing gap behind.
-        let mut page = Column::new().push(self.header());
+        let mut page = Column::new();
         if let Some(hero) = self.hero(viewport, art) {
             page = page.push(hero);
         }
         let page = page.push(self.quick_actions()).push(self.instances_section(viewport, art));
 
-        scrollbar::scroll(
+        let scrolled = scrollbar::scroll(
             page.spacing(24)
                 .padding(Padding::new(0.0).left(28).right(28).top(24).bottom(28))
                 .width(Fill),
         )
         .width(Fill)
         .height(Fill)
-        .on_scroll(|scroll| Message::Scrolled(scroll.absolute_offset().y))
-        .into()
+        .on_scroll(|scroll| Message::Scrolled(scroll.absolute_offset().y));
+        Column::new().push(fixed).push(scrolled).width(Fill).height(Fill).into()
     }
 }
 

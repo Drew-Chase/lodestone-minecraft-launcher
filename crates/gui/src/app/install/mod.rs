@@ -10,6 +10,7 @@ pub(crate) mod download;
 pub(crate) mod ensure;
 pub(crate) mod java;
 pub(crate) mod loader;
+pub mod modpack;
 
 use std::collections::HashSet;
 use std::future::Future;
@@ -86,6 +87,11 @@ pub struct InstallRequest {
     pub id: String,
     /// The page the modpack came from, when it came from an external source.
     pub source_url: Option<String>,
+    /// The content platform and the project there, when the instance comes from one (see `Instance`).
+    pub source_platform: Option<String>,
+    pub source_project_id: Option<String>,
+    /// The modpack's files and overrides, when the instance is installed from a modpack.
+    pub modpack: Option<modpack::Payload>,
 }
 
 /// The stages an install goes through, in order.
@@ -94,6 +100,7 @@ pub enum Stage {
     Resolve,
     Download,
     Loader,
+    Modpack,
     Finish,
 }
 
@@ -104,6 +111,7 @@ impl Stage {
             Stage::Resolve => lang::t("install.stage.resolve"),
             Stage::Download => lang::t("install.stage.download"),
             Stage::Loader => lang::t("install.stage.loader"),
+            Stage::Modpack => lang::t("install.stage.modpack"),
             Stage::Finish => lang::t("install.stage.finish"),
         }
     }
@@ -219,6 +227,9 @@ async fn run(request: &InstallRequest, progress: &mut ProgressSender<InstallProg
         Loader::Vanilla => mc.to_string(),
         _ => loader_stage(progress, request, &java_binary).await?,
     };
+    if let Some(payload) = &request.modpack {
+        modpack::stage(progress, payload, game_dir, &client).await?;
+    }
     finish(request, game_dir, version_id, java_name, progress, db).await
 }
 
@@ -360,6 +371,8 @@ async fn finish(
         java_component: Some(java_name),
         version_id: Some(version_id),
         source_url: request.source_url.clone(),
+        source_platform: request.source_platform.clone(),
+        source_project_id: request.source_project_id.clone(),
     };
     db.insert_instance(&instance).await?;
     if let Err(error) = std::fs::remove_file(game_dir.join(INSTALLING)) {
@@ -396,7 +409,7 @@ async fn report(progress: &mut ProgressSender<InstallProgress>, stage: Stage, fr
 /// is working.
 #[derive(Default)]
 pub(crate) struct Totals {
-    parts: [Option<PartReport>; 4],
+    parts: [Option<PartReport>; 5],
 }
 
 /// The sum of the download parts' latest counts.

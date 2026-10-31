@@ -28,6 +28,9 @@ fn request(name: &str) -> InstallRequest {
         banner: None,
         id: format!("id-{name}"),
         source_url: None,
+        source_platform: None,
+        source_project_id: None,
+        modpack: None,
     }
 }
 

@@ -185,6 +185,10 @@ pub struct Instance {
     /// The page the instance was installed from, when it came from an external modpack source.
     /// Locally created instances have none.
     pub source_url: Option<String>,
+    /// The content platform the instance came from, by its key (`modrinth`, `curseforge`, ...).
+    pub source_platform: Option<String>,
+    /// The project's id on that platform, which the Discover page matches against.
+    pub source_project_id: Option<String>,
 }
 
 impl Instance {
@@ -231,6 +235,8 @@ pub(crate) fn fixture(id: &str, name: &str, loader: Loader) -> Instance {
         java_component: None,
         version_id: None,
         source_url: None,
+        source_platform: None,
+        source_project_id: None,
     }
 }
 

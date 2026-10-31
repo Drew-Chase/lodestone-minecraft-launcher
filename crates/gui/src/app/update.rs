@@ -32,6 +32,7 @@ impl LodestoneLauncher {
     pub fn update(&mut self, message: LodestoneAppMessage) -> Task<LodestoneAppMessage> {
         let _scope = perf::scope(perf::message_kind(&message));
         let task = self.route(message);
+        self.sync_discover_installs();
         Task::batch([task, self.sync_art()])
     }
 
@@ -113,6 +114,16 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Library(LibraryMessage::OpenNewInstance) => self.open_new_instance(),
             LodestoneAppMessage::Library(LibraryMessage::NewInstance(message)) => self.new_instance_message(message),
             LodestoneAppMessage::Downloads(message) => self.downloads_message(message),
+            LodestoneAppMessage::Discover(message) => self.discover_message(message),
+            LodestoneAppMessage::SharedLoaded(Ok(records)) => {
+                info!("Loaded {} shared download(s)", records.len());
+                self.discover.set_library(&records);
+                Task::none()
+            }
+            LodestoneAppMessage::SharedLoaded(Err(error)) => {
+                warn!("Loading the shared downloads failed: {error}");
+                Task::none()
+            }
             LodestoneAppMessage::Library(message) => {
                 self.library.update(message);
                 Task::none()
@@ -168,7 +179,7 @@ impl LodestoneLauncher {
                     async { tokio::task::spawn_blocking(pidfile::load_live).await.unwrap_or_default() },
                     |records| LodestoneAppMessage::Game(GameMessage::Reattach(records)),
                 );
-                Task::batch([sweep, reattach])
+                Task::batch([sweep, reattach, self.load_shared()])
             }
             LodestoneAppMessage::DatabaseReady(Err(error)) => {
                 warn!("Launcher database unavailable: {error}");
@@ -278,6 +289,9 @@ impl LodestoneLauncher {
         let from = self.router.current();
         if self.router.push(page) {
             info!("Navigated: {} → {}", from.title(), page.title());
+            if page == Page::Discover {
+                return self.open_discover();
+            }
         } else {
             debug!("Navigation ignored: already on {}", page.title());
         }
@@ -301,11 +315,16 @@ fn select_language(code: &'static str) -> Task<LodestoneAppMessage> {
         warn!("Language {code} is not bundled; keeping the current one");
         return Task::none();
     }
-    let preferences = Preferences {
-        language: Some(code.to_owned()),
-    };
+    let language = code.to_owned();
     Task::future(async move {
-        match tokio::task::spawn_blocking(move || preferences.store()).await {
+        match tokio::task::spawn_blocking(move || {
+            // Read the file again, so the other choices (the Discover platform) are kept.
+            let mut preferences = Preferences::load();
+            preferences.language = Some(language);
+            preferences.store()
+        })
+        .await
+        {
             Ok(Ok(())) => {}
             Ok(Err(error)) => warn!("Saving the language choice failed: {error}"),
             Err(error) => warn!("Saving the language choice failed: {error}"),
