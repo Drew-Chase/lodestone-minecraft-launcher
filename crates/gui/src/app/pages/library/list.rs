@@ -2,6 +2,7 @@
 //! against the page scroll.
 
 use std::ops::Range;
+use std::rc::Rc;
 
 use crate::app::components::art_cache::{ArtCache, ArtKey, Kind};
 use crate::app::components::instance_card::{InstanceMessages, THUMB_SIZE, compact_row, instance_card, table_header, table_row};
@@ -213,7 +214,7 @@ fn instance_messages(instance: &Instance) -> InstanceMessages<Message> {
             instance: id.clone(),
             hovered: false,
         },
-        menu: Box::new(move |action| Message::InstanceMenu {
+        menu: Rc::new(move |action| Message::InstanceMenu {
             instance: id.clone(),
             action,
         }),

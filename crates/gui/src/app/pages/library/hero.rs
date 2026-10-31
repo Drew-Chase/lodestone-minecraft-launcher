@@ -5,7 +5,9 @@ use crate::app::components::art_cache::{ArtCache, ArtKey, Kind};
 use crate::app::components::badge::{Badge, loader_palette};
 use crate::app::components::hint::hint;
 use crate::app::components::instance_art;
-use crate::app::components::{Dropdown, IconButton, PulseDot, TextButton};
+use crate::app::components::instance_card::status_chip;
+use crate::app::components::scene_art::HERO_RADIUS;
+use crate::app::components::{Dropdown, IconButton, TextButton};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
 use aurora_leaf::Icon;
@@ -104,7 +106,7 @@ impl Library {
             .height(HERO_HEIGHT)
             .style(|_| container::Style {
                 border: Border {
-                    radius: 18.0.into(),
+                    radius: HERO_RADIUS.into(),
                     width: 1.0,
                     color: color::Surface::LINE,
                 },
@@ -262,32 +264,6 @@ fn quick_action_card(
     .padding(Padding::new(0.0).left(16).right(16).top(14).bottom(14))
     .width(Fill)
     .on_press(on_press)
-    .into()
-}
-
-/// The status chip — the pulsing dot plus the uppercase label.
-fn status_chip(state: InstanceState) -> Element<'static, Message> {
-    let (label, ink, fill, pulsing) = match state {
-        InstanceState::Playing => (lang::t("library.status.playing"), color::Primary::DEFAULT, color::Primary::TINT, true),
-        InstanceState::Idle => (lang::t("library.status.idle"), color::Text::MUTED, rgb!(255, 255, 255, 6%), false),
-    };
-    container(
-        row![
-            PulseDot::with_color(ink).size(6.0).pulsing(pulsing),
-            Text::new(label).size(10).font(fonts::JetBrainsMono::SEMI_BOLD).color(ink),
-        ]
-        .spacing(6)
-        .align_y(alignment::Vertical::Center),
-    )
-    .padding(Padding::new(0.0).left(8).right(8).top(3).bottom(3))
-    .style(move |_| container::Style {
-        background: Some(Background::Color(fill)),
-        border: Border {
-            radius: 999.0.into(),
-            ..Border::default()
-        },
-        ..container::Style::default()
-    })
     .into()
 }
 

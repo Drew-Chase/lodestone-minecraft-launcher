@@ -1,34 +1,44 @@
 //! Instance display components — the three Library views share these:
 //! the full grid card ([`instance_card`]), the image-less [`compact_row`]
-//! (Compact), and the [`table_row`] (Table) — plus the shared loader chip and
-//! play button. Each one opens its instance from anywhere on it except the
-//! Play button, and opens the instance's context menu on a right-click.
+//! (Compact), and the [`table_row`] (Table) — plus the shared loader chip,
+//! status chip and play button. Each one opens its instance from anywhere on
+//! it except its buttons, and opens the instance's context menu on a
+//! right-click.
+
+use std::rc::Rc;
 
 use crate::app::components::anim;
 use crate::app::components::context_menu::ContextMenu;
 use crate::app::components::hover_scale::HoverScale;
 use crate::app::components::instance_art;
 use crate::app::lang;
-use crate::app::pages::library::instance::{Instance, Loader};
+use crate::app::pages::library::instance::{Instance, InstanceState, Loader};
 use crate::app::pages::library::instance_menu;
 use crate::app::theme::color;
 use crate::app::theme::fonts;
+use crate::app::theme::utility;
+use aurora_leaf::Icon;
 use iced::widget::image::Handle;
 use iced::widget::{Space, Text, column, container, mouse_area, row, stack};
-use iced::{Background, Border, Color, Element, Fill, Length, Padding, alignment, color, mouse};
+use iced::{Background, Border, Color, Element, Fill, Gradient, Length, Padding, alignment, color, gradient, mouse};
+use iced_color_extension::rgb;
 
 use crate::app::components::badge::{Badge, loader_palette};
-use crate::app::components::{ProgressBar, TextButton};
+use crate::app::components::{Dropdown, ProgressBar, PulseDot, TextButton};
 use crate::app::downloads::{JobState, Pending};
 
-/// The grid card's fixed height — art box plus info block. Fixed so the
-/// virtualized rows keep an exact pitch.
-pub const CARD_HEIGHT: f32 = 264.0;
-/// The grid art box height (the top portion of [`CARD_HEIGHT`]). The art sits one pixel inside
-/// the card's border, so its top edge is one pixel down.
+/// The grid card's art box height. The art sits one pixel inside the card's border, so its top edge is one
+/// pixel down.
 pub const CARD_ART_HEIGHT: f32 = 180.0;
+/// The grid card's footer, under its one-pixel rule.
+const FOOTER_HEIGHT: f32 = 43.0;
+/// The grid card's fixed height: the art box, the rule and the footer. Fixed so the virtualized rows keep an
+/// exact pitch.
+pub const CARD_HEIGHT: f32 = CARD_ART_HEIGHT + 1.0 + FOOTER_HEIGHT;
 /// The grid card's corner radius. The hover ring follows it.
 const CARD_CORNER: f32 = 14.0;
+/// The ⋯ button's side, on the art's top-right corner.
+const KEBAB_SIZE: f32 = 32.0;
 /// The compact row's fixed height.
 pub const COMPACT_ROW_HEIGHT: f32 = 64.0;
 /// The side of a compact row's square thumbnail.
@@ -41,14 +51,15 @@ pub const TABLE_ROW_HEIGHT: f32 = 52.0;
 pub struct InstanceMessages<Message> {
     /// The Play button.
     pub play: Message,
-    /// A press anywhere on the body, except the Play button.
+    /// A press anywhere on the body, except the buttons.
     pub open: Message,
     /// The pointer entered a grid card. Compact and Table rows do not hover.
     pub enter: Message,
     /// The pointer left a grid card.
     pub exit: Message,
-    /// A row of the context menu was picked. A separator sends `None`.
-    pub menu: Box<dyn Fn(Option<instance_menu::Action>) -> Message>,
+    /// A row of the context menu was picked. A separator sends `None`. The right-click menu and the ⋯
+    /// button both send through this.
+    pub menu: Rc<dyn Fn(Option<instance_menu::Action>) -> Message>,
 }
 
 /// The instance's display name.
@@ -74,20 +85,19 @@ fn version_line(instance: &Instance) -> Text<'static> {
 
 /// Whole hours of playtime, as the `{hours}h` unit.
 fn playtime_hours(playtime_seconds: u32) -> String {
-    let hours = (playtime_seconds / 3600).to_string();
+    let hours = whole_hours(playtime_seconds);
     lang::t_with("common.hours", &[("hours", hours.as_str())])
 }
 
-/// The grid card's footer: playtime and the mod count.
-fn stats_line(instance: &Instance) -> String {
-    let hours = playtime_hours(instance.playtime_seconds);
-    let mods = lang::t_count("instance.mods", instance.mod_count as usize);
-    lang::t_with("instance.stats", &[("hours", hours.as_str()), ("mods", mods.as_str())])
+/// Whole hours of playtime as a bare count. The `instance.compact_stats` string adds its own `h`, so
+/// [`playtime_hours`] there would print it twice.
+fn whole_hours(playtime_seconds: u32) -> String {
+    (playtime_seconds / 3600).to_string()
 }
 
 /// The Compact row's line: playtime, loader, game version, and mod count.
 fn compact_stats(instance: &Instance) -> String {
-    let hours = playtime_hours(instance.playtime_seconds);
+    let hours = whole_hours(instance.playtime_seconds);
     let mods = lang::t_count("instance.mods", instance.mod_count as usize);
     lang::t_with(
         "instance.compact_stats",
@@ -142,51 +152,109 @@ fn percent(fraction: f32) -> String {
     format!("{:.0}", (fraction * 100.0).min(100.0))
 }
 
-/// The scrim over an art box while its install has not ended: the stage and percent, with a bar under them.
-fn install_overlay<Message: 'static>(pending: &Pending) -> Element<'static, Message> {
+/// The dim over an art box while its install has not ended.
+fn install_scrim<Message: 'static>() -> Element<'static, Message> {
+    container(Space::new().width(Fill).height(Fill))
+        .width(Fill)
+        .height(Fill)
+        .style(|_| container::Style {
+            background: Some(Background::Color(Color { a: 0.55, ..color!(0x08090A) })),
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// The install's stage and percent over a bar, shown in the footer while the install has not ended.
+fn install_progress<Message: 'static>(pending: &Pending) -> Element<'static, Message> {
     let fraction = pending.progress.as_ref().and_then(|progress| progress.fraction);
-    container(
-        column![
-            Text::new(install_status(pending))
-                .size(12)
-                .font(fonts::Inter::SEMI_BOLD)
-                .color(color::Text::HEADLINE),
-            ProgressBar::new(fraction.unwrap_or(0.0)).indeterminate(fraction.is_none()).width(Fill),
-        ]
-        .spacing(8)
-        .width(Fill),
-    )
-    .padding(Padding::new(14.0))
+    column![
+        Text::new(install_status(pending))
+            .size(11)
+            .font(fonts::Inter::SEMI_BOLD)
+            .color(color::Text::HEADLINE),
+        ProgressBar::new(fraction.unwrap_or(0.0)).indeterminate(fraction.is_none()).width(Fill),
+    ]
+    .spacing(4)
     .width(Fill)
-    .height(Fill)
-    .align_y(alignment::Vertical::Bottom)
-    .style(|_| container::Style {
-        background: Some(Background::Color(Color { a: 0.55, ..color!(0x08090A) })),
+    .into()
+}
+
+/// The art of a card: the instance's banner, dimmed while its install has not ended.
+fn card_art<Message: 'static>(instance: &Instance, install: Option<&Pending>, banner: Option<Handle>) -> Element<'static, Message> {
+    match install {
+        Some(_) => stack![instance_art::card_banner(instance, banner), install_scrim()].into(),
+        None => instance_art::card_banner(instance, banner),
+    }
+}
+
+/// The dark fade at the foot of the art, so the title and the Play button read over the picture.
+fn art_shade<Message: 'static>() -> Element<'static, Message> {
+    container(Space::new().width(Fill).height(Fill))
+        .width(Fill)
+        .height(Fill)
+        .style(|_| container::Style {
+            background: Some(Background::Gradient(Gradient::Linear(
+                gradient::Linear::new(0.0)
+                    .add_stop(0.0, rgb!(8, 9, 10, 88%))
+                    .add_stop(0.6, rgb!(8, 9, 10, 0%)),
+            ))),
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// The status chip: a pulsing dot and an uppercase label on a tinted fill. The library hero and a playing card
+/// share it.
+pub fn status_chip<Message: 'static>(state: InstanceState) -> Element<'static, Message> {
+    let (label, ink, fill, pulsing) = match state {
+        InstanceState::Playing => (lang::t("library.status.playing"), color::Primary::DEFAULT, color::Primary::TINT, true),
+        InstanceState::Idle => (lang::t("library.status.idle"), color::Text::MUTED, rgb!(255, 255, 255, 6%), false),
+    };
+    container(
+        row![
+            PulseDot::with_color(ink).size(6.0).pulsing(pulsing),
+            Text::new(label).size(10).font(fonts::JetBrainsMono::SEMI_BOLD).color(ink),
+        ]
+        .spacing(6)
+        .align_y(alignment::Vertical::Center),
+    )
+    .padding(Padding::new(0.0).left(8).right(8).top(3).bottom(3))
+    .style(move |_| container::Style {
+        background: Some(Background::Color(fill)),
+        border: Border {
+            radius: 999.0.into(),
+            ..Border::default()
+        },
         ..container::Style::default()
     })
     .into()
 }
 
-/// The art of a card or row: the instance's banner, with the install's scrim over it while it installs.
-fn card_art<Message: 'static>(instance: &Instance, install: Option<&Pending>, banner: Option<Handle>) -> Element<'static, Message> {
-    match install {
-        Some(pending) => stack![instance_art::card_banner(instance, banner), install_overlay(pending)].into(),
-        None => instance_art::card_banner(instance, banner),
-    }
+/// The card's ⋯ button: the instance's menu, which the right-click menu lists too.
+fn menu_button<Message: Clone + 'static>(
+    menu: &instance_menu::Menu,
+    on_select: Rc<dyn Fn(Option<instance_menu::Action>) -> Message>,
+) -> Element<'static, Message> {
+    let actions = menu.actions.clone();
+    Dropdown::new(Icon::lucide().ellipsis_vertical())
+        .items(menu.items.clone())
+        .width(KEBAB_SIZE)
+        .height(KEBAB_SIZE)
+        .on_select(move |index| on_select(actions.get(index).copied().flatten()))
+        .into()
 }
 
 /// Wraps a card's or row's body in its context menu. The menu lists the instance's rows, or only Cancel
-/// install while the install has not ended.
+/// install while the install has not ended, and picking a row sends `on_select`'s message.
 fn with_menu<Message: Clone + 'static>(
     body: impl Into<Element<'static, Message>>,
     instance: &Instance,
-    installing: bool,
-    on_select: Box<dyn Fn(Option<instance_menu::Action>) -> Message>,
+    menu: instance_menu::Menu,
+    on_select: Rc<dyn Fn(Option<instance_menu::Action>) -> Message>,
 ) -> Element<'static, Message> {
-    let menu = instance_menu::menu(installing, true);
-    let actions = menu.actions;
+    let instance_menu::Menu { items, actions } = menu;
     ContextMenu::new(body, instance.id.clone())
-        .items(menu.items)
+        .items(items)
         .on_select(move |index| on_select(actions.get(index).copied().flatten()))
         .into()
 }
@@ -210,10 +278,42 @@ fn card_panel(border: Color) -> container::Style {
     }
 }
 
-/// The full grid card — art on top, title, version row, play button, footer stats. The height is
-/// driven by the art box; keep it fixed so the virtual rows stay uniform. A hovered card grows and
-/// lights its border. The whole card opens the instance except for its Play button, and a
-/// right-click opens its context menu.
+/// A footer figure: a muted glyph and its label.
+fn stat<Message: 'static>(glyph: &'static str, label: String) -> Element<'static, Message> {
+    row![
+        utility::icon(glyph, 12.0, Some((color::Text::MUTED, color::Text::MUTED))),
+        Text::new(label).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),
+    ]
+    .spacing(6)
+    .align_y(alignment::Vertical::Center)
+    .into()
+}
+
+/// The grid card's footer: the playtime and the mod count with their glyphs, or the install's stage and bar
+/// while it runs, then the loader chip.
+fn card_footer<Message: 'static>(instance: &Instance, install: Option<&Pending>) -> Element<'static, Message> {
+    let figures: Element<'static, Message> = match install {
+        Some(pending) => install_progress(pending),
+        None => row![
+            stat(Icon::lucide().clock(), playtime_hours(instance.playtime_seconds)),
+            stat(Icon::lucide().package(), lang::t_count("instance.mods", instance.mod_count as usize)),
+        ]
+        .spacing(12)
+        .align_y(alignment::Vertical::Center)
+        .into(),
+    };
+    row![container(figures).width(Fill), loader_chip(instance.loader)]
+        .align_y(alignment::Vertical::Center)
+        .padding(Padding::new(0.0).left(14).right(14))
+        .width(Fill)
+        .height(FOOTER_HEIGHT)
+        .into()
+}
+
+/// The full grid card — the art on top, with the PLAYING chip, the ⋯ button, the title and the Play button laid
+/// over it, and a footer with the playtime, the mod count and the loader. The height is fixed so the virtual rows
+/// stay uniform. A hovered card grows and lights its border. The whole card opens the instance except for its
+/// buttons, and a right-click opens the same menu as the ⋯ button.
 pub fn instance_card<Message: Clone + 'static>(
     instance: &Instance,
     hovered: bool,
@@ -221,38 +321,42 @@ pub fn instance_card<Message: Clone + 'static>(
     install: Option<&Pending>,
     banner: Option<Handle>,
 ) -> Element<'static, Message> {
-    let body = container(
+    let menu = instance_menu::menu(install.is_some(), true);
+    let kebab = menu_button(&menu, Rc::clone(&messages.menu));
+    let status: Element<'static, Message> = if instance.state == InstanceState::Playing {
+        status_chip(instance.state)
+    } else {
+        Space::new().into()
+    };
+    let art = container(stack![
+        card_art(instance, install, banner),
+        art_shade(),
         column![
-            container(card_art(instance, install, banner))
-                .padding(Padding::new(1.0).bottom(0.0))
-                .width(Fill)
-                .height(CARD_ART_HEIGHT),
-            container(
-                column![
-                    row![
-                        column![title_block(instance), version_line(instance)].spacing(2),
-                        Space::new().width(Fill),
-                        play_slot(messages.play, install),
-                    ]
-                    .align_y(alignment::Vertical::Center),
-                    row![
-                        Text::new(stats_line(instance))
-                            .size(11)
-                            .font(fonts::Inter::REGULAR)
-                            .color(color::Text::MUTED),
-                        Space::new().width(Fill),
-                        loader_chip(instance.loader),
-                    ]
-                    .spacing(8)
-                    .align_y(alignment::Vertical::Center),
-                ]
-                .spacing(8)
-                .padding(Padding::new(0.0).left(14).right(14).top(10).bottom(10)),
-            )
-            .width(Fill),
+            row![status, Space::new().width(Fill), kebab].align_y(alignment::Vertical::Top),
+            Space::new().height(Fill),
+            row![
+                column![title_block(instance), version_line(instance)].spacing(2),
+                Space::new().width(Fill),
+                play_slot(messages.play, install),
+            ]
+            .align_y(alignment::Vertical::Center),
         ]
-        .spacing(0),
-    )
+        .padding(Padding::new(12.0))
+        .width(Fill)
+        .height(Fill),
+    ])
+    .padding(Padding::new(1.0).bottom(0.0))
+    .width(Fill)
+    .height(CARD_ART_HEIGHT);
+
+    let body = container(column![
+        art,
+        container(Space::new().width(Fill).height(1)).style(|_| container::Style {
+            background: Some(Background::Color(color::Surface::LINE)),
+            ..container::Style::default()
+        }),
+        card_footer(instance, install),
+    ])
     .width(Fill)
     .height(Length::Fixed(CARD_HEIGHT))
     .style(|_| card_panel(color::Surface::LINE));
@@ -265,7 +369,7 @@ pub fn instance_card<Message: Clone + 'static>(
         .on_exit(messages.exit)
         .interaction(mouse::Interaction::Pointer);
     let grown = HoverScale::new(pressable, hovered).ring(CARD_CORNER, anim::fade(color::Primary::DEFAULT, 0.6));
-    with_menu(grown, instance, install.is_some(), messages.menu)
+    with_menu(grown, instance, menu, messages.menu)
 }
 
 /// The Compact row — the grid card's info without the art, one tight line. The whole row opens the
@@ -304,7 +408,7 @@ pub fn compact_row<Message: Clone + 'static>(
     with_menu(
         mouse_area(body).on_press(messages.open).interaction(mouse::Interaction::Pointer),
         instance,
-        install.is_some(),
+        instance_menu::menu(install.is_some(), true),
         messages.menu,
     )
 }
@@ -391,7 +495,11 @@ pub fn table_row<Message: Clone + 'static>(
     with_menu(
         mouse_area(body).on_press(messages.open).interaction(mouse::Interaction::Pointer),
         instance,
-        install.is_some(),
+        instance_menu::menu(install.is_some(), true),
         messages.menu,
     )
 }
+
+#[cfg(test)]
+#[path = "../../../tests/app/components/instance_card.rs"]
+mod tests;

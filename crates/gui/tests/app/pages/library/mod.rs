@@ -99,7 +99,8 @@ fn grid_columns_follow_width_with_a_cap() {
     assert_eq!(LibraryView::Grid.columns(340.0), 1);
     assert_eq!(LibraryView::Grid.columns(1156.0), 3, "1280px window minus rail and padding");
     assert_eq!(LibraryView::Grid.columns(4000.0), 4, "wide windows cap at four columns");
-    assert_eq!(LibraryView::Compact.columns(4000.0), 1);
+    assert_eq!(LibraryView::Compact.columns(1156.0), 2, "two compact rows fit a 1280px window");
+    assert_eq!(LibraryView::Compact.columns(4000.0), 4, "wide windows cap compact rows at four");
     assert_eq!(LibraryView::Table.columns(4000.0), 1);
 }
 

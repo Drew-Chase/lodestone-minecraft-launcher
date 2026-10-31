@@ -76,6 +76,10 @@ pub enum LibraryView {
     Table,
 }
 
+/// The least width of a compact row before the list wraps to another column. Two rows fit a 1280px window,
+/// and each one has room for its title, stats, chip and Play button.
+const COMPACT_MIN_WIDTH: f32 = 440.0;
+
 impl LibraryView {
     /// The virtualized row pitch (px): one item's height plus the gap.
     fn row_pitch(self) -> f32 {
@@ -99,13 +103,14 @@ impl LibraryView {
         }
     }
 
-    /// How many columns fit in `width` — the grid tiles at a 340px minimum
-    /// card width, capped at 4 so wide windows keep the reference's large
-    /// cards; the other views are single-column lists.
+    /// How many columns fit in `width`: the grid tiles at a 340px minimum card width, the compact rows at
+    /// [`COMPACT_MIN_WIDTH`], both capped at 4 so wide windows keep the reference's large cards. The table
+    /// is one column.
     fn columns(self, width: f32) -> usize {
         match self {
             LibraryView::Grid => ((width / 340.0) as usize).clamp(1, 4),
-            LibraryView::Compact | LibraryView::Table => 1,
+            LibraryView::Compact => (((width + self.gap()) / (COMPACT_MIN_WIDTH + self.gap())) as usize).clamp(1, 4),
+            LibraryView::Table => 1,
         }
     }
 
