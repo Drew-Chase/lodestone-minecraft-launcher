@@ -14,18 +14,20 @@ mod hero;
 pub(crate) mod logs;
 mod mods;
 mod overview;
-mod screenshots;
+pub mod screenshots;
 pub mod settings;
-mod worlds;
+mod watch;
+pub mod world_menu;
+pub mod worlds;
 
 use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use chrono::Local;
 use iced::widget::image::Handle;
 use iced::widget::{Text, column, container, stack};
-use iced::{Element, Fill, Padding, Size, Subscription, Task, alignment};
+use iced::{Element, Fill, Padding, Size, Subscription, Task, alignment, event, window};
 
 use crate::app::components::Tabs;
 use crate::app::components::instance_card::install_status;
@@ -37,7 +39,8 @@ use crate::app::pages::Page;
 use crate::app::pages::library::instance::Instance;
 use crate::app::pages::library::instance_menu;
 use crate::app::theme::{color, fonts};
-use files::InstanceFiles;
+use files::{InstanceFiles, WorldFile};
+use watch::{Change, Update};
 
 /// The page's horizontal gutter — 28px, per the design.
 const GUTTER: f32 = 28.0;
@@ -96,6 +99,7 @@ pub enum Message {
     Navigate(Page),
     Mods(mods::Message),
     Worlds(worlds::Message),
+    Screenshots(screenshots::Message),
     Logs(logs::Message),
     Settings(settings::Message),
     /// The instance folder was read. Stale when `generation` has moved on.
@@ -108,6 +112,17 @@ pub enum Message {
         generation: u64,
         path: PathBuf,
         handle: Option<Handle>,
+    },
+    /// The watch saw saves or captures change in the instance folder. Stale when `folder` is no longer the
+    /// one shown.
+    FilesChanged {
+        folder: PathBuf,
+        changes: Vec<Change>,
+    },
+    /// The changed saves and captures were read back. Stale when `generation` has moved on.
+    FilesRead {
+        generation: u64,
+        updates: Vec<Update>,
     },
     /// The log refresh timer fired while the Logs tab is following.
     LogsTick,
@@ -138,6 +153,10 @@ pub struct InstancePage {
     /// The run whose console the Logs tab shows, when the runs panel opened one. `None` shows the
     /// newest run.
     console_run: Option<u64>,
+    /// The changes the watch reported that no read has picked up yet.
+    watch_pending: Vec<Change>,
+    /// Whether a read of the changed saves and captures is on the blocking pool.
+    reading: bool,
 }
 
 impl InstancePage {
@@ -166,6 +185,8 @@ impl InstancePage {
         self.logs = logs::State::default();
         self.tab = Tab::Overview;
         self.console_run = None;
+        self.watch_pending.clear();
+        self.reading = false;
 
         Task::perform(
             async move { tokio::task::spawn_blocking(move || files::scan(&folder)).await.unwrap_or_default() },
@@ -196,10 +217,14 @@ impl InstancePage {
                 self.mods.update(message);
                 Task::none()
             }
+            Message::Worlds(worlds::Message::Rescanned { generation, worlds }) if generation == self.generation => self.rescanned_worlds(worlds),
             Message::Worlds(message) => {
                 self.worlds.update(message);
                 Task::none()
             }
+            Message::Screenshots(message) => self.update_screenshots(message),
+            Message::FilesChanged { folder, changes } if folder == self.folder => self.files_changed(changes),
+            Message::FilesRead { generation, updates } if generation == self.generation => self.files_read(updates),
             Message::Logs(message) => {
                 self.logs.update(message);
                 Task::none()
@@ -231,18 +256,140 @@ impl InstancePage {
             | Message::LaunchNew(_) => Task::none(),
             // Results for an instance the page no longer shows, and ticks the
             // Logs tab no longer needs.
-            Message::Scanned { .. } | Message::Thumbnail { .. } | Message::LogsTick | Message::LogsLoaded { .. } => Task::none(),
+            Message::Scanned { .. }
+            | Message::Thumbnail { .. }
+            | Message::FilesChanged { .. }
+            | Message::FilesRead { .. }
+            | Message::LogsTick
+            | Message::LogsLoaded { .. } => Task::none(),
         }
     }
 
-    /// The log refresh: while the Logs tab is following, the log is re-read every
-    /// two seconds. The root only adds this while the detail page is on screen.
-    pub fn subscription(&self) -> Subscription<Message> {
-        if self.tab == Tab::Logs && self.logs.following() {
+    /// The log refresh, and the viewer's keys. While the Logs tab is following, the log is re-read every
+    /// two seconds. The viewer's keys wait while an alert is open, since the alert answers them. The
+    /// root only adds this while the detail page is on screen.
+    pub fn subscription(&self, alert_open: bool) -> Subscription<Message> {
+        let logs = if self.tab == Tab::Logs && self.logs.following() {
             iced::time::every(Duration::from_secs(2)).map(|_| Message::LogsTick)
         } else {
             Subscription::none()
+        };
+        let keys = if self.screenshots.viewing().is_some() && !alert_open {
+            event::listen_with(viewer_key)
+        } else {
+            Subscription::none()
+        };
+        // The watch follows the instance's folders for as long as the page shows an instance.
+        let watch = if self.instance.is_some() {
+            Subscription::run_with(self.folder.clone(), watch::subscription)
+        } else {
+            Subscription::none()
+        };
+        Subscription::batch([logs, keys, watch])
+    }
+
+    /// The save at `path` in the instance's copy of its worlds, once the folder has been read.
+    pub fn world(&self, path: &Path) -> Option<&WorldFile> {
+        self.files.as_ref()?.worlds.iter().find(|world| world.path.as_path() == path)
+    }
+
+    /// The viewer over the window, while it is open.
+    pub fn viewer(&self, window: Size) -> Option<Element<'_, Message>> {
+        self.screenshots.overlay(window).map(|overlay| overlay.map(Message::Screenshots))
+    }
+
+    /// Handles the Screenshots tab's messages the page owns. The root carries out the rest: the
+    /// actions and their results, which reach it first.
+    fn update_screenshots(&mut self, message: screenshots::Message) -> Task<Message> {
+        match message {
+            screenshots::Message::Show(index) => {
+                self.screenshots.show(index);
+                self.decode_viewer()
+            }
+            screenshots::Message::Move(movement) => {
+                self.screenshots.move_viewer(movement);
+                self.decode_viewer()
+            }
+            screenshots::Message::Close => {
+                self.screenshots.close();
+                Task::none()
+            }
+            screenshots::Message::Key(key) => {
+                let action = match key {
+                    screenshots::Key::Delete => screenshots::Action::Delete,
+                    screenshots::Key::Copy => screenshots::Action::Copy,
+                };
+                match self.screenshots.current_path() {
+                    Some(path) => Task::done(Message::Screenshots(screenshots::Message::Menu { path, action: Some(action) })),
+                    None => Task::none(),
+                }
+            }
+            screenshots::Message::Full { generation, path, handle } if generation == self.generation => {
+                self.screenshots.store_full(path, handle);
+                Task::none()
+            }
+            // A decode for an instance the page no longer shows, and actions the root carries out.
+            screenshots::Message::Full { .. }
+            | screenshots::Message::Menu { .. }
+            | screenshots::Message::DeleteAnswered { .. }
+            | screenshots::Message::Deleted { .. }
+            | screenshots::Message::Copied(_)
+            | screenshots::Message::Opened(_) => Task::none(),
         }
+    }
+
+    /// Starts the full-size decodes the viewer still needs, on the blocking pool. Each lands as a `Full`.
+    fn decode_viewer(&mut self) -> Task<Message> {
+        let generation = self.generation;
+        Task::batch(self.screenshots.begin_decodes().into_iter().map(|path| {
+            let decode = path.clone();
+            Task::perform(
+                async move {
+                    tokio::task::spawn_blocking(move || files::decode_image(&decode, Some(screenshots::FULL)))
+                        .await
+                        .ok()
+                        .flatten()
+                },
+                move |handle| Message::Screenshots(screenshots::Message::Full { generation, path, handle }),
+            )
+        }))
+    }
+
+    /// Reads the instance's saves again on the blocking pool, after a world was imported or backed up.
+    pub fn rescan_worlds(&self) -> Task<Message> {
+        let generation = self.generation;
+        let folder = self.folder.clone();
+        Task::perform(
+            async move { tokio::task::spawn_blocking(move || files::scan_worlds(&folder)).await.unwrap_or_default() },
+            move |worlds| Message::Worlds(worlds::Message::Rescanned { generation, worlds }),
+        )
+    }
+
+    /// Takes a reread of the saves: the Worlds tab and the instance's own copy of its worlds both take it.
+    fn rescanned_worlds(&mut self, worlds: Vec<WorldFile>) -> Task<Message> {
+        if let Some(files) = &mut self.files {
+            files.worlds = worlds.clone();
+        }
+        self.worlds.set_worlds(worlds, Local::now());
+        Task::none()
+    }
+
+    /// Drops the save in `path` from the Worlds tab, and from the instance's own copy of its worlds.
+    pub fn remove_world(&mut self, path: &Path) {
+        self.worlds.remove(path);
+        if let Some(files) = &mut self.files {
+            files.worlds.retain(|world| world.path.as_path() != path);
+        }
+    }
+
+    /// Drops the capture in `path` from the Screenshots tab, and from the instance's own copy of its captures.
+    /// The viewer may now show a neighbour whose full-size image is not decoded yet, so those start.
+    pub fn remove_screenshot(&mut self, path: &Path) -> Task<Message> {
+        self.screenshots.remove(path);
+        if let Some(files) = &mut self.files {
+            files.screenshots.retain(|shot| shot.path.as_path() != path);
+        }
+        self.decode_viewer()
     }
 
     /// Hands a scan's results to the tabs and starts the thumbnails.
@@ -252,7 +399,62 @@ impl InstancePage {
         self.screenshots.set_shots(files.screenshots.clone());
         self.logs.set_lines(files.log.clone());
         self.files = Some(files);
-        self.decode_next_thumbnail()
+        // Changes the watch reported while the scan ran are not in the scan, so they are read now.
+        Task::batch([self.read_pending(), self.decode_next_thumbnail()])
+    }
+
+    /// Takes a batch of changes from the watch. They are read back at once unless a read is already running,
+    /// which picks them up when it lands.
+    fn files_changed(&mut self, changes: Vec<Change>) -> Task<Message> {
+        self.watch_pending.extend(changes);
+        self.read_pending()
+    }
+
+    /// Reads the pending changes on the blocking pool, unless a read is running or the first scan has not
+    /// landed. Changes that arrive before the scan lands are read once it has.
+    fn read_pending(&mut self) -> Task<Message> {
+        if self.reading || self.watch_pending.is_empty() || self.files.is_none() {
+            return Task::none();
+        }
+        let changes = watch::coalesce(std::mem::take(&mut self.watch_pending));
+        self.reading = true;
+        let generation = self.generation;
+        let folder = self.folder.clone();
+        Task::perform(
+            async move {
+                tokio::task::spawn_blocking(move || watch::read(&folder, changes))
+                    .await
+                    .unwrap_or_default()
+            },
+            move |updates| Message::FilesRead { generation, updates },
+        )
+    }
+
+    /// Merges what a read found into the instance's copy of its saves and captures, then hands both lists to
+    /// their tabs. A save or capture the watch did not report keeps its state, and so keeps its thumbnail.
+    fn files_read(&mut self, updates: Vec<Update>) -> Task<Message> {
+        self.reading = false;
+        if let Some(files) = &mut self.files {
+            for update in updates {
+                match update {
+                    Update::Worlds(worlds) => files.worlds = worlds,
+                    Update::World(path, world) => {
+                        files.worlds.retain(|existing| existing.path != path);
+                        files.worlds.extend(world);
+                    }
+                    Update::Shots(shots) => files.screenshots = shots,
+                    Update::Shot(path, shot) => {
+                        files.screenshots.retain(|existing| existing.path != path);
+                        files.screenshots.extend(shot);
+                    }
+                }
+            }
+            files.worlds.sort_by_key(|world| std::cmp::Reverse(world.saved));
+            files.screenshots.sort_by_key(|shot| std::cmp::Reverse(shot.modified));
+            self.worlds.set_worlds(files.worlds.clone(), Local::now());
+            self.screenshots.set_shots(files.screenshots.clone());
+        }
+        Task::batch([self.read_pending(), self.decode_viewer(), self.decode_next_thumbnail()])
     }
 
     /// Decodes the next pending thumbnail on the blocking pool. One at a time:
@@ -363,7 +565,7 @@ impl InstancePage {
             Tab::Overview => overview::view(instance, &self.screenshots, install),
             Tab::Mods => self.mods.view().map(Message::Mods),
             Tab::Worlds => self.worlds.view().map(Message::Worlds),
-            Tab::Screenshots => screenshots::view(&self.screenshots),
+            Tab::Screenshots => screenshots::view(&self.screenshots).map(Message::Screenshots),
             Tab::Logs => self.logs.view(console).map(Message::Logs),
             Tab::Settings => self.settings.view(instance).map(Message::Settings),
         };
@@ -376,6 +578,11 @@ impl InstancePage {
             _ => scrollbar::scroll(padded).width(Fill).height(Fill).into(),
         }
     }
+}
+
+/// The viewer's key presses, as the page's messages.
+fn viewer_key(input: iced::Event, status: event::Status, id: window::Id) -> Option<Message> {
+    screenshots::key_event(input, status, id).map(Message::Screenshots)
 }
 
 /// Positions `content` inside a box that fills its parent: the padding and

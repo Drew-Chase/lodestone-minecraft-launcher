@@ -12,6 +12,7 @@ use crate::app::pages::instance::Message as InstanceMessage;
 use crate::app::pages::instance::Tab;
 use crate::app::pages::instance::files;
 use crate::app::pages::instance::settings::Message as InstanceSettingsMessage;
+use crate::app::pages::instance::{screenshots, worlds};
 use crate::app::pages::library::Message as LibraryMessage;
 use crate::app::pages::library::instance::Instance;
 use crate::app::pages::login::Message as LoginMessage;
@@ -135,6 +136,27 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Instance(InstanceMessage::LaunchNew(id)) => self.launch_new_game(&id),
             LodestoneAppMessage::Instance(InstanceMessage::Kill) => self.current_game(GameMessage::Kill),
             LodestoneAppMessage::Instance(InstanceMessage::Restart) => self.current_game(GameMessage::Restart),
+            // The Screenshots and Worlds tabs ask the root for their actions, and their results come back here.
+            LodestoneAppMessage::Instance(InstanceMessage::Screenshots(screenshots::Message::Menu { path, action })) => {
+                self.screenshot_action(path, action)
+            }
+            LodestoneAppMessage::Instance(InstanceMessage::Screenshots(screenshots::Message::DeleteAnswered { path, confirmed })) => {
+                self.answer_screenshot_delete(path, confirmed)
+            }
+            LodestoneAppMessage::Instance(InstanceMessage::Screenshots(screenshots::Message::Deleted { path, result })) => {
+                self.screenshot_deleted(path, result)
+            }
+            LodestoneAppMessage::Instance(InstanceMessage::Screenshots(screenshots::Message::Copied(result))) => self.screenshot_copied(result),
+            LodestoneAppMessage::Instance(InstanceMessage::Screenshots(screenshots::Message::Opened(result))) => self.screenshot_opened(result),
+            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::Menu { path, action })) => self.world_action(path, action),
+            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::Import)) => self.import_world(),
+            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::NewWorld)) => self.new_world(),
+            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::DeleteAnswered { path, confirmed })) => {
+                self.answer_world_delete(path, confirmed)
+            }
+            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::Deleted { path, result })) => self.world_deleted(path, result),
+            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::BackedUp(result))) => self.world_backed_up(result),
+            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::Imported(result))) => self.world_imported(result),
             LodestoneAppMessage::Instance(message) => self.instance_page.update(message).map(LodestoneAppMessage::Instance),
             LodestoneAppMessage::DatabaseReady(Ok(db)) => {
                 info!("Launcher database ready");

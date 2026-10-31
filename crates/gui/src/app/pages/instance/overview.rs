@@ -9,12 +9,12 @@ use iced::widget::{Column, Space, Text, column, container, row};
 use iced::{Background, Color, Element, Fill, Length, Padding, alignment};
 
 use super::format::format_playtime;
-use super::screenshots;
+use super::{Message, screenshots};
 use crate::app::components::ProgressBar;
 use crate::app::components::grid::grid;
 use crate::app::components::instance_card::install_status;
 use crate::app::components::panel::panel;
-use crate::app::components::screenshot_tile::{Caption, photo_tile};
+use crate::app::components::screenshot_tile::Caption;
 use crate::app::downloads::{Pending, progress_detail};
 use crate::app::lang;
 use crate::app::pages::library::instance::{Instance, Loader};
@@ -25,13 +25,13 @@ const STRIP_LEN: usize = 6;
 
 /// The Overview's two columns: About and the strip on the left, the session
 /// readout on the right. While the instance installs, its install panel leads the left column.
-pub fn view<'a, M: 'static>(instance: &'a Instance, screenshots: &'a screenshots::State, install: Option<&'a Pending>) -> Element<'a, M> {
+pub fn view<'a>(instance: &'a Instance, screenshots: &'a screenshots::State, install: Option<&'a Pending>) -> Element<'a, Message> {
     let mut left = Column::new().spacing(16).width(Length::FillPortion(2));
     if let Some(pending) = install {
-        left = left.push(install_panel::<M>(pending));
+        left = left.push(install_panel::<Message>(pending));
     }
-    left = left.push(about_panel(instance)).push(screenshot_strip::<M>(screenshots));
-    let right = column![session_panel::<M>(instance)].spacing(14).width(Length::FillPortion(1));
+    left = left.push(about_panel(instance)).push(screenshot_strip(screenshots));
+    let right = column![session_panel::<Message>(instance)].spacing(14).width(Length::FillPortion(1));
 
     row![left, right].spacing(18).align_y(alignment::Vertical::Top).width(Fill).into()
 }
@@ -99,9 +99,10 @@ fn about_text(instance: &Instance) -> String {
     }
 }
 
-/// The newest captures, three to a row. Until one is read, the strip says so.
-fn screenshot_strip<'a, M: 'a>(screenshots: &'a screenshots::State) -> Element<'a, M> {
-    let body: Element<'a, M> = if screenshots.shots().is_empty() {
+/// The newest captures, three to a row. A press opens the viewer on a capture, as the Screenshots tab
+/// does. Until one is read, the strip says so.
+fn screenshot_strip<'a>(screenshots: &'a screenshots::State) -> Element<'a, Message> {
+    let body: Element<'a, Message> = if screenshots.shots().is_empty() {
         Text::new(lang::t("instance.overview.no_screenshots"))
             .size(12)
             .font(fonts::Inter::REGULAR)
@@ -112,7 +113,8 @@ fn screenshot_strip<'a, M: 'a>(screenshots: &'a screenshots::State) -> Element<'
             .shots()
             .iter()
             .take(STRIP_LEN)
-            .map(|shot| photo_tile(screenshots.thumbnail(&shot.path), Caption::Overlay(&shot.file_name), 100.0))
+            .enumerate()
+            .map(|(index, shot)| screenshots::clickable(screenshots, index, Caption::Overlay(&shot.file_name), 100.0).map(Message::Screenshots))
             .collect();
         grid(tiles, 3, 10.0)
     };

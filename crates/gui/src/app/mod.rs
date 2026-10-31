@@ -1,5 +1,6 @@
 mod auth;
 mod boot;
+mod clipboard;
 pub mod components;
 pub mod database;
 mod downloads;
@@ -16,12 +17,14 @@ pub mod paths;
 pub mod perf;
 mod preferences;
 pub mod router;
+mod screenshot_actions;
 pub mod storage;
 mod subscription;
 pub mod theme;
 mod titlebar;
 mod update;
 mod view;
+mod world_actions;
 
 use crate::app::components::Alerts;
 use crate::app::database::Database;
@@ -115,6 +118,8 @@ pub struct LodestoneLauncher {
     auth_status: Option<Result<AuthProbe, String>>,
     /// The alert queue; the front alert covers the window (see `view.rs`).
     alerts: Alerts,
+    /// The clipboard that copied images go to. Its thread starts on the first copy (see `clipboard.rs`).
+    clipboard: clipboard::Worker,
     /// The game sessions: the instances being prepared and the games running.
     games: launch::games::Games,
     /// Which panels of running games are open, beside the sidebar and under the title bar.
@@ -152,6 +157,7 @@ impl Default for LodestoneLauncher {
             probe_step: 0,
             auth_status: None,
             alerts: Alerts::default(),
+            clipboard: clipboard::Worker::default(),
             games: launch::games::Games::default(),
             runs_open: launch::games::RunsOpen::default(),
             downloads: downloads::Downloads::default(),

@@ -193,7 +193,7 @@ impl LodestoneLauncher {
 }
 
 /// Opens `folder` in the file manager on the blocking pool. A failure returns as `FolderOpened`.
-fn reveal_folder(folder: PathBuf) -> Task<LodestoneAppMessage> {
+pub(super) fn reveal_folder(folder: PathBuf) -> Task<LodestoneAppMessage> {
     Task::perform(
         async move {
             match tokio::task::spawn_blocking(move || open::that_detached(&folder)).await {

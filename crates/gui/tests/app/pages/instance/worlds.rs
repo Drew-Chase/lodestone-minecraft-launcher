@@ -15,6 +15,7 @@ fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Local
 
 fn world(name: &str) -> WorldFile {
     WorldFile {
+        path: PathBuf::from(format!("/saves/{name}")),
         name: name.to_string(),
         game_mode: Some(GameMode::Survival),
         difficulty: Some(Difficulty::Normal),
@@ -22,6 +23,7 @@ fn world(name: &str) -> WorldFile {
         version: Some("1.20.1".to_string()),
         size_bytes: 1,
         saved: Some(at(2026, 10, 29, 12, 0)),
+        play_time: Some(std::time::Duration::from_secs(48 * 3600 + 12 * 60)),
         icon: None,
     }
 }
@@ -54,13 +56,31 @@ fn search_matches_names_ignoring_case() {
 }
 
 #[test]
-fn display_only_actions_leave_the_grid_alone() {
+fn the_root_carries_the_intents_so_the_grid_is_left_alone() {
     let mut state = State::default();
     state.set_worlds(vec![world("Aether Hub")], at(2026, 10, 29, 12, 0));
     state.update(Message::Import);
     state.update(Message::NewWorld);
-    state.update(Message::Play);
-    state.update(Message::Reveal);
-    state.update(Message::More);
+    state.update(Message::Menu {
+        path: PathBuf::from("/saves/Aether Hub"),
+        action: Some(Action::Play),
+    });
+    state.update(Message::Menu {
+        path: PathBuf::from("/saves/Aether Hub"),
+        action: Some(Action::Delete),
+    });
+    assert_eq!(state.visible, [0]);
+}
+
+#[test]
+fn a_removed_world_leaves_the_list_and_the_search() {
+    let mut state = State::default();
+    state.set_worlds(vec![world("Aether Hub"), world("Pixel Town")], at(2026, 10, 29, 12, 0));
+    state.update(Message::Search("pixel".to_string()));
+    state.remove(Path::new("/saves/Pixel Town"));
+    assert!(state.visible.is_empty());
+    assert_eq!(state.worlds.len(), 1);
+
+    state.update(Message::Search(String::new()));
     assert_eq!(state.visible, [0]);
 }

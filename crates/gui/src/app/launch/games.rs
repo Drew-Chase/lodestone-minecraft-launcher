@@ -121,14 +121,17 @@ impl RunsOpen {
     }
 }
 
+/// A launch waiting for a session refresh: its instance id, its serial, and the world it quick plays into.
+type WaitingLaunch = (String, u64, Option<String>);
+
 /// The Microsoft session refresh in flight: the refresh token it spends, and the launches waiting
 /// for it. A refresh token is good for one use, so every launch that needs the refresh shares one.
 #[derive(Debug, Default)]
 struct Refresh {
     /// The refresh token being spent, while a refresh runs.
     token: Option<String>,
-    /// The launches waiting for the refresh, as instance id and serial, in the order they asked.
-    waiting: Vec<(String, u64)>,
+    /// The launches waiting for the refresh, in the order they asked.
+    waiting: Vec<WaitingLaunch>,
 }
 
 /// The launcher's game sessions.
@@ -171,10 +174,10 @@ impl Games {
 
     /// Records a launch that waits for a Microsoft session refresh before it prepares. It shows as
     /// preparing, so a second press does not start it again, and it has nothing to abort until then.
-    pub fn wait_for_session(&mut self, instance: &str, serial: u64) {
+    pub fn wait_for_session(&mut self, instance: &str, serial: u64, quick_play: Option<String>) {
         let (_task, abort) = Task::<()>::none().abortable();
         self.begin(instance, serial, abort);
-        self.refresh.waiting.push((instance.to_string(), serial));
+        self.refresh.waiting.push((instance.to_string(), serial, quick_play));
     }
 
     /// Starts a session refresh that spends `token`, unless one is already running. Returns whether
@@ -188,7 +191,7 @@ impl Games {
     }
 
     /// Ends the refresh in flight. Returns the refresh token it spent and the launches that waited for it.
-    pub fn finish_refresh(&mut self) -> (Option<String>, Vec<(String, u64)>) {
+    pub fn finish_refresh(&mut self) -> (Option<String>, Vec<WaitingLaunch>) {
         (self.refresh.token.take(), std::mem::take(&mut self.refresh.waiting))
     }
 

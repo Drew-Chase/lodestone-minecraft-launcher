@@ -37,6 +37,7 @@ fn sample_files() -> InstanceFiles {
             version: Some("0.5.8".to_string()),
         }],
         worlds: vec![files::WorldFile {
+            path: PathBuf::from("/instances/aether/saves/Aether Hub"),
             name: "Aether Hub".to_string(),
             game_mode: Some(GameMode::Survival),
             difficulty: Some(Difficulty::Hard),
@@ -44,12 +45,15 @@ fn sample_files() -> InstanceFiles {
             version: Some("1.20.1".to_string()),
             size_bytes: 1_503_238_554,
             saved: Some(Local::now()),
+            play_time: Some(std::time::Duration::from_secs(48 * 3600 + 12 * 60)),
             icon: None,
         }],
         screenshots: vec![files::ScreenshotFile {
             file_name: "2026-10-29_12.00.00.png".to_string(),
             size_label: "2.1 MB".to_string(),
             path: PathBuf::from("/instances/aether/screenshots/2026-10-29_12.00.00.png"),
+            modified: std::time::SystemTime::UNIX_EPOCH,
+            bytes: 2_100_000,
         }],
         log: vec![
             LogLine {

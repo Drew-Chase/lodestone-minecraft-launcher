@@ -158,7 +158,7 @@ fn stopping_a_run_that_is_not_there_changes_nothing() {
 #[test]
 fn a_launch_waiting_for_a_session_shows_as_preparing_until_it_is_stopped() {
     let mut games = Games::default();
-    games.wait_for_session("aether", 3);
+    games.wait_for_session("aether", 3, None);
     assert_eq!(games.status("aether"), LaunchStatus::Preparing(None));
     assert!(games.is_active("aether"), "a second press must not start the same launch");
     assert!(games.is_preparing_with("aether", 3));
@@ -171,9 +171,9 @@ fn a_launch_waiting_for_a_session_shows_as_preparing_until_it_is_stopped() {
 #[test]
 fn one_session_refresh_runs_at_a_time_and_its_waiters_come_back_with_it() {
     let mut games = Games::default();
-    games.wait_for_session("aether", 1);
+    games.wait_for_session("aether", 1, None);
     assert!(games.start_refresh("token-a".to_string()));
-    games.wait_for_session("borealis", 2);
+    games.wait_for_session("borealis", 2, None);
     assert!(
         !games.start_refresh("token-b".to_string()),
         "a second launch shares the refresh in flight"
@@ -181,11 +181,19 @@ fn one_session_refresh_runs_at_a_time_and_its_waiters_come_back_with_it() {
 
     let (token, waiting) = games.finish_refresh();
     assert_eq!(token.as_deref(), Some("token-a"));
-    assert_eq!(waiting, vec![("aether".to_string(), 1), ("borealis".to_string(), 2)]);
+    assert_eq!(waiting, vec![("aether".to_string(), 1, None), ("borealis".to_string(), 2, None)]);
     assert!(
         games.start_refresh("token-c".to_string()),
         "the next refresh starts once this one has ended"
     );
+}
+
+#[test]
+fn a_launch_waiting_for_a_session_keeps_the_world_it_quick_plays_into() {
+    let mut games = Games::default();
+    games.wait_for_session("aether", 5, Some("Aether Hub".to_string()));
+    let (_, waiting) = games.finish_refresh();
+    assert_eq!(waiting, vec![("aether".to_string(), 5, Some("Aether Hub".to_string()))]);
 }
 
 #[test]

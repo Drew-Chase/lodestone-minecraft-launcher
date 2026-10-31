@@ -86,6 +86,14 @@ impl LodestoneLauncher {
             Some(dialog) => dialog.map(LodestoneAppMessage::Library),
             None => Space::new().into(),
         };
+        // The screenshot viewer covers the whole window, under the alerts. It is open only on the instance page.
+        let viewer: Element<'_, LodestoneAppMessage> = match self.router.current() {
+            Page::Instance => match self.instance_page.viewer(self.window_size) {
+                Some(viewer) => viewer.map(LodestoneAppMessage::Instance),
+                None => Space::new().into(),
+            },
+            _ => Space::new().into(),
+        };
         // The overlay sits under the resize handles and above everything else. It is an empty slot unless
         // the `perf` feature shows it, so the layers keep their tree positions either way.
         let hud: Element<'_, LodestoneAppMessage> = perf::overlay(&self.perf);
@@ -93,6 +101,7 @@ impl LodestoneLauncher {
             stack![
                 content,
                 dialog,
+                viewer,
                 alert,
                 hud,
                 ResizeHandles::new(LodestoneAppMessage::WindowStartResize)

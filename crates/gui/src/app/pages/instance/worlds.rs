@@ -2,7 +2,11 @@
 //! per-world actions.
 //!
 //! The list is read from the instance's `saves/` folder by [`super::files`].
-//! `update` keeps the visible indices current, so `view` only walks them.
+//! `update` keeps the visible indices current, so `view` only walks them. The
+//! actions that touch the disk or the game are the root's: this tab emits them
+//! and the root carries them out.
+
+use std::path::{Path, PathBuf};
 
 use aurora_leaf::Icon;
 use chrono::{DateTime, Local};
@@ -11,16 +15,19 @@ use iced::{Background, Border, Color, ContentFit, Element, Fill, Length, Padding
 use iced_color_extension::rgb;
 
 use super::files::WorldFile;
-use super::format::format_bytes;
+use super::format::{format_bytes, format_playtime};
 use super::layer;
+use super::world_menu::{self, Action};
 use crate::app::components::badge::Badge;
 use crate::app::components::button::Variant;
+use crate::app::components::context_menu::ContextMenu;
 use crate::app::components::grid::grid;
+use crate::app::components::hint::hint;
 use crate::app::components::icon_button::SECONDARY_BUTTON_STYLE;
 use crate::app::components::input;
 use crate::app::components::panel::{panel, panel_with_padding};
 use crate::app::components::screenshot_tile::placeholder_art;
-use crate::app::components::{IconButton, TextButton};
+use crate::app::components::{Dropdown, IconButton, TextButton};
 use crate::app::lang;
 use crate::app::theme::{color, fonts, utility};
 
@@ -85,18 +92,39 @@ pub fn format_saved(saved: DateTime<Local>, now: DateTime<Local>) -> String {
     }
 }
 
-/// Messages the Worlds tab emits.
+/// Messages the Worlds tab emits and handles.
 #[derive(Debug, Clone)]
 pub enum Message {
     Search(String),
-    /// Import — display-only until the instance manager lands.
+    /// Imports a world from a zip. The root asks for the file and carries the import out.
     Import,
-    /// New world — display-only until the instance manager lands.
+    /// Starts the instance, so the game creates a new world on its first load.
     NewWorld,
-    /// A world's Play, folder and menu buttons — display-only for now.
-    Play,
-    Reveal,
-    More,
+    /// A world's button or menu row was picked, for the save at `path`. A separator sends `None`. The
+    /// root carries the action out.
+    Menu {
+        path: PathBuf,
+        action: Option<Action>,
+    },
+    /// The user answered the delete alert for the save at `path`. The root trashes it on a yes.
+    DeleteAnswered {
+        path: PathBuf,
+        confirmed: bool,
+    },
+    /// The save at `path` went to the trash, or could not.
+    Deleted {
+        path: PathBuf,
+        result: Result<(), String>,
+    },
+    /// A backup was written to this path, or could not be.
+    BackedUp(Result<PathBuf, String>),
+    /// A world was imported into `saves/` under this folder name, or could not be.
+    Imported(Result<String, String>),
+    /// The saves were read again. Stale when `generation` has moved on.
+    Rescanned {
+        generation: u64,
+        worlds: Vec<WorldFile>,
+    },
 }
 
 /// The Worlds tab's state.
@@ -130,14 +158,27 @@ impl State {
         self.refilter();
     }
 
+    /// Drops the save in `path` from the list, as it went to the trash.
+    pub fn remove(&mut self, path: &Path) {
+        self.worlds.retain(|world| world.path.as_path() != path);
+        self.refilter();
+    }
+
     pub fn update(&mut self, message: Message) {
         match message {
             Message::Search(query) => {
                 self.query = query;
                 self.refilter();
             }
-            // Display-only until the launch pipeline and instance manager land.
-            Message::Import | Message::NewWorld | Message::Play | Message::Reveal | Message::More => {}
+            // The root carries these out, and their results come back to it. A stale reread is the page's to drop.
+            Message::Import
+            | Message::NewWorld
+            | Message::Menu { .. }
+            | Message::DeleteAnswered { .. }
+            | Message::Deleted { .. }
+            | Message::BackedUp(_)
+            | Message::Imported(_)
+            | Message::Rescanned { .. } => {}
         }
     }
 
@@ -209,7 +250,8 @@ impl State {
         .into()
     }
 
-    /// One world: the thumbnail beside its name, its tags, seed and size, and the actions.
+    /// One world: the thumbnail beside its name, its tags, seed, play time and size, and the actions.
+    /// A right-click on the card opens the same menu as its ⋯ button.
     fn world_card<'a>(&'a self, world: &'a WorldFile) -> Element<'a, Message> {
         let mut tags: Vec<Element<'a, Message>> = Vec::new();
         if let Some(mode) = world.game_mode {
@@ -223,11 +265,18 @@ impl State {
             );
         }
         let seed = world.seed.map_or_else(|| "# —".to_string(), |seed| format!("# {seed}"));
+        let played = world.play_time.map_or_else(
+            || "—".to_string(),
+            |time| format_playtime(u32::try_from(time.as_secs()).unwrap_or(u32::MAX)),
+        );
         let size = format_bytes(world.size_bytes);
         let saved = world.saved.map_or_else(
             || lang::t("instance.worlds.saved_unknown").to_owned(),
             |saved| format_saved(saved, self.now),
         );
+        let path = world.path.clone();
+        let menu = world_menu::menu(world.seed.is_some());
+        let context = world_menu::menu(world.seed.is_some());
 
         let body = column![
             Text::new(world.name.as_str())
@@ -235,9 +284,13 @@ impl State {
                 .font(fonts::Inter::SEMI_BOLD)
                 .color(color::Text::HEADLINE),
             row(tags).spacing(6),
+            Text::new(seed)
+                .size(11)
+                .font(fonts::JetBrainsMono::REGULAR)
+                .color(color::Text::PLACEHOLDER),
             Text::new(lang::t_with(
-                "instance.worlds.seed_size",
-                &[("seed", seed.as_str()), ("size", size.as_str())]
+                "instance.worlds.play_size",
+                &[("play", played.as_str()), ("size", size.as_str())]
             ))
             .size(11)
             .font(fonts::JetBrainsMono::REGULAR)
@@ -246,21 +299,31 @@ impl State {
             row![
                 Text::new(saved).size(11).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
                 Space::new().width(Fill),
-                IconButton::new(Icon::lucide().folder())
-                    .size(30)
-                    .radius(9.0)
-                    .icon_size(13.0)
-                    .style(SECONDARY_BUTTON_STYLE)
-                    .on_press(Message::Reveal),
-                IconButton::new(Icon::lucide().ellipsis_vertical())
-                    .size(30)
-                    .radius(9.0)
-                    .icon_size(13.0)
-                    .style(SECONDARY_BUTTON_STYLE)
-                    .on_press(Message::More),
+                hint(
+                    IconButton::new(Icon::lucide().folder())
+                        .size(30)
+                        .radius(9.0)
+                        .icon_size(13.0)
+                        .style(SECONDARY_BUTTON_STYLE)
+                        .on_press(Message::Menu {
+                            path: path.clone(),
+                            action: Some(Action::Reveal),
+                        }),
+                    lang::t("instance.worlds.reveal"),
+                ),
+                Dropdown::new(Icon::lucide().ellipsis_vertical()).items(menu.items).on_select({
+                    let path = path.clone();
+                    move |index| Message::Menu {
+                        path: path.clone(),
+                        action: menu.actions[index],
+                    }
+                }),
                 TextButton::primary(lang::t("common.play"))
                     .padding(Padding::new(0.0).left(14).right(14).top(7).bottom(7))
-                    .on_press(Message::Play),
+                    .on_press(Message::Menu {
+                        path: path.clone(),
+                        action: Some(Action::Play),
+                    }),
             ]
             .spacing(6)
             .align_y(alignment::Vertical::Center),
@@ -270,7 +333,14 @@ impl State {
         .width(Fill)
         .height(Fill);
 
-        panel_with_padding(row![thumbnail(world), body].height(CARD_HEIGHT), Padding::new(0.0))
+        let card = panel_with_padding(row![thumbnail(world), body].height(CARD_HEIGHT), Padding::new(0.0));
+        ContextMenu::new(card, path.display().to_string())
+            .items(context.items)
+            .on_select(move |index| Message::Menu {
+                path: path.clone(),
+                action: context.actions[index],
+            })
+            .into()
     }
 }
 

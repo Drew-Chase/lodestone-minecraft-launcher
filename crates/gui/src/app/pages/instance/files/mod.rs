@@ -8,6 +8,7 @@
 mod log;
 mod mods;
 mod screenshots;
+pub mod world_archive;
 mod worlds;
 
 use std::path::Path;
@@ -35,6 +36,26 @@ pub struct InstanceFiles {
     pub screenshots: Vec<ScreenshotFile>,
     /// The end of `logs/latest.log`, oldest line first.
     pub log: Vec<LogLine>,
+}
+
+/// The saved worlds in the instance folder's `saves/`, most recently saved first.
+pub fn scan_worlds(folder: &Path) -> Vec<WorldFile> {
+    worlds::scan(&folder.join("saves"))
+}
+
+/// The captures in the instance folder's `screenshots/`, most recent first.
+pub fn scan_screenshots(folder: &Path) -> Vec<ScreenshotFile> {
+    screenshots::scan(&folder.join("screenshots"))
+}
+
+/// The save in `path`, read again. `None` when its folder has no `level.dat`.
+pub fn read_world(path: &Path) -> Option<WorldFile> {
+    worlds::read_world(path)
+}
+
+/// The capture in `path`, read again. `None` when it is no longer a PNG file.
+pub fn read_shot(path: &Path) -> Option<ScreenshotFile> {
+    screenshots::read(path)
 }
 
 /// Reads everything the instance tabs show from the instance folder at `folder`.
@@ -70,6 +91,19 @@ pub fn decode_image(path: &Path, bounds: Option<(u32, u32)>) -> Option<Handle> {
     }
     let pixels = decoded.to_rgba8();
     Some(Handle::from_rgba(pixels.width(), pixels.height(), pixels.into_raw()))
+}
+
+/// Decodes the image at `path` at full size, as RGBA pixels. The error says why it would not decode.
+pub fn decode_rgba(path: &Path) -> Result<image::RgbaImage, String> {
+    let _scope = perf::scope("io.decode");
+    image::open(path).map(|decoded| decoded.to_rgba8()).map_err(|error| error.to_string())
+}
+
+/// Moves `path` to the OS trash, a folder with everything in it included. The trash keeps it until it is
+/// emptied, so it can be restored.
+pub fn move_to_trash(path: &Path) -> Result<(), String> {
+    let _scope = perf::scope("io.trash");
+    trash::delete(path).map_err(|error| error.to_string())
 }
 
 /// The size of every file under `dir`, folders included. Symlinks are not

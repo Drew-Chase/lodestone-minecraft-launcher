@@ -5,6 +5,16 @@ use super::*;
 /// The moment every check is made, in seconds since the Unix epoch.
 const NOW: u64 = 1_700_000_000;
 
+#[test]
+fn quick_play_needs_a_version_from_1_20_on() {
+    assert!(supports_quick_play("1.20"));
+    assert!(supports_quick_play("1.20.1"));
+    assert!(supports_quick_play("1.21.4"));
+    assert!(!supports_quick_play("1.19.4"));
+    assert!(!supports_quick_play("24w14a"), "a snapshot starts the instance alone");
+    assert!(!supports_quick_play("1"), "a version without a minor part starts the instance alone");
+}
+
 /// A Microsoft account whose session expires `in_seconds` after [`NOW`], holding `refresh_token`.
 fn microsoft(in_seconds: u64, refresh_token: Option<&str>) -> Account {
     Account::Microsoft {

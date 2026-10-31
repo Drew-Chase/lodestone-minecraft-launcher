@@ -42,6 +42,20 @@ pub struct Target {
     pub version_id: Option<String>,
     /// The instance folder, which is the game's directory.
     pub directory: PathBuf,
+    /// The world to quick play into, by its folder name. Only set for a version that can (see
+    /// [`supports_quick_play`]).
+    pub quick_play: Option<String>,
+}
+
+/// Whether a Minecraft version can quick play into a world from the command line. `--quickPlaySingleplayer`
+/// arrived with 1.20, so an older version, a snapshot, or anything that does not read as `1.N[.P]` starts
+/// the instance alone.
+pub fn supports_quick_play(mc_version: &str) -> bool {
+    let mut parts = mc_version.split('.');
+    let (Some(major), Some(minor)) = (parts.next(), parts.next()) else {
+        return false;
+    };
+    major == "1" && minor.parse::<u32>().is_ok_and(|minor| minor >= 20)
 }
 
 /// Everything a preparation needs. The account's session must already be fresh: the root refreshes
@@ -278,7 +292,12 @@ fn build(parts: Build<'_>) -> Result<Launcher, String> {
     let mut jvm = vec![format!("-Xmx{MEMORY_MB}M")];
     jvm.extend(arguments::jvm(merged, &values, identity, platform));
     jvm.extend(log_config.and_then(|config| arguments::logging(merged, config)));
-    let game = arguments::game(merged, &values, identity, platform);
+    let mut game = arguments::game(merged, &values, identity, platform);
+    // Quick play opens the world at once. Minecraft finds the world by its folder name.
+    if let Some(world) = &target.quick_play {
+        game.push("--quickPlaySingleplayer".to_string());
+        game.push(world.clone());
+    }
     let main_class = merged.main_class.clone().ok_or_else(|| lang::t("launch.no_main_class").to_owned())?;
 
     Launcher::builder(java, &target.directory)

@@ -72,6 +72,22 @@ impl LodestoneLauncher {
     /// Starts another run of `id`, even while it has runs going. A preparation of the instance that
     /// is still under way is not started again.
     pub(super) fn launch_new_game(&mut self, id: &str) -> Task<LodestoneAppMessage> {
+        self.launch_run(id, None)
+    }
+
+    /// Starts another run of `id` quick playing into the world folder `folder`. A version that cannot quick
+    /// play into a world starts the instance alone.
+    pub(super) fn launch_world(&mut self, id: &str, folder: &str) -> Task<LodestoneAppMessage> {
+        let quick_play = self
+            .library
+            .instance(id)
+            .filter(|instance| prepare::supports_quick_play(&instance.mc_version))
+            .map(|_| folder.to_string());
+        self.launch_run(id, quick_play)
+    }
+
+    /// Starts a run of `id`, quick playing into `quick_play` when it is set. See [`Self::launch_new_game`].
+    fn launch_run(&mut self, id: &str, quick_play: Option<String>) -> Task<LodestoneAppMessage> {
         if self.games.is_preparing(id) {
             return Task::none();
         }
@@ -80,18 +96,18 @@ impl LodestoneLauncher {
             return Task::none();
         }
         let serial = self.games.next_serial();
-        self.begin_launch(id, serial)
+        self.begin_launch(id, serial, quick_play)
     }
 
     /// Starts the launch `serial` of `id` once its session is fresh. A Microsoft session close to
     /// expiry is refreshed first, one refresh at a time, and the launch waits for that refresh.
-    fn begin_launch(&mut self, id: &str, serial: u64) -> Task<LodestoneAppMessage> {
+    fn begin_launch(&mut self, id: &str, serial: u64, quick_play: Option<String>) -> Task<LodestoneAppMessage> {
         let Some(account) = self.account.clone() else {
             self.games.finish_preparing(id, serial);
             return Task::none();
         };
         match prepare::session_check(&account, prepare::unix_now()) {
-            SessionCheck::Fresh => self.start_preparing(id, serial),
+            SessionCheck::Fresh => self.start_preparing(id, serial, quick_play),
             SessionCheck::SignInAgain => {
                 self.games.finish_preparing(id, serial);
                 warn!("Launching {id} failed: the Microsoft session needs a sign in");
@@ -100,7 +116,7 @@ impl LodestoneLauncher {
                     .discard()
             }
             SessionCheck::Refresh(token) => {
-                self.games.wait_for_session(id, serial);
+                self.games.wait_for_session(id, serial, quick_play);
                 if !self.games.start_refresh(token.clone()) {
                     // A refresh is already running, and this launch is among the ones waiting for it.
                     return Task::none();
@@ -116,7 +132,7 @@ impl LodestoneLauncher {
     }
 
     /// Starts preparing the launch `serial` of `id` with the account signed in now.
-    fn start_preparing(&mut self, id: &str, serial: u64) -> Task<LodestoneAppMessage> {
+    fn start_preparing(&mut self, id: &str, serial: u64, quick_play: Option<String>) -> Task<LodestoneAppMessage> {
         let (Some(instance), Some(account)) = (self.library.instance(id), self.account.clone()) else {
             warn!("Launch of {id} ignored: the instance is not loaded or nobody is signed in");
             self.games.finish_preparing(id, serial);
@@ -130,6 +146,7 @@ impl LodestoneLauncher {
                 loader_version: instance.loader_version.clone(),
                 version_id: instance.version_id.clone(),
                 directory: self.paths.instance(&instance.directory_name),
+                quick_play,
             },
             account,
         };
@@ -166,15 +183,15 @@ impl LodestoneLauncher {
                 // The new session replaces the signed-in one only while that one still holds the token the refresh spent.
                 let applied = spent.is_some_and(|token| self.signed_in_with_refresh_token(&token));
                 let mut tasks = vec![if applied { self.keep_session(session) } else { Task::none() }];
-                for (id, serial) in waiting {
+                for (id, serial, quick_play) in waiting {
                     if !self.games.is_preparing_with(&id, serial) {
                         // The launch was stopped while it waited.
                         continue;
                     }
                     tasks.push(if applied {
-                        self.start_preparing(&id, serial)
+                        self.start_preparing(&id, serial, quick_play)
                     } else {
-                        self.begin_launch(&id, serial)
+                        self.begin_launch(&id, serial, quick_play)
                     });
                 }
                 Task::batch(tasks)
@@ -182,7 +199,7 @@ impl LodestoneLauncher {
             Err(error) => {
                 warn!("Refreshing the Microsoft session failed: {error}");
                 let mut failed = false;
-                for (id, serial) in waiting {
+                for (id, serial, _) in waiting {
                     failed |= self.games.finish_preparing(&id, serial);
                 }
                 if failed {

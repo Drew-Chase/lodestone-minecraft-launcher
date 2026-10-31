@@ -48,3 +48,23 @@ fn sizes_read_as_the_launcher_formats_them() {
 fn a_missing_folder_has_no_captures() {
     assert!(scan(Path::new("/definitely/not/a/screenshots/folder")).is_empty());
 }
+
+#[test]
+fn a_capture_reads_back_with_its_write_time_and_size() {
+    let root = scratch("read");
+    write(&root.join("shot.png"), &vec![0; 1_500]);
+    let shot = read(&root.join("shot.png")).expect("the capture reads");
+    assert_eq!(shot.bytes, 1_500);
+    assert_eq!(shot.size_label, "1.5 KB");
+    assert!(shot.modified > SystemTime::UNIX_EPOCH, "the write time is read");
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_path_that_is_no_longer_a_png_reads_as_nothing() {
+    let root = scratch("read-gone");
+    write(&root.join("notes.txt"), b"text");
+    assert!(read(&root.join("notes.txt")).is_none());
+    assert!(read(&root.join("missing.png")).is_none());
+    fs::remove_dir_all(&root).ok();
+}

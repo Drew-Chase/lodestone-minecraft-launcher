@@ -2,18 +2,24 @@
 
 use std::fs::File;
 use std::io::BufReader;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, Utc};
 use flate2::read::GzDecoder;
 use serde::Deserialize;
 
 use super::super::worlds::{Difficulty, GameMode};
 use super::{decode_image, dir_size};
 
+/// World ticks per second. `Time` in `level.dat` counts ticks.
+const TICKS_PER_SECOND: u64 = 20;
+
 /// One saved world.
 #[derive(Debug, Clone)]
 pub struct WorldFile {
+    /// The save's folder, which holds `level.dat`.
+    pub path: PathBuf,
     /// The name `level.dat` gives the world, or the folder name without one.
     pub name: String,
     pub game_mode: Option<GameMode>,
@@ -23,8 +29,10 @@ pub struct WorldFile {
     pub version: Option<String>,
     /// The folder's total size on disk.
     pub size_bytes: u64,
-    /// When `level.dat` was last written.
+    /// When the world was last played: `LastPlayed` from `level.dat`, or when the file was last written.
     pub saved: Option<DateTime<Local>>,
+    /// The time spent in the world, from `Time` in `level.dat`.
+    pub play_time: Option<Duration>,
     /// The save's `icon.png`, when it has one.
     pub icon: Option<iced::widget::image::Handle>,
 }
@@ -44,9 +52,9 @@ pub fn scan(dir: &Path) -> Vec<WorldFile> {
 }
 
 /// The save in `path`, or `None` when the folder has no `level.dat`.
-fn read_world(path: &Path) -> Option<WorldFile> {
+pub fn read_world(path: &Path) -> Option<WorldFile> {
     let level_path = path.join("level.dat");
-    let saved = std::fs::metadata(&level_path).ok()?.modified().ok().map(DateTime::<Local>::from);
+    let written = std::fs::metadata(&level_path).ok()?.modified().ok().map(DateTime::<Local>::from);
     let folder = path.file_name()?.to_string_lossy().into_owned();
     // A `level.dat` that will not decode still lists the save, with the folder
     // name and no details.
@@ -66,8 +74,21 @@ fn read_world(path: &Path) -> Option<WorldFile> {
         Some(3) => Some(Difficulty::Hard),
         _ => None,
     };
+    // `LastPlayed` is epoch milliseconds. A zero or negative value is not a time, so the file's last
+    // write stands in for it.
+    let saved = level
+        .last_played
+        .filter(|millis| *millis > 0)
+        .and_then(DateTime::<Utc>::from_timestamp_millis)
+        .map(|played| played.with_timezone(&Local))
+        .or(written);
+    let play_time = level
+        .time
+        .and_then(|ticks| u64::try_from(ticks).ok())
+        .map(|ticks| Duration::from_secs(ticks / TICKS_PER_SECOND));
 
     Some(WorldFile {
+        path: path.to_path_buf(),
         name: level.level_name.filter(|name| !name.trim().is_empty()).unwrap_or(folder),
         game_mode,
         difficulty,
@@ -75,6 +96,7 @@ fn read_world(path: &Path) -> Option<WorldFile> {
         version: level.version.and_then(|version| version.name),
         size_bytes: dir_size(path),
         saved,
+        play_time,
         icon: decode_image(&path.join("icon.png"), None),
     })
 }
@@ -111,6 +133,10 @@ struct LevelData {
     world_gen_settings: Option<WorldGenSettings>,
     /// Saves from before 1.16 keep the seed here.
     random_seed: Option<i64>,
+    /// Epoch milliseconds of the last time the save was played.
+    last_played: Option<i64>,
+    /// Ticks the world has existed, 20 to the second.
+    time: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]

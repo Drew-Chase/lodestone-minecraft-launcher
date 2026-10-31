@@ -43,6 +43,12 @@ struct TestData {
     difficulty: i8,
     version: TestVersion,
     world_gen_settings: TestSeed,
+    /// Epoch milliseconds, written only when a test sets it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_played: Option<i64>,
+    /// Ticks the world has existed, written only when a test sets it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    time: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -65,6 +71,8 @@ fn hub() -> TestData {
         difficulty: 3,
         version: TestVersion { name: "1.20.1".to_string() },
         world_gen_settings: TestSeed { seed: -4_827_193_047_281 },
+        last_played: None,
+        time: None,
     }
 }
 
@@ -155,5 +163,60 @@ fn a_blank_level_name_falls_back_to_the_folder_name() {
     write(&root.join("Blank/level.dat"), &level_dat(data));
 
     assert_eq!(scan(&root)[0].name, "Blank");
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn last_played_and_time_give_the_save_and_play_times() {
+    let root = scratch("played");
+    let data = TestData {
+        last_played: Some(1_782_000_000_000),
+        time: Some((48 * 3600 + 12 * 60) * 20),
+        ..hub()
+    };
+    write(&root.join("Hub/level.dat"), &level_dat(data));
+
+    let world = &scan(&root)[0];
+    assert_eq!(world.path, root.join("Hub"));
+    let saved = DateTime::<Utc>::from_timestamp_millis(1_782_000_000_000)
+        .expect("a valid time")
+        .with_timezone(&Local);
+    assert_eq!(world.saved, Some(saved), "LastPlayed is the save time");
+    assert_eq!(
+        world.play_time,
+        Some(Duration::from_secs(48 * 3600 + 12 * 60)),
+        "Time counts 20 ticks to the second"
+    );
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn without_last_played_the_file_write_time_stands_in() {
+    let root = scratch("written");
+    write(&root.join("Hub/level.dat"), &level_dat(hub()));
+
+    let world = &scan(&root)[0];
+    assert!(world.play_time.is_none(), "no Time, no play time");
+    assert!(
+        world.saved.is_some_and(|saved| saved.timestamp() > 1_000_000_000),
+        "the write time is recent"
+    );
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_zero_last_played_is_not_a_save_time() {
+    let root = scratch("zero");
+    let data = TestData {
+        last_played: Some(0),
+        ..hub()
+    };
+    write(&root.join("Hub/level.dat"), &level_dat(data));
+
+    let world = &scan(&root)[0];
+    assert!(
+        world.saved.is_some_and(|saved| saved.timestamp() > 1_000_000_000),
+        "the write time stands in for 1970"
+    );
     fs::remove_dir_all(&root).ok();
 }

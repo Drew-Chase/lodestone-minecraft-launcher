@@ -23,7 +23,7 @@ impl LodestoneLauncher {
     /// The instance page's log refresh. It runs only while that page is on screen.
     fn instance_subscription(&self) -> Subscription<LodestoneAppMessage> {
         match self.router.current() {
-            Page::Instance => self.instance_page.subscription().map(LodestoneAppMessage::Instance),
+            Page::Instance => self.instance_page.subscription(self.alerts.is_open()).map(LodestoneAppMessage::Instance),
             _ => Subscription::none(),
         }
     }
