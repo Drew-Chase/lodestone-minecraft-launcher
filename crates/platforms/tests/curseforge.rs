@@ -67,6 +67,21 @@ fn loader_ints_map_to_loader_names() {
 }
 
 #[test]
+fn every_search_loader_round_trips_through_its_mod_loader_int() {
+    for (name, id) in LOADERS {
+        assert_eq!(loader_name(Some(i64::from(id))), [name]);
+    }
+}
+
+#[test]
+fn every_sort_maps_onto_a_curseforge_sort_field() {
+    assert_eq!(sort_field(SearchSort::Relevance), 1);
+    assert_eq!(sort_field(SearchSort::Popular), 2);
+    assert_eq!(sort_field(SearchSort::Updated), 3);
+    assert_eq!(sort_field(SearchSort::Newest), 11);
+}
+
+#[test]
 fn the_search_payload_maps_onto_search_results() {
     let list: CfModList = serde_json::from_str(SEARCH).expect("recorded payload parses");
     let results: Vec<SearchResult> = list
@@ -80,7 +95,7 @@ fn the_search_payload_maps_onto_search_results() {
     assert_eq!(results[0].name, "JarMods");
     assert_eq!(results[0].author.as_deref(), Some("Alice"));
     assert_eq!(results[0].downloads, 123456);
-    assert_eq!(results[0].icon_url.as_deref(), Some("https://logo.test/thumb.png"));
+    assert_eq!(results[0].icon_url.as_deref(), Some("https://logo.test/full.png"));
     assert_eq!(results[0].web_url.as_deref(), Some("https://example.com"));
 }
 

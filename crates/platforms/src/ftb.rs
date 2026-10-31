@@ -1,28 +1,29 @@
 //! FTB — hand-rolled binding for `api.feed-the-beast.com/v1/modpacks`
 //! (the FTB App API).
 //!
-//! Search returns pack ids only, so the first page is hydrated with details
-//! calls; version files carry direct CDN urls and install paths.
+//! Search returns pack ids only, so each page is hydrated with details calls;
+//! version files carry direct CDN urls and install paths.
 
 use std::path::{Path, PathBuf};
 
+use futures_util::future::join_all;
 use serde::Deserialize;
 use simple_download_utility::DownloadProgress;
 use tokio::sync::mpsc::Sender;
 
 use crate::PlatformKind;
 use crate::error::PlatformError;
-use crate::http::{download_files, get_json};
-use crate::meta::{ContentDetails, ContentType, ContentVersion, SearchResult};
+use crate::http::{HYDRATION_CHUNK, download_files, get_json};
+use crate::meta::{ContentDetails, ContentType, ContentVersion, Facets, SearchPage, SearchQuery, SearchResult};
 use crate::sealed;
 
 /// Marker for FTB (https://feed-the-beast.com).
 pub struct Ftb;
 
 const BASE: &str = "https://api.feed-the-beast.com/v1/modpacks";
-/// How many search hits get hydrated with details calls (the search endpoint
-/// returns ids only).
-const SEARCH_HYDRATION_LIMIT: usize = 10;
+/// The most ids one search asks for. The endpoints page by count rather than
+/// by offset, so a page past this many hits is not reachable.
+const MAX_SEARCH: usize = 100;
 
 /// One FTB file of a modpack version: an install path plus a direct CDN url.
 #[derive(Debug, Deserialize)]
@@ -60,6 +61,18 @@ struct FtbVersion {
 struct FtbArt {
     #[serde(default)]
     url: Option<String>,
+    #[serde(default)]
+    width: Option<u64>,
+    #[serde(default)]
+    height: Option<u64>,
+}
+
+/// The largest picture a pack offers. FTB lists several sizes, and the biggest reads best as a banner.
+fn largest_art(art: Vec<FtbArt>) -> Option<String> {
+    art.into_iter()
+        .filter(|art| art.url.is_some())
+        .max_by_key(|art| art.width.unwrap_or(0) * art.height.unwrap_or(0))
+        .and_then(|art| art.url)
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,6 +98,9 @@ struct FtbPack {
 struct FtbSearchResponse {
     #[serde(alias = "packs", default)]
     ids: Vec<i64>,
+    /// How many packs match the search in all.
+    #[serde(default)]
+    count: Option<u64>,
 }
 
 impl FtbPack {
@@ -97,7 +113,7 @@ impl FtbPack {
             summary: self.synopsis.unwrap_or_default(),
             description: self.description,
             downloads: self.installs.unwrap_or(0).max(0) as u64,
-            icon_url: self.art.into_iter().find_map(|art| art.url),
+            icon_url: largest_art(self.art),
             web_url: None,
             content_type: ContentType::Modpack,
         }
@@ -111,8 +127,9 @@ impl FtbPack {
             author: None,
             description: self.synopsis.unwrap_or_default(),
             downloads: self.installs.unwrap_or(0).max(0) as u64,
-            icon_url: self.art.into_iter().find_map(|art| art.url),
+            icon_url: largest_art(self.art),
             web_url: None,
+            updated: None,
             content_type: ContentType::Modpack,
         }
     }
@@ -152,25 +169,36 @@ impl PlatformKind for Ftb {
     const CONTENT_TYPES: &'static [ContentType] = &[ContentType::Modpack];
     const SUPPORTS_MODPACK_ARCHIVE: bool = false;
 
-    async fn search(
-        http: &reqwest::Client,
-        _credential: Option<&str>,
-        query: &str,
-        _content: ContentType,
-    ) -> Result<Vec<SearchResult>, PlatformError> {
-        let url = format!("{BASE}/public/modpack/search/{SEARCH_HYDRATION_LIMIT}");
-        let url = crate::http::with_query(&url, "term", query);
+    async fn search(http: &reqwest::Client, _credential: Option<&str>, query: &SearchQuery) -> Result<SearchPage, PlatformError> {
+        // The endpoints take a count rather than an offset, so ask for every id
+        // up to the end of this page and keep the slice that belongs to it.
+        let wanted = (query.offset as usize + query.limit as usize).clamp(1, MAX_SEARCH);
+        let url = if query.text.is_empty() {
+            format!("{BASE}/public/modpack/popular/installs/{wanted}")
+        } else {
+            crate::http::with_query(&format!("{BASE}/public/modpack/search/{wanted}"), "term", &query.text)
+        };
         let response = get_json(http, &url).await?;
-        let hits: FtbSearchResponse = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
-        // The search endpoint returns ids only; hydrate the page with details
-        // calls so callers get real results.
-        let mut results = Vec::with_capacity(hits.ids.len());
-        for id in &hits.ids {
-            if let Ok(pack) = fetch_pack(http, &id.to_string()).await {
-                results.push(pack.into_search_result());
+        let found: FtbSearchResponse = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
+        let total = found.count.unwrap_or(found.ids.len() as u64);
+        let page: Vec<i64> = found.ids.into_iter().skip(query.offset as usize).take(query.limit as usize).collect();
+        // The endpoints return ids only, so the page is hydrated with details calls, a few at a time.
+        let ids: Vec<String> = page.iter().map(i64::to_string).collect();
+        let mut hits = Vec::with_capacity(page.len());
+        for chunk in ids.chunks(HYDRATION_CHUNK) {
+            let mut calls = Vec::with_capacity(chunk.len());
+            for id in chunk {
+                calls.push(fetch_pack(http, id));
+            }
+            for pack in join_all(calls).await.into_iter().flatten() {
+                hits.push(pack.into_search_result());
             }
         }
-        Ok(results)
+        Ok(SearchPage { hits, total })
+    }
+
+    async fn facets(_http: &reqwest::Client, _credential: Option<&str>, _content: ContentType) -> Result<Facets, PlatformError> {
+        Ok(Facets::default())
     }
 
     async fn details(http: &reqwest::Client, _credential: Option<&str>, id: &str, _content: ContentType) -> Result<ContentDetails, PlatformError> {
@@ -250,6 +278,72 @@ impl PlatformKind for Ftb {
             action: "modpack archive parsing",
         })
     }
+}
+
+/// The loader a version's modloader target names, as `lodestone_loaders` names it.
+fn loader_of(version: &FtbVersion) -> Option<&'static str> {
+    let name = version
+        .targets
+        .iter()
+        .find(|target| target.target_type.as_deref() == Some("modloader"))?
+        .name
+        .as_deref()?
+        .to_lowercase();
+    ["fabric", "forge", "neoforge", "quilt"].into_iter().find(|known| *known == name)
+}
+
+/// The loader version a version's modloader target pins.
+fn loader_version_of(version: &FtbVersion) -> Option<String> {
+    version
+        .targets
+        .iter()
+        .find(|target| target.target_type.as_deref() == Some("modloader"))
+        .and_then(|target| target.version.clone())
+}
+
+/// The installable modpack of one FTB version: its files at their install paths on FTB's CDN, and the
+/// Minecraft version, loader and loader version it targets. Reached through `Platform::<Ftb>::modpack`.
+pub(crate) async fn modpack(http: &reqwest::Client, version: &ContentVersion) -> Result<crate::meta::Modpack, PlatformError> {
+    let Some(project_id) = version.project_id.as_deref() else {
+        return Err(PlatformError::Download {
+            url: format!("{BASE}/public/modpack/"),
+            source: "the version carries no FTB pack id to build the modpack from".into(),
+        });
+    };
+    let pack = fetch_pack(http, project_id).await?;
+    let url = format!("{BASE}/public/modpack/{project_id}/{}", version.id);
+    let response = get_json(http, &url).await?;
+    let detail: FtbVersion = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
+    let (minecraft_versions, _) = version_targets(&detail);
+    let files = detail
+        .files
+        .iter()
+        .filter_map(|file| {
+            let url = file.url.clone()?;
+            let name = file.name.clone()?;
+            let directory = file.path.as_deref().unwrap_or_default().trim_start_matches("./").trim_matches('/');
+            let path = if directory.is_empty() { name } else { format!("{directory}/{name}") };
+            Some(crate::meta::ModpackFile {
+                path,
+                url,
+                sha1: None,
+                size: None,
+                project_id: None,
+                file_id: None,
+            })
+        })
+        .collect();
+    Ok(crate::meta::Modpack {
+        name: pack.name,
+        version: Some(version.version_number.clone()),
+        minecraft: minecraft_versions.into_iter().next().unwrap_or_default(),
+        loader: loader_of(&detail),
+        loader_version: loader_version_of(&detail),
+        files,
+        overrides: None,
+        overrides_skip: Vec::new(),
+        archives: Vec::new(),
+    })
 }
 
 #[cfg(test)]

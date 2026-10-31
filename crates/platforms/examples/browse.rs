@@ -4,7 +4,7 @@
 //!
 //! CurseForge requires an api-key; every other platform ignores it.
 
-use lodestone_platforms::{AtLauncher, ContentType, CurseForge, Ftb, Modrinth, Platform, PlatformError, PlatformKind, Technic};
+use lodestone_platforms::{AtLauncher, ContentType, CurseForge, Ftb, Modrinth, Platform, PlatformError, PlatformKind, SearchQuery, Technic};
 
 #[tokio::main]
 async fn main() {
@@ -49,10 +49,16 @@ async fn main() {
     }
 }
 
-async fn browse<K: PlatformKind>(platform: &Platform<K>, query: &str, content: ContentType) -> Result<(), PlatformError> {
-    println!("searching {query:?} ({content:?})...");
-    let hits = platform.search(query, content).await?;
-    println!("{} result(s)", hits.len());
+async fn browse<K: PlatformKind>(platform: &Platform<K>, text: &str, content: ContentType) -> Result<(), PlatformError> {
+    println!("searching {text:?} ({content:?})...");
+    let page = platform
+        .search(&SearchQuery {
+            text: text.to_string(),
+            ..SearchQuery::new(content)
+        })
+        .await?;
+    let hits = page.hits;
+    println!("{} of {} result(s)", hits.len(), page.total);
     for hit in hits.iter().take(5) {
         println!(
             "  [{}] {} by {} (downloads: {})",

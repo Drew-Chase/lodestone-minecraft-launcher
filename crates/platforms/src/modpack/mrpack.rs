@@ -107,6 +107,8 @@ pub(super) fn parse(raw: &str, archive: &Path) -> Result<Modpack, PlatformError>
         loader_version,
         files,
         overrides: index.overrides,
+        overrides_skip: Vec::new(),
+        archives: Vec::new(),
     })
 }
 

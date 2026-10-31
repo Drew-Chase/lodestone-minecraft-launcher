@@ -5,7 +5,15 @@
 mod fixture;
 
 use fixture::jar;
-use lodestone_platforms::{AtLauncher, ContentType, CurseForge, Ftb, Modrinth, Platform, PlatformError, Technic};
+use lodestone_platforms::{AtLauncher, ContentType, CurseForge, Ftb, Modrinth, Platform, PlatformError, SearchQuery, Technic};
+
+/// A first page of `content` matching `text`.
+fn query(text: &str, content: ContentType) -> SearchQuery {
+    SearchQuery {
+        text: text.to_string(),
+        ..SearchQuery::new(content)
+    }
+}
 
 const MRPACK_INDEX: &str = r#"{
     "formatVersion": 1,
@@ -37,7 +45,7 @@ const CURSEFORGE_MANIFEST: &str = r#"{
 #[tokio::test]
 async fn capability_matrix_gates_content_types() {
     let platform = Platform::<AtLauncher>::new();
-    let error = platform.search("anything", ContentType::Mod).await.expect_err("out of matrix");
+    let error = platform.search(&query("anything", ContentType::Mod)).await.expect_err("out of matrix");
     assert!(matches!(
         error,
         PlatformError::UnsupportedContentType {
@@ -47,7 +55,7 @@ async fn capability_matrix_gates_content_types() {
     ));
 
     let platform = Platform::<CurseForge>::new();
-    let error = platform.search("anything", ContentType::Shader).await.expect_err("out of matrix");
+    let error = platform.search(&query("anything", ContentType::Shader)).await.expect_err("out of matrix");
     assert!(matches!(
         error,
         PlatformError::UnsupportedContentType {
@@ -72,15 +80,19 @@ fn pack_only_platforms_reject_modpack_archive_parsing() {
     for result in [
         Platform::<AtLauncher>::new().parse_modpack(&path),
         Platform::<Ftb>::new().parse_modpack(&path),
-        Platform::<Technic>::new().parse_modpack(&path),
     ] {
         assert!(matches!(
             result,
-            Err(PlatformError::UnsupportedPlatform { platform: "atlauncher", .. })
-                | Err(PlatformError::UnsupportedPlatform { platform: "ftb", .. })
-                | Err(PlatformError::UnsupportedPlatform { platform: "technic", .. })
+            Err(PlatformError::UnsupportedPlatform { platform: "atlauncher", .. }) | Err(PlatformError::UnsupportedPlatform { platform: "ftb", .. })
         ));
     }
+}
+
+#[test]
+fn technic_reads_a_zip_without_a_loader_descriptor_as_vanilla() {
+    let path = jar("plain", &[("some.txt", "not a modpack")]);
+    let modpack = Platform::<Technic>::new().parse_modpack(&path).expect("a zip reads");
+    assert_eq!(modpack.loader, None);
 }
 
 #[test]
@@ -127,7 +139,8 @@ fn curseforge_without_a_key_fails_fast() {
     // A keyless CurseForge handle may not even attempt a network call: the
     // key check happens before the request.
     let platform = Platform::<CurseForge>::new();
-    let result = platform.search("sodium", ContentType::Mod);
+    let sodium = query("sodium", ContentType::Mod);
+    let result = platform.search(&sodium);
     // The search is async; the key check fires inside it, so drive it to
     // completion on the current thread runtime.
     let runtime = tokio::runtime::Builder::new_current_thread().build().expect("runtime builds");

@@ -4,7 +4,7 @@
 ///
 /// Platforms declare which of these they cover (see the capability matrix in
 /// DESIGN.md §5); requests outside a platform's matrix are rejected up front.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ContentType {
     /// Mods (and mod-like plugins).
     Mod,
@@ -53,9 +53,112 @@ pub struct SearchResult {
     pub icon_url: Option<String>,
     /// The project's web page, when the platform provides one.
     pub web_url: Option<String>,
+    /// When the project was last updated, as the platform writes it (ISO 8601), when it says.
+    pub updated: Option<String>,
     /// The content type this result is.
     pub content_type: ContentType,
 }
+
+/// How a search orders its hits. Each platform maps these onto its own sort
+/// fields and ignores a sort it cannot express.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum SearchSort {
+    /// The platform's own ranking for the query.
+    #[default]
+    Relevance,
+    /// Most downloaded first.
+    Popular,
+    /// Most recently updated first.
+    Updated,
+    /// Most recently released first.
+    Newest,
+}
+
+/// One search request: text, paging, and the optional filters a platform supports.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchQuery {
+    /// The text to match. Empty browses the platform.
+    pub text: String,
+    /// The content type to search within.
+    pub content: ContentType,
+    /// How to order the hits.
+    pub sort: SearchSort,
+    /// How many hits to skip.
+    pub offset: u32,
+    /// How many hits to return at most.
+    pub limit: u32,
+    /// A category id, from [`Facets::categories`].
+    pub category: Option<String>,
+    /// A loader name, from [`Facets::loaders`].
+    pub loader: Option<String>,
+    /// A Minecraft version, from [`Facets::game_versions`].
+    pub game_version: Option<String>,
+}
+
+impl SearchQuery {
+    /// The first page of `content`, with no text and no filters.
+    pub fn new(content: ContentType) -> Self {
+        Self {
+            text: String::new(),
+            content,
+            sort: SearchSort::Relevance,
+            offset: 0,
+            limit: 20,
+            category: None,
+            loader: None,
+            game_version: None,
+        }
+    }
+}
+
+/// One page of search hits.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SearchPage {
+    /// The hits on this page, in the platform's order.
+    pub hits: Vec<SearchResult>,
+    /// How many hits match in all, when the platform reports it.
+    pub total: u64,
+}
+
+/// One choice in a filter: the id to send back, and the name to show.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Facet {
+    /// The id a [`SearchQuery`] carries.
+    pub id: String,
+    /// The name to show.
+    pub name: String,
+}
+
+/// The filters a platform offers for one content type. An empty list means the
+/// platform has no such filter.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Facets {
+    /// The categories a project can be filed under.
+    pub categories: Vec<Facet>,
+    /// The mod loaders, named as `lodestone_loaders` names them.
+    pub loaders: Vec<String>,
+    /// The Minecraft versions, newest first.
+    pub game_versions: Vec<String>,
+}
+
+/// A display name for a platform id: `kitchen-sink` becomes `Kitchen Sink`.
+pub(crate) fn display_name(id: &str) -> String {
+    id.split(['-', '_', ' '])
+        .filter(|word| !word.is_empty())
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().chain(chars).collect::<String>(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(test)]
+#[path = "../tests/meta.rs"]
+mod tests;
 
 /// The full details of one project or pack.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -166,6 +269,30 @@ pub struct Modpack {
     pub loader_version: Option<String>,
     /// The files the modpack installs.
     pub files: Vec<ModpackFile>,
-    /// The archive directory holding config overrides, when present.
+    /// The archive directory holding config overrides, when present. An empty name means the archive root.
     pub overrides: Option<String>,
+    /// Archive entries the overrides leave out, as paths inside the archive.
+    pub overrides_skip: Vec<String>,
+    /// Archives the pack downloads and unpacks on top of its files.
+    pub archives: Vec<ModpackArchive>,
+}
+
+/// An archive a modpack downloads and unpacks into the instance: a config bundle, or a mod that is
+/// shipped as an archive and has to be extracted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModpackArchive {
+    /// The file's name, which the download keeps.
+    pub name: String,
+    /// The direct download url.
+    pub url: String,
+    /// The sha1 hash, when the platform provides one.
+    pub sha1: Option<String>,
+    /// The size in bytes, when the platform provides one.
+    pub size: Option<u64>,
+    /// The folder inside the instance the archive unpacks into, relative to the instance root. Empty
+    /// means the root.
+    pub target: String,
+    /// The folder inside the archive whose contents unpack, without a trailing slash. Empty means the
+    /// whole archive.
+    pub prefix: String,
 }

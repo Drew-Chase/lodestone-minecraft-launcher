@@ -104,6 +104,8 @@ pub(super) fn parse(raw: &str, archive: &Path) -> Result<Modpack, PlatformError>
             })
             .collect(),
         overrides: manifest.overrides,
+        overrides_skip: Vec::new(),
+        archives: Vec::new(),
     })
 }
 

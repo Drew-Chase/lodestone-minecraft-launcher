@@ -13,6 +13,7 @@ use crate::meta::Modpack;
 
 mod curseforge;
 mod mrpack;
+pub(crate) mod technic;
 
 /// The manifest entries this crate recognizes, in sniffing order.
 const MRPACK_MANIFEST: &str = "modrinth.index.json";

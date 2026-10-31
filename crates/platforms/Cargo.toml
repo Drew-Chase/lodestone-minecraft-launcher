@@ -16,10 +16,11 @@ tokio = { workspace = true }
 ferinth = { workspace = true }
 simple_download_utility = { workspace = true }
 zipcrawl = { workspace = true }
+futures-util = "0.3"
+zip = "9"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-zip = "9"
 
 [[test]]
 name = "platforms"

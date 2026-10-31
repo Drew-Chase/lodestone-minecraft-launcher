@@ -16,7 +16,7 @@ use tokio::sync::mpsc::Sender;
 use crate::PlatformKind;
 use crate::error::PlatformError;
 use crate::http::{download_files, get_json, with_query};
-use crate::meta::{ContentDetails, ContentFile, ContentType, ContentVersion, SearchResult};
+use crate::meta::{ContentDetails, ContentFile, ContentType, ContentVersion, Facet, Facets, SearchPage, SearchQuery, SearchResult, SearchSort};
 use crate::sealed;
 
 /// Marker for CurseForge (https://www.curseforge.com). Requires an API key —
@@ -26,6 +26,8 @@ pub struct CurseForge;
 const BASE: &str = "https://api.curseforge.com/v1";
 /// CurseForge's game id for Minecraft.
 const MINECRAFT_GAME_ID: u32 = 432;
+/// The largest page `/mods/search` returns.
+const MAX_PAGE: u32 = 50;
 
 /// CurseForge's top-level content classes that map onto [`ContentType`]s.
 fn class_id(content: ContentType) -> Option<u32> {
@@ -49,6 +51,20 @@ fn loader_name(mod_loader: Option<i64>) -> Vec<String> {
     }
 }
 
+/// The loader names a search filters by, paired with CurseForge's `modLoaderType`
+/// values. The inverse of [`loader_name`].
+const LOADERS: [(&str, u32); 4] = [("forge", 1), ("neoforge", 4), ("fabric", 5), ("quilt", 6)];
+
+/// CurseForge's `sortField` values, one per [`SearchSort`].
+fn sort_field(sort: SearchSort) -> u32 {
+    match sort {
+        SearchSort::Relevance => 1,
+        SearchSort::Popular => 2,
+        SearchSort::Updated => 3,
+        SearchSort::Newest => 11,
+    }
+}
+
 /// Builds a client carrying the API key header plus the full url for `path`.
 /// Fails up front when the handle has no credential.
 fn request(credential: Option<&str>, path: &str) -> Result<(String, reqwest::Client), PlatformError> {
@@ -66,6 +82,7 @@ fn request(credential: Option<&str>, path: &str) -> Result<(String, reqwest::Cli
     headers.insert(reqwest::header::HeaderName::from_static("x-api-key"), value);
     let client = reqwest::Client::builder()
         .default_headers(headers)
+        .user_agent(concat!("lodestone_platforms/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|source| PlatformError::Download {
             url: BASE.to_string(),
@@ -83,6 +100,8 @@ struct CfMod {
     summary: String,
     #[serde(rename = "downloadCount", default)]
     download_count: u64,
+    #[serde(rename = "dateModified", default)]
+    date_modified: Option<String>,
     #[serde(default)]
     authors: Vec<CfAuthor>,
     #[serde(default)]
@@ -111,8 +130,16 @@ struct CfLinks {
 }
 
 #[derive(Debug, Deserialize)]
+struct CfPagination {
+    #[serde(rename = "totalCount", default)]
+    total_count: u64,
+}
+
+#[derive(Debug, Deserialize)]
 struct CfModList {
     data: Vec<CfMod>,
+    #[serde(default)]
+    pagination: Option<CfPagination>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -123,6 +150,30 @@ struct CfModEnvelope {
 #[derive(Debug, Deserialize)]
 struct CfDescription {
     data: String,
+}
+
+/// One CurseForge category: its numeric id and its name.
+#[derive(Debug, Deserialize)]
+struct CfCategory {
+    id: i64,
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CfCategoryList {
+    data: Vec<CfCategory>,
+}
+
+/// One Minecraft version row of `/minecraft/version`.
+#[derive(Debug, Deserialize)]
+struct CfGameVersion {
+    #[serde(rename = "versionString")]
+    version_string: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CfGameVersionList {
+    data: Vec<CfGameVersion>,
 }
 
 /// A CurseForge file — one release of a project.
@@ -178,8 +229,9 @@ fn mod_to_search_result(mod_: CfMod, content: ContentType) -> SearchResult {
         author: mod_.authors.into_iter().next().map(|author| author.name),
         description: mod_.summary,
         downloads: mod_.download_count,
-        icon_url: mod_.logo.and_then(|logo| logo.thumbnail_url.or(logo.url)),
+        icon_url: mod_.logo.and_then(|logo| logo.url.or(logo.thumbnail_url)),
         web_url: mod_.links.and_then(|links| links.website_url),
+        updated: mod_.date_modified,
         content_type: content,
     }
 }
@@ -212,21 +264,64 @@ impl PlatformKind for CurseForge {
     const CONTENT_TYPES: &'static [ContentType] = &[ContentType::Mod, ContentType::Modpack, ContentType::ResourcePack, ContentType::World];
     const SUPPORTS_MODPACK_ARCHIVE: bool = true;
 
-    async fn search(
-        _http: &reqwest::Client,
-        credential: Option<&str>,
-        query: &str,
-        content: ContentType,
-    ) -> Result<Vec<SearchResult>, PlatformError> {
-        let Some(class_id) = class_id(content) else { return Ok(Vec::new()) };
-        let mut path = format!("/mods/search?gameId={MINECRAFT_GAME_ID}&classId={class_id}&pageSize=50&sortField=2&sortOrder=desc");
-        if !query.is_empty() {
-            path = with_query(&path, "searchFilter", query);
+    async fn search(_http: &reqwest::Client, credential: Option<&str>, query: &SearchQuery) -> Result<SearchPage, PlatformError> {
+        let Some(class_id) = class_id(query.content) else {
+            return Ok(SearchPage::default());
+        };
+        let mut path = format!(
+            "/mods/search?gameId={MINECRAFT_GAME_ID}&classId={class_id}&index={}&pageSize={}&sortField={}&sortOrder=desc",
+            query.offset,
+            query.limit.clamp(1, MAX_PAGE),
+            sort_field(query.sort),
+        );
+        if !query.text.is_empty() {
+            path = with_query(&path, "searchFilter", &query.text);
+        }
+        if let Some(category) = &query.category {
+            path = with_query(&path, "categoryId", category);
+        }
+        if let Some((_, id)) = query
+            .loader
+            .as_deref()
+            .and_then(|loader| LOADERS.iter().find(|(name, _)| *name == loader))
+        {
+            path = format!("{path}&modLoaderType={id}");
+        }
+        if let Some(version) = &query.game_version {
+            path = with_query(&path, "gameVersion", version);
         }
         let (url, client) = request(credential, &path)?;
         let response = get_json(&client, &url).await?;
         let list: CfModList = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
-        Ok(list.data.into_iter().map(|cf_mod| mod_to_search_result(cf_mod, content)).collect())
+        let total = list.pagination.map_or(list.data.len() as u64, |pagination| pagination.total_count);
+        Ok(SearchPage {
+            hits: list.data.into_iter().map(|cf_mod| mod_to_search_result(cf_mod, query.content)).collect(),
+            total,
+        })
+    }
+
+    async fn facets(_http: &reqwest::Client, credential: Option<&str>, content: ContentType) -> Result<Facets, PlatformError> {
+        let Some(class_id) = class_id(content) else {
+            return Ok(Facets::default());
+        };
+        let (url, client) = request(credential, &format!("/categories?gameId={MINECRAFT_GAME_ID}&classId={class_id}"))?;
+        let categories: CfCategoryList =
+            serde_json::from_value(get_json(&client, &url).await?).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
+        let (url, client) = request(credential, "/minecraft/version")?;
+        let versions: CfGameVersionList =
+            serde_json::from_value(get_json(&client, &url).await?).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
+        Ok(Facets {
+            categories: categories
+                .data
+                .into_iter()
+                .map(|category| Facet {
+                    id: category.id.to_string(),
+                    name: category.name,
+                })
+                .collect(),
+            loaders: LOADERS.iter().map(|(name, _)| (*name).to_string()).collect(),
+            game_versions: versions.data.into_iter().map(|version| version.version_string).collect(),
+        })
     }
 
     async fn details(_http: &reqwest::Client, credential: Option<&str>, id: &str, content: ContentType) -> Result<ContentDetails, PlatformError> {
@@ -252,7 +347,7 @@ impl PlatformKind for CurseForge {
             summary: envelope.data.summary,
             description,
             downloads: envelope.data.download_count,
-            icon_url: envelope.data.logo.and_then(|logo| logo.thumbnail_url.or(logo.url)),
+            icon_url: envelope.data.logo.and_then(|logo| logo.url.or(logo.thumbnail_url)),
             web_url: envelope.data.links.and_then(|links| links.website_url),
             content_type: content,
         })
@@ -304,6 +399,16 @@ impl PlatformKind for CurseForge {
     fn parse_modpack(archive: &Path) -> Result<crate::meta::Modpack, PlatformError> {
         crate::modpack::parse(archive)
     }
+}
+
+/// The CDN url of one file of a project. Modpack files name their mods by project and file id, and
+/// each id resolves here when the modpack is installed. A file whose author disabled distribution has
+/// no url, and the call fails. Reached through `Platform::<CurseForge>::file_url`.
+pub(crate) async fn file_url(credential: Option<&str>, project_id: &str, file_id: &str) -> Result<String, PlatformError> {
+    let (url, client) = request(credential, &format!("/mods/{project_id}/files/{file_id}/download-link"))?;
+    let response = get_json(&client, &url).await?;
+    let link: CfDownloadLink = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
+    Ok(link.data)
 }
 
 #[cfg(test)]

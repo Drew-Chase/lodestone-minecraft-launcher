@@ -6,11 +6,15 @@
 //!
 //! ```no_run
 //! # async fn demo() -> Result<(), lodestone_platforms::PlatformError> {
-//! use lodestone_platforms::{ContentType, Platform, PlatformKind};
+//! use lodestone_platforms::{ContentType, Platform, SearchQuery};
 //!
 //! let platform = Platform::<lodestone_platforms::Modrinth>::new();
-//! let hits = platform.search("sodium", ContentType::Mod).await?;
-//! let first = hits.first().expect("modrinth has sodium");
+//! let query = SearchQuery {
+//!     text: "sodium".to_string(),
+//!     ..SearchQuery::new(ContentType::Mod)
+//! };
+//! let page = platform.search(&query).await?;
+//! let first = page.hits.first().expect("modrinth has sodium");
 //! let details = platform.details(&first.id, ContentType::Mod).await?;
 //! let versions = platform.versions(&first.id, ContentType::Mod).await?;
 //! let latest = versions.first().expect("sodium has releases");
@@ -68,7 +72,10 @@ pub use atlauncher::AtLauncher;
 pub use curseforge::CurseForge;
 pub use error::PlatformError;
 pub use ftb::Ftb;
-pub use meta::{ContentDetails, ContentFile, ContentType, ContentVersion, Modpack, ModpackFile, SearchResult};
+pub use meta::{
+    ContentDetails, ContentFile, ContentType, ContentVersion, Facet, Facets, Modpack, ModpackArchive, ModpackFile, SearchPage, SearchQuery,
+    SearchResult, SearchSort,
+};
 pub use modrinth::Modrinth;
 pub use simple_download_utility::DownloadProgress;
 pub use technic::Technic;
@@ -101,13 +108,15 @@ pub trait PlatformKind: sealed::Sealed + Send + Sync + 'static {
     /// read (`.mrpack`, CurseForge exports).
     const SUPPORTS_MODPACK_ARCHIVE: bool;
 
-    /// Searches the platform within one content type.
+    /// Searches the platform: one page of hits matching `query`.
     fn search(
         http: &reqwest::Client,
         credential: Option<&str>,
-        query: &str,
-        content: ContentType,
-    ) -> impl Future<Output = Result<Vec<SearchResult>, PlatformError>> + Send;
+        query: &SearchQuery,
+    ) -> impl Future<Output = Result<SearchPage, PlatformError>> + Send;
+
+    /// The filters the platform offers for `content`.
+    fn facets(http: &reqwest::Client, credential: Option<&str>, content: ContentType) -> impl Future<Output = Result<Facets, PlatformError>> + Send;
 
     /// Fetches the full details of one project or pack.
     fn details(
@@ -146,9 +155,11 @@ pub trait PlatformKind: sealed::Sealed + Send + Sync + 'static {
 /// surface. Constructing, cloning, and storing the handle is cheap — the
 /// [`reqwest::Client`] inside is connection-pooled and meant to be reused.
 ///
-/// Launching the same kind from several handles is legal and stateless: no
-/// globals, no statics (the Modrinth kind's ferinth client is an immutable
-/// shared instance), no interior mutability.
+/// Launching the same kind from several handles is legal and stateless: a handle
+/// holds no state of its own. The one shared cache is the answer cache of the
+/// GET helper, which keeps repeated reads for ten minutes so the platforms'
+/// rate limits are not spent on them again. The Modrinth kind's ferinth client
+/// is an immutable shared instance.
 pub struct Platform<K: PlatformKind> {
     http: reqwest::Client,
     credential: Option<String>,
@@ -178,7 +189,7 @@ impl<K: PlatformKind> Platform<K> {
     /// with an authorization error until [`Platform::<CurseForge>::with_api_key`]
     /// is used instead.
     pub fn new() -> Self {
-        Self::build(None, reqwest::Client::new())
+        Self::build(None, http::client())
     }
 
     /// Creates a platform handle around a preconfigured client (timeouts,
@@ -190,10 +201,16 @@ impl<K: PlatformKind> Platform<K> {
         Self::build(None, http)
     }
 
-    /// Searches the platform for `query` within one content type.
-    pub async fn search(&self, query: &str, content: ContentType) -> Result<Vec<SearchResult>, PlatformError> {
+    /// Searches the platform: one page of hits matching `query`.
+    pub async fn search(&self, query: &SearchQuery) -> Result<SearchPage, PlatformError> {
+        self.gate(query.content)?;
+        K::search(&self.http, self.credential.as_deref(), query).await
+    }
+
+    /// The filters the platform offers for `content`.
+    pub async fn facets(&self, content: ContentType) -> Result<Facets, PlatformError> {
         self.gate(content)?;
-        K::search(&self.http, self.credential.as_deref(), query, content).await
+        K::facets(&self.http, self.credential.as_deref(), content).await
     }
 
     /// Fetches the full details of one project or pack.
@@ -249,6 +266,38 @@ impl<K: PlatformKind> Default for Platform<K> {
 impl Platform<CurseForge> {
     /// Creates a CurseForge handle around an API key.
     pub fn with_api_key(key: impl Into<String>) -> Self {
-        Self::build(Some(key.into()), reqwest::Client::new())
+        Self::build(Some(key.into()), http::client())
+    }
+
+    /// The CDN url of one file of a project, which a modpack's file list names by id. Fails when the
+    /// file's author disabled distribution.
+    pub async fn file_url(&self, project_id: &str, file_id: &str) -> Result<String, PlatformError> {
+        curseforge::file_url(self.credential.as_deref(), project_id, file_id).await
+    }
+}
+
+impl Platform<Ftb> {
+    /// The installable modpack of one FTB version: its files at their install paths on FTB's CDN, and
+    /// the Minecraft version, loader and loader version it targets. The version must come from
+    /// [`Platform::versions`], which names its pack.
+    pub async fn modpack(&self, version: &ContentVersion) -> Result<Modpack, PlatformError> {
+        ftb::modpack(&self.http, version).await
+    }
+}
+
+impl Platform<Technic> {
+    /// The installable modpack of one Solder build: the mods its manifest names, and the Minecraft and
+    /// Forge versions it targets. A zip pack is read from its downloaded zip by `parse_modpack`. The
+    /// version must come from [`Platform::versions`], which names its pack.
+    pub async fn modpack(&self, version: &ContentVersion) -> Result<Modpack, PlatformError> {
+        technic::modpack(&self.http, version).await
+    }
+}
+
+impl Platform<AtLauncher> {
+    /// The installable modpack of one ATLauncher pack version, from its `Configs.json` on the CDN. The
+    /// version must come from [`Platform::versions`], which names its pack.
+    pub async fn modpack(&self, version: &ContentVersion) -> Result<Modpack, PlatformError> {
+        atlauncher::modpack(&self.http, version).await
     }
 }
