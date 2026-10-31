@@ -4,30 +4,60 @@
 //! Only what the instance folder or the database holds is shown. The strip's
 //! thumbnails come from the screenshots tab's cache.
 
-use iced::widget::{Space, Text, column, container, row};
+use aurora_leaf::Icon;
+use iced::widget::{Column, Space, Text, column, container, row};
 use iced::{Background, Color, Element, Fill, Length, Padding, alignment};
 
 use super::format::format_playtime;
 use super::screenshots;
+use crate::app::components::ProgressBar;
 use crate::app::components::grid::grid;
+use crate::app::components::instance_card::install_status;
 use crate::app::components::panel::panel;
 use crate::app::components::screenshot_tile::{Caption, photo_tile};
+use crate::app::downloads::{Pending, progress_detail};
 use crate::app::lang;
 use crate::app::pages::library::instance::{Instance, Loader};
-use crate::app::theme::{color, fonts};
+use crate::app::theme::{color, fonts, utility};
 
 /// How many of the newest captures the strip shows, three to a row.
 const STRIP_LEN: usize = 6;
 
 /// The Overview's two columns: About and the strip on the left, the session
-/// readout on the right.
-pub fn view<'a, M: 'static>(instance: &'a Instance, screenshots: &'a screenshots::State) -> Element<'a, M> {
-    let left = column![about_panel(instance), screenshot_strip::<M>(screenshots)]
-        .spacing(16)
-        .width(Length::FillPortion(2));
+/// readout on the right. While the instance installs, its install panel leads the left column.
+pub fn view<'a, M: 'static>(instance: &'a Instance, screenshots: &'a screenshots::State, install: Option<&'a Pending>) -> Element<'a, M> {
+    let mut left = Column::new().spacing(16).width(Length::FillPortion(2));
+    if let Some(pending) = install {
+        left = left.push(install_panel::<M>(pending));
+    }
+    left = left.push(about_panel(instance)).push(screenshot_strip::<M>(screenshots));
     let right = column![session_panel::<M>(instance)].spacing(14).width(Length::FillPortion(1));
 
     row![left, right].spacing(18).align_y(alignment::Vertical::Top).width(Fill).into()
+}
+
+/// The panel of an install that has not ended: its stage and percent, the bar, and what it is doing.
+fn install_panel<M: 'static>(pending: &Pending) -> Element<'static, M> {
+    let fraction = pending.progress.as_ref().and_then(|progress| progress.fraction);
+    panel(
+        column![
+            row![
+                utility::icon(Icon::lucide().download(), 14.0, Some((color::Primary::DEFAULT, color::Primary::DEFAULT))),
+                Text::new(install_status(pending))
+                    .size(13)
+                    .font(fonts::Inter::SEMI_BOLD)
+                    .color(color::Text::HEADLINE),
+            ]
+            .spacing(8)
+            .align_y(alignment::Vertical::Center),
+            ProgressBar::new(fraction.unwrap_or(0.0)).indeterminate(fraction.is_none()).width(Fill),
+            Text::new(progress_detail(pending.progress.as_ref()))
+                .size(11)
+                .font(fonts::JetBrainsMono::REGULAR)
+                .color(color::Text::MUTED),
+        ]
+        .spacing(10),
+    )
 }
 
 fn about_panel<M: 'static>(instance: &Instance) -> Element<'static, M> {

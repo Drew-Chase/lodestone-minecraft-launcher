@@ -13,11 +13,13 @@ use crate::app::pages::library::instance::{Instance, Loader};
 use crate::app::pages::library::instance_menu;
 use crate::app::theme::color;
 use crate::app::theme::fonts;
-use iced::widget::{Space, Text, column, container, mouse_area, row};
+use iced::widget::image::Handle;
+use iced::widget::{Space, Text, column, container, mouse_area, row, stack};
 use iced::{Background, Border, Color, Element, Fill, Length, Padding, alignment, color, mouse};
 
-use crate::app::components::TextButton;
 use crate::app::components::badge::{Badge, loader_palette};
+use crate::app::components::{ProgressBar, TextButton};
+use crate::app::downloads::{JobState, Pending};
 
 /// The grid card's fixed height — art box plus info block. Fixed so the
 /// virtualized rows keep an exact pitch.
@@ -29,6 +31,8 @@ pub const CARD_ART_HEIGHT: f32 = 180.0;
 const CARD_CORNER: f32 = 14.0;
 /// The compact row's fixed height.
 pub const COMPACT_ROW_HEIGHT: f32 = 64.0;
+/// The side of a compact row's square thumbnail.
+pub const THUMB_SIZE: f32 = 44.0;
 /// One table row's fixed height (the header is not virtualized).
 pub const TABLE_ROW_HEIGHT: f32 = 52.0;
 
@@ -43,8 +47,8 @@ pub struct InstanceMessages<Message> {
     pub enter: Message,
     /// The pointer left a grid card.
     pub exit: Message,
-    /// A row of the context menu was picked: the menu's index for it.
-    pub menu: Box<dyn Fn(usize) -> Message>,
+    /// A row of the context menu was picked. A separator sends `None`.
+    pub menu: Box<dyn Fn(Option<instance_menu::Action>) -> Message>,
 }
 
 /// The instance's display name.
@@ -104,6 +108,89 @@ fn play_button<Message: Clone + 'static>(on_press: Message) -> Element<'static, 
         .into()
 }
 
+/// The Play button of an installed instance. While its install has not ended, a disabled button says
+/// how far the install has got.
+fn play_slot<Message: Clone + 'static>(on_press: Message, install: Option<&Pending>) -> Element<'static, Message> {
+    match install {
+        None => play_button(on_press),
+        Some(pending) => TextButton::primary(install_status(pending))
+            .padding(Padding::new(0.0).left(16).right(16).top(8).bottom(8))
+            .disabled(true)
+            .into(),
+    }
+}
+
+/// What an install that has not ended shows: its stage and percent, or why it has not started.
+pub fn install_status(pending: &Pending) -> String {
+    let progress = pending.progress.as_ref();
+    let fraction = progress.and_then(|progress| progress.fraction);
+    match (&pending.state, progress, fraction) {
+        (JobState::Queued, _, _) => lang::t("downloads.queued").to_owned(),
+        (JobState::Paused, _, Some(fraction)) => lang::t_with("downloads.paused_at", &[("percent", percent(fraction).as_str())]),
+        (JobState::Paused, _, None) => lang::t("downloads.paused").to_owned(),
+        (_, Some(progress), Some(fraction)) => lang::t_with(
+            "downloads.card_progress",
+            &[("stage", progress.stage.label()), ("percent", percent(fraction).as_str())],
+        ),
+        (_, Some(progress), None) => progress.stage.label().to_owned(),
+        _ => lang::t("downloads.starting").to_owned(),
+    }
+}
+
+/// A fraction as a whole percentage, without the sign.
+fn percent(fraction: f32) -> String {
+    format!("{:.0}", (fraction * 100.0).min(100.0))
+}
+
+/// The scrim over an art box while its install has not ended: the stage and percent, with a bar under them.
+fn install_overlay<Message: 'static>(pending: &Pending) -> Element<'static, Message> {
+    let fraction = pending.progress.as_ref().and_then(|progress| progress.fraction);
+    container(
+        column![
+            Text::new(install_status(pending))
+                .size(12)
+                .font(fonts::Inter::SEMI_BOLD)
+                .color(color::Text::HEADLINE),
+            ProgressBar::new(fraction.unwrap_or(0.0)).indeterminate(fraction.is_none()).width(Fill),
+        ]
+        .spacing(8)
+        .width(Fill),
+    )
+    .padding(Padding::new(14.0))
+    .width(Fill)
+    .height(Fill)
+    .align_y(alignment::Vertical::Bottom)
+    .style(|_| container::Style {
+        background: Some(Background::Color(Color { a: 0.55, ..color!(0x08090A) })),
+        ..container::Style::default()
+    })
+    .into()
+}
+
+/// The art of a card or row: the instance's banner, with the install's scrim over it while it installs.
+fn card_art<Message: 'static>(instance: &Instance, install: Option<&Pending>, banner: Option<Handle>) -> Element<'static, Message> {
+    match install {
+        Some(pending) => stack![instance_art::card_banner(instance, banner), install_overlay(pending)].into(),
+        None => instance_art::card_banner(instance, banner),
+    }
+}
+
+/// Wraps a card's or row's body in its context menu. The menu lists the instance's rows, or only Cancel
+/// install while the install has not ended.
+fn with_menu<Message: Clone + 'static>(
+    body: impl Into<Element<'static, Message>>,
+    instance: &Instance,
+    installing: bool,
+    on_select: Box<dyn Fn(Option<instance_menu::Action>) -> Message>,
+) -> Element<'static, Message> {
+    let menu = instance_menu::menu(installing, true);
+    let actions = menu.actions;
+    ContextMenu::new(body, instance.id.clone())
+        .items(menu.items)
+        .on_select(move |index| on_select(actions.get(index).copied().flatten()))
+        .into()
+}
+
 /// The loader chip — uppercase mono label on the loader's tinted fill.
 pub fn loader_chip<Message: 'static>(loader: Loader) -> Element<'static, Message> {
     let (ink, fill) = loader_palette(loader);
@@ -127,10 +214,16 @@ fn card_panel(border: Color) -> container::Style {
 /// driven by the art box; keep it fixed so the virtual rows stay uniform. A hovered card grows and
 /// lights its border. The whole card opens the instance except for its Play button, and a
 /// right-click opens its context menu.
-pub fn instance_card<Message: Clone + 'static>(instance: &Instance, hovered: bool, messages: InstanceMessages<Message>) -> Element<'static, Message> {
+pub fn instance_card<Message: Clone + 'static>(
+    instance: &Instance,
+    hovered: bool,
+    messages: InstanceMessages<Message>,
+    install: Option<&Pending>,
+    banner: Option<Handle>,
+) -> Element<'static, Message> {
     let body = container(
         column![
-            container(instance_art::card_banner(instance))
+            container(card_art(instance, install, banner))
                 .padding(Padding::new(1.0).bottom(0.0))
                 .width(Fill)
                 .height(CARD_ART_HEIGHT),
@@ -139,7 +232,7 @@ pub fn instance_card<Message: Clone + 'static>(instance: &Instance, hovered: boo
                     row![
                         column![title_block(instance), version_line(instance)].spacing(2),
                         Space::new().width(Fill),
-                        play_button(messages.play),
+                        play_slot(messages.play, install),
                     ]
                     .align_y(alignment::Vertical::Center),
                     row![
@@ -172,18 +265,20 @@ pub fn instance_card<Message: Clone + 'static>(instance: &Instance, hovered: boo
         .on_exit(messages.exit)
         .interaction(mouse::Interaction::Pointer);
     let grown = HoverScale::new(pressable, hovered).ring(CARD_CORNER, anim::fade(color::Primary::DEFAULT, 0.6));
-    ContextMenu::new(grown, instance.id.clone())
-        .items(instance_menu::items())
-        .on_select(messages.menu)
-        .into()
+    with_menu(grown, instance, install.is_some(), messages.menu)
 }
 
 /// The Compact row — the grid card's info without the art, one tight line. The whole row opens the
 /// instance except for its Play button, and a right-click opens its context menu.
-pub fn compact_row<Message: Clone + 'static>(instance: &Instance, messages: InstanceMessages<Message>) -> Element<'static, Message> {
+pub fn compact_row<Message: Clone + 'static>(
+    instance: &Instance,
+    messages: InstanceMessages<Message>,
+    install: Option<&Pending>,
+    thumb: Option<Handle>,
+) -> Element<'static, Message> {
     let body = container(
         row![
-            container(instance_art::thumbnail(instance)).width(44).height(44),
+            container(instance_art::thumbnail(instance, thumb)).width(THUMB_SIZE).height(THUMB_SIZE),
             column![
                 title_block(instance),
                 Text::new(compact_stats(instance))
@@ -194,7 +289,7 @@ pub fn compact_row<Message: Clone + 'static>(instance: &Instance, messages: Inst
             .spacing(2),
             Space::new().width(Fill),
             loader_chip(instance.loader),
-            play_button(messages.play),
+            play_slot(messages.play, install),
         ]
         .spacing(12)
         .align_y(alignment::Vertical::Center)
@@ -206,13 +301,12 @@ pub fn compact_row<Message: Clone + 'static>(instance: &Instance, messages: Inst
     .padding(Padding::new(0.0).left(12).right(12))
     .style(|_| card_panel(color::Surface::LINE));
 
-    ContextMenu::new(
+    with_menu(
         mouse_area(body).on_press(messages.open).interaction(mouse::Interaction::Pointer),
-        instance.id.clone(),
+        instance,
+        install.is_some(),
+        messages.menu,
     )
-    .items(instance_menu::items())
-    .on_select(messages.menu)
-    .into()
 }
 
 /// The table's column widths — shared by [`table_header`] and
@@ -250,7 +344,12 @@ pub fn table_header<Message: 'static>() -> Element<'static, Message> {
 /// One striped table row. `index` drives the stripe parity within the
 /// whole (unwindowed) list so stripes stay stable while scrolling. The whole row opens the
 /// instance except for its Play button, and a right-click opens its context menu.
-pub fn table_row<Message: Clone + 'static>(index: usize, instance: &Instance, messages: InstanceMessages<Message>) -> Element<'static, Message> {
+pub fn table_row<Message: Clone + 'static>(
+    index: usize,
+    instance: &Instance,
+    messages: InstanceMessages<Message>,
+    install: Option<&Pending>,
+) -> Element<'static, Message> {
     let body = container(
         row![
             column![
@@ -275,7 +374,7 @@ pub fn table_row<Message: Clone + 'static>(index: usize, instance: &Instance, me
                 .size(12)
                 .color(color::Text::MUTED)
                 .width(Length::Fixed(COL_PLAYTIME)),
-            container(play_button(messages.play)).width(Length::Fixed(COL_ACTIONS)),
+            container(play_slot(messages.play, install)).width(Length::Fixed(COL_ACTIONS)),
         ]
         .spacing(12)
         .align_y(alignment::Vertical::Center)
@@ -289,11 +388,10 @@ pub fn table_row<Message: Clone + 'static>(index: usize, instance: &Instance, me
         ..container::Style::default()
     });
 
-    ContextMenu::new(
+    with_menu(
         mouse_area(body).on_press(messages.open).interaction(mouse::Interaction::Pointer),
-        instance.id.clone(),
+        instance,
+        install.is_some(),
+        messages.menu,
     )
-    .items(instance_menu::items())
-    .on_select(messages.menu)
-    .into()
 }

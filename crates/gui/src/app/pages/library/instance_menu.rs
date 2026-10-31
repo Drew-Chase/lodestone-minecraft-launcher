@@ -1,5 +1,5 @@
-//! The instance's action menu: the rows that the right-click menu on a card or row and the
-//! hero's ⋯ button share, and the action each row asks for. The root carries the actions out.
+//! The instance's action menu: the rows that the right-click menu on a card or row and the instance
+//! page's ⋯ button show, and the action each row asks for. The root carries the actions out.
 
 use aurora_leaf::Icon;
 
@@ -13,43 +13,55 @@ pub enum Action {
     Edit,
     Reveal,
     Delete,
+    /// Stops an install that has not finished, and removes what it made.
+    CancelInstall,
 }
 
-/// The menu's rows, top to bottom. [`action_at`] reads them by index.
-pub fn items() -> Vec<MenuItem> {
-    vec![
-        MenuItem::Action {
-            label: lang::t("common.play").to_owned(),
-            icon: Some(Icon::lucide().play()),
-            danger: false,
-        },
-        MenuItem::Action {
-            label: lang::t("instance.menu.edit").to_owned(),
-            icon: Some(Icon::lucide().settings()),
-            danger: false,
-        },
-        MenuItem::Action {
-            label: lang::t("instance.menu.reveal").to_owned(),
-            icon: Some(Icon::lucide().folder()),
-            danger: false,
-        },
-        MenuItem::Separator,
-        MenuItem::Action {
-            label: lang::t("instance.menu.delete").to_owned(),
-            icon: Some(Icon::lucide().trash()),
-            danger: true,
-        },
-    ]
+/// A menu as the widgets show it: its rows, and the action each row asks for. A separator asks for
+/// nothing, so its entry in `actions` is `None`.
+pub struct Menu {
+    pub items: Vec<MenuItem>,
+    pub actions: Vec<Option<Action>>,
 }
 
-/// The action a row index picks. A separator picks nothing.
-pub fn action_at(index: usize) -> Option<Action> {
-    match index {
-        0 => Some(Action::Play),
-        1 => Some(Action::Edit),
-        2 => Some(Action::Reveal),
-        4 => Some(Action::Delete),
-        _ => None,
+/// The menu for an instance. An install that has not finished offers only cancelling it. Reveal is
+/// listed when `reveal` is set; the instance page leaves it out for a local instance, whose folder
+/// button already reveals the folder.
+pub fn menu(installing: bool, reveal: bool) -> Menu {
+    let actions: Vec<Option<Action>> = if installing {
+        vec![Some(Action::CancelInstall)]
+    } else {
+        let mut actions = vec![Some(Action::Play), Some(Action::Edit)];
+        if reveal {
+            actions.push(Some(Action::Reveal));
+        }
+        actions.push(None);
+        actions.push(Some(Action::Delete));
+        actions
+    };
+    let items = actions
+        .iter()
+        .map(|action| match action {
+            Some(action) => item(*action),
+            None => MenuItem::Separator,
+        })
+        .collect();
+    Menu { items, actions }
+}
+
+/// The row an action shows as.
+fn item(action: Action) -> MenuItem {
+    let (label, icon, danger) = match action {
+        Action::Play => (lang::t("common.play"), Icon::lucide().play(), false),
+        Action::Edit => (lang::t("instance.menu.edit"), Icon::lucide().settings(), false),
+        Action::Reveal => (lang::t("instance.menu.reveal"), Icon::lucide().folder(), false),
+        Action::Delete => (lang::t("instance.menu.delete"), Icon::lucide().trash(), true),
+        Action::CancelInstall => (lang::t("downloads.cancel_install"), Icon::lucide().x(), true),
+    };
+    MenuItem::Action {
+        label: label.to_owned(),
+        icon: Some(icon),
+        danger,
     }
 }
 

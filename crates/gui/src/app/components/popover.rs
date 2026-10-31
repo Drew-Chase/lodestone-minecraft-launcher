@@ -19,6 +19,18 @@ use iced::{Element, Event, Length, Rectangle, Renderer as BaseRenderer, Size, Th
 const GAP: f32 = 6.0;
 /// The least room the panel keeps from the window's edges, in pixels.
 const MARGIN: f32 = 8.0;
+/// The gap between a beside-placed panel and its trigger, in pixels.
+const SIDE_GAP: f32 = 12.0;
+
+/// Where a panel opens relative to its trigger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Placement {
+    /// Under the trigger, or above it when the window has no room below.
+    #[default]
+    Below,
+    /// To the trigger's right, with the panel's bottom edge near the trigger's, so it opens alongside a rail.
+    Beside,
+}
 
 /// A trigger that opens a panel of content beside it while the caller keeps it open.
 pub struct Popover<'a, Message> {
@@ -27,6 +39,7 @@ pub struct Popover<'a, Message> {
     open: bool,
     on_toggle: Option<Message>,
     on_dismiss: Option<Message>,
+    placement: Placement,
 }
 
 impl<'a, Message: Clone> Popover<'a, Message> {
@@ -38,7 +51,14 @@ impl<'a, Message: Clone> Popover<'a, Message> {
             open: false,
             on_toggle: None,
             on_dismiss: None,
+            placement: Placement::default(),
         }
+    }
+
+    /// Where the panel opens relative to the trigger. Below or above by default.
+    pub fn placement(mut self, placement: Placement) -> Self {
+        self.placement = placement;
+        self
     }
 
     /// Whether the panel is shown.
@@ -159,6 +179,7 @@ impl<Message: Clone + 'static> Widget<Message, Theme, BaseRenderer> for Popover<
             tree: &mut tree.children[1],
             trigger: layout.bounds() + translation,
             on_dismiss: self.on_dismiss.clone(),
+            placement: self.placement,
         })))
     }
 }
@@ -177,6 +198,7 @@ struct PanelOverlay<'a, 'b, Message> {
     /// The trigger's bounds in window coordinates.
     trigger: Rectangle,
     on_dismiss: Option<Message>,
+    placement: Placement,
 }
 
 impl<Message: Clone + 'static> overlay::Overlay<Message, Theme, BaseRenderer> for PanelOverlay<'_, '_, Message> {
@@ -186,14 +208,24 @@ impl<Message: Clone + 'static> overlay::Overlay<Message, Theme, BaseRenderer> fo
         let panel = self.content.as_widget_mut().layout(self.tree, renderer, &limits);
         let size = panel.size();
 
-        let below = self.trigger.y + self.trigger.height + GAP;
-        let y = if below + size.height <= window.height - MARGIN {
-            below
-        } else {
-            (self.trigger.y - GAP - size.height).max(MARGIN)
+        let position = match self.placement {
+            Placement::Below => {
+                let below = self.trigger.y + self.trigger.height + GAP;
+                let y = if below + size.height <= window.height - MARGIN {
+                    below
+                } else {
+                    (self.trigger.y - GAP - size.height).max(MARGIN)
+                };
+                Vector::new(self.trigger.x.min(window.width - MARGIN - size.width).max(MARGIN), y)
+            }
+            Placement::Beside => {
+                let bottom = self.trigger.y + self.trigger.height;
+                let y = (bottom - size.height).min(window.height - MARGIN - size.height).max(MARGIN);
+                let x = self.trigger.x + self.trigger.width + SIDE_GAP;
+                Vector::new(x.min(window.width - MARGIN - size.width).max(MARGIN), y)
+            }
         };
-        let x = self.trigger.x.min(window.width - MARGIN - size.width).max(MARGIN);
-        layout::Node::with_children(size, vec![panel]).translate(Vector::new(x, y))
+        layout::Node::with_children(size, vec![panel]).translate(position)
     }
 
     fn draw(&self, renderer: &mut BaseRenderer, theme: &Theme, style: &renderer::Style, layout: Layout<'_>, cursor: mouse::Cursor) {

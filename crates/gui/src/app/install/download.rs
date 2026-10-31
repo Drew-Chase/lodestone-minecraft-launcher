@@ -22,12 +22,44 @@ pub enum Part {
     Assets,
 }
 
-/// One part's progress: files on disk of the files it needs.
+/// One part's progress: files on disk of the files it needs, and the bytes its downloads have moved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PartReport {
     pub part: Part,
     pub done: usize,
     pub total: usize,
+    pub transfer: Transfer,
+}
+
+impl PartReport {
+    /// A count with no transfer behind it, for the parts that do not download.
+    pub fn counted(part: Part, done: usize, total: usize) -> Self {
+        Self {
+            part,
+            done,
+            total,
+            transfer: Transfer::default(),
+        }
+    }
+}
+
+/// The bytes a download has moved: how many of how many, and the rate over its latest stretch.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Transfer {
+    pub done: u64,
+    pub total: u64,
+    pub per_second: u64,
+}
+
+impl Transfer {
+    /// What a multi-file download reports, in bytes.
+    fn of(progress: &MultiDownloadProgress) -> Self {
+        Self {
+            done: progress.bytes_downloaded as u64,
+            total: progress.bytes_to_download as u64,
+            per_second: progress.bytes_per_second as u64,
+        }
+    }
 }
 
 /// Items split by whether they are already on disk.
@@ -94,6 +126,7 @@ pub async fn fetch(
                     part,
                     done: skipped + report.files_downloaded,
                     total,
+                    transfer: Transfer::of(&report),
                 })
                 .await;
         }
@@ -117,7 +150,15 @@ pub async fn relay<T>(
         tokio::select! {
             report = files.recv(), if open => match report {
                 Some(report) => {
-                    let _ = reports.send(PartReport { part, done: report.files_downloaded, total: report.files_total }).await;
+                    let transfer = Transfer::of(&report);
+                    let _ = reports
+                        .send(PartReport {
+                            part,
+                            done: report.files_downloaded,
+                            total: report.files_total,
+                            transfer,
+                        })
+                        .await;
                 }
                 None => open = false,
             },

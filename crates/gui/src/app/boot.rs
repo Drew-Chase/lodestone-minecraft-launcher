@@ -7,7 +7,7 @@ use crate::app::pages::login::Message as LoginMessage;
 use crate::app::preferences::Preferences;
 use iced::window::{Level, Position};
 use iced::{Size, Task, window};
-use tracing::info;
+use tracing::{info, warn};
 
 use super::{LodestoneAppMessage, LodestoneLauncher, probe_enabled};
 
@@ -141,8 +141,30 @@ impl LodestoneLauncher {
             transparent: false,
             blur: false,
             level: Level::Normal,
-            icon: None,
+            icon: app_icon(),
             exit_on_close_request: true,
         }
     }
 }
+
+/// The 512px application mark, embedded in the binary.
+const APP_ICON: &[u8] = include_bytes!("../../../../res/icon/icon.png");
+
+/// The application mark as RGBA pixels, with its width and height.
+fn icon_pixels() -> Result<(Vec<u8>, u32, u32), image::ImageError> {
+    let icon = image::load_from_memory_with_format(APP_ICON, image::ImageFormat::Png)?.into_rgba8();
+    let (width, height) = icon.dimensions();
+    Ok((icon.into_raw(), width, height))
+}
+
+/// The window's icon. A decode failure logs a warning and leaves the window without one.
+fn app_icon() -> Option<window::icon::Icon> {
+    let (rgba, width, height) = icon_pixels()
+        .inspect_err(|error| warn!("could not decode the application icon: {error}"))
+        .ok()?;
+    window::icon::from_rgba(rgba, width, height).ok()
+}
+
+#[cfg(test)]
+#[path = "../../tests/app/boot.rs"]
+mod tests;

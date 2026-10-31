@@ -12,10 +12,11 @@ use tracing::{info, warn};
 use super::{LodestoneAppMessage, LodestoneLauncher};
 use crate::app::components::alert::Alert;
 use crate::app::database::Database;
+use crate::app::downloads;
 use crate::app::lang;
 use crate::app::pages::Page;
 use crate::app::pages::instance::{Message as InstanceMessage, Tab};
-use crate::app::pages::library::instance_menu::{self, Action};
+use crate::app::pages::library::instance_menu::Action;
 
 impl LodestoneLauncher {
     /// Opens an instance's detail page on `tab`. An id that is no longer loaded is ignored.
@@ -45,13 +46,17 @@ impl LodestoneLauncher {
         }
     }
 
-    /// Carries out the row of an instance's menu that was picked.
-    pub(super) fn instance_menu_action(&mut self, id: &str, index: usize) -> Task<LodestoneAppMessage> {
-        match instance_menu::action_at(index) {
+    /// Carries out the row of an instance's menu that was picked. A separator carries no action.
+    pub(super) fn instance_menu_action(&mut self, id: &str, action: Option<Action>) -> Task<LodestoneAppMessage> {
+        match action {
             Some(Action::Play) => self.launch_game(id),
             Some(Action::Edit) => self.open_instance_page(id, Tab::Settings),
             Some(Action::Reveal) => self.reveal_instance(id),
             Some(Action::Delete) => self.ask_instance_delete(id),
+            Some(Action::CancelInstall) => match self.downloads.job_for_instance(id) {
+                Some(job) => self.downloads_message(downloads::Message::Cancel(job)),
+                None => Task::none(),
+            },
             None => Task::none(),
         }
     }
@@ -74,6 +79,10 @@ impl LodestoneLauncher {
 
     /// Asks before the instance `id` is deleted. The answer returns as `InstanceDeleteAnswered`.
     pub(super) fn ask_instance_delete(&mut self, id: &str) -> Task<LodestoneAppMessage> {
+        // An install that has not finished is still writing its folder, so it is cancelled from the downloads.
+        if self.library.pending_install(id).is_some() {
+            return Task::none();
+        }
         if self.games.is_active(id) {
             return self.alerts.show(Alert::warn(lang::t("instance.delete.running"))).discard();
         }
@@ -140,6 +149,35 @@ impl LodestoneLauncher {
         }
     }
 
+    /// Carries out a row of the ⋯ menu on the instance page.
+    pub(super) fn current_instance_menu(&mut self, action: Option<Action>) -> Task<LodestoneAppMessage> {
+        match self.instance_page.instance().map(|instance| instance.id.clone()) {
+            Some(id) => self.instance_menu_action(&id, action),
+            None => Task::none(),
+        }
+    }
+
+    /// Opens the page the instance on the instance page was installed from, in the browser.
+    pub(super) fn open_current_source(&self) -> Task<LodestoneAppMessage> {
+        match self.instance_page.instance().and_then(|instance| instance.source_url.clone()) {
+            Some(url) => open_source(url),
+            None => Task::none(),
+        }
+    }
+
+    /// Reports a modpack page that could not be opened.
+    pub(super) fn source_opened(&mut self, result: Result<(), String>) -> Task<LodestoneAppMessage> {
+        match result {
+            Ok(()) => Task::none(),
+            Err(error) => {
+                warn!("Opening the modpack page failed: {error}");
+                self.alerts
+                    .show(Alert::error(lang::t_with("instance.open_source.failed", &[("error", error.as_str())])))
+                    .discard()
+            }
+        }
+    }
+
     /// Reports a folder that could not be opened.
     pub(super) fn folder_opened(&mut self, result: Result<(), String>) -> Task<LodestoneAppMessage> {
         match result {
@@ -164,6 +202,19 @@ fn reveal_folder(folder: PathBuf) -> Task<LodestoneAppMessage> {
             }
         },
         LodestoneAppMessage::FolderOpened,
+    )
+}
+
+/// Opens `url` in the browser on the blocking pool. A failure returns as `SourceOpened`.
+fn open_source(url: String) -> Task<LodestoneAppMessage> {
+    Task::perform(
+        async move {
+            match tokio::task::spawn_blocking(move || open::that_detached(&url)).await {
+                Ok(opened) => opened.map_err(|error| error.to_string()),
+                Err(error) => Err(error.to_string()),
+            }
+        },
+        LodestoneAppMessage::SourceOpened,
     )
 }
 

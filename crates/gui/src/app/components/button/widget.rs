@@ -1,6 +1,7 @@
 //! The [`Widget`] implementation for [`TextButton`]: layout, input handling,
 //! and drawing, plus the interaction status those share.
 
+use crate::app::theme::color;
 use iced::advanced::Renderer as _;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer;
@@ -12,6 +13,10 @@ use iced_anim::AnimatedState;
 use iced_color_extension::rgb;
 
 use super::{State, Status, TextButton, Variant};
+
+/// The strength of a primary button's glow at full [`Visual::glow`]. The glow colour is
+/// `--mc-green-glow` at 35%; this scales it down to the reference's slight halo.
+const PRIMARY_GLOW_ALPHA: f32 = 0.30;
 
 impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
     fn status_for(&self, is_pressed: bool, is_over: bool) -> Status {
@@ -144,17 +149,17 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for TextButton<'_, Mes
         renderer.with_translation(Vector::new(0.0, -visual.lift), |renderer| {
             let shadow = match self.variant {
                 Variant::Primary => {
-                    // §07 — `0 8px 24px -6px var(--mc-green-glow)`; hover pulls
-                    // it closer (12px/32px), press hugs the surface.
-                    let (offset_y, blur_radius) = match visual.lift > 0.5 {
-                        true => (10.0, 30.0),
-                        false if visual.glow < 0.5 => (6.0, 18.0),
-                        false => (8.0, 24.0),
-                    };
+                    // §07 — `0 8px 24px -6px var(--mc-green-glow)`. iced has no spread, so the
+                    // blur stays short to keep the halo as slight as the reference. `glow`
+                    // scales the strength, so the halo eases with hover and press.
+                    let strength = visual.glow;
                     Shadow {
-                        color: rgb!(34, 255, 132, 35%),
-                        offset: Vector::new(0.0, offset_y),
-                        blur_radius,
+                        color: Color {
+                            a: PRIMARY_GLOW_ALPHA * strength,
+                            ..color::Primary::GLOW
+                        },
+                        offset: Vector::new(0.0, 2.0 + 4.0 * strength),
+                        blur_radius: 4.0 + 12.0 * strength,
                     }
                 }
                 Variant::Ghost | Variant::Danger | Variant::Destructive => Shadow {

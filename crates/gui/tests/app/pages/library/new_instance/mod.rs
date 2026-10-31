@@ -24,7 +24,7 @@ fn filled(name: &str) -> NewInstance {
 fn a_new_dialog_needs_a_name_before_it_can_install() {
     let dialog = dialog("needs-name");
     assert!(!dialog.ready());
-    assert_eq!(dialog.install_request().expect_err("no name yet"), "Give the instance a name.");
+    assert_eq!(dialog.request(&[]).expect_err("no name yet"), "Give the instance a name.");
 }
 
 #[test]
@@ -33,7 +33,7 @@ fn a_vanilla_form_builds_a_request_with_a_cleaned_folder_name() {
     dialog.loader = Loader::Vanilla;
     assert!(dialog.ready());
 
-    let request = dialog.install_request().expect("the request builds");
+    let request = dialog.request(&[]).expect("the request builds");
     assert_eq!(request.name, "Dragon Survival v2");
     assert_eq!(request.directory_name, "Dragon Survival v2");
     assert_eq!(request.java_component.as_deref(), Some("java-runtime-delta"));
@@ -45,12 +45,12 @@ fn a_modded_form_needs_a_loader_version() {
     let mut dialog = filled("modded-request");
     dialog.loader = Loader::Fabric;
     assert!(!dialog.ready());
-    assert_eq!(dialog.install_request().expect_err("no loader version yet"), "Choose a loader version.");
+    assert_eq!(dialog.request(&[]).expect_err("no loader version yet"), "Choose a loader version.");
 
     dialog.loader_version = Some("0.16.10".to_string());
     assert!(dialog.ready());
     assert_eq!(
-        dialog.install_request().expect("the request builds").loader_version.as_deref(),
+        dialog.request(&[]).expect("the request builds").loader_version.as_deref(),
         Some("0.16.10")
     );
 }
@@ -61,7 +61,7 @@ fn a_java_override_replaces_the_version_runtime() {
     dialog.loader = Loader::Vanilla;
     dialog.java_override = Some("java-runtime-gamma".to_string());
     assert_eq!(
-        dialog.install_request().expect("the request builds").java_component.as_deref(),
+        dialog.request(&[]).expect("the request builds").java_component.as_deref(),
         Some("java-runtime-gamma")
     );
 }
@@ -72,7 +72,7 @@ fn an_uploaded_banner_keeps_a_scene_as_its_fallback() {
     dialog.loader = Loader::Vanilla;
     dialog.banner = BannerChoice::Uploaded(Upload::new(vec![1, 2, 3]));
 
-    let request = dialog.install_request().expect("the request builds");
+    let request = dialog.request(&[]).expect("the request builds");
     assert_eq!(request.banner, Some(vec![1, 2, 3]));
     assert_eq!((request.biome, request.art_seed), banner::scene(0));
 }

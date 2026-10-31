@@ -13,11 +13,12 @@ use crate::app::components::button::Variant;
 use crate::app::components::hint::hint;
 use crate::app::components::icon_button::IconButtonStyle;
 use crate::app::components::scene_art::banner_handle;
-use crate::app::components::{IconButton, TextButton};
+use crate::app::components::{Dropdown, IconButton, TextButton};
 use crate::app::components::{instance_art, instance_icon};
 use crate::app::lang;
 use crate::app::launch::games::LaunchStatus;
 use crate::app::pages::library::instance::Instance;
+use crate::app::pages::library::instance_menu;
 use crate::app::theme::{color, fonts, utility};
 
 use super::files::InstanceFiles;
@@ -36,11 +37,12 @@ const IDENTITY_LEFT: f32 = GUTTER + ICON_SIZE + 20.0;
 /// Below this width the session controls move under the identity block.
 const NARROW_WIDTH: f32 = 1020.0;
 
-/// The masthead's controls: the favourite toggle and the state of the instance's game.
+/// The masthead's controls: the state of the instance's game, and, while the instance installs, the line
+/// the install shows in place of Launch.
 #[derive(Debug, Clone, Default)]
 pub struct Controls {
-    pub favorite: bool,
     pub status: LaunchStatus,
+    pub install: Option<String>,
 }
 
 /// The masthead for `instance`, laid out for a window of `viewport` size. `files`
@@ -81,19 +83,19 @@ pub fn hero<'a>(instance: &'a Instance, files: Option<&InstanceFiles>, controls:
         Padding::new(0.0).left(24.0).top(16.0),
     );
 
-    let favorite = if controls.favorite {
-        glass_button_with_style(Icon::lucide().heart(), favorite_style(), Message::ToggleFavorite)
-    } else {
-        glass_button(Icon::lucide().heart(), Message::ToggleFavorite)
+    // An instance from an external source links to its page; a local one reveals its folder.
+    let source = match &instance.source_url {
+        Some(_) => hint(
+            glass_button(Icon::lucide().external_link(), Message::OpenSource),
+            lang::t("instance.hero.open_source"),
+        ),
+        None => hint(
+            glass_button(Icon::lucide().folder(), Message::RevealFolder),
+            lang::t("instance.menu.reveal"),
+        ),
     };
     let top_right = layer(
-        row![
-            favorite,
-            glass_button(Icon::lucide().external_link(), Message::RevealFolder),
-            glass_button(Icon::lucide().ellipsis_vertical(), Message::More),
-        ]
-        .spacing(8)
-        .into(),
+        row![source, glass_menu(instance, controls.install.is_some())].spacing(8).into(),
         alignment::Horizontal::Right,
         alignment::Vertical::Top,
         Padding::new(0.0).right(24.0).top(16.0),
@@ -122,13 +124,15 @@ pub fn hero<'a>(instance: &'a Instance, files: Option<&InstanceFiles>, controls:
 
     let narrow = viewport.width < NARROW_WIDTH;
     let identity = if narrow {
-        identity.push(session_controls(controls.status, &instance.id)).spacing(12)
+        identity
+            .push(session_controls(controls.status, &instance.id, controls.install.clone()))
+            .spacing(12)
     } else {
         identity
     };
     let actions_layer = (!narrow).then(|| {
         layer(
-            session_controls(controls.status, &instance.id),
+            session_controls(controls.status, &instance.id, controls.install.clone()),
             alignment::Horizontal::Right,
             alignment::Vertical::Bottom,
             Padding::new(0.0).right(GUTTER).bottom(18.0),
@@ -182,7 +186,10 @@ pub fn hero_icon(instance: &Instance) -> Element<'static, Message> {
 /// The session controls. While the game is stopped, Launch starts it. While it is being prepared,
 /// Launch shows how far the files have got and is disabled. While it runs: a button that starts another
 /// process of the instance, Restart and Console as icon buttons, and Kill at the far right.
-fn session_controls(status: LaunchStatus, instance: &str) -> Element<'static, Message> {
+fn session_controls(status: LaunchStatus, instance: &str, install: Option<String>) -> Element<'static, Message> {
+    if let Some(label) = install {
+        return row![launch_button(label, None)].spacing(8).align_y(alignment::Vertical::Center).into();
+    }
     match status {
         LaunchStatus::Idle => row![launch_button(lang::t("instance.hero.launch").to_owned(), Some(Message::Launch))]
             .spacing(8)
@@ -316,28 +323,43 @@ fn launch_button(label: String, on_press: Option<Message>) -> Element<'static, M
 
 /// A 36px glass chrome button over the masthead art.
 fn glass_button(markup: &'static str, message: Message) -> Element<'static, Message> {
-    glass_button_with_style(markup, glass_style(), message)
-}
-
-fn glass_button_with_style(markup: &'static str, style: IconButtonStyle, message: Message) -> Element<'static, Message> {
-    container(
+    glass(
         IconButton::new(markup)
             .size(36)
             .radius(12.0)
             .icon_size(14.0)
-            .style(style)
+            .style(glass_style())
             .on_press(message),
     )
-    .style(|_| container::Style {
-        background: Some(Background::Color(rgb!(0, 0, 0, 40%))),
-        border: Border {
-            radius: 12.0.into(),
-            width: 1.0,
-            color: color::Surface::LINE,
-        },
-        ..container::Style::default()
-    })
-    .into()
+}
+
+/// The ⋯ menu in the glass frame: the instance's rows. Reveal is listed only for an instance from an
+/// external source, since the folder button reveals the rest.
+fn glass_menu(instance: &Instance, installing: bool) -> Element<'static, Message> {
+    let menu = instance_menu::menu(installing, instance.source_url.is_some());
+    let actions = menu.actions;
+    glass(
+        Dropdown::new(Icon::lucide().ellipsis_vertical())
+            .items(menu.items)
+            .width(36)
+            .height(36)
+            .on_select(move |index| Message::Menu(actions.get(index).copied().flatten())),
+    )
+}
+
+/// The frame the glass buttons sit in: a dark translucent fill with a hairline ring.
+fn glass<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    container(content)
+        .style(|_| container::Style {
+            background: Some(Background::Color(rgb!(0, 0, 0, 40%))),
+            border: Border {
+                radius: 12.0.into(),
+                width: 1.0,
+                color: color::Surface::LINE,
+            },
+            ..container::Style::default()
+        })
+        .into()
 }
 
 fn glass_style() -> IconButtonStyle {
@@ -352,16 +374,6 @@ fn glass_style() -> IconButtonStyle {
         foreground_disabled: color::Text::DISABLED,
         background_pressed: rgb!(255, 255, 255, 12%),
         foreground_pressed: color::Text::HEADLINE,
-    }
-}
-
-fn favorite_style() -> IconButtonStyle {
-    IconButtonStyle {
-        foreground: color::Accents::PINK,
-        foreground_hover: color::Accents::PINK,
-        background: Color::TRANSPARENT,
-        background_hover: color::Accents::PINK_TINT,
-        ..glass_style()
     }
 }
 

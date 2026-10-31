@@ -182,6 +182,9 @@ pub struct Instance {
     pub java_component: Option<String>,
     /// The version the launcher starts ("fabric-loader-0.16.10-1.21.4"), once installed.
     pub version_id: Option<String>,
+    /// The page the instance was installed from, when it came from an external modpack source.
+    /// Locally created instances have none.
+    pub source_url: Option<String>,
 }
 
 impl Instance {
@@ -227,6 +230,7 @@ pub(crate) fn fixture(id: &str, name: &str, loader: Loader) -> Instance {
         directory_name: id.to_string(),
         java_component: None,
         version_id: None,
+        source_url: None,
     }
 }
 

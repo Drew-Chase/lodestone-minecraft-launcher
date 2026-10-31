@@ -122,13 +122,12 @@ fn a_reload_replaces_only_the_shown_instance() {
 }
 
 #[test]
-fn favorite_toggles() {
+fn the_menu_and_the_source_link_are_left_to_the_root() {
     let mut page = InstancePage::default();
-    assert!(!page.favorite);
-    let _ = page.update(Message::ToggleFavorite);
-    assert!(page.favorite);
-    let _ = page.update(Message::ToggleFavorite);
-    assert!(!page.favorite);
+    let _ = page.show(aether(), PathBuf::new());
+    let _ = page.update(Message::Menu(None));
+    let _ = page.update(Message::OpenSource);
+    assert_eq!(page.tab, Tab::Overview, "the root carries these out, so the page keeps its tab");
 }
 
 #[test]
@@ -182,7 +181,7 @@ fn every_tab_builds_at_narrow_and_wide_widths() {
     for tab in Tab::ALL {
         let _ = page.update(Message::TabSelected(tab));
         for viewport in [Size::new(900.0, 700.0), Size::new(1400.0, 900.0)] {
-            let _ = page.view(viewport, idle_game());
+            let _ = page.view(viewport, idle_game(), None);
         }
     }
 }
@@ -193,12 +192,12 @@ fn every_tab_builds_before_the_scan_lands() {
     let _ = page.show(aether(), PathBuf::new());
     for tab in Tab::ALL {
         let _ = page.update(Message::TabSelected(tab));
-        let _ = page.view(Size::new(1280.0, 800.0), idle_game());
+        let _ = page.view(Size::new(1280.0, 800.0), idle_game(), None);
     }
 }
 
 #[test]
 fn the_page_builds_without_an_instance() {
     let page = InstancePage::default();
-    let _ = page.view(Size::new(1280.0, 800.0), idle_game());
+    let _ = page.view(Size::new(1280.0, 800.0), idle_game(), None);
 }

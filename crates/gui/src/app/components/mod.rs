@@ -1,5 +1,6 @@
 pub mod alert;
 pub mod anim;
+pub mod art_cache;
 pub mod backdrop;
 pub mod badge;
 pub mod brand_tag;

@@ -28,8 +28,8 @@ pub const WIDTH: f32 = 68.0;
 
 /// The top nav group: Library, Discover, Worlds, Servers, Friends.
 const TOP_ICONS: [&str; 5] = ["home", "compass", "globe", "server", "users"];
-/// The bottom nav group: Downloads, Settings.
-const BOTTOM_ICONS: [&str; 2] = ["download", "settings"];
+/// The bottom nav group: Settings. The Downloads trigger sits above it.
+const BOTTOM_ICONS: [&str; 1] = ["settings"];
 
 /// The icon markup for a rail slot, resolved once (iconify lookups).
 fn rail_icon(name: &str) -> &'static str {
@@ -41,7 +41,6 @@ fn rail_icon(name: &str) -> &'static str {
             ("globe", Icon::lucide().globe()),
             ("server", Icon::lucide().server()),
             ("users", Icon::lucide().users()),
-            ("download", Icon::lucide().download()),
             ("settings", Icon::lucide().settings()),
         ]
         .into_iter()
@@ -56,7 +55,8 @@ fn rail_items(names: &[&'static str]) -> Vec<crate::app::components::NavItem> {
 
 /// The full sidebar: logo, nav groups, and the player avatar. `active` is
 /// the highlighted index in the top group; the closures route the two
-/// groups' selections. `game` is the game block, placed above the bottom group.
+/// groups' selections. `above_bottom` holds the game block and the Downloads
+/// trigger, placed above the bottom group.
 pub fn sidebar<Message: Clone + 'static>(
     face: Option<Handle>,
     username: Option<String>,
@@ -64,12 +64,12 @@ pub fn sidebar<Message: Clone + 'static>(
     active: usize,
     on_top_nav: impl Fn(usize) -> Message + 'static,
     on_bottom_nav: impl Fn(usize) -> Message + 'static,
-    game: Element<'static, Message>,
+    above_bottom: Element<'static, Message>,
 ) -> Element<'static, Message> {
     let top_rail = NavRail::new(rail_items(&TOP_ICONS)).active(active).indicator(false).on_select(on_top_nav);
     let bottom_rail = NavRail::new(rail_items(&BOTTOM_ICONS)).indicator(false).on_select(on_bottom_nav);
 
-    let rail = column![logo(), divider(), top_rail, Space::new().height(Fill), game]
+    let rail = column![logo(), divider(), top_rail, Space::new().height(Fill), above_bottom]
         .spacing(6)
         .push(bottom_rail)
         .push(avatar(face, username, online));

@@ -13,6 +13,13 @@ use crate::app::pages::library::instance::{Biome, Instance, InstanceIcon, Instan
 /// How many icon recents are kept. The icon editor shows the newest few.
 const RECENT_ICON_LIMIT: i64 = 8;
 
+/// The bytes the launcher downloaded today and over the last seven days, counting today.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DownloadTotals {
+    pub today: u64,
+    pub week: u64,
+}
+
 /// The launcher's database handle. Cheap to clone; the pool owns the
 /// connections.
 #[derive(Clone)]
@@ -52,8 +59,8 @@ impl Database {
         let rows = sqlx::query(
             "SELECT id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
              last_played_at, installed_at, pinned, state, biome, art_seed, art_path, \
-             icon_background, icon_symbol, icon_path, directory_name, java_component, version_id \
-             FROM instances",
+             icon_background, icon_symbol, icon_path, directory_name, java_component, version_id, \
+             source_url FROM instances",
         )
         .fetch_all(&self.pool)
         .await
@@ -87,6 +94,7 @@ impl Database {
                     directory_name: row.get("directory_name"),
                     java_component: row.get("java_component"),
                     version_id: row.get("version_id"),
+                    source_url: row.get("source_url"),
                 }
             })
             .collect())
@@ -100,8 +108,9 @@ impl Database {
             "INSERT INTO instances \
              (id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
               last_played_at, installed_at, pinned, state, biome, art_seed, art_path, \
-              icon_background, icon_symbol, icon_path, directory_name, java_component, version_id) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              icon_background, icon_symbol, icon_path, directory_name, java_component, version_id, \
+              source_url) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&instance.id)
         .bind(&instance.name)
@@ -123,6 +132,7 @@ impl Database {
         .bind(&instance.directory_name)
         .bind(&instance.java_component)
         .bind(&instance.version_id)
+        .bind(&instance.source_url)
         .execute(&self.pool)
         .await
         .map(|_| ())
@@ -212,6 +222,39 @@ impl Database {
             .await
             .map_err(|error| error.to_string())?;
         transaction.commit().await.map_err(|error| error.to_string())
+    }
+
+    /// Adds `bytes` to the download total of `day`, a local date as `YYYY-MM-DD`.
+    pub async fn add_download_bytes(&self, day: &str, bytes: u64) -> Result<(), String> {
+        sqlx::query(
+            "INSERT INTO download_stats (day, bytes) VALUES (?, ?) \
+             ON CONFLICT(day) DO UPDATE SET bytes = bytes + excluded.bytes",
+        )
+        .bind(day)
+        .bind(bytes as i64)
+        .execute(&self.pool)
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+    }
+
+    /// The downloads of `today` and of the days from `week_start` on. Both are local dates as
+    /// `YYYY-MM-DD`, which compare correctly as text.
+    pub async fn download_totals(&self, today: &str, week_start: &str) -> Result<DownloadTotals, String> {
+        let row = sqlx::query(
+            "SELECT COALESCE(SUM(CASE WHEN day = ? THEN bytes END), 0) AS today, \
+             COALESCE(SUM(bytes), 0) AS week \
+             FROM download_stats WHERE day >= ?",
+        )
+        .bind(today)
+        .bind(week_start)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|error| error.to_string())?;
+        Ok(DownloadTotals {
+            today: row.get::<i64, _>("today") as u64,
+            week: row.get::<i64, _>("week") as u64,
+        })
     }
 }
 

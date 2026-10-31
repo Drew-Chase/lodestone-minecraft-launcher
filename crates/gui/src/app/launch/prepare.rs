@@ -162,12 +162,12 @@ async fn libraries_stage(progress: &mut ProgressSender<Progress>, client: &reqwe
 
 /// One part's report as progress.
 fn file_progress(totals: &mut Totals, report: PartReport) -> Progress {
-    let (done, total) = totals.apply(report);
+    let sum = totals.apply(report);
     Progress {
-        fraction: fraction(done, total),
+        fraction: fraction(sum.done, sum.total),
         detail: lang::t_with(
             "install.files_count",
-            &[("done", done.to_string().as_str()), ("total", total.to_string().as_str())],
+            &[("done", sum.done.to_string().as_str()), ("total", sum.total.to_string().as_str())],
         ),
     }
 }

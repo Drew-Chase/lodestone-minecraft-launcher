@@ -19,6 +19,7 @@ open = "5"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "time", "macros"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+resvg = "0.45"
 rfd = "0.17"
 dirs = "6"
 lodestone_loaders = { path = "../loaders" }

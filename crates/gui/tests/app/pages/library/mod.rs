@@ -68,8 +68,16 @@ fn visible_sorts_most_recent_first() {
 
 #[test]
 fn the_banner_is_absent_without_instances() {
-    assert!(Library::default().hero().is_none(), "an empty library reserves no room for the banner");
-    assert!(library_with(sample()).hero().is_some(), "one instance brings the banner back");
+    let viewport = Size::new(1280.0, 800.0);
+    let art = ArtCache::default();
+    assert!(
+        Library::default().hero(viewport, &art).is_none(),
+        "an empty library reserves no room for the banner"
+    );
+    assert!(
+        library_with(sample()).hero(viewport, &art).is_some(),
+        "one instance brings the banner back"
+    );
 }
 
 #[test]

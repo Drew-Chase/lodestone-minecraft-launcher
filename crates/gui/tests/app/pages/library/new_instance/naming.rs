@@ -50,8 +50,23 @@ fn unique_names_count_up_past_existing_folders() {
     std::fs::create_dir_all(dir.join("Pack")).expect("the temp folder creates");
     std::fs::create_dir_all(dir.join("Pack (2)")).expect("the second folder creates");
 
-    assert_eq!(unique_directory_name(&dir, "Pack"), "Pack (3)");
-    assert_eq!(unique_directory_name(&dir, "Other"), "Other", "a free name is used as it is");
+    assert_eq!(unique_directory_name(&dir, "Pack", &[]), "Pack (3)");
+    assert_eq!(unique_directory_name(&dir, "Other", &[]), "Other", "a free name is used as it is");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn names_of_queued_installs_are_avoided_without_case() {
+    let dir = std::env::temp_dir().join(format!("lodestone-naming-taken-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("the temp folder creates");
+    let taken = vec!["Pack".to_owned(), "pack (2)".to_owned()];
+
+    assert_eq!(
+        unique_directory_name(&dir, "Pack", &taken),
+        "Pack (3)",
+        "a queued install's folder is not there yet, but its name is still taken"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }

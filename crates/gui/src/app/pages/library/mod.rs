@@ -14,9 +14,11 @@ mod toolbar;
 use instance::{Instance, Loader};
 use new_instance::NewInstance;
 
-use crate::app::components::instance_card::{CARD_HEIGHT, COMPACT_ROW_HEIGHT, TABLE_ROW_HEIGHT};
+use crate::app::components::art_cache::ArtCache;
+use crate::app::components::instance_card::{CARD_ART_HEIGHT, CARD_HEIGHT, COMPACT_ROW_HEIGHT, TABLE_ROW_HEIGHT};
 use crate::app::components::scrollbar;
-use crate::app::database::Database;
+use crate::app::downloads::Pending;
+use crate::app::install::InstallRequest;
 use crate::app::lang;
 use crate::app::paths::LauncherPaths;
 use crate::app::theme::fonts;
@@ -45,8 +47,11 @@ pub enum Message {
     EditInstance(String),
     /// Reveal an instance's folder in the file manager — the root does the IO.
     RevealInstance(String),
-    /// A row of an instance's menu was picked; `instance_menu::action_at` says what it asks for.
-    InstanceMenu { instance: String, index: usize },
+    /// A row of an instance's menu was picked. A separator sends `None`.
+    InstanceMenu {
+        instance: String,
+        action: Option<instance_menu::Action>,
+    },
     /// The pointer entered (`hovered`) or left a card, which grows while it is hovered.
     Hover { instance: String, hovered: bool },
     /// A header/quick action (Import, Join Server, ...) — dummy.
@@ -154,6 +159,19 @@ impl LibraryFilter {
 /// constant instead of a measurement.
 const LIST_TOP: f32 = 570.0;
 
+/// The width of the page's content column in a window `window_width` wide: the window less the 68px rail
+/// and the page's 28px padding on each side.
+pub(super) fn content_width(window_width: f32) -> f32 {
+    window_width - 68.0 - 56.0
+}
+
+/// The grid card's art box when `columns` cards share a `content` width: the card's width less its
+/// border, and the art's height less the pixel it sits down by.
+pub(super) fn card_art_size(content: f32, columns: usize) -> (f32, f32) {
+    let card = (content - LibraryView::Grid.gap() * (columns as f32 - 1.0)) / columns as f32;
+    (card - 2.0, CARD_ART_HEIGHT - 1.0)
+}
+
 /// The Library page state.
 #[derive(Debug, Default)]
 pub struct Library {
@@ -171,6 +189,8 @@ pub struct Library {
     new_instance: Option<NewInstance>,
     /// The instance whose card the pointer is over, if any.
     hovered: Option<String>,
+    /// The installs still running or waiting, shown as cards beside the instances.
+    pending: Vec<Pending>,
 }
 
 impl Library {
@@ -213,17 +233,39 @@ impl Library {
     }
 
     /// Looks an instance up by id — the root uses this to open the detail
-    /// page when a card or the hero is clicked.
+    /// page when a card or the hero is clicked. An install still running counts.
     pub fn instance(&self, id: &str) -> Option<Instance> {
-        self.instances.iter().find(|instance| instance.id == id).cloned()
+        self.every_instance().find(|instance| instance.id == id).cloned()
     }
 
     /// The name of the instance `id`, when the library lists it.
     pub fn instance_name(&self, id: &str) -> Option<&str> {
-        self.instances
-            .iter()
+        self.every_instance()
             .find(|instance| instance.id == id)
             .map(|instance| instance.name.as_str())
+    }
+
+    /// The loaded instances, then the installs still running.
+    fn every_instance(&self) -> impl Iterator<Item = &Instance> {
+        self.instances.iter().chain(self.pending.iter().map(|pending| &pending.instance))
+    }
+
+    /// Replaces the installs that have not ended. The root sends them whenever the queue changes.
+    pub fn set_pending(&mut self, pending: Vec<Pending>) {
+        self.pending = pending;
+    }
+
+    /// The install of the instance `id`, while it has not ended.
+    pub fn pending_install(&self, id: &str) -> Option<&Pending> {
+        self.pending.iter().find(|pending| pending.instance.id == id)
+    }
+
+    /// Adds a freshly installed instance, or replaces the copy the library holds of it.
+    pub fn add_instance(&mut self, instance: Instance) {
+        match self.instances.iter_mut().find(|known| known.id == instance.id) {
+            Some(known) => *known = instance,
+            None => self.instances.push(instance),
+        }
     }
 
     /// Overrides the initial view mode (the `LODESTONE_LIBRARY_VIEW` probe).
@@ -236,8 +278,7 @@ impl Library {
     fn visible(&self) -> Vec<&Instance> {
         let query = self.search.to_lowercase();
         let mut visible: Vec<&Instance> = self
-            .instances
-            .iter()
+            .every_instance()
             .filter(|instance| self.filter.matches(instance))
             .filter(|instance| query.is_empty() || instance.name.to_lowercase().contains(&query))
             .collect();
@@ -253,12 +294,10 @@ impl Library {
         load
     }
 
-    /// Applies a dialog message that needs no database. Closing keeps an install running.
+    /// Applies a dialog message that needs no database. Closing drops the dialog.
     pub fn new_instance_update(&mut self, message: new_instance::Message) -> Task<Message> {
         if let new_instance::Message::Close = message {
-            if self.new_instance.as_ref().is_some_and(|dialog| !dialog.is_installing()) {
-                self.new_instance = None;
-            }
+            self.new_instance = None;
             return Task::none();
         }
         match self.new_instance.as_mut() {
@@ -267,35 +306,22 @@ impl Library {
         }
     }
 
-    /// Starts the install the dialog describes. A form that cannot install says why.
-    pub fn start_new_instance(&mut self, db: Database) -> Task<Message> {
-        let Some(dialog) = self.new_instance.as_mut() else {
-            return Task::none();
-        };
-        match dialog.start_install(db) {
-            Ok(task) => task.map(Message::NewInstance),
-            Err(error) => {
-                dialog.install_failed(error);
-                Task::none()
-            }
-        }
+    /// The install the dialog describes, avoiding the folder names in `taken`. A form that cannot install
+    /// says why. Submit only comes from an open dialog, so the empty error is never shown.
+    pub fn new_instance_request(&self, taken: &[String]) -> Result<InstallRequest, String> {
+        self.new_instance
+            .as_ref()
+            .map_or_else(|| Err(String::new()), |dialog| dialog.request(taken))
     }
 
-    /// Stops the running install. Its folder is removed as the install is dropped.
-    pub fn cancel_new_instance(&mut self) {
-        if let Some(dialog) = self.new_instance.as_mut() {
-            dialog.cancel_install();
-        }
-    }
-
-    /// Records why an install stopped. The dialog stays open to try again.
+    /// Records why the form could not install. The dialog stays open to try again.
     pub fn fail_new_instance(&mut self, error: String) {
         if let Some(dialog) = self.new_instance.as_mut() {
-            dialog.install_failed(error);
+            dialog.show_error(error);
         }
     }
 
-    /// Closes the dialog once its instance exists.
+    /// Closes the dialog once its install is queued.
     pub fn close_new_instance(&mut self) {
         self.new_instance = None;
     }
@@ -308,14 +334,14 @@ impl Library {
     /// The whole page as one scroll region — `viewport` is the window's
     /// inner size, used for the grid's column count and the windowed row
     /// count.
-    pub fn view(&self, viewport: Size) -> Element<'_, Message> {
+    pub fn view<'a>(&'a self, viewport: Size, art: &'a ArtCache) -> Element<'a, Message> {
         // The banner is optional, so the column takes its children one at a
         // time: a missing hero must not leave a spacing gap behind.
         let mut page = Column::new().push(self.header());
-        if let Some(hero) = self.hero() {
+        if let Some(hero) = self.hero(viewport, art) {
             page = page.push(hero);
         }
-        let page = page.push(self.quick_actions()).push(self.instances_section(viewport));
+        let page = page.push(self.quick_actions()).push(self.instances_section(viewport, art));
 
         scrollbar::scroll(
             page.spacing(24)

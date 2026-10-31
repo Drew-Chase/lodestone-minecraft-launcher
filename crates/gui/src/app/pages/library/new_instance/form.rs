@@ -1,5 +1,5 @@
 //! The New Instance form: the name, the version and Java pickers, the loader cards, the
-//! loader build, the banner, and the footer that shows the install's progress.
+//! loader build, the banner, and the footer with Cancel and Create.
 
 use aurora_leaf::Icon;
 use iced::widget::{Space, Text, button, column, container, row, stack, svg, text_input};
@@ -14,7 +14,7 @@ use crate::app::components::loader_icon::loader_icon;
 use crate::app::components::modal::Modal;
 use crate::app::components::scene_art::scene_handle;
 use crate::app::components::tile::{INSET, tile};
-use crate::app::components::{ProgressBar, Select, TextButton, input};
+use crate::app::components::{Select, TextButton, input};
 use crate::app::lang;
 use crate::app::pages::library::instance::Loader;
 use crate::app::theme::{color, fonts};
@@ -54,7 +54,7 @@ pub fn modal(dialog: &NewInstance) -> Element<'_, Message> {
         .icon(Icon::lucide().plus(), color::Primary::DEFAULT, color::Primary::TINT)
         .footer(footer(dialog))
         .on_close(Message::Close)
-        .close_on_scrim(!dialog.is_installing())
+        .close_on_scrim(true)
         .width(WIDTH)
         .into()
 }
@@ -278,67 +278,38 @@ fn icon_of(choice: &IconChoice, size: f32) -> Element<'_, Message> {
     }
 }
 
-/// The footer: the install's progress while one runs, otherwise Cancel and Create.
+/// The footer: Cancel, and Create, which queues the install.
 fn footer(dialog: &NewInstance) -> Element<'_, Message> {
-    let Some(installing) = &dialog.installing else {
-        let mut create = TextButton::content(
-            row![
-                icon(Icon::lucide().plus(), 14.0, color::Primary::ON),
-                Text::new(lang::t("new_instance.create"))
-                    .size(13)
-                    .font(fonts::Inter::BOLD)
-                    .color(color::Primary::ON),
-            ]
-            .spacing(8)
-            .align_y(alignment::Vertical::Center),
-        )
-        .variant(Variant::Primary)
-        .padding(Padding::new(0.0).left(18).right(18).top(12).bottom(12));
-        if dialog.ready() {
-            create = create.on_press(Message::Submit);
-        }
-        return row![
-            Space::new().width(Fill),
-            TextButton::content(
-                Text::new(lang::t("common.cancel"))
-                    .size(13)
-                    .font(fonts::Inter::SEMI_BOLD)
-                    .color(color::Text::DEFAULT),
-            )
-            .variant(Variant::Ghost)
-            .padding(Padding::new(0.0).left(18).right(18).top(12).bottom(12))
-            .on_press(Message::Close),
-            create,
+    let mut create = TextButton::content(
+        row![
+            icon(Icon::lucide().plus(), 14.0, color::Primary::ON),
+            Text::new(lang::t("new_instance.create"))
+                .size(13)
+                .font(fonts::Inter::BOLD)
+                .color(color::Primary::ON),
         ]
-        .spacing(10)
-        .align_y(alignment::Vertical::Center)
-        .into();
-    };
-
-    let (stage, fraction, detail) = match &installing.progress {
-        Some(progress) => (progress.stage.label(), progress.fraction, progress.detail.clone()),
-        None => (lang::t("new_instance.starting"), None, String::new()),
-    };
-    let progress = column![
-        Text::new(stage).size(12).font(fonts::Inter::SEMI_BOLD).color(color::Text::DEFAULT),
-        ProgressBar::new(fraction.unwrap_or(0.0)).indeterminate(fraction.is_none()).width(Fill),
-        Text::new(detail).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),
-    ]
-    .spacing(6)
-    .width(Fill);
+        .spacing(8)
+        .align_y(alignment::Vertical::Center),
+    )
+    .variant(Variant::Primary)
+    .padding(Padding::new(0.0).left(18).right(18).top(12).bottom(12));
+    if dialog.ready() {
+        create = create.on_press(Message::Submit);
+    }
     row![
-        progress,
+        Space::new().width(Fill),
         TextButton::content(
-            Text::new(lang::t("new_instance.cancel_install"))
+            Text::new(lang::t("common.cancel"))
                 .size(13)
                 .font(fonts::Inter::SEMI_BOLD)
                 .color(color::Text::DEFAULT),
         )
         .variant(Variant::Ghost)
         .padding(Padding::new(0.0).left(18).right(18).top(12).bottom(12))
-        .on_press(Message::CancelInstall),
+        .on_press(Message::Close),
+        create,
     ]
-    .spacing(12)
+    .spacing(10)
     .align_y(alignment::Vertical::Center)
     .into()
 }

@@ -9,7 +9,7 @@
 //! pool, and applied when it lands.
 
 pub mod files;
-mod format;
+pub(crate) mod format;
 mod hero;
 pub(crate) mod logs;
 mod mods;
@@ -28,11 +28,14 @@ use iced::widget::{Text, column, container, stack};
 use iced::{Element, Fill, Padding, Size, Subscription, Task, alignment};
 
 use crate::app::components::Tabs;
+use crate::app::components::instance_card::install_status;
 use crate::app::components::scrollbar;
+use crate::app::downloads::Pending;
 use crate::app::lang;
 use crate::app::launch::games::GameView;
 use crate::app::pages::Page;
 use crate::app::pages::library::instance::Instance;
+use crate::app::pages::library::instance_menu;
 use crate::app::theme::{color, fonts};
 use files::InstanceFiles;
 
@@ -73,12 +76,12 @@ pub enum Message {
     Back,
     /// Selects a tab.
     TabSelected(Tab),
-    /// Favourites the instance (display state only for now).
-    ToggleFavorite,
     /// Reveals the instance folder (the root owns IO).
     RevealFolder,
-    /// The kebab menu — display-only until the instance actions land.
-    More,
+    /// Opens the page the instance was installed from (the root owns IO).
+    OpenSource,
+    /// A row of the ⋯ menu was picked. A separator sends `None`; the root carries the action out.
+    Menu(Option<instance_menu::Action>),
     /// Starts the instance's game. The root launches it.
     Launch,
     /// Stops the instance's game. The root stops it.
@@ -122,7 +125,6 @@ pub struct InstancePage {
     /// The instance folder, which holds the files the tabs read.
     folder: PathBuf,
     tab: Tab,
-    favorite: bool,
     /// Bumped by every [`InstancePage::show`]. Results from an older generation
     /// belong to an instance the page no longer shows, so they are dropped.
     generation: u64,
@@ -190,10 +192,6 @@ impl InstancePage {
                 self.tab = tab;
                 Task::none()
             }
-            Message::ToggleFavorite => {
-                self.favorite = !self.favorite;
-                Task::none()
-            }
             Message::Mods(message) => {
                 self.mods.update(message);
                 Task::none()
@@ -224,7 +222,8 @@ impl InstancePage {
             // are display-only until the instance manager lands.
             Message::Back
             | Message::RevealFolder
-            | Message::More
+            | Message::OpenSource
+            | Message::Menu(_)
             | Message::Navigate(_)
             | Message::Launch
             | Message::Kill
@@ -287,19 +286,19 @@ impl InstancePage {
     }
 
     /// The page: fixed masthead, fixed tab row, and the tab body.
-    pub fn view<'a>(&'a self, viewport: Size, game: GameView<'a>) -> Element<'a, Message> {
+    pub fn view<'a>(&'a self, viewport: Size, game: GameView<'a>, install: Option<&'a Pending>) -> Element<'a, Message> {
         let Some(instance) = &self.instance else {
             return self.empty_state();
         };
 
         let controls = hero::Controls {
-            favorite: self.favorite,
             status: game.status,
+            install: install.map(install_status),
         };
         let page = column![
             hero::hero(instance, self.files.as_ref(), controls, viewport),
             self.tab_bar(),
-            self.tab_body(instance, game.console),
+            self.tab_body(instance, game.console, install),
         ]
         .width(Fill)
         .height(Fill);
@@ -354,9 +353,14 @@ impl InstancePage {
 
     /// The selected tab's content, padded to the page gutter. The log panel
     /// fills the height and scrolls itself; every other tab scrolls as a page.
-    fn tab_body<'a>(&'a self, instance: &'a Instance, console: Option<&'a VecDeque<logs::LogLine>>) -> Element<'a, Message> {
+    fn tab_body<'a>(
+        &'a self,
+        instance: &'a Instance,
+        console: Option<&'a VecDeque<logs::LogLine>>,
+        install: Option<&'a Pending>,
+    ) -> Element<'a, Message> {
         let content: Element<'a, Message> = match self.tab {
-            Tab::Overview => overview::view(instance, &self.screenshots),
+            Tab::Overview => overview::view(instance, &self.screenshots, install),
             Tab::Mods => self.mods.view().map(Message::Mods),
             Tab::Worlds => self.worlds.view().map(Message::Worlds),
             Tab::Screenshots => screenshots::view(&self.screenshots),

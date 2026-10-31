@@ -37,13 +37,15 @@ pub fn clean_directory_name(name: &str) -> String {
     trimmed.to_string()
 }
 
-/// A folder name that no folder in `instances_dir` uses yet: `base`, then
-/// `base (2)`, `base (3)`, and so on. Case-insensitive filesystems count
-/// `Base` and `base` as the same folder, and `Path::exists` already agrees.
-pub fn unique_directory_name(instances_dir: &Path, base: &str) -> String {
+/// A folder name that no folder in `instances_dir` uses yet, and no name in `taken` claims: `base`, then
+/// `base (2)`, `base (3)`, and so on. `taken` holds the names of installs that have not made their folders
+/// yet, and like the folders it is compared without case. Case-insensitive filesystems count `Base` and
+/// `base` as the same folder, and `Path::exists` already agrees.
+pub fn unique_directory_name(instances_dir: &Path, base: &str, taken: &[String]) -> String {
+    let free = |candidate: &str| !taken.iter().any(|name| name.eq_ignore_ascii_case(candidate)) && !instances_dir.join(candidate).exists();
     let mut candidate = base.to_string();
     let mut suffix = 2;
-    while instances_dir.join(&candidate).exists() {
+    while !free(&candidate) {
         candidate = format!("{base} ({suffix})");
         suffix += 1;
     }
