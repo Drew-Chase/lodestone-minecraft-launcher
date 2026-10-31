@@ -9,13 +9,14 @@ use iced::widget::{Space, Text, column, container, row, text_input};
 use iced::{Background, Border, Color, Element, Fill, Padding, alignment};
 use iced_color_extension::rgb;
 
+use super::GUTTER;
 use super::files::ModFile;
 use crate::app::components::badge::Badge;
 use crate::app::components::button::Variant;
 use crate::app::components::icon_button::SECONDARY_BUTTON_STYLE;
 use crate::app::components::input;
 use crate::app::components::panel::{divided_panel, panel};
-use crate::app::components::{IconButton, TextButton, Toggle};
+use crate::app::components::{IconButton, TextButton, Toggle, scrollbar};
 use crate::app::lang;
 use crate::app::theme::{color, fonts, utility};
 
@@ -94,7 +95,8 @@ impl State {
         self.visible = visible;
     }
 
-    /// The filter bar above the list of mods.
+    /// The filter bar, which stays at the top of the tab while the list of mods scrolls beneath it. Both take
+    /// the page gutter here, so the list's scroll runs to the page's edge and its scrollbar sits in the gutter.
     pub fn view(&self) -> Element<'_, Message> {
         let rows: Vec<Element<'_, Message>> = self.visible.iter().map(|&index| mod_row(index, &self.entries[index])).collect();
         let list = if rows.is_empty() {
@@ -108,7 +110,19 @@ impl State {
             divided_panel(rows, Padding::new(0.0).left(16).right(16))
         };
 
-        column![self.toolbar(), list].spacing(16).width(Fill).into()
+        // The list keeps 40px clear below it, as the page does, so its last row scrolls clear of the bottom edge.
+        let list = container(list)
+            .width(Fill)
+            .padding(Padding::new(0.0).left(GUTTER).right(GUTTER).bottom(40.0));
+        let toolbar = container(self.toolbar())
+            .width(Fill)
+            .padding(Padding::new(0.0).left(GUTTER).right(GUTTER));
+
+        column![toolbar, scrollbar::scroll(list).width(Fill).height(Fill)]
+            .spacing(16)
+            .width(Fill)
+            .height(Fill)
+            .into()
     }
 
     fn toolbar(&self) -> Element<'_, Message> {

@@ -553,8 +553,8 @@ impl InstancePage {
         .into()
     }
 
-    /// The selected tab's content, padded to the page gutter. The log panel
-    /// fills the height and scrolls itself; every other tab scrolls as a page.
+    /// The selected tab's content, padded to the page gutter. The log panel and the mod list fill the height
+    /// and scroll themselves, so their headers and filter bars stay put; every other tab scrolls as a page.
     fn tab_body<'a>(
         &'a self,
         instance: &'a Instance,
@@ -569,12 +569,15 @@ impl InstancePage {
             Tab::Logs => self.logs.view(console).map(Message::Logs),
             Tab::Settings => self.settings.view(instance).map(Message::Settings),
         };
-        let padded = container(content)
-            .width(Fill)
-            .padding(Padding::new(0.0).left(GUTTER).right(GUTTER).top(22.0).bottom(40.0));
+        // The mod list pads its own gutters, so its scrollbar sits in the page's gutter.
+        let padding = match self.tab {
+            Tab::Mods => Padding::new(0.0).top(22.0),
+            _ => Padding::new(0.0).left(GUTTER).right(GUTTER).top(22.0).bottom(40.0),
+        };
+        let padded = container(content).width(Fill).padding(padding);
 
         match self.tab {
-            Tab::Logs => padded.height(Fill).into(),
+            Tab::Logs | Tab::Mods => padded.height(Fill).into(),
             _ => scrollbar::scroll(padded).width(Fill).height(Fill).into(),
         }
     }
