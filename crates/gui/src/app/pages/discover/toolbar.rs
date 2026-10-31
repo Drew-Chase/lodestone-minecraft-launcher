@@ -1,17 +1,22 @@
 //! The filter row: the category, loader, version and sort selectors, the count
-//! of results, and the layout switcher.
+//! of results, and the layout switcher. Once the page scrolls past it, the same
+//! row is pinned over the results.
 
-use iced::widget::{Space, Text, row};
-use iced::{Element, Fill, Length, alignment};
+use iced::widget::{Space, Text, container, opaque, row};
+use iced::{Background, Element, Fill, Length, Padding, alignment};
 
-use super::{Discover, DiscoverView, Message};
-use crate::app::components::{Select, segmented};
+use super::{Discover, DiscoverView, GAP, Message, SIDE};
+use crate::app::components::{Select, scrollbar, segmented, select};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
 use lodestone_platforms::{Facets, SearchSort};
 
 /// The width of each filter selector.
 const SELECT_WIDTH: f32 = 176.0;
+
+/// The height of the filter row. It is the selectors' trigger height. The row keeps it wherever it sits, so
+/// a pinned row leaves a gap of the same height behind.
+pub(super) const HEIGHT: f32 = select::TRIGGER_HEIGHT;
 
 /// The filter selectors, the count and the layout switcher.
 pub(super) fn view(page: &Discover) -> Element<'_, Message> {
@@ -29,7 +34,27 @@ pub(super) fn view(page: &Discover) -> Element<'_, Message> {
     .spacing(16)
     .align_y(alignment::Vertical::Center)
     .width(Fill)
+    .height(Length::Fixed(HEIGHT))
     .into()
+}
+
+/// The filter row pinned over the results, once the page has scrolled past it. Its background is the
+/// page's, so the results pass beneath it. It stops short of the scrollbar's track, which stays clear, and
+/// its right padding makes up the track's width, so the selectors line up with where they sit in the page.
+/// `opaque` stops presses over the bar, so no card beneath can be pressed through it. The wheel still
+/// reaches the page.
+pub(super) fn pinned(page: &Discover) -> Element<'_, Message> {
+    let bar = container(view(page))
+        .padding(Padding::new(GAP).left(SIDE).right(SIDE - scrollbar::TRACK_WIDTH).bottom(GAP))
+        .width(Fill)
+        .style(|_| container::Style {
+            background: Some(Background::Color(color::Surface::APPLICATION)),
+            ..container::Style::default()
+        });
+    container(opaque(bar))
+        .padding(Padding::new(0.0).right(scrollbar::TRACK_WIDTH))
+        .width(Fill)
+        .into()
 }
 
 /// The category, loader and version selectors, each shown only when the platform has such filters.

@@ -22,7 +22,7 @@ use crate::app::components::scrollbar;
 use crate::app::install::InstallRequest;
 use crate::app::lang;
 use crate::app::shared_library::{self, SharedRecord};
-use iced::widget::{column, container};
+use iced::widget::{Space, column, container, stack};
 use iced::{Element, Fill, Padding, Size};
 use lodestone_platforms::{ContentType, Facets, SearchPage, SearchSort};
 
@@ -59,6 +59,12 @@ pub const CONTENT_ID: &str = "discover-content";
 
 /// How close to the end of the results, in pixels, the page asks for the next one.
 const LOAD_AHEAD: f32 = 900.0;
+
+/// The space between the page's blocks, and above the first of them. A pinned filter row keeps the same gap above it.
+const GAP: f32 = 18.0;
+
+/// The margin either side of the page, shared by the header and the scrolling content.
+const SIDE: f32 = 28.0;
 
 /// The layouts the results take.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -117,8 +123,9 @@ pub enum Message {
     VersionSelected(usize),
     /// The layout changed.
     ViewSelected(DiscoverView),
-    /// The page scrolled. `remaining` is how far the content runs past the bottom of the window.
-    Scrolled { remaining: f32 },
+    /// The page scrolled. `remaining` is how far the content runs past the bottom of the window, and
+    /// `offset` is how far the content has scrolled down.
+    Scrolled { remaining: f32, offset: f32 },
     /// A search came back for `offset` in `generation`.
     SearchFinished {
         key: query::Key,
@@ -237,6 +244,8 @@ pub struct Discover {
     requested: HashSet<String>,
     /// How far the content runs past the bottom of the window, as of the last scroll.
     remaining: f32,
+    /// How far the content has scrolled down, as of the last scroll. The filter row pins once it reaches the top.
+    scroll_y: f32,
     /// The downloads on disk, by (shared folder, platform key, project id).
     library: HashSet<(String, String, String)>,
     /// The installs the page knows of, by (platform key, project id).
@@ -266,6 +275,7 @@ impl Discover {
             failed: HashSet::new(),
             requested: HashSet::new(),
             remaining: f32::MAX,
+            scroll_y: 0.0,
             library: HashSet::new(),
             installs: HashMap::new(),
             busy: HashSet::new(),
@@ -505,8 +515,9 @@ impl Discover {
                 self.view = view;
                 Vec::new()
             }
-            Message::Scrolled { remaining } => {
+            Message::Scrolled { remaining, offset } => {
                 self.remaining = remaining;
+                self.scroll_y = offset;
                 if remaining < LOAD_AHEAD && self.results.has_more() && !self.results.loading && self.results.error.is_none() {
                     self.start(true)
                 } else {
@@ -624,33 +635,60 @@ impl Discover {
     }
 
     /// The page. The header, with the source and tab rows, stays where it is, and the hero, the filters
-    /// and the results scroll beneath it.
+    /// and the results scroll beneath it. Once the page scrolls up to the filters, they pin to the top of
+    /// the scrolling part, and the results pass beneath them.
     pub fn view(&self, window: Size) -> Element<'_, Message> {
         let fixed = container(column![header::view(self), header::source_row(self), header::tabs(self)].spacing(18))
-            .padding(Padding::new(0.0).top(22).left(28).right(28))
+            .padding(Padding::new(0.0).top(22).left(SIDE).right(SIDE))
             .width(Fill);
-        let mut page = column![].spacing(18);
-        if let Some(hero) = hero::view(self, window) {
+        let hero = hero::view(self, window);
+        let pinned = filters_pinned(self.scroll_y, hero.is_some());
+        let mut page = column![].spacing(GAP);
+        if let Some(hero) = hero {
             page = page.push(hero);
         }
-        page = page.push(toolbar::view(self)).push(results::view(self, window));
+        // A pinned row leaves a space of its height behind, so the results stay where they were.
+        let filters: Element<'_, Message> = if pinned {
+            Space::new().width(Fill).height(toolbar::HEIGHT).into()
+        } else {
+            toolbar::view(self)
+        };
+        page = page.push(filters).push(results::view(self, window));
         let content = container(page)
-            .padding(Padding::new(0.0).top(18).left(28).right(28).bottom(40))
+            .padding(Padding::new(0.0).top(GAP).left(SIDE).right(SIDE).bottom(40))
             .width(Fill);
         let scrolled = scrollbar::scroll(content).id(CONTENT_ID).width(Fill).height(Fill).on_scroll(|viewport| {
             let content = viewport.content_bounds();
             let bounds = viewport.bounds();
+            let offset = viewport.absolute_offset().y;
             Message::Scrolled {
-                remaining: content.height - (viewport.absolute_offset().y + bounds.height),
+                remaining: content.height - (offset + bounds.height),
+                offset,
             }
         });
-        column![fixed, scrolled].width(Fill).height(Fill).into()
+        // The pinned row lies over the scrolling content in a stack. The stack keeps the same shape whether or
+        // not the row is pinned, so the scrollable keeps its place and its scroll position when the row pins.
+        let overlay: Element<'_, Message> = if pinned { toolbar::pinned(self) } else { Space::new().into() };
+        let layers = stack![scrolled, overlay].width(Fill).height(Fill);
+        column![fixed, layers].width(Fill).height(Fill).into()
     }
 }
 
 /// The search field's placeholder for a platform.
 fn placeholder(source: Source) -> String {
     lang::t_with("discover.search_placeholder", &[("platform", source.name())])
+}
+
+/// Where the filter row sits in the scrolling content: under the top gap, and under the hero when the page
+/// has one.
+fn filters_top(has_hero: bool) -> f32 {
+    if has_hero { GAP + hero::HEIGHT + GAP } else { GAP }
+}
+
+/// Whether the filter row has scrolled up to the top of the page. From then on it stays pinned there, and the
+/// results scroll beneath it.
+fn filters_pinned(scroll_y: f32, has_hero: bool) -> bool {
+    scroll_y + GAP >= filters_top(has_hero)
 }
 
 #[cfg(test)]

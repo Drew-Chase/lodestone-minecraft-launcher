@@ -39,7 +39,7 @@ use super::menu::{self, Anchor, GAP, MenuItem, MenuState};
 /// Horizontal padding inside the trigger.
 const H_PADDING: f32 = 12.0;
 /// Trigger height — 13px text plus the `.select` padding.
-const TRIGGER_HEIGHT: f32 = 36.0;
+pub const TRIGGER_HEIGHT: f32 = 36.0;
 /// Gap between the label and the chevron.
 const CHEVRON_GAP: f32 = 8.0;
 /// Chevron icon size.

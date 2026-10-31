@@ -14,7 +14,7 @@ use crate::app::lang;
 use crate::app::theme::{color, fonts};
 
 /// The hero's height.
-const HEIGHT: f32 = 240.0;
+pub(super) const HEIGHT: f32 = 240.0;
 
 /// The hero for the page's first hit, sized to the content column. `None` while
 /// there is no hit, or while the page is searched rather than browsed.

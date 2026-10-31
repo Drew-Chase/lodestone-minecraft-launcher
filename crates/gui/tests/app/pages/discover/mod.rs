@@ -144,9 +144,15 @@ fn a_recent_first_page_comes_from_the_cache() {
 #[test]
 fn scrolling_near_the_end_asks_for_the_next_page() {
     let mut page = answered(20, 45);
-    let far = page.update(Message::Scrolled { remaining: 2000.0 });
+    let far = page.update(Message::Scrolled {
+        remaining: 2000.0,
+        offset: 0.0,
+    });
     assert!(far.is_empty(), "far from the end, nothing is asked for");
-    let near = page.update(Message::Scrolled { remaining: 120.0 });
+    let near = page.update(Message::Scrolled {
+        remaining: 120.0,
+        offset: 0.0,
+    });
     let search = search_of(&near).expect("near the end, the next page is asked for");
     assert_eq!(search.offset, 20);
 }
@@ -216,14 +222,40 @@ fn a_new_search_starts_the_results_back_at_the_top() {
 #[test]
 fn a_page_the_cache_holds_is_shown_without_asking_the_platform_again() {
     let mut page = answered(20, 40);
-    let effects = page.update(Message::Scrolled { remaining: 0.0 });
+    let effects = page.update(Message::Scrolled { remaining: 0.0, offset: 0.0 });
     answer(&mut page, &effects, 20, 40);
     page.update(Message::ContentSelected(ContentType::ResourcePack));
     let back = page.update(Message::ContentSelected(ContentType::Modpack));
     assert!(search_of(&back).is_none(), "the first page is still cached");
     assert_eq!(page.results.hits.len(), 20);
-    let more = page.update(Message::Scrolled { remaining: 0.0 });
+    let more = page.update(Message::Scrolled { remaining: 0.0, offset: 0.0 });
     assert!(search_of(&more).is_none(), "the second page is cached too");
     assert_eq!(page.results.hits.len(), 40);
     assert!(page.results.cached);
+}
+
+#[test]
+fn the_filters_pin_once_the_page_scrolls_up_to_them() {
+    let mut page = answered(20, 45);
+    let top = filters_top(true);
+    page.update(Message::Scrolled {
+        remaining: 2000.0,
+        offset: top - GAP - 1.0,
+    });
+    assert!(!filters_pinned(page.scroll_y, true), "the filters have not reached the top yet");
+    page.update(Message::Scrolled {
+        remaining: 2000.0,
+        offset: top - GAP,
+    });
+    assert!(filters_pinned(page.scroll_y, true), "the filters pin where they meet the top gap");
+    page.update(Message::Scrolled {
+        remaining: 2000.0,
+        offset: 4000.0,
+    });
+    assert!(filters_pinned(page.scroll_y, true), "and stay pinned as the results scroll on");
+}
+
+#[test]
+fn a_page_without_a_hero_keeps_its_filters_at_the_top() {
+    assert!(filters_pinned(0.0, false));
 }
