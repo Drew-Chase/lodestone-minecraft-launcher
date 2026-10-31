@@ -10,7 +10,7 @@ use super::naming;
 use super::{BannerChoice, IconChoice, Message, NewInstance, banner};
 use crate::app::components::button::Variant;
 use crate::app::components::instance_icon;
-use crate::app::components::loader_icon::loader_icon;
+use crate::app::components::loader_icon::loader_tile;
 use crate::app::components::modal::Modal;
 use crate::app::components::scene_art::scene_handle;
 use crate::app::components::tile::{INSET, tile};
@@ -20,7 +20,9 @@ use crate::app::pages::library::instance::Loader;
 use crate::app::theme::{color, fonts};
 
 /// The card's width.
-const WIDTH: f32 = 640.0;
+const WIDTH: f32 = 740.0;
+/// The Java trigger's height, which fits its name and its caption.
+const JAVA_TRIGGER_HEIGHT: f32 = 52.0;
 /// The icon tile beside the name.
 const ICON_TILE: f32 = 72.0;
 /// The banner preview's height. Its width fills the card.
@@ -105,12 +107,14 @@ fn version_row(dialog: &NewInstance) -> Element<'_, Message> {
     } else {
         lang::t("new_instance.versions_loading")
     };
-    let version = Select::new(versions, selected)
+    let mut version = Select::new(versions, selected)
         .on_select(Message::MinecraftPicked)
         .placeholder(version_placeholder)
         .searchable()
         .width(Fill);
-    let version_caption = latest.then(|| lang::t("new_instance.latest_release").to_owned());
+    if latest {
+        version = version.badge(lang::t("new_instance.latest_release"));
+    }
 
     let mut java_options = vec![auto_java_label(dialog)];
     java_options.extend(dialog.bundled.iter().map(|java| java.label.clone()));
@@ -118,18 +122,17 @@ fn version_row(dialog: &NewInstance) -> Element<'_, Message> {
         None => 0,
         Some(component) => dialog.bundled.iter().position(|java| &java.component == component).map_or(0, |at| at + 1),
     };
-    let java = Select::new(java_options, Some(java_selected))
+    let mut java = Select::new(java_options, Some(java_selected))
         .on_select(Message::JavaPicked)
         .searchable()
         .width(Fill);
-    let java_caption = dialog
-        .java_override
-        .is_none()
-        .then(|| lang::t("new_instance.java_auto_matched").to_owned());
+    if dialog.java_override.is_none() {
+        java = java.caption(lang::t("new_instance.java_auto_matched")).height(JAVA_TRIGGER_HEIGHT);
+    }
 
     row![
-        field(lang::t("new_instance.minecraft_version"), version.into(), version_caption),
-        field(lang::t("new_instance.java"), java.into(), java_caption),
+        field(lang::t("new_instance.minecraft_version"), version.into()),
+        field(lang::t("new_instance.java"), java.into()),
     ]
     .spacing(16)
     .into()
@@ -161,17 +164,21 @@ fn loader_section(dialog: &NewInstance) -> Element<'_, Message> {
         .into()
 }
 
-/// One loader card: its mark, its name and its caption. The chosen card is outlined.
+/// Two lines of the 11px caption at iced's default 1.3 line height. Each card reserves this much for its
+/// caption, so the cards stay the same height whether a caption wraps or not.
+const CAPTION_HEIGHT: f32 = 2.0 * 11.0 * 1.3;
+
+/// One loader card: its mark, its name and its caption. The chosen card is outlined and ticked.
 fn loader_card(loader: Loader, name: &'static str, caption: &'static str, chosen: bool) -> Element<'static, Message> {
     let content = column![
-        loader_icon(loader, 28.0),
+        loader_tile(loader, 32.0),
         Text::new(name).size(13).font(fonts::Inter::SEMI_BOLD).color(color::Text::HEADLINE),
-        Text::new(caption).size(11).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
+        container(Text::new(caption).size(11).font(fonts::Inter::REGULAR).color(color::Text::MUTED)).height(CAPTION_HEIGHT),
     ]
     .spacing(8)
     .padding(Padding::new(12.0))
     .width(Fill);
-    button(content)
+    let card = button(content)
         .width(Fill)
         .padding(0)
         .style(move |_: &Theme, _| button::Style {
@@ -184,8 +191,17 @@ fn loader_card(loader: Loader, name: &'static str, caption: &'static str, chosen
             },
             ..button::Style::default()
         })
-        .on_press(Message::LoaderPicked(loader))
-        .into()
+        .on_press(Message::LoaderPicked(loader));
+    if !chosen {
+        return card.into();
+    }
+    let tick = container(icon(Icon::lucide().check(), 12.0, color::Primary::DEFAULT))
+        .width(Fill)
+        .height(Fill)
+        .padding(Padding::new(10.0))
+        .align_x(alignment::Horizontal::Right)
+        .align_y(alignment::Vertical::Top);
+    stack![card, tick].into()
 }
 
 /// The loader's version picker, shown for a modded loader.
@@ -220,7 +236,7 @@ fn build_section(dialog: &NewInstance) -> Element<'_, Message> {
         .placeholder(placeholder)
         .searchable()
         .width(Fill);
-    field(lang::t("new_instance.loader_version"), select.into(), None)
+    field(lang::t("new_instance.loader_version"), select.into())
 }
 
 /// The banner, as a small strip across the top of the form. Clicking it opens the banner
@@ -281,18 +297,13 @@ fn icon_of(choice: &IconChoice, size: f32) -> Element<'_, Message> {
 /// The footer: Cancel, and Create, which queues the install.
 fn footer(dialog: &NewInstance) -> Element<'_, Message> {
     let mut create = TextButton::content(
-        row![
-            icon(Icon::lucide().plus(), 14.0, color::Primary::ON),
-            Text::new(lang::t("new_instance.create"))
-                .size(13)
-                .font(fonts::Inter::BOLD)
-                .color(color::Primary::ON),
-        ]
-        .spacing(8)
-        .align_y(alignment::Vertical::Center),
+        Text::new(lang::t("new_instance.create"))
+            .size(13)
+            .font(fonts::Inter::BOLD)
+            .color(color::Primary::ON),
     )
     .variant(Variant::Primary)
-    .padding(Padding::new(0.0).left(18).right(18).top(12).bottom(12));
+    .padding(Padding::new(0.0).left(18).right(18).top(9).bottom(9));
     if dialog.ready() {
         create = create.on_press(Message::Submit);
     }
@@ -305,7 +316,7 @@ fn footer(dialog: &NewInstance) -> Element<'_, Message> {
                 .color(color::Text::DEFAULT),
         )
         .variant(Variant::Ghost)
-        .padding(Padding::new(0.0).left(18).right(18).top(12).bottom(12))
+        .padding(Padding::new(0.0).left(18).right(18).top(9).bottom(9))
         .on_press(Message::Close),
         create,
     ]
@@ -314,13 +325,9 @@ fn footer(dialog: &NewInstance) -> Element<'_, Message> {
     .into()
 }
 
-/// A labelled control, with an optional caption under it.
-fn field<'a>(name: &'static str, control: Element<'a, Message>, caption: Option<String>) -> Element<'a, Message> {
-    let mut column = column![label(name), control].spacing(6).width(Fill);
-    if let Some(caption) = caption {
-        column = column.push(Text::new(caption).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED));
-    }
-    column.into()
+/// A labelled control.
+fn field<'a>(name: &'static str, control: Element<'a, Message>) -> Element<'a, Message> {
+    column![label(name), control].spacing(6).width(Fill).into()
 }
 
 /// A small uppercase section label.

@@ -38,3 +38,13 @@ fn reframe_replaces_the_default_24_unit_box_with_the_given_frame() {
         assert!(boxed.contains("<path"), "the glyph must survive the reframe");
     }
 }
+
+#[test]
+fn every_loader_wears_its_own_hue() {
+    let loaders = [Loader::Vanilla, Loader::Fabric, Loader::Forge, Loader::NeoForge, Loader::Quilt];
+    for (index, loader) in loaders.iter().enumerate() {
+        for other in &loaders[index + 1..] {
+            assert_ne!(hue(*loader), hue(*other), "{loader:?} and {other:?} share a hue");
+        }
+    }
+}

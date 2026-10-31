@@ -4,9 +4,9 @@
 use std::sync::LazyLock;
 
 use aurora_leaf::Icon;
-use iced::Element;
 use iced::widget::svg::Handle as SvgHandle;
-use iced::widget::{image, svg};
+use iced::widget::{container, image, svg};
+use iced::{Background, Border, Color, Element, alignment};
 
 use crate::app::components::badge::loader_palette;
 use crate::app::components::instance_icon;
@@ -53,6 +53,35 @@ pub fn loader_icon<'a, M: 'a>(loader: Loader, size: f32) -> Element<'a, M> {
         Loader::NeoForge => instance_icon::bytes((*NEOFORGE).clone(), size),
         Loader::Quilt => instance_icon::bytes((*QUILT).clone(), size),
     }
+}
+
+/// The colour of a loader's tile in the New Instance cards.
+pub fn hue(loader: Loader) -> Color {
+    match loader {
+        Loader::Vanilla => Color::from_rgb8(0x70, 0x78, 0x84),
+        Loader::Fabric => Color::from_rgb8(0xC4, 0xA5, 0x76),
+        Loader::Forge => Color::from_rgb8(0x3D, 0x6A, 0xA6),
+        Loader::NeoForge => Color::from_rgb8(0xC7, 0x7A, 0x48),
+        Loader::Quilt => Color::from_rgb8(0xA8, 0x64, 0x9A),
+    }
+}
+
+/// The loader's mark on a square tile of its hue, `size` pixels across. The mark fills most of the tile.
+pub fn loader_tile<'a, M: 'a>(loader: Loader, size: f32) -> Element<'a, M> {
+    container(loader_icon(loader, size * 0.6))
+        .width(size)
+        .height(size)
+        .align_x(alignment::Horizontal::Center)
+        .align_y(alignment::Vertical::Center)
+        .style(move |_| container::Style {
+            background: Some(Background::Color(hue(loader))),
+            border: Border {
+                radius: 8.0.into(),
+                ..Border::default()
+            },
+            ..container::Style::default()
+        })
+        .into()
 }
 
 #[cfg(test)]

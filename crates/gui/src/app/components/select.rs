@@ -20,13 +20,14 @@ use iced::advanced::renderer;
 use iced::advanced::svg::Renderer as _;
 use iced::advanced::svg::{Handle, Svg};
 use iced::advanced::text;
+use iced::advanced::text::Paragraph as _;
 use iced::advanced::text::Renderer as _;
 use iced::advanced::widget::{Tree, tree};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::border::Radius;
 use iced::mouse::{Cursor, Interaction};
 use iced::{
-    Border, Color, Element, Event, Length, Pixels, Point, Radians, Rectangle, Renderer as BaseRenderer, Size, Theme, alignment, mouse, overlay,
+    Border, Color, Element, Event, Font, Length, Pixels, Point, Radians, Rectangle, Renderer as BaseRenderer, Size, Theme, alignment, mouse, overlay,
     window,
 };
 use iced_anim::Animated;
@@ -50,6 +51,13 @@ const CHIP_CHEVRON_SIZE: f32 = 12.0;
 /// Size of a leading icon, and the gap between it and the label.
 const LEADING_SIZE: f32 = 14.0;
 const LEADING_GAP: f32 = 8.0;
+/// With a caption, the label sits this far above the trigger's middle and the caption this far below it.
+const CAPTION_OFFSET: f32 = 9.0;
+/// The badge's height, its text size, its side padding, and the gap between it and the label.
+const BADGE_HEIGHT: f32 = 18.0;
+const BADGE_TEXT: f32 = 10.0;
+const BADGE_PADDING: f32 = 6.0;
+const BADGE_GAP: f32 = 8.0;
 
 /// An animated select dropdown (`.select` + floating menu).
 pub struct Select<'a, Message> {
@@ -69,6 +77,10 @@ pub struct Select<'a, Message> {
     chip: bool,
     /// Markup of an icon drawn before the label, when set.
     leading_icon: Option<&'static str>,
+    /// A line under the label, in mono muted type, when set. The trigger should be taller to fit it.
+    caption: Option<String>,
+    /// A pill drawn right after the label, when set, such as a "latest" marker.
+    badge: Option<String>,
 }
 
 #[derive(Debug)]
@@ -103,6 +115,8 @@ impl<'a, Message: 'a> Select<'a, Message> {
             searchable: false,
             chip: false,
             leading_icon: None,
+            caption: None,
+            badge: None,
         }
     }
 
@@ -155,6 +169,19 @@ impl<'a, Message: 'a> Select<'a, Message> {
     /// Draws `markup` as an icon before the label.
     pub fn leading_icon(mut self, markup: &'static str) -> Self {
         self.leading_icon = Some(markup);
+        self
+    }
+
+    /// Adds a caption under the label, such as what the selected option means. Give the trigger a height
+    /// that fits both lines.
+    pub fn caption(mut self, caption: impl Into<String>) -> Self {
+        self.caption = Some(caption.into());
+        self
+    }
+
+    /// Draws `badge` as a small pill right after the label, such as a "latest" marker.
+    pub fn badge(mut self, badge: impl Into<String>) -> Self {
+        self.badge = Some(badge.into());
         self
     }
 
@@ -338,20 +365,28 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
             renderer.draw_svg(icon_svg, icon_bounds, bounds);
         }
 
+        // With a caption the label rises above the middle, and the caption sits below it.
+        let label_y = if self.caption.is_some() {
+            bounds.center_y() - CAPTION_OFFSET
+        } else {
+            bounds.center_y()
+        };
         let label = self.label();
+        let label_font = fonts::Inter::MEDIUM;
+        let label_width = text_width(label, text_size, label_font);
         renderer.fill_text(
             text::Text {
                 content: label.to_owned(),
                 bounds: Size::new(bounds.width - left - right - chevron_size - CHEVRON_GAP - leading, bounds.height),
                 size: Pixels::from(text_size),
                 line_height: text::LineHeight::Relative(1.4),
-                font: fonts::Inter::MEDIUM,
+                font: label_font,
                 align_x: text::Alignment::Default,
                 align_y: alignment::Vertical::Center,
                 shaping: text::Shaping::Basic,
                 wrapping: text::Wrapping::default(),
             },
-            Point::new(bounds.x + left + leading, bounds.center_y()),
+            Point::new(bounds.x + left + leading, label_y),
             if self.has_value() {
                 color::Text::DEFAULT
             } else {
@@ -359,6 +394,60 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
             },
             *viewport,
         );
+
+        if let Some(badge) = &self.badge {
+            let font = fonts::JetBrainsMono::SEMI_BOLD;
+            let width = text_width(badge, BADGE_TEXT, font) + 2.0 * BADGE_PADDING;
+            let x = bounds.x + left + leading + label_width + BADGE_GAP;
+            renderer.fill_quad(
+                renderer::Quad {
+                    bounds: Rectangle::new(Point::new(x, label_y - BADGE_HEIGHT / 2.0), Size::new(width, BADGE_HEIGHT)),
+                    border: Border {
+                        radius: 999.0.into(),
+                        ..Border::default()
+                    },
+                    ..renderer::Quad::default()
+                },
+                color::Primary::TINT,
+            );
+            // iced centres aligned text on its anchor point, so the badge text starts at its inset rather than
+            // being centred on the pill's left edge, where it drew over the number.
+            renderer.fill_text(
+                text::Text {
+                    content: badge.clone(),
+                    bounds: Size::new(width, BADGE_HEIGHT),
+                    size: Pixels::from(BADGE_TEXT),
+                    line_height: text::LineHeight::Relative(1.4),
+                    font,
+                    align_x: text::Alignment::Default,
+                    align_y: alignment::Vertical::Center,
+                    shaping: text::Shaping::Basic,
+                    wrapping: text::Wrapping::None,
+                },
+                Point::new(x + BADGE_PADDING, label_y),
+                color::Primary::DEFAULT,
+                *viewport,
+            );
+        }
+
+        if let Some(caption) = &self.caption {
+            renderer.fill_text(
+                text::Text {
+                    content: caption.clone(),
+                    bounds: Size::new(bounds.width - left - right - chevron_size - CHEVRON_GAP - leading, bounds.height),
+                    size: Pixels::from(11.0),
+                    line_height: text::LineHeight::Relative(1.4),
+                    font: fonts::JetBrainsMono::REGULAR,
+                    align_x: text::Alignment::Default,
+                    align_y: alignment::Vertical::Center,
+                    shaping: text::Shaping::Basic,
+                    wrapping: text::Wrapping::default(),
+                },
+                Point::new(bounds.x + left + leading, bounds.center_y() + CAPTION_OFFSET),
+                color::Text::MUTED,
+                *viewport,
+            );
+        }
 
         // Chevron — rotates 180° while the menu is open.
         let chevron_svg = Svg {
@@ -414,3 +503,23 @@ impl<'a, Message: 'a + 'static> From<Select<'a, Message>> for Element<'a, Messag
         Element::new(select)
     }
 }
+
+/// The natural width of `content` at `size` in `font`, so a badge can sit right after the text.
+fn text_width(content: &str, size: f32, font: Font) -> f32 {
+    <BaseRenderer as text::Renderer>::Paragraph::with_text(text::Text {
+        content,
+        bounds: Size::INFINITE,
+        size: Pixels::from(size),
+        line_height: text::LineHeight::Relative(1.4),
+        font,
+        align_x: text::Alignment::Default,
+        align_y: alignment::Vertical::Center,
+        shaping: text::Shaping::Basic,
+        wrapping: text::Wrapping::None,
+    })
+    .min_width()
+}
+
+#[cfg(test)]
+#[path = "../../../tests/app/components/select.rs"]
+mod tests;

@@ -38,24 +38,24 @@ use layer::Layer;
 /// The card's width when none is given — the alert size.
 pub const DEFAULT_WIDTH: f32 = 560.0;
 
-/// Header padding: the title block sits 28px in from the card edge.
+/// Header padding: the title block sits 22px in from the card edge.
 const HEADER_PADDING: Padding = Padding {
-    top: 24.0,
-    bottom: 22.0,
-    left: 28.0,
-    right: 24.0,
-};
-const BODY_PADDING: Padding = Padding {
-    top: 24.0,
-    bottom: 24.0,
-    left: 28.0,
-    right: 28.0,
-};
-const FOOTER_PADDING: Padding = Padding {
     top: 18.0,
     bottom: 18.0,
-    left: 28.0,
-    right: 28.0,
+    left: 22.0,
+    right: 22.0,
+};
+const BODY_PADDING: Padding = Padding {
+    top: 22.0,
+    bottom: 22.0,
+    left: 22.0,
+    right: 22.0,
+};
+const FOOTER_PADDING: Padding = Padding {
+    top: 15.0,
+    bottom: 15.0,
+    left: 22.0,
+    right: 22.0,
 };
 
 /// One modal slot: text, styled for the slot it lands in, or an element
@@ -166,7 +166,7 @@ impl<'a, Message: Clone + 'a> Modal<'a, Message> {
         self
     }
 
-    /// A 52px glyph tile before the title: `ink` draws the glyph and the
+    /// A 40px glyph tile before the title: `ink` draws the glyph and the
     /// border, `tint` fills the tile.
     pub fn icon(mut self, svg: &'static str, ink: Color, tint: Color) -> Self {
         self.icon = Some(HeaderIcon { svg, ink, tint });
@@ -207,7 +207,7 @@ impl<'a, Message: Clone + 'a> Modal<'a, Message> {
             heading = heading.push(typography::small(subtitle));
         }
 
-        let mut header = row![].spacing(16).align_y(alignment::Vertical::Center);
+        let mut header = row![].spacing(14).align_y(alignment::Vertical::Center);
         if let Some(icon) = icon {
             header = header.push(icon_tile(icon));
         }
@@ -215,7 +215,7 @@ impl<'a, Message: Clone + 'a> Modal<'a, Message> {
         if let Some(message) = on_close {
             header = header.push(
                 IconButton::new(Icon::lucide().x())
-                    .size(36)
+                    .size(32)
                     .icon_size(14.0)
                     .radius(10.0)
                     .style(icon_button::SECONDARY_BUTTON_STYLE)
@@ -229,15 +229,15 @@ impl<'a, Message: Clone + 'a> Modal<'a, Message> {
 /// The tinted glyph tile from the reference headers.
 fn icon_tile<'a, Message: 'a>(icon: HeaderIcon) -> Element<'a, Message> {
     let HeaderIcon { svg, ink, tint } = icon;
-    container(utility::icon(svg, 22.0, Some((ink, ink))))
-        .width(52)
-        .height(52)
+    container(utility::icon(svg, 18.0, Some((ink, ink))))
+        .width(40)
+        .height(40)
         .align_x(alignment::Horizontal::Center)
         .align_y(alignment::Vertical::Center)
         .style(move |_| container::Style {
             background: Some(Background::Color(tint)),
             border: Border {
-                radius: 14.0.into(),
+                radius: 12.0.into(),
                 width: 1.0,
                 color: Color { a: 0.35, ..ink },
             },
