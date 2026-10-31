@@ -1,21 +1,36 @@
 use super::*;
 
 #[test]
-fn the_rows_are_play_edit_reveal_a_separator_then_delete() {
-    let rows = items();
-    assert_eq!(rows.len(), 5);
-    assert!(matches!(rows[3], MenuItem::Separator));
-    assert!(matches!(rows[4], MenuItem::Action { danger: true, .. }), "delete is the red row");
+fn a_card_menu_lists_play_edit_reveal_a_separator_then_delete() {
+    let menu = menu(false, true);
+    assert_eq!(menu.items.len(), 5);
+    assert!(matches!(menu.items[3], MenuItem::Separator));
+    assert!(matches!(menu.items[4], MenuItem::Action { danger: true, .. }), "delete is the red row");
+    assert_eq!(
+        menu.actions,
+        vec![Some(Action::Play), Some(Action::Edit), Some(Action::Reveal), None, Some(Action::Delete)]
+    );
 }
 
 #[test]
-fn every_action_row_maps_to_an_action_and_separators_map_to_none() {
-    for (index, row) in items().iter().enumerate() {
-        assert_eq!(action_at(index).is_some(), !matches!(row, MenuItem::Separator), "row {index}");
+fn the_instance_page_leaves_reveal_out_for_a_local_instance() {
+    let menu = menu(false, false);
+    assert_eq!(menu.items.len(), 4);
+    assert_eq!(menu.actions, vec![Some(Action::Play), Some(Action::Edit), None, Some(Action::Delete)]);
+}
+
+#[test]
+fn an_install_that_has_not_finished_offers_only_cancelling_it() {
+    let menu = menu(true, true);
+    assert_eq!(menu.actions, vec![Some(Action::CancelInstall)]);
+    assert!(matches!(menu.items[0], MenuItem::Action { danger: true, .. }));
+}
+
+#[test]
+fn every_action_row_has_an_action_and_every_separator_has_none() {
+    let menu = menu(false, true);
+    assert_eq!(menu.items.len(), menu.actions.len());
+    for (row, action) in menu.items.iter().zip(&menu.actions) {
+        assert_eq!(action.is_some(), !matches!(row, MenuItem::Separator));
     }
-    assert_eq!(action_at(0), Some(Action::Play));
-    assert_eq!(action_at(1), Some(Action::Edit));
-    assert_eq!(action_at(2), Some(Action::Reveal));
-    assert_eq!(action_at(4), Some(Action::Delete));
-    assert_eq!(action_at(9), None, "an index past the rows picks nothing");
 }

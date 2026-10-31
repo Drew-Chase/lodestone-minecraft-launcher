@@ -1,6 +1,6 @@
-//! The New Instance modal. It keeps the form's fields, the pickers' choices and the
-//! install while one runs. Starting and finishing an install need the database, so the
-//! root does those. This module only builds the request for it.
+//! The New Instance modal. It keeps the form's fields and the pickers' choices, and builds
+//! the install's request when the form is submitted. Queuing the install and running it
+//! belong to the root and the downloads queue.
 
 mod banner;
 mod banner_editor;
@@ -11,7 +11,6 @@ mod upload;
 
 use std::sync::Arc;
 
-use iced::task::Handle;
 use iced::widget::image;
 use iced::widget::stack;
 use iced::{Element, Task};
@@ -19,9 +18,9 @@ use lodestone_loaders::LoaderVersion;
 
 use crate::app::database::Database;
 use crate::app::install::catalog::{self, BundledJava, Releases, VersionInfo};
-use crate::app::install::{self, IconSource, InstallProgress, InstallRequest};
+use crate::app::install::{self, IconSource, InstallRequest};
 use crate::app::lang;
-use crate::app::pages::library::instance::{Instance, InstanceIcon, Loader};
+use crate::app::pages::library::instance::{InstanceIcon, Loader};
 use crate::app::paths::LauncherPaths;
 
 /// An uploaded image: its PNG bytes for the install, and a handle the previews draw from,
@@ -63,15 +62,7 @@ pub enum BannerChoice {
     Uploaded(Upload),
 }
 
-/// What an install reports: progress along the way, then the result.
-#[derive(Debug, Clone)]
-pub enum InstallEvent {
-    Progress(InstallProgress),
-    /// The new instance, boxed to keep the messages small.
-    Finished(Result<Box<Instance>, String>),
-}
-
-/// The dialog's messages. The root takes the ones that start, finish or cancel an install.
+/// The dialog's messages. The root takes `Submit`, which queues the install.
 #[derive(Debug, Clone)]
 pub enum Message {
     /// The ✕ or the Cancel button.
@@ -102,18 +93,8 @@ pub enum Message {
     BannerUploaded(Result<Option<Vec<u8>>, String>),
     /// An icon was read from disk, or the dialog was cancelled.
     IconUploaded(Result<Option<Vec<u8>>, String>),
-    /// Create the instance. The root starts the install.
+    /// Create the instance. The root queues the install and closes the dialog.
     Submit,
-    Install(InstallEvent),
-    /// Cancel the running install, after the user confirms.
-    CancelInstall,
-    CancelAnswered(bool),
-}
-
-/// An install in progress: its latest report, and the handle that cancels it.
-pub struct Installing {
-    progress: Option<InstallProgress>,
-    abort: Handle,
 }
 
 /// The dialog's state.
@@ -136,7 +117,6 @@ pub struct NewInstance {
     banner_editor: Option<banner_editor::BannerEditor>,
     banner: BannerChoice,
     error: Option<String>,
-    installing: Option<Installing>,
 }
 
 impl std::fmt::Debug for NewInstance {
@@ -167,7 +147,6 @@ impl NewInstance {
             banner_editor: None,
             banner: BannerChoice::Scene(banner::random_scene()),
             error: None,
-            installing: None,
         }
     }
 
@@ -179,11 +158,6 @@ impl NewInstance {
         ])
     }
 
-    /// Whether an install is running.
-    pub fn is_installing(&self) -> bool {
-        self.installing.is_some()
-    }
-
     /// Whether the form has what it needs to create an instance. The check does no disk
     /// work, since the view calls it on every redraw.
     pub fn ready(&self) -> bool {
@@ -191,7 +165,6 @@ impl NewInstance {
             && self.mc_version.is_some()
             && self.version_info.is_some()
             && (self.loader == Loader::Vanilla || self.loader_version.is_some())
-            && !self.is_installing()
     }
 
     /// Applies a message. The messages the root takes are ignored here.
@@ -364,15 +337,7 @@ impl NewInstance {
                 self.error = Some(error);
                 Task::none()
             }
-            Message::Install(InstallEvent::Progress(progress)) => {
-                if let Some(installing) = &mut self.installing {
-                    installing.progress = Some(progress);
-                }
-                Task::none()
-            }
-            Message::Close | Message::Submit | Message::Install(InstallEvent::Finished(_)) | Message::CancelInstall | Message::CancelAnswered(_) => {
-                Task::none()
-            }
+            Message::Close | Message::Submit => Task::none(),
         }
     }
 
@@ -410,37 +375,14 @@ impl NewInstance {
         })
     }
 
-    /// Validates the form and starts the install. The returned task runs it, and the
-    /// cancel handle is kept here.
-    pub fn start_install(&mut self, db: Database) -> Result<Task<Message>, String> {
-        let request = self.install_request()?;
-        let (task, abort) = Task::sip(
-            install::install(request, db),
-            |progress| Message::Install(InstallEvent::Progress(progress)),
-            |result| Message::Install(InstallEvent::Finished(result.map(Box::new))),
-        )
-        .abortable();
-        self.error = None;
-        self.installing = Some(Installing { progress: None, abort });
-        Ok(task)
-    }
-
-    /// Stops a running install. Its sipper is dropped, which removes the partial folder.
-    pub fn cancel_install(&mut self) {
-        if let Some(installing) = self.installing.take() {
-            installing.abort.abort();
-        }
-    }
-
-    /// Records why the install stopped, and leaves the dialog open to try again.
-    pub fn install_failed(&mut self, error: String) {
-        self.installing = None;
+    /// Records why the form could not install, and leaves the dialog open to try again.
+    pub fn show_error(&mut self, error: String) {
         self.error = Some(error);
     }
 
-    /// Builds the install's request from the form. It reserves the instance's folder name,
-    /// so call it once per install.
-    fn install_request(&self) -> Result<InstallRequest, String> {
+    /// Builds the install's request from the form. The folder name avoids the folders on disk and the
+    /// `taken` names of installs still queued, and the request carries the id the instance will get.
+    pub fn request(&self, taken: &[String]) -> Result<InstallRequest, String> {
         let name = self.name.trim();
         if name.is_empty() {
             return Err(lang::t("new_instance.error.name").to_owned());
@@ -452,7 +394,7 @@ impl NewInstance {
             _ => Some(self.loader_version.clone().ok_or(lang::t("new_instance.error.loader_version"))?),
         };
         let java_component = Some(self.java_override.clone().unwrap_or_else(|| info.component.clone()));
-        let directory_name = naming::unique_directory_name(&self.paths.instances(), &naming::clean_directory_name(name));
+        let directory_name = naming::unique_directory_name(&self.paths.instances(), &naming::clean_directory_name(name), taken);
         let icon = match &self.icon {
             IconChoice::Composed { background, symbol } => IconSource::Composed {
                 background: background.to_string(),
@@ -482,6 +424,8 @@ impl NewInstance {
             biome,
             art_seed,
             banner,
+            id: install::new_id(),
+            source_url: None,
         })
     }
 

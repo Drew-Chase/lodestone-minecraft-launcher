@@ -2,6 +2,7 @@ mod auth;
 mod boot;
 pub mod components;
 pub mod database;
+mod downloads;
 pub mod face;
 mod games;
 mod install;
@@ -118,6 +119,10 @@ pub struct LodestoneLauncher {
     games: launch::games::Games,
     /// Which panels of running games are open, beside the sidebar and under the title bar.
     runs_open: launch::games::RunsOpen,
+    /// The installs queued, running, paused and finished, which the Downloads popover lists.
+    downloads: downloads::Downloads,
+    /// The library's scene art, rendered to pixels in the background.
+    art: components::art_cache::ArtCache,
     /// TEMPORARY resize-latency probe counter (env-gated).
     probe_step: u32,
     /// The F3 performance overlay. It shows nothing unless built with the `perf` feature.
@@ -149,6 +154,8 @@ impl Default for LodestoneLauncher {
             alerts: Alerts::default(),
             games: launch::games::Games::default(),
             runs_open: launch::games::RunsOpen::default(),
+            downloads: downloads::Downloads::default(),
+            art: components::art_cache::ArtCache::default(),
             perf: perf::Hud::default(),
         }
     }

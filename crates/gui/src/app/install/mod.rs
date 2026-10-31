@@ -2,7 +2,8 @@
 //! (Java, the client jar, the libraries and the assets, side by side) and then the loader. It
 //! writes the instance folder and inserts the database row. Files already on disk are checked
 //! rather than downloaded again. The install runs as a sipper that reports progress. Whatever it
-//! created is removed again when it fails or is dropped, which is what cancelling the modal does.
+//! created is removed again when it fails or is dropped, which is what cancelling an install in the
+//! downloads queue does.
 
 pub mod catalog;
 pub(crate) mod download;
@@ -10,8 +11,12 @@ pub(crate) mod ensure;
 pub(crate) mod java;
 pub(crate) mod loader;
 
+use std::collections::HashSet;
 use std::future::Future;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use chrono::Local;
@@ -27,10 +32,14 @@ use crate::app::launch::manifest::Manifest;
 use crate::app::launch::rules::Platform;
 use crate::app::pages::library::instance::{Biome, Instance, InstanceIcon, InstanceState, Loader};
 use crate::app::paths::LauncherPaths;
-use download::PartReport;
+use download::{PartReport, Transfer};
 
 /// The marker a finished shared install leaves behind. Without it the install runs again.
 const COMPLETE: &str = ".complete";
+
+/// The marker an install leaves in its folder while it runs. A paused install keeps the folder, so
+/// the resumed install knows the folder is its own.
+const INSTALLING: &str = ".installing";
 
 /// The folder the uploaded art lives in, inside the instance folder.
 const ART_DIR: &str = ".lodestone";
@@ -73,6 +82,10 @@ pub struct InstallRequest {
     pub art_seed: u64,
     /// An uploaded banner, already encoded as PNG.
     pub banner: Option<Vec<u8>>,
+    /// The id the instance gets, made before the install starts so it can be shown while it runs.
+    pub id: String,
+    /// The page the modpack came from, when it came from an external source.
+    pub source_url: Option<String>,
 }
 
 /// The stages an install goes through, in order.
@@ -102,13 +115,16 @@ pub struct InstallProgress {
     pub stage: Stage,
     pub fraction: Option<f32>,
     pub detail: String,
+    /// The bytes the download stage has moved, and its rate. Zero in the other stages.
+    pub transfer: Transfer,
 }
 
-/// Runs the install. The sipper reports progress and resolves to the new instance, or to
-/// the reason the install stopped. Dropping it removes the instance folder it made.
-pub fn install(request: InstallRequest, db: Database) -> impl Sipper<Result<Instance, String>, InstallProgress> {
+/// Runs the install. The sipper reports progress and resolves to the new instance, or to the reason
+/// the install stopped. Dropping it removes the instance folder it made, unless `keep_folder` is set:
+/// a paused install sets it, so the resumed install finds the folder again.
+pub fn install(request: InstallRequest, db: Database, keep_folder: Arc<AtomicBool>) -> impl Sipper<Result<Instance, String>, InstallProgress> {
     sipper(move |mut progress: ProgressSender<InstallProgress>| async move {
-        let mut folder = Folder::create(&request.paths.instance(&request.directory_name))?;
+        let mut folder = Folder::open(&request.paths.instance(&request.directory_name), keep_folder)?;
         let instance = run(&request, &mut progress, &folder.path, &db).await?;
         folder.keep();
         Ok(instance)
@@ -128,24 +144,33 @@ fn path_failed(key: &'static str, path: &Path, error: impl std::fmt::Display) ->
     )
 }
 
-/// The instance folder an install created. Unless it is kept, dropping it deletes the
-/// folder, so a failed or cancelled install leaves nothing behind.
+/// The instance folder an install works in. Unless it is kept, dropping it deletes the folder, so a
+/// failed or cancelled install leaves nothing behind. A paused install sets `keep_on_drop` so the
+/// folder stays for its resume.
 struct Folder {
     path: PathBuf,
     kept: bool,
+    keep_on_drop: Arc<AtomicBool>,
 }
 
 impl Folder {
-    /// Creates `path`, failing when something already has that name. Making the folder
-    /// here is what lets the install delete it later without touching anything else.
-    fn create(path: &Path) -> Result<Self, String> {
+    /// Opens the folder at `path`, creating it and writing the install marker. A folder that already
+    /// holds the marker is taken over, which is how a resumed install picks up its paused folder.
+    /// Anything else already at `path` is refused, so the install never deletes a folder it did not make.
+    fn open(path: &Path, keep_on_drop: Arc<AtomicBool>) -> Result<Self, String> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|error| could_not_create(parent, error))?;
         }
-        std::fs::create_dir(path).map_err(|error| could_not_create(path, error))?;
+        match std::fs::create_dir(path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == ErrorKind::AlreadyExists && path.join(INSTALLING).is_file() => {}
+            Err(error) => return Err(could_not_create(path, error)),
+        }
+        std::fs::write(path.join(INSTALLING), b"").map_err(|error| could_not_create(path, error))?;
         Ok(Self {
             path: path.to_path_buf(),
             kept: false,
+            keep_on_drop,
         })
     }
 
@@ -156,7 +181,7 @@ impl Folder {
 
 impl Drop for Folder {
     fn drop(&mut self) {
-        if self.kept {
+        if self.kept || self.keep_on_drop.load(Ordering::SeqCst) {
             return;
         }
         let path = std::mem::take(&mut self.path);
@@ -221,14 +246,15 @@ async fn download_stage(
         progress,
         reports,
         move |report| {
-            let (done, total) = totals.apply(report);
+            let sum = totals.apply(report);
             InstallProgress {
                 stage: Stage::Download,
-                fraction: fraction(done, total),
+                fraction: fraction(sum.done, sum.total),
                 detail: lang::t_with(
                     "install.files_count",
-                    &[("done", done.to_string().as_str()), ("total", total.to_string().as_str())],
+                    &[("done", sum.done.to_string().as_str()), ("total", sum.total.to_string().as_str())],
                 ),
+                transfer: sum.transfer,
             }
         },
         work,
@@ -273,6 +299,7 @@ async fn loader_stage(progress: &mut ProgressSender<InstallProgress>, request: &
             stage: Stage::Loader,
             fraction: None,
             detail: line,
+            transfer: Transfer::default(),
         },
         work,
     )
@@ -314,7 +341,7 @@ async fn finish(
     };
 
     let instance = Instance {
-        id: new_id(),
+        id: request.id.clone(),
         name: request.name.clone(),
         mc_version: request.mc_version.clone(),
         loader: request.loader,
@@ -332,8 +359,12 @@ async fn finish(
         directory_name: request.directory_name.clone(),
         java_component: Some(java_name),
         version_id: Some(version_id),
+        source_url: request.source_url.clone(),
     };
     db.insert_instance(&instance).await?;
+    if let Err(error) = std::fs::remove_file(game_dir.join(INSTALLING)) {
+        warn!("could not remove the install marker in {}: {error}", game_dir.display());
+    }
     if let IconSource::Composed { background, symbol } = &request.icon
         && let Err(error) = db.record_recent_icon(background, symbol).await
     {
@@ -351,23 +382,43 @@ fn write_art(dir: &Path, file: &str, png: &[u8]) -> Result<(), String> {
 
 /// Reports one progress update.
 async fn report(progress: &mut ProgressSender<InstallProgress>, stage: Stage, fraction: Option<f32>, detail: String) {
-    progress.send(InstallProgress { stage, fraction, detail }).await;
+    progress
+        .send(InstallProgress {
+            stage,
+            fraction,
+            detail,
+            transfer: Transfer::default(),
+        })
+        .await;
 }
 
 /// The download parts' latest counts. A stage reports their sum, so the bar moves whichever part
 /// is working.
 #[derive(Default)]
 pub(crate) struct Totals {
-    parts: [(usize, usize); 4],
+    parts: [Option<PartReport>; 4],
+}
+
+/// The sum of the download parts' latest counts.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Sum {
+    pub(crate) done: usize,
+    pub(crate) total: usize,
+    pub(crate) transfer: Transfer,
 }
 
 impl Totals {
-    /// Records the part's count and returns the sum of every part's `(done, total)`.
-    pub(crate) fn apply(&mut self, report: PartReport) -> (usize, usize) {
-        self.parts[report.part as usize] = (report.done, report.total);
-        self.parts
-            .iter()
-            .fold((0, 0), |(done, total), (part_done, part_total)| (done + part_done, total + part_total))
+    /// Records the part's report and returns the sum of every part's latest counts.
+    pub(crate) fn apply(&mut self, report: PartReport) -> Sum {
+        self.parts[report.part as usize] = Some(report);
+        self.parts.iter().flatten().fold(Sum::default(), |mut sum, part| {
+            sum.done += part.done;
+            sum.total += part.total;
+            sum.transfer.done += part.transfer.done;
+            sum.transfer.total += part.transfer.total;
+            sum.transfer.per_second += part.transfer.per_second;
+            sum
+        })
     }
 }
 
@@ -392,13 +443,39 @@ pub(crate) async fn drive<P, T, R>(
     }
 }
 
+/// Removes the folders of installs that never finished, and returns how many went. Such a folder keeps the
+/// install's marker, and no instance row names it. Only a launcher that closed mid-install leaves one, so
+/// this runs at startup, before any install has started.
+pub async fn sweep_partial(instances_dir: PathBuf, known: HashSet<String>) -> usize {
+    tokio::task::spawn_blocking(move || {
+        let Ok(entries) = std::fs::read_dir(&instances_dir) else {
+            return 0;
+        };
+        let mut removed = 0;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if known.contains(&name) || !path.join(INSTALLING).is_file() {
+                continue;
+            }
+            match std::fs::remove_dir_all(&path) {
+                Ok(()) => removed += 1,
+                Err(error) => warn!("could not remove the unfinished install {}: {error}", path.display()),
+            }
+        }
+        removed
+    })
+    .await
+    .unwrap_or(0)
+}
+
 /// `done` of `total` as a fraction, or `None` while the total is unknown.
 pub(crate) fn fraction(done: usize, total: usize) -> Option<f32> {
     (total > 0).then(|| (done as f32 / total as f32).min(1.0))
 }
 
 /// A random identifier in the 8-4-4-4-12 shape of a uuid.
-fn new_id() -> String {
+pub fn new_id() -> String {
     let hex = format!("{:032x}", fastrand::u128(..));
     format!("{}-{}-{}-{}-{}", &hex[..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..])
 }

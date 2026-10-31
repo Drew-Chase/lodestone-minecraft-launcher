@@ -3,6 +3,7 @@
 use crate::app::components::backdrop::LoginBackdrop;
 use crate::app::components::game_controls::Actions;
 use crate::app::components::sidebar::{game_block, sidebar as sidebar_view};
+use crate::app::downloads::{self, Pending};
 use crate::app::launch::GameMessage;
 use crate::app::launch::games::{GameBar, RunsPlace};
 use crate::app::pages::Page;
@@ -104,10 +105,32 @@ impl LodestoneLauncher {
         )
     }
 
+    /// The install of the instance the page shows, while that install has not ended.
+    fn instance_install(&self) -> Option<&Pending> {
+        let instance = self.instance_page.instance()?;
+        self.library.pending_install(&instance.id)
+    }
+
     /// The full sidebar — logo, all nav groups, the game block, and the player avatar. The
     /// top group's first item (Library) navigates; the rest are display-only
     /// until their pages exist.
     fn rail_column(&self, bar: &GameBar) -> Element<'_, LodestoneAppMessage> {
+        // The game block and the Downloads trigger sit above the bottom group, in that order.
+        let above_bottom = column![
+            game_block(
+                bar,
+                self.runs_open.is_open(RunsPlace::Sidebar),
+                &Actions {
+                    toggle: LodestoneAppMessage::Game(GameMessage::ToggleRuns(RunsPlace::Sidebar)),
+                    dismiss: LodestoneAppMessage::Game(GameMessage::DismissRuns(RunsPlace::Sidebar)),
+                    kill: |serial: u64| LodestoneAppMessage::Game(GameMessage::KillRun(serial)),
+                    console: |serial: u64| LodestoneAppMessage::Game(GameMessage::ConsoleRun(serial)),
+                    launch: |id: String| LodestoneAppMessage::Game(GameMessage::LaunchNew(id)),
+                },
+            ),
+            downloads::trigger(&self.downloads).map(LodestoneAppMessage::Downloads),
+        ]
+        .spacing(6);
         sidebar_view(
             self.face.clone(),
             self.account.as_ref().map(Account::username).map(str::to_string),
@@ -125,17 +148,7 @@ impl LodestoneLauncher {
                 group: NavGroup::Bottom,
                 index,
             },
-            game_block(
-                bar,
-                self.runs_open.is_open(RunsPlace::Sidebar),
-                &Actions {
-                    toggle: LodestoneAppMessage::Game(GameMessage::ToggleRuns(RunsPlace::Sidebar)),
-                    dismiss: LodestoneAppMessage::Game(GameMessage::DismissRuns(RunsPlace::Sidebar)),
-                    kill: |serial: u64| LodestoneAppMessage::Game(GameMessage::KillRun(serial)),
-                    console: |serial: u64| LodestoneAppMessage::Game(GameMessage::ConsoleRun(serial)),
-                    launch: |id: String| LodestoneAppMessage::Game(GameMessage::LaunchNew(id)),
-                },
-            ),
+            above_bottom.into(),
         )
     }
 
@@ -166,10 +179,10 @@ impl LodestoneLauncher {
         });
         match page {
             Page::Login => self.login.view(None).map(LodestoneAppMessage::Login),
-            Page::Home => self.library.view(self.window_size).map(LodestoneAppMessage::Library),
+            Page::Home => self.library.view(self.window_size, &self.art).map(LodestoneAppMessage::Library),
             Page::Instance => self
                 .instance_page
-                .view(self.window_size, self.page_game_view())
+                .view(self.window_size, self.page_game_view(), self.instance_install())
                 .map(LodestoneAppMessage::Instance),
             Page::Settings => self.settings.view().map(LodestoneAppMessage::Settings),
             Page::Showcase => self.showcase.view().map(LodestoneAppMessage::Showcase),

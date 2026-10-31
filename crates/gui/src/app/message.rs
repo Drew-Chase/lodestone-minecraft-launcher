@@ -2,7 +2,9 @@
 //! chrome and navigation to page messages and background-task results.
 
 use crate::app::components::alert::Message as AlertMessage;
+use crate::app::components::art_cache::ArtKey;
 use crate::app::database::Database;
+use crate::app::downloads::Message as DownloadsMessage;
 use crate::app::launch::GameMessage;
 use crate::app::pages::Page;
 use crate::app::pages::instance::Message as InstanceMessage;
@@ -14,6 +16,7 @@ use crate::app::pages::showcase::Message as ShowcaseMessage;
 use crate::app::perf;
 use crate::app::titlebar::TitlebarMessage;
 use iced::Size;
+use iced::widget::image::Handle;
 use iced::window::{Direction, Id};
 use lodestone_minecraft_authentication::{AuthProbe, Session};
 
@@ -36,6 +39,8 @@ pub enum LodestoneAppMessage {
     Instance(InstanceMessage),
     Settings(SettingsMessage),
     Showcase(ShowcaseMessage),
+    /// The download queue: an install's progress or result, and the Downloads popover's controls.
+    Downloads(DownloadsMessage),
     /// The launcher database finished opening (schema migrations ran).
     DatabaseReady(Result<Database, String>),
     /// The instance list finished loading, with each mod count read from disk.
@@ -52,6 +57,13 @@ pub enum LodestoneAppMessage {
     },
     /// An instance folder was opened in the file manager, or could not be.
     FolderOpened(Result<(), String>),
+    /// A modpack's page was opened in the browser, or could not be.
+    SourceOpened(Result<(), String>),
+    /// A scene picture finished rendering, or failed (`None`).
+    ArtReady {
+        key: ArtKey,
+        handle: Option<Handle>,
+    },
     /// TEMPORARY resize-latency probe tick — active only with
     /// `LODESTONE_RESIZE_PROFILE=1`; drives `window::resize` through a
     /// fixed size sequence for screen-recording measurements.

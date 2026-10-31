@@ -83,7 +83,7 @@ const SCENE_HEIGHT: f32 = 450.0;
 const MOON_Y: f32 = 122.0;
 /// Generated widths are rounded to this step, so resizing reuses handles
 /// instead of building a new one for every pixel.
-const SIZE_STEP: f32 = 4.0;
+pub(crate) const SIZE_STEP: f32 = 4.0;
 /// The grid card's art corner radius. The card's border is 14px and the art sits one pixel
 /// inside it, so the art's top corners use 13px to stay concentric with the border.
 pub const CARD_RADIUS: f32 = 13.0;
@@ -113,14 +113,6 @@ fn scene_index(biome: Biome, seed: u64) -> usize {
 /// every frame (its cache keys on the handle id and drawn size).
 static HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
 
-/// The hero variants of the artwork — the scene clipped to the banner's
-/// rounded corners with the left readability gradient baked in. The fade
-/// must live in the texture (iced_wgpu renders quads beneath svg textures,
-/// so an overlay container would vanish behind the art), and translucent
-/// svg stops render ≈ squared through the texture pipeline, so the target
-/// alphas are sqrt-compensated here (0.80 → 0.894, 0.30 → 0.548).
-static HERO_HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
-
 /// Wrappers generated for the instance page, keyed by kind, scene index and
 /// size. A new `Handle` per call would re-rasterise on every redraw, so each
 /// size is built once.
@@ -135,8 +127,6 @@ static GENERATED: LazyLock<Mutex<HashMap<GeneratedKey, Handle>>> = LazyLock::new
 enum Wrapper {
     /// The masthead band.
     Banner,
-    /// The grid card's art box, rounded at the top.
-    Card,
 }
 
 /// The scene artwork for an instance — deterministic per `(biome, seed)`:
@@ -146,15 +136,9 @@ pub fn scene_handle(biome: Biome, seed: u64) -> Handle {
     handles[scene_index(biome, seed)].clone()
 }
 
-/// The hero-banner artwork — the same scene, rounded and left-faded.
-pub fn hero_handle(biome: Biome, seed: u64) -> Handle {
-    let handles = HERO_HANDLES.get_or_init(|| {
-        SCENES
-            .iter()
-            .map(|(_, svg)| Handle::from_memory(hero_wrapped(svg).into_bytes()))
-            .collect()
-    });
-    handles[scene_index(biome, seed)].clone()
+/// The scene file's markup for a biome and seed, which the art cache wraps and rasterises.
+pub(crate) fn scene_text(biome: Biome, seed: u64) -> &'static str {
+    SCENES[scene_index(biome, seed)].1
 }
 
 /// The instance-page masthead at `size`, the band's exact pixel size. The
@@ -162,11 +146,6 @@ pub fn hero_handle(biome: Biome, seed: u64) -> Handle {
 /// of the way down. The fade into the page is the page's overlay, not baked in.
 pub fn banner_handle(biome: Biome, seed: u64, size: Size) -> Handle {
     generated(Wrapper::Banner, biome, seed, size)
-}
-
-/// The grid card's artwork at `size`, the art box's exact pixel size, with its top corners rounded.
-pub fn card_handle(biome: Biome, seed: u64, size: Size) -> Handle {
-    generated(Wrapper::Card, biome, seed, size)
 }
 
 /// The cached wrapper for `wrapper` at `size`, built on first use.
@@ -186,7 +165,6 @@ fn generated(wrapper: Wrapper, biome: Biome, seed: u64, size: Size) -> Handle {
     let (scene, width, height) = (SCENES[index].1, width as f32, height as f32);
     let svg = match wrapper {
         Wrapper::Banner => banner_wrapped(scene, width, height),
-        Wrapper::Card => card_wrapped(scene, width, height),
     };
     let handle = Handle::from_memory(svg.into_bytes());
     cache.insert(key, handle.clone());
@@ -234,7 +212,7 @@ fn scene_inner(scene: &str) -> String {
 /// clip (12px in the 800×450 viewBox ≈ the banner's 18px radius at the
 /// default window) plus the left-dark fade. The banner's own border still
 /// draws on the container; the transparent corners let the page show.
-fn hero_wrapped(scene: &str) -> String {
+pub(crate) fn hero_wrapped(scene: &str) -> String {
     let inner = scene_inner(scene);
     format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
@@ -271,7 +249,7 @@ fn banner_wrapped(scene: &str, width: f32, height: f32) -> String {
 /// The grid card's art at `width`×`height`: the scene covered and cropped by [`cover`], clipped to
 /// a shape with its top corners rounded by [`CARD_RADIUS`]. The bottom corners stay square, since
 /// the card's information block continues below the art.
-fn card_wrapped(scene: &str, width: f32, height: f32) -> String {
+pub(crate) fn card_wrapped(scene: &str, width: f32, height: f32) -> String {
     let (scale, x, y) = cover(width, height);
     let r = CARD_RADIUS;
     format!(

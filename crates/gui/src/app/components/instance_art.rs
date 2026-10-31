@@ -1,16 +1,17 @@
-//! An instance's banner: the uploaded image when it has one, otherwise the generated scene
-//! art. The library cards, the library hero and the instance masthead all pick through
-//! here.
+//! An instance's banner: the uploaded image when it has one, otherwise the scene art. The library's cards,
+//! thumbnails and hero draw the scene picture the art cache rendered for them, and show a dark panel until
+//! it lands. The instance masthead picks through here too.
 
 use std::f32::consts::FRAC_PI_2;
 use std::path::Path;
 
 use iced::border::Radius;
-use iced::widget::{Space, container, image, responsive, stack, svg};
-use iced::{Background, Border, ContentFit, Element, Fill, Gradient, gradient};
+use iced::widget::image::Handle;
+use iced::widget::{Space, container, image, stack};
+use iced::{Background, Border, Color, ContentFit, Element, Fill, Gradient, gradient};
 use iced_color_extension::rgb;
 
-use crate::app::components::scene_art::{CARD_RADIUS, card_handle, hero_handle, scene_handle};
+use crate::app::components::scene_art::CARD_RADIUS;
 use crate::app::pages::library::instance::Instance;
 
 /// The uploaded banner, covering its box. Callers clip it to their own corners.
@@ -22,10 +23,9 @@ pub fn custom_banner<'a, M: 'a>(path: &Path) -> Element<'a, M> {
         .into()
 }
 
-/// The banner a grid card shows: the uploaded image, or the scene art generated at the box's exact
-/// size. Both are rounded at the top to the card's border. A container cannot clip them that way,
-/// since its clip is rectangular, so the rounding is part of the image itself.
-pub fn card_banner<'a, M: 'a>(instance: &Instance) -> Element<'a, M> {
+/// The banner a grid card shows: the uploaded image, or the scene picture `rendered` at the box's size,
+/// which already has its top corners rounded. Until the picture renders, a dark panel shows.
+pub fn card_banner<'a, M: 'a>(instance: &Instance, rendered: Option<Handle>) -> Element<'a, M> {
     match &instance.art_path {
         Some(path) => image(image::Handle::from_path(path))
             .width(Fill)
@@ -38,36 +38,22 @@ pub fn card_banner<'a, M: 'a>(instance: &Instance) -> Element<'a, M> {
                 bottom_left: 0.0,
             })
             .into(),
-        None => {
-            let (biome, seed) = (instance.biome, instance.art_seed);
-            responsive(move |size| {
-                svg(card_handle(biome, seed, size))
-                    .content_fit(ContentFit::Cover)
-                    .width(Fill)
-                    .height(Fill)
-                    .into()
-            })
-            .into()
-        }
+        None => picture(rendered),
     }
 }
 
-/// The square thumbnail the Compact row shows: the uploaded image, or the scene art, covering the
-/// box. Its corners stay square, as the row's art always has.
-pub fn thumbnail<'a, M: 'a>(instance: &Instance) -> Element<'a, M> {
+/// The square thumbnail a compact row shows: the uploaded image, or the scene picture, covering the box.
+/// Its corners stay square, as the row's art always has.
+pub fn thumbnail<'a, M: 'a>(instance: &Instance, rendered: Option<Handle>) -> Element<'a, M> {
     match &instance.art_path {
         Some(path) => custom_banner(path),
-        None => svg(scene_handle(instance.biome, instance.art_seed))
-            .content_fit(ContentFit::Cover)
-            .width(Fill)
-            .height(Fill)
-            .into(),
+        None => picture(rendered),
     }
 }
 
-/// The library hero's banner, rounded to its frame. The scene art has its rounding and
-/// left fade baked in, so an uploaded image gets both here instead.
-pub fn hero_banner<'a, M: 'a>(instance: &Instance) -> Element<'a, M> {
+/// The library hero's banner, rounded to its frame. The scene picture has its rounding and left fade
+/// baked in, so an uploaded image gets both here instead.
+pub fn hero_banner<'a, M: 'a>(instance: &Instance, rendered: Option<Handle>) -> Element<'a, M> {
     match &instance.art_path {
         Some(path) => container(stack![custom_banner(path), readability_fade()])
             .width(Fill)
@@ -81,10 +67,21 @@ pub fn hero_banner<'a, M: 'a>(instance: &Instance) -> Element<'a, M> {
                 ..container::Style::default()
             })
             .into(),
-        None => svg(hero_handle(instance.biome, instance.art_seed))
-            .content_fit(ContentFit::Cover)
+        None => picture(rendered),
+    }
+}
+
+/// A rendered scene picture filling its box, or the dark panel it shows while it renders.
+fn picture<'a, M: 'a>(rendered: Option<Handle>) -> Element<'a, M> {
+    match rendered {
+        Some(handle) => image(handle).width(Fill).height(Fill).content_fit(ContentFit::Cover).into(),
+        None => container(Space::new().width(Fill).height(Fill))
             .width(Fill)
             .height(Fill)
+            .style(|_| container::Style {
+                background: Some(Background::Color(Color::from_rgb8(0x0D, 0x0F, 0x12))),
+                ..container::Style::default()
+            })
             .into(),
     }
 }

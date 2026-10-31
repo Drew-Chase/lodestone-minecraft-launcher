@@ -25,12 +25,34 @@ use iced_borderless_window_resize_handle_widget::drag_resize;
 use std::path::PathBuf;
 use tracing::{debug, info, warn};
 
-use super::{LodestoneAppMessage, LodestoneLauncher, NavGroup, probe_enabled};
+use super::{LodestoneAppMessage, LodestoneLauncher, NavGroup, downloads, probe_enabled};
 
 impl LodestoneLauncher {
     pub fn update(&mut self, message: LodestoneAppMessage) -> Task<LodestoneAppMessage> {
         let _scope = perf::scope(perf::message_kind(&message));
+        let task = self.route(message);
+        Task::batch([task, self.sync_art()])
+    }
+
+    /// Keeps the library's scene art rendered for the rows and the hero it shows, and starts the renders it
+    /// lacks. The library is on show only on Home, so the art is only kept up to date there.
+    fn sync_art(&mut self) -> Task<LodestoneAppMessage> {
+        if self.router.current() != Page::Home {
+            return Task::none();
+        }
+        let keys = self.library.art_keys(self.window_size);
+        self.art.retain(&keys.iter().copied().collect());
+        let missing = self.art.missing(&keys);
+        self.art.request(missing, |key, handle| LodestoneAppMessage::ArtReady { key, handle })
+    }
+
+    /// Carries out one message and returns the task it starts.
+    fn route(&mut self, message: LodestoneAppMessage) -> Task<LodestoneAppMessage> {
         match message {
+            LodestoneAppMessage::ArtReady { key, handle } => {
+                self.art.finish(key, handle);
+                Task::none()
+            }
             LodestoneAppMessage::TitlebarMessage(message) => match self.id {
                 Some(id) => self.titlebar.update(message, id),
                 None => Task::none(),
@@ -86,9 +108,10 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Library(LibraryMessage::OpenInstance(id)) => self.open_instance_page(&id, Tab::Overview),
             LodestoneAppMessage::Library(LibraryMessage::EditInstance(id)) => self.open_instance_page(&id, Tab::Settings),
             LodestoneAppMessage::Library(LibraryMessage::RevealInstance(id)) => self.reveal_instance(&id),
-            LodestoneAppMessage::Library(LibraryMessage::InstanceMenu { instance, index }) => self.instance_menu_action(&instance, index),
+            LodestoneAppMessage::Library(LibraryMessage::InstanceMenu { instance, action }) => self.instance_menu_action(&instance, action),
             LodestoneAppMessage::Library(LibraryMessage::OpenNewInstance) => self.open_new_instance(),
             LodestoneAppMessage::Library(LibraryMessage::NewInstance(message)) => self.new_instance_message(message),
+            LodestoneAppMessage::Downloads(message) => self.downloads_message(message),
             LodestoneAppMessage::Library(message) => {
                 self.library.update(message);
                 Task::none()
@@ -102,6 +125,9 @@ impl LodestoneLauncher {
             }
             // The page's reveal and delete actions need the root's IO and alerts, so they are routed here.
             LodestoneAppMessage::Instance(InstanceMessage::RevealFolder) => self.reveal_current_instance(),
+            LodestoneAppMessage::Instance(InstanceMessage::OpenSource) => self.open_current_source(),
+            LodestoneAppMessage::Instance(InstanceMessage::Menu(action)) => self.current_instance_menu(action),
+            LodestoneAppMessage::SourceOpened(result) => self.source_opened(result),
             LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::RevealFolder)) => self.reveal_current_instance(),
             LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::DeleteInstance)) => self.ask_current_instance_delete(),
             // The page's game controls act on the instance it shows.
@@ -112,13 +138,15 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Instance(message) => self.instance_page.update(message).map(LodestoneAppMessage::Instance),
             LodestoneAppMessage::DatabaseReady(Ok(db)) => {
                 info!("Launcher database ready");
+                let sweep = downloads::sweep_partial_installs(db.clone(), self.paths.instances());
                 self.db = Some(db);
                 // The games a previous launcher left running are found through their pid files. Attaching
                 // to them sets their state, and then the library loads.
-                Task::perform(
+                let reattach = Task::perform(
                     async { tokio::task::spawn_blocking(pidfile::load_live).await.unwrap_or_default() },
                     |records| LodestoneAppMessage::Game(GameMessage::Reattach(records)),
-                )
+                );
+                Task::batch([sweep, reattach])
             }
             LodestoneAppMessage::DatabaseReady(Err(error)) => {
                 warn!("Launcher database unavailable: {error}");

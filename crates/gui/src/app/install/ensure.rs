@@ -242,7 +242,7 @@ fn extract_archive(archive: &Path, dir: &Path, exclude: &[String]) -> Result<(),
 
 /// Reports a part's count.
 async fn report(reports: &mpsc::Sender<PartReport>, part: Part, done: usize, total: usize) {
-    let _ = reports.send(PartReport { part, done, total }).await;
+    let _ = reports.send(PartReport::counted(part, done, total)).await;
 }
 
 /// The body of a GET, failing on an error status.

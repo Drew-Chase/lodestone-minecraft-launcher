@@ -1,6 +1,7 @@
 //! The Library hero banner for the most-recent instance, and the quick-action
 //! cards beneath it.
 
+use crate::app::components::art_cache::{ArtCache, ArtKey, Kind};
 use crate::app::components::badge::{Badge, loader_palette};
 use crate::app::components::hint::hint;
 use crate::app::components::instance_art;
@@ -10,20 +11,38 @@ use crate::app::theme::{color, fonts};
 use aurora_leaf::Icon;
 use chrono::{DateTime, Local};
 use iced::widget::{Text, column, container, mouse_area, row, stack};
-use iced::{Background, Border, Color, Element, Fill, Padding, alignment};
+use iced::{Background, Border, Color, Element, Fill, Padding, Size, alignment};
 use iced_color_extension::rgb;
 
-use super::instance::InstanceState;
+use super::instance::{Instance, InstanceState};
 use super::instance_menu;
-use super::{Library, Message, chip, icon};
+use super::{Library, Message, chip, content_width, icon};
+
+/// The hero banner's height.
+pub(super) const HERO_HEIGHT: f32 = 300.0;
 
 impl Library {
+    /// The instance the hero shows: the most recently played, or installed.
+    pub(super) fn hero_instance(&self) -> Option<&Instance> {
+        self.instances.iter().max_by_key(|instance| instance.recency().timestamp_millis())
+    }
+
     /// The most-recent instance's wide banner card — rounded with a
     /// hairline border, scene art behind a left-dark readability gradient.
     /// `None` without instances, so the page reserves no room for it.
-    pub(super) fn hero(&self) -> Option<Element<'_, Message>> {
-        let hero = self.instances.iter().max_by_key(|instance| instance.recency().timestamp_millis())?;
+    pub(super) fn hero(&self, viewport: Size, art: &ArtCache) -> Option<Element<'_, Message>> {
+        let hero = self.hero_instance()?;
         let playing = hero.state == InstanceState::Playing;
+        let rendered = match hero.art_path {
+            Some(_) => None,
+            None => art.get(ArtKey::new(
+                Kind::Hero,
+                hero.biome,
+                hero.art_seed,
+                content_width(viewport.width),
+                HERO_HEIGHT,
+            )),
+        };
 
         let (ink, fill) = loader_palette(hero.loader);
         let chips = row![
@@ -54,7 +73,7 @@ impl Library {
                 stack![
                     // The biome scene fills the banner behind everything — the
                     // hero variant clips the corners and bakes the left fade.
-                    container(instance_art::hero_banner(hero)).width(Fill).height(Fill),
+                    container(instance_art::hero_banner(hero, rendered)).width(Fill).height(Fill),
                     container(
                         column![
                             mouse_area(
@@ -79,10 +98,10 @@ impl Library {
                     .align_y(alignment::Vertical::Center),
                 ]
                 .width(Fill)
-                .height(300),
+                .height(HERO_HEIGHT),
             )
             .width(Fill)
-            .height(300)
+            .height(HERO_HEIGHT)
             .style(|_| container::Style {
                 border: Border {
                     radius: 18.0.into(),
@@ -190,14 +209,19 @@ fn hero_actions(instance: &str, playing: bool) -> Element<'static, Message> {
         .into()
 }
 
-/// The hero's ⋯ menu: the same rows as a card's context menu.
+/// The hero's ⋯ menu: the card's rows, without Reveal, which the folder button beside it already does.
 fn hero_menu(instance: &str) -> Element<'static, Message> {
     let id = instance.to_owned();
+    let menu = instance_menu::menu(false, false);
+    let actions = menu.actions;
     Dropdown::new(Icon::lucide().ellipsis_vertical())
-        .items(instance_menu::items())
+        .items(menu.items)
         .width(44)
         .height(44)
-        .on_select(move |index| Message::InstanceMenu { instance: id.clone(), index })
+        .on_select(move |index| Message::InstanceMenu {
+            instance: id.clone(),
+            action: actions.get(index).copied().flatten(),
+        })
         .into()
 }
 

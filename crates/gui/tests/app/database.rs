@@ -86,6 +86,41 @@ async fn composed_icons_and_runtime_columns_round_trip() {
 }
 
 #[tokio::test]
+async fn a_source_url_round_trips_and_is_empty_for_a_local_instance() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    let mut modpack = fixture("0d2e-modpack", "Fabulously Optimized", Loader::Fabric);
+    modpack.source_url = Some("https://modrinth.com/modpack/fabulously-optimized".to_string());
+    db.insert_instance(&modpack).await.expect("insert succeeds");
+    db.insert_instance(&fixture("0d2e-local", "Scratch", Loader::Vanilla))
+        .await
+        .expect("insert succeeds");
+
+    let instances = db.instances().await.expect("instances load");
+    let restored = instances
+        .iter()
+        .find(|instance| instance.id == "0d2e-modpack")
+        .expect("the modpack loads");
+    assert_eq!(restored.source_url, modpack.source_url);
+    let local = instances
+        .iter()
+        .find(|instance| instance.id == "0d2e-local")
+        .expect("the local instance loads");
+    assert_eq!(local.source_url, None);
+}
+
+#[tokio::test]
+async fn download_totals_count_today_and_the_days_of_the_week_only() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    db.add_download_bytes("2026-10-30", 100).await.expect("bytes add");
+    db.add_download_bytes("2026-10-30", 50).await.expect("bytes add to the same day");
+    db.add_download_bytes("2026-10-25", 1_000).await.expect("bytes add on an earlier day");
+    db.add_download_bytes("2026-10-01", 5_000).await.expect("bytes add before the week");
+
+    let totals = db.download_totals("2026-10-30", "2026-10-24").await.expect("totals read");
+    assert_eq!(totals, DownloadTotals { today: 150, week: 1_150 });
+}
+
+#[tokio::test]
 async fn uploaded_icons_round_trip_as_their_path() {
     let db = Database::connect_in_memory().await.expect("in-memory db opens");
     let mut instance = fixture("7e2a-upload", "Uploaded", Loader::Quilt);
