@@ -95,6 +95,8 @@ pub enum Action {
     Install(Option<String>),
     /// Add the mod to the instance the Mods tab picked.
     Add(Option<String>),
+    /// Swap the mod the instance has for the release picked, which is another release of it.
+    Replace(String),
     /// Open the instance a modpack was installed as.
     OpenInstance(String),
     /// Pick the instance the mods go to, by its index in the selector.
@@ -370,7 +372,7 @@ impl ResourcePage {
                 .and_then(|index| self.loaded_versions().get(index).map(|version| (index, version)))
             {
                 Some((index, version)) => version::view(self, index, version, status),
-                None => versions::view(self),
+                None => versions::view(self, status),
             },
         };
         let active = tabs.iter().position(|tab| *tab == shown).unwrap_or_default();

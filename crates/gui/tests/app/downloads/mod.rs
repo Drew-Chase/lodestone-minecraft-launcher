@@ -241,7 +241,7 @@ fn a_mod_runs_at_once_and_takes_no_install_slot() {
     assert_eq!(queue.running(), 3, "the mod is one of the running jobs");
     assert_eq!(queue.badge(), 4, "the mod counts on the badge like an install");
     assert!(queue.job(third).is_some_and(|job| job.state == JobState::Queued));
-    assert!(queue.job(sodium).is_some_and(|job| job.mod_job().is_some()));
+    assert!(queue.job(sodium).is_some_and(|job| matches!(job.kind, JobKind::Mod(_))));
 }
 
 #[test]

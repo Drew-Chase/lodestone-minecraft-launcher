@@ -33,6 +33,8 @@ mod deps;
 mod link;
 mod replace;
 
+pub(crate) use replace::replace_jar;
+
 /// How many hits a search for a link asks a platform for.
 const SEARCH_LIMIT: u32 = 20;
 /// How long a full check of an instance's mods is trusted before the platforms are asked again.

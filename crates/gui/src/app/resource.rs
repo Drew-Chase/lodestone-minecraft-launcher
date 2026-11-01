@@ -9,7 +9,7 @@ use super::instances::open_source;
 use super::pages::Page;
 use super::pages::discover::{Effect as DiscoverEffect, Project, ProjectStatus, load_image};
 use super::pages::resource::{Action, Effect, Listing, Message};
-use super::{LodestoneAppMessage, LodestoneLauncher};
+use super::{LodestoneAppMessage, LodestoneLauncher, lang};
 
 impl LodestoneLauncher {
     /// Opens a project's resource page. The card's data shows at once, and the details and releases are asked for.
@@ -89,6 +89,15 @@ impl LodestoneLauncher {
             Action::Download(version) => self.discover.download(project(version)),
             Action::Install(version) => self.discover.install(project(version)),
             Action::Add(version) => self.discover.add_mod(project(version)),
+            Action::Replace(version) => {
+                // A game may have the jar open, so the swap is refused while one runs on the instance, as the Mods tab's switch is.
+                let target = self.discover.status_of(listing.source, listing.content, &listing.project_id).target;
+                if target.is_some_and(|target| self.games.is_active(&target.id)) {
+                    vec![DiscoverEffect::Notify(lang::t("instance.mods.running").to_string())]
+                } else {
+                    self.discover.replace_mod(project(Some(version)))
+                }
+            }
             Action::OpenInstance(id) => vec![DiscoverEffect::OpenInstance(id)],
             Action::PickInstance(index) => self.discover.select_instance(index),
             Action::OpenWeb => listing.web_url.map(DiscoverEffect::Open).into_iter().collect(),

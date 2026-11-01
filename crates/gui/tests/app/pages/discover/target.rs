@@ -180,3 +180,58 @@ fn preparing_mods_from_an_instance_moves_to_a_platform_that_hosts_them() {
     assert_eq!(page.loader.as_deref(), Some("forge"));
     assert_eq!(page.game_version.as_deref(), Some("1.20.1"));
 }
+
+#[test]
+fn the_status_names_the_release_the_target_instance_has() {
+    let mut page = mods_page();
+    page.set_added(&[record("a", "p1")]);
+    let status = page.status_of(Source::Modrinth, ContentType::Mod, "p1");
+    assert!(status.added);
+    assert_eq!(status.added_version.as_deref(), Some("v1"));
+    assert!(!page.status_of(Source::Modrinth, ContentType::Mod, "p2").added);
+}
+
+#[test]
+fn another_release_of_an_installed_mod_replaces_it_and_the_same_release_does_not() {
+    let mut page = mods_page();
+    page.set_added(&[record("a", "p1")]);
+    let newer = Project {
+        version_id: Some("v2".to_string()),
+        ..project("p1")
+    };
+    let effects = page.replace_mod(newer.clone());
+    assert!(matches!(effects.as_slice(), [Effect::ReplaceMod { old_file, .. }] if old_file == "sodium.jar"));
+    assert!(
+        page.status_of(Source::Modrinth, ContentType::Mod, "p1").adding,
+        "the replacement is in flight"
+    );
+    assert!(page.replace_mod(newer).is_empty(), "one change to a mod at a time");
+
+    let mut same = mods_page();
+    same.set_added(&[record("a", "p1")]);
+    let installed = Project {
+        version_id: Some("v1".to_string()),
+        ..project("p1")
+    };
+    assert!(same.replace_mod(installed).is_empty(), "the release already installed is not replaced");
+    assert!(
+        same.replace_mod(project("p9")).is_empty(),
+        "a mod the instance lacks is added, not replaced"
+    );
+}
+
+#[test]
+fn a_replacement_that_lands_is_remembered_at_its_new_release() {
+    let mut page = mods_page();
+    page.set_added(&[record("a", "p1")]);
+    page.adding.insert(("a".to_string(), "modrinth".to_string(), "p1".to_string()));
+    let newer = ModSource {
+        version_id: "v2".to_string(),
+        file_name: "sodium-2.jar".to_string(),
+        ..record("a", "p1")
+    };
+    page.mod_added("a".to_string(), "modrinth".to_string(), "p1".to_string(), Ok(vec![newer]));
+    let status = page.status_of(Source::Modrinth, ContentType::Mod, "p1");
+    assert_eq!(status.added_version.as_deref(), Some("v2"));
+    assert!(!status.adding);
+}

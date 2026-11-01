@@ -154,7 +154,13 @@ impl LodestoneLauncher {
 
 /// Writes the release `request` names as a new jar, then moves the record of `old_file` to it and trashes the old jar.
 /// The new jar is written first, so a failure leaves the old mod in place. A disabled jar stays disabled.
-async fn replace_jar(db: Database, request: AddRequest, mods: PathBuf, old_file: String, keep_disabled: bool) -> Result<Vec<ModSource>, String> {
+pub(crate) async fn replace_jar(
+    db: Database,
+    request: AddRequest,
+    mods: PathBuf,
+    old_file: String,
+    keep_disabled: bool,
+) -> Result<Vec<ModSource>, String> {
     let mut records = add_to_instance(request, mods.clone()).await?;
     let Some(own) = records.first_mut() else {
         return Err(lang::t("discover.mods.no_release").to_string());

@@ -4,13 +4,13 @@
 use iced::mouse;
 use iced::widget::{Space, Text, column, container, mouse_area, row};
 use iced::{Element, Fill, Length, Padding, alignment};
-use lodestone_platforms::ContentVersion;
+use lodestone_platforms::{ContentType, ContentVersion};
 
-use super::parts::{chip, loader_label, pager, row_action, section};
+use super::parts::{chip, loader_label, mod_row_action, mod_state, pager, row_action, section};
 use super::{CHANNELS, Message, PER_PAGE, ResourcePage, pages_of};
 use crate::app::components::Select;
 use crate::app::lang;
-use crate::app::pages::discover::{date_only, short_count};
+use crate::app::pages::discover::{ProjectStatus, date_only, short_count};
 use crate::app::theme::{color, fonts};
 
 /// The width of each filter's selector.
@@ -25,7 +25,7 @@ const ACTION_WIDTH: f32 = 40.0;
 const GAME_VERSIONS_PER_ROW: usize = 2;
 
 /// The Versions tab: the filters, the page of releases as a table, and the pager under it.
-pub(super) fn view<'a>(page: &'a ResourcePage) -> Element<'a, Message> {
+pub(super) fn view<'a>(page: &'a ResourcePage, status: &ProjectStatus) -> Element<'a, Message> {
     let matched = page.filtered_versions();
     let pages = pages_of(matched.len());
     let current = page.versions_page.min(pages - 1);
@@ -34,7 +34,7 @@ pub(super) fn view<'a>(page: &'a ResourcePage) -> Element<'a, Message> {
         .iter()
         .skip(current * PER_PAGE)
         .take(PER_PAGE)
-        .map(|&index| table_row(page, index, &versions[index]))
+        .map(|&index| table_row(page, status, index, &versions[index]))
         .collect();
     if rows.is_empty() {
         rows.push(
@@ -130,7 +130,7 @@ fn table_header<'a>() -> Element<'a, Message> {
 
 /// One release: its name and number, its game versions, platforms, date and downloads, and the action that takes it.
 /// A press on the row opens the release's page.
-fn table_row<'a>(page: &'a ResourcePage, index: usize, version: &'a ContentVersion) -> Element<'a, Message> {
+fn table_row<'a>(page: &'a ResourcePage, status: &ProjectStatus, index: usize, version: &'a ContentVersion) -> Element<'a, Message> {
     let name = version.name.as_deref().unwrap_or(version.version_number.as_str());
     let mut games: Vec<Element<'a, Message>> = version
         .minecraft_versions
@@ -144,6 +144,7 @@ fn table_row<'a>(page: &'a ResourcePage, index: usize, version: &'a ContentVersi
     }
     let platforms: Vec<Element<'a, Message>> = version.loaders.iter().map(|loader| chip(loader_label(loader))).collect();
     let action = match page.listing() {
+        Some(listing) if listing.content == ContentType::Mod => mod_row_action(mod_state(status, Some(&version.id)), &version.id),
         Some(listing) => row_action(listing.content, &version.id),
         None => Space::new().into(),
     };

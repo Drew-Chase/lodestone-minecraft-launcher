@@ -21,10 +21,11 @@ use tracing::warn;
 use super::LodestoneAppMessage;
 use super::LodestoneLauncher;
 use super::components::alert::Alert;
-use super::downloads::JobState;
+use super::downloads::{JobState, ModJob};
 use super::install::mods::add_to_instance;
 use super::install::{self, IconSource, InstallRequest, modpack::Payload};
 use super::lang;
+use super::mod_actions::replace_jar;
 use super::mod_sources::{curseforge_sources, modrinth_sources};
 use super::pages::discover::{self, AddRequest, CONTENT_ID, Effect, InstallState, InstanceChoice, Message, Project, SEARCH_ID, Search, Source};
 use super::pages::instance::Tab;
@@ -361,6 +362,17 @@ fn search_task(search: Search) -> Task<LodestoneAppMessage> {
     })
 }
 
+/// The answer to a mod's add or replacement, as the Discover page receives it.
+fn mod_answer(job: u64, instance: String, platform: String, project_id: String, result: Result<Vec<ModSource>, String>) -> LodestoneAppMessage {
+    LodestoneAppMessage::Discover(Message::ModAdded {
+        job,
+        instance,
+        platform,
+        project_id,
+        result,
+    })
+}
+
 /// The effects that need nothing from the launcher's state.
 fn plain_effect(effect: Effect) -> Task<LodestoneAppMessage> {
     match effect {
@@ -387,6 +399,9 @@ impl LodestoneLauncher {
     /// results need start loading. A changed platform is remembered for the next launch.
     pub(super) fn discover_message(&mut self, message: Message) -> Task<LodestoneAppMessage> {
         self.sync_discover_instances();
+        if let Message::ModAdded { job, instance, result, .. } = &message {
+            self.mod_job_ended(*job, instance, result);
+        }
         let before = self.discover.source();
         let effects = self.discover.update(message);
         let mut tasks: Vec<Task<LodestoneAppMessage>> = Vec::new();
@@ -418,29 +433,82 @@ impl LodestoneLauncher {
             Effect::OpenInstance(id) => self.open_instance_page(&id, Tab::Overview),
             Effect::OpenResource(listing) => self.open_resource(listing),
             Effect::AddMod(request) => self.add_mod_task(*request),
+            Effect::ReplaceMod { request, old_file } => self.replace_mod_task(*request, old_file),
             Effect::RecordModSources(records) => self.record_mod_sources(records),
             effect => plain_effect(effect),
         }
     }
 
-    /// Adds a mod to its instance's `mods/` folder, with the required dependencies the folder lacks. The answer
-    /// comes back as `ModAdded`.
+    /// Adds a mod to its instance's `mods/` folder, with the required dependencies the folder lacks. The add is a
+    /// downloads job, and its answer comes back as `ModAdded`.
     fn add_mod_task(&mut self, request: AddRequest) -> Task<LodestoneAppMessage> {
+        let job = self.enqueue_mod_job(&request, false);
         let instance = request.instance.id.clone();
         let platform = request.project.source.key().to_string();
         let project_id = request.project.project_id.clone();
         let Some(directory) = self.library.instance(&instance).map(|found| found.directory_name) else {
-            return self.notify_discover(lang::t("discover.mods.gone").to_string());
-        };
-        let mods = self.paths.instance(&directory).join("mods");
-        Task::perform(add_to_instance(request, mods), move |result| {
-            LodestoneAppMessage::Discover(Message::ModAdded {
+            return Task::done(mod_answer(
+                job,
                 instance,
                 platform,
                 project_id,
-                result,
-            })
+                Err(lang::t("discover.mods.gone").to_string()),
+            ));
+        };
+        let mods = self.paths.instance(&directory).join("mods");
+        Task::perform(add_to_instance(request, mods), move |result| {
+            mod_answer(job, instance, platform, project_id, result)
         })
+    }
+
+    /// Swaps the jar `old_file` of a mod the instance has for the release the request names. The swap is a downloads
+    /// job, and its answer comes back as `ModAdded`, as an add's does.
+    fn replace_mod_task(&mut self, request: AddRequest, old_file: String) -> Task<LodestoneAppMessage> {
+        let job = self.enqueue_mod_job(&request, true);
+        let instance = request.instance.id.clone();
+        let platform = request.project.source.key().to_string();
+        let project_id = request.project.project_id.clone();
+        let Some(directory) = self.library.instance(&instance).map(|found| found.directory_name) else {
+            return Task::done(mod_answer(
+                job,
+                instance,
+                platform,
+                project_id,
+                Err(lang::t("discover.mods.gone").to_string()),
+            ));
+        };
+        let Some(db) = self.db.clone() else {
+            let error = lang::t("new_instance.database_missing").to_string();
+            return Task::done(mod_answer(job, instance, platform, project_id, Err(error)));
+        };
+        let mods = self.paths.instance(&directory).join("mods");
+        let keep_disabled = old_file.ends_with(".disabled");
+        Task::perform(replace_jar(db, request, mods, old_file, keep_disabled), move |result| {
+            mod_answer(job, instance, platform, project_id, result)
+        })
+    }
+
+    /// Starts the downloads job that lists a mod's add or replacement until the answer ends it.
+    fn enqueue_mod_job(&mut self, request: &AddRequest, replacing: bool) -> u64 {
+        self.downloads.enqueue_mod(ModJob {
+            name: request.project.name.clone(),
+            source: request.project.source,
+            instance: request.instance.name.clone(),
+            replacing,
+        })
+    }
+
+    /// Ends the downloads job of a mod's add or replacement, and shows the mods it landed on the Mods tab when that
+    /// instance is on screen. The page is told the answer afterwards.
+    fn mod_job_ended(&mut self, job: u64, instance: &str, result: &Result<Vec<ModSource>, String>) {
+        self.downloads.finish(job, result.as_ref().map(|_| ()).map_err(Clone::clone));
+        if let Ok(records) = result
+            && self.instance_page.instance().is_some_and(|shown| shown.id == instance)
+        {
+            for record in records {
+                self.instance_page.mods_mut().apply_source(record.clone());
+            }
+        }
     }
 
     /// Saves the mods a platform install added to an instance, so the Mods tab still shows where they came from after

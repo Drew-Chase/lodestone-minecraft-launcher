@@ -162,8 +162,10 @@ pub enum Message {
     InstanceSelected(usize),
     /// A card or the hero was pressed for the project with this id: its resource page opens.
     OpenResource(String),
-    /// A mod was added to an instance, or could not be. The key is the instance, platform and project.
+    /// A mod was added to an instance, or replaced there, or could not be. The key is the instance, platform and project.
+    /// `job` is the downloads job that carried the add, which the root finishes before the page sees the answer.
     ModAdded {
+        job: u64,
         instance: String,
         platform: String,
         project_id: String,
@@ -225,8 +227,10 @@ pub struct ProjectStatus {
     pub instances: Vec<String>,
     /// The index of the target among the instances, when one is picked.
     pub target_index: Option<usize>,
-    /// Whether the project is already in the target instance.
+    /// Whether the project is already in the target instance, at any release.
     pub added: bool,
+    /// The release of the project the target instance has, when it has one.
+    pub added_version: Option<String>,
     /// Whether the project is being added to the target instance now.
     pub adding: bool,
 }
@@ -262,6 +266,8 @@ pub enum Effect {
     OpenResource(Listing),
     /// Add a mod to the instance's mods folder, with the release the user picked or the newest that fits.
     AddMod(Box<AddRequest>),
+    /// Swap the jar `old_file` of a mod the instance has at another release for the release the request names.
+    ReplaceMod { request: Box<AddRequest>, old_file: String },
     /// Save a mod added to an instance, so the page still lists it after a restart.
     RecordModSources(Vec<ModSource>),
 }
@@ -302,9 +308,9 @@ pub struct Discover {
     instances: Vec<InstanceChoice>,
     /// The instance the Mods tab adds to, by id, once one is picked.
     target: Option<String>,
-    /// The mods already added to an instance, by (instance id, platform key, project id).
-    added: HashSet<(String, String, String)>,
-    /// The mods being added now, by the same key.
+    /// The mods already added to an instance, by (instance id, platform key, project id), with the record of the release.
+    added: HashMap<(String, String, String), ModSource>,
+    /// The mods being added or replaced now, by the same key.
     adding: HashSet<(String, String, String)>,
 }
 
@@ -335,7 +341,7 @@ impl Discover {
             busy: HashSet::new(),
             instances: Vec::new(),
             target: None,
-            added: HashSet::new(),
+            added: HashMap::new(),
             adding: HashSet::new(),
         }
     }
@@ -472,11 +478,10 @@ impl Discover {
         let platform = source.key().to_string();
         let project = project_id.to_string();
         let target = self.target().cloned();
-        let in_target = |set: &HashSet<(String, String, String)>| {
-            target
-                .as_ref()
-                .is_some_and(|choice| set.contains(&(choice.id.clone(), platform.clone(), project.clone())))
-        };
+        // The project's key in the target instance, when one is picked.
+        let key = target.as_ref().map(|choice| (choice.id.clone(), platform.clone(), project.clone()));
+        let added = key.as_ref().and_then(|key| self.added.get(key));
+        let adding = key.as_ref().is_some_and(|key| self.adding.contains(key));
         let target_index = self
             .target
             .as_ref()
@@ -485,8 +490,9 @@ impl Discover {
             in_library: self.library.contains(&(folder.clone(), platform.clone(), project.clone())),
             downloading: self.busy.contains(&(folder, platform.clone(), project.clone())),
             install: self.installs.get(&(platform.clone(), project.clone())).cloned(),
-            added: in_target(&self.added),
-            adding: in_target(&self.adding),
+            added: added.is_some(),
+            added_version: added.map(|record| record.version_id.clone()),
+            adding,
             instances: self.instances.iter().map(|choice| choice.name.clone()).collect(),
             target_index,
             target,
@@ -715,6 +721,7 @@ impl Discover {
                 platform,
                 project_id,
                 result,
+                ..
             } => self.mod_added(instance, platform, project_id, result),
             Message::OpenInstance(id) => vec![Effect::OpenInstance(id)],
             Message::Downloaded {

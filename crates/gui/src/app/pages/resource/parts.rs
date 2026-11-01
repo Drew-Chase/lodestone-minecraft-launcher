@@ -11,6 +11,7 @@ use crate::app::components::hint::hint;
 use crate::app::components::icon_button::SECONDARY_BUTTON_STYLE;
 use crate::app::components::{IconButton, TextButton, panel};
 use crate::app::lang;
+use crate::app::pages::discover::ProjectStatus;
 use crate::app::theme::{color, fonts, utility};
 
 /// A small rounded label: a tag, a loader or a Minecraft version.
@@ -155,6 +156,66 @@ pub(super) fn row_action<'a>(content: ContentType, version_id: &str) -> Element<
     )
 }
 
+/// Where a mod's release stands in the instance the Mods tab picked. It decides what the release's action offers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ModState {
+    /// The release is installed in the instance.
+    Installed,
+    /// Another release of the mod is installed, and this one can take its place.
+    Switch,
+    /// The release, or another release of the mod, is being added or replaced now.
+    Adding,
+    /// The release can be added.
+    Add,
+    /// The mod is installed, and no release was asked about.
+    Added,
+    /// No instance takes mods, so nothing can be added.
+    Unavailable,
+}
+
+/// The state of a release of a mod, given what the target instance has of the mod. `version` is the release the action
+/// takes, or `None` when it takes the newest that fits.
+pub(super) fn mod_state(status: &ProjectStatus, version: Option<&str>) -> ModState {
+    if !status.target.as_ref().is_some_and(|target| target.takes_mods()) {
+        ModState::Unavailable
+    } else if status.added_version.is_some() && status.added_version.as_deref() == version {
+        ModState::Installed
+    } else if status.adding {
+        ModState::Adding
+    } else if status.added && version.is_some() {
+        ModState::Switch
+    } else if status.added {
+        ModState::Added
+    } else {
+        ModState::Add
+    }
+}
+
+/// The button a versions row takes a mod's release with: a check when the release is installed, a switch when another
+/// release is, the plus when it can be added, and a dimmed plus when it cannot.
+pub(super) fn mod_row_action<'a>(state: ModState, version_id: &str) -> Element<'a, Message> {
+    let button = |icon: &'static str| {
+        IconButton::new(icon)
+            .size(32.0)
+            .radius(10.0)
+            .icon_size(14.0)
+            .style(SECONDARY_BUTTON_STYLE)
+    };
+    match state {
+        ModState::Installed | ModState::Added => hint(button(Icon::lucide().check()).disabled(true), lang::t("resource.action.added")),
+        ModState::Adding => hint(button(Icon::lucide().plus()).disabled(true), lang::t("resource.action.adding")),
+        ModState::Switch => hint(
+            button(Icon::lucide().repeat()).on_press(Message::Act(Action::Replace(version_id.to_string()))),
+            lang::t("resource.action.switch"),
+        ),
+        ModState::Add => hint(
+            button(Icon::lucide().plus()).on_press(Message::Act(Action::Add(Some(version_id.to_string())))),
+            lang::t("resource.action.add"),
+        ),
+        ModState::Unavailable => hint(button(Icon::lucide().plus()).disabled(true), lang::t("resource.action.add")),
+    }
+}
+
 /// Previous and next buttons with the page on screen between them. Each button sends `on_page` with the page it
 /// moves to, and a button at either end of the list stands dimmed.
 pub(super) fn pager<'a>(current: usize, pages: usize, on_page: fn(usize) -> Message) -> Element<'a, Message> {
@@ -191,3 +252,7 @@ pub(super) fn pager<'a>(current: usize, pages: usize, on_page: fn(usize) -> Mess
     .align_y(alignment::Vertical::Center)
     .into()
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/app/pages/resource/parts.rs"]
+mod tests;

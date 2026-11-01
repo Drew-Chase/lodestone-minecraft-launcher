@@ -4,7 +4,7 @@ use aurora_leaf::Icon;
 use iced::widget::{Space, Text, column, row};
 use iced::{Element, Length, alignment};
 
-use super::parts::{chip, dimmed, picture, primary, stat};
+use super::parts::{ModState, chip, dimmed, mod_state, picture, primary, stat};
 use super::{Action, Listing, Message, ResourcePage};
 use crate::app::components::hint::hint;
 use crate::app::components::icon_button::GHOST_BUTTON_STYLE;
@@ -130,17 +130,17 @@ pub(super) fn primary_action<'a>(content: ContentType, status: &ProjectStatus, v
             Some(InstallState::Preparing) => dimmed(lang::t("resource.action.preparing")),
             None => primary(lang::t("resource.action.install"), Icon::lucide().download(), Action::Install(version)),
         },
-        ContentType::Mod => {
-            if status.added {
-                dimmed(lang::t("resource.action.added"))
-            } else if status.adding {
-                dimmed(lang::t("resource.action.adding"))
-            } else if status.target.as_ref().is_some_and(|target| target.takes_mods()) {
-                primary(lang::t("resource.action.add"), Icon::lucide().plus(), Action::Add(version))
-            } else {
-                dimmed(lang::t("resource.action.add"))
-            }
-        }
+        ContentType::Mod => match mod_state(status, version.as_deref()) {
+            ModState::Installed | ModState::Added => dimmed(lang::t("resource.action.added")),
+            ModState::Adding => dimmed(lang::t("resource.action.adding")),
+            ModState::Switch => primary(
+                lang::t("resource.action.switch"),
+                Icon::lucide().repeat(),
+                Action::Replace(version.unwrap_or_default()),
+            ),
+            ModState::Add => primary(lang::t("resource.action.add"), Icon::lucide().plus(), Action::Add(version)),
+            ModState::Unavailable => dimmed(lang::t("resource.action.add")),
+        },
         ContentType::ResourcePack | ContentType::Shader | ContentType::DataPack | ContentType::World => {
             if status.in_library {
                 dimmed(lang::t("resource.action.in_library"))

@@ -117,14 +117,6 @@ impl Job {
         }
     }
 
-    /// The mod the job adds, when it is a mod.
-    pub fn mod_job(&self) -> Option<&ModJob> {
-        match &self.kind {
-            JobKind::Install(_) => None,
-            JobKind::Mod(mod_job) => Some(mod_job),
-        }
-    }
-
     /// The job's name: the instance's name for an install, the mod's for a mod.
     pub fn name(&self) -> &str {
         match &self.kind {

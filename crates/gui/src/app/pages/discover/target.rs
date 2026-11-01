@@ -52,6 +52,11 @@ pub struct AddRequest {
     pub instance: InstanceChoice,
 }
 
+/// The key a mod is kept under: the instance it is in, its platform and its project.
+fn key_of(record: &ModSource) -> (String, String, String) {
+    (record.instance.clone(), record.platform.clone(), record.project_id.clone())
+}
+
 impl Discover {
     /// Replaces the instances mods can be added to. The target is forgotten when its instance is no longer listed.
     pub fn set_instances(&mut self, instances: Vec<InstanceChoice>) {
@@ -61,12 +66,10 @@ impl Discover {
         self.instances = instances;
     }
 
-    /// Replaces the mods the launcher knows came from a platform, from the database when it opens.
+    /// Replaces the mods the launcher knows came from a platform, from the database when it opens. Each is kept under its
+    /// instance, platform and project, with the record of the release it has.
     pub fn set_added(&mut self, records: &[ModSource]) {
-        self.added = records
-            .iter()
-            .map(|record| (record.instance.clone(), record.platform.clone(), record.project_id.clone()))
-            .collect();
+        self.added = records.iter().map(|record| (key_of(record), record.clone())).collect();
     }
 
     /// The instance the mods go to, once one is picked.
@@ -75,18 +78,21 @@ impl Discover {
         self.instances.iter().find(|choice| &choice.id == id)
     }
 
-    /// Whether the project is already in the target instance.
-    pub(super) fn added_to_target(&self, project_id: &str) -> bool {
+    /// The key the project is kept under in the target instance, when one is picked.
+    pub(super) fn target_key(&self, project_id: &str) -> Option<(String, String, String)> {
         self.target
             .as_ref()
-            .is_some_and(|id| self.added.contains(&(id.clone(), self.source.key().to_string(), project_id.to_string())))
+            .map(|id| (id.clone(), self.source.key().to_string(), project_id.to_string()))
+    }
+
+    /// Whether the project is already in the target instance, at any release.
+    pub(super) fn added_to_target(&self, project_id: &str) -> bool {
+        self.target_key(project_id).is_some_and(|key| self.added.contains_key(&key))
     }
 
     /// Whether the project is being added to the target instance now.
     pub(super) fn adding_to_target(&self, project_id: &str) -> bool {
-        self.target
-            .as_ref()
-            .is_some_and(|id| self.adding.contains(&(id.clone(), self.source.key().to_string(), project_id.to_string())))
+        self.target_key(project_id).is_some_and(|key| self.adding.contains(&key))
     }
 
     /// Picks the instance the mods go to, from the Mods tab or a resource page. On the Mods tab the instance's loader
@@ -107,15 +113,38 @@ impl Discover {
             return Vec::new();
         };
         let key = (instance.id.clone(), project.source.key().to_string(), project.project_id.clone());
-        if self.added.contains(&key) || self.adding.contains(&key) {
+        if self.added.contains_key(&key) || self.adding.contains(&key) {
             return Vec::new();
         }
         self.adding.insert(key);
         vec![Effect::AddMod(Box::new(AddRequest { project, instance }))]
     }
 
-    /// Records the outcome of an add. The mods that landed, the dependencies among them, are remembered and saved, so
-    /// their projects show as added too. A failure is reported.
+    /// Starts swapping the mod's installed jar for the release `project` names, when the target instance has the mod at
+    /// another release. Nothing starts when the release is installed already, or a change to the mod is in flight.
+    pub fn replace_mod(&mut self, project: Project) -> Vec<Effect> {
+        let Some(instance) = self.target().filter(|choice| choice.takes_mods()).cloned() else {
+            return Vec::new();
+        };
+        let key = (instance.id.clone(), project.source.key().to_string(), project.project_id.clone());
+        if self.adding.contains(&key) {
+            return Vec::new();
+        }
+        let Some(installed) = self.added.get(&key).cloned() else {
+            return Vec::new();
+        };
+        if project.version_id.as_deref() == Some(installed.version_id.as_str()) {
+            return Vec::new();
+        }
+        self.adding.insert(key);
+        vec![Effect::ReplaceMod {
+            request: Box::new(AddRequest { project, instance }),
+            old_file: installed.file_name,
+        }]
+    }
+
+    /// Records the outcome of an add or a replacement. The mods that landed, the dependencies among them, are remembered
+    /// and saved, so their projects show as added too, at the release they landed at. A failure is reported.
     pub(super) fn mod_added(
         &mut self,
         instance: String,
@@ -123,15 +152,10 @@ impl Discover {
         project_id: String,
         result: Result<Vec<ModSource>, String>,
     ) -> Vec<Effect> {
-        self.adding.remove(&(instance.clone(), platform.clone(), project_id.clone()));
+        self.adding.remove(&(instance, platform, project_id));
         match result {
             Ok(records) => {
-                self.added.insert((instance, platform, project_id));
-                self.added.extend(
-                    records
-                        .iter()
-                        .map(|record| (record.instance.clone(), record.platform.clone(), record.project_id.clone())),
-                );
+                self.added.extend(records.iter().map(|record| (key_of(record), record.clone())));
                 vec![Effect::RecordModSources(records)]
             }
             Err(error) => vec![Effect::Notify(error)],
