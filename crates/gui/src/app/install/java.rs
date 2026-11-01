@@ -219,6 +219,48 @@ fn link(_path: &Path, _target: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// A Java program already on this machine, and the major version it reports.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SystemJava {
+    /// The program, `java` or `java.exe`.
+    pub(crate) program: PathBuf,
+    /// The major version it reports, such as 17.
+    pub(crate) major: u32,
+}
+
+/// The first Java on `JAVA_HOME` or `PATH` that runs and is at least `at_least` major. `None` when the machine has none.
+pub(crate) async fn system(at_least: u32) -> Option<SystemJava> {
+    tokio::task::spawn_blocking(move || find_system(at_least)).await.ok().flatten()
+}
+
+fn find_system(at_least: u32) -> Option<SystemJava> {
+    let exe = if cfg!(target_os = "windows") { "java.exe" } else { "java" };
+    let home = std::env::var_os("JAVA_HOME").map(|home| PathBuf::from(home).join("bin").join(exe));
+    let path = std::env::var_os("PATH").map(|paths| std::env::split_paths(&paths).map(|dir| dir.join(exe)).collect::<Vec<_>>());
+    home.into_iter()
+        .chain(path.into_iter().flatten())
+        .filter(|program| program.is_file())
+        .find_map(|program| {
+            let major = major_version(&program).filter(|major| *major >= at_least)?;
+            Some(SystemJava { program, major })
+        })
+}
+
+/// The major version a Java program reports with `-version`, which writes to stderr.
+fn major_version(program: &Path) -> Option<u32> {
+    let output = std::process::Command::new(program).arg("-version").output().ok()?;
+    parse_major(&String::from_utf8_lossy(&output.stderr))
+}
+
+/// The major version on the first line of `-version` output: `17` for `openjdk version "17.0.20.1"`, and `8` for
+/// `java version "1.8.0_202"`.
+fn parse_major(output: &str) -> Option<u32> {
+    let version = output.lines().next()?.split('"').nth(1)?;
+    let mut parts = version.split(|c: char| !c.is_ascii_digit());
+    let first: u32 = parts.next()?.parse().ok()?;
+    if first == 1 { parts.next()?.parse().ok() } else { Some(first) }
+}
+
 #[cfg(test)]
 #[path = "../../../tests/app/install/java.rs"]
 mod tests;

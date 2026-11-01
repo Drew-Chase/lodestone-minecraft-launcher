@@ -143,3 +143,11 @@ pub enum LoaderError {
         loader: &'static str,
     },
 }
+
+impl LoaderError {
+    /// Whether a loader installer ran to the end and then rejected a file it wrote, because a processor's output did
+    /// not match the hash the installer expects. The installer removes the file it rejected, so a rerun rebuilds it.
+    pub fn is_output_mismatch(&self) -> bool {
+        matches!(self, LoaderError::InstallerFailed { output, .. } if output.contains("invalid outputs"))
+    }
+}

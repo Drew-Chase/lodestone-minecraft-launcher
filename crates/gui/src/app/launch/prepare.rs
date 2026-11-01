@@ -99,7 +99,7 @@ async fn run(request: Request, progress: &mut ProgressSender<Progress>) -> Resul
     let (java, _) = &downloaded.java;
     let version_id = match target.loader {
         Loader::Vanilla => mc.to_string(),
-        _ => loader_stage(progress, &paths, &target, java).await?,
+        _ => loader_stage(progress, &paths, &target, java, vanilla.java_major()).await?,
     };
 
     let merged = merged_manifest(&paths, &version_id, &vanilla)?;
@@ -141,7 +141,13 @@ async fn download_stage(
 
 /// Installs the loader unless its version is already in the store, and returns the id of the
 /// version the game starts.
-async fn loader_stage(progress: &mut ProgressSender<Progress>, paths: &LauncherPaths, target: &Target, java: &Path) -> Result<String, String> {
+async fn loader_stage(
+    progress: &mut ProgressSender<Progress>,
+    paths: &LauncherPaths,
+    target: &Target,
+    java: &Path,
+    game_major: u32,
+) -> Result<String, String> {
     if let Some(id) = target.version_id.as_deref()
         && paths.version_json(id).is_file()
     {
@@ -152,7 +158,15 @@ async fn loader_stage(progress: &mut ProgressSender<Progress>, paths: &LauncherP
     };
     let shared = paths.meta();
     let (lines_tx, lines) = mpsc::channel::<String>(256);
-    let work = install::loader::install(&shared, &target.mc_version, target.loader, loader_version, java, Some(&lines_tx));
+    let work = install::loader::install(
+        &shared,
+        &target.mc_version,
+        target.loader,
+        loader_version,
+        java,
+        game_major,
+        Some(&lines_tx),
+    );
     drive(
         progress,
         lines,
@@ -247,6 +261,15 @@ struct Build<'a> {
     natives: PathBuf,
 }
 
+/// Whether the launch is Forge's module bootstrap, which loads Minecraft from the processed jar its installer writes.
+fn forge_bootstrap(target: &Target, merged: &Manifest) -> bool {
+    target.loader == Loader::Forge
+        && matches!(
+            merged.main_class.as_deref(),
+            Some("cpw.mods.bootstraplauncher.BootstrapLauncher" | "net.minecraftforge.bootstrap.ForgeBootstrap")
+        )
+}
+
 /// The launcher that spawns the game: the Java program, the classpath, the arguments and the
 /// directories the game reads.
 fn build(parts: Build<'_>) -> Result<Launcher, String> {
@@ -262,8 +285,12 @@ fn build(parts: Build<'_>) -> Result<Launcher, String> {
         natives,
     } = parts;
     let platform = Platform::current();
-    // The client jar leads, as Modrinth's launch does, so a loader's libraries come after it.
-    let mut classpath = vec![paths.client_jar(&vanilla.id)];
+    // The client jar leads, as Modrinth's launch does, so a loader's libraries come after it. Forge's bootstrap loads
+    // Minecraft from its own processed jar, and the vanilla jar would clash with that as a second module, so it stays off.
+    let mut classpath = Vec::new();
+    if !forge_bootstrap(target, merged) {
+        classpath.push(paths.client_jar(&vanilla.id));
+    }
     classpath.extend(plan.classpath.iter().cloned());
     let classpath_text = classpath
         .iter()

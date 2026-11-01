@@ -53,6 +53,17 @@ fn the_installer_is_found_among_the_downloaded_jars() {
     assert_eq!(installer_jar(&jars[..1]), None);
 }
 
+/// Takes turns at writing and running a fake installer. A script still open for writing in one test can be forked
+/// into another, and running it then fails with "Text file busy", so these tests run one at a time.
+#[cfg(unix)]
+static FAKE_INSTALLERS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// The turn a test holds while it writes and runs a fake installer.
+#[cfg(unix)]
+fn fake_installer_turn() -> std::sync::MutexGuard<'static, ()> {
+    FAKE_INSTALLERS.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 #[cfg(unix)]
 fn write_script(path: &Path, body: &str) {
     use std::os::unix::fs::PermissionsExt;
@@ -63,6 +74,7 @@ fn write_script(path: &Path, body: &str) {
 #[cfg(unix)]
 #[test]
 fn an_installer_run_reports_the_version_it_created_and_streams_its_output() {
+    let _turn = fake_installer_turn();
     let game_dir = scratch("installer-success");
     let java = game_dir.join("fake-java");
     write_script(
@@ -91,6 +103,7 @@ echo "done" >&2"#,
 #[cfg(unix)]
 #[test]
 fn a_failed_installer_reports_its_exit_code_and_last_lines() {
+    let _turn = fake_installer_turn();
     let game_dir = scratch("installer-failure");
     let java = game_dir.join("fake-java");
     write_script(
@@ -124,6 +137,7 @@ exit 3"#,
 #[cfg(unix)]
 #[test]
 fn a_vanilla_folder_alone_is_not_the_loader_version() {
+    let _turn = fake_installer_turn();
     let game_dir = scratch("installer-vanilla-only");
     let java = game_dir.join("fake-java");
     write_script(
@@ -153,6 +167,7 @@ echo '{"id":"1.0"}' > "$4/versions/1.0/1.0.json""#,
 #[cfg(unix)]
 #[test]
 fn an_installer_that_creates_no_version_is_reported() {
+    let _turn = fake_installer_turn();
     let game_dir = scratch("installer-no-version");
     let java = game_dir.join("fake-java");
     write_script(&java, "exit 0");
@@ -172,6 +187,63 @@ fn an_installer_that_creates_no_version_is_reported() {
         matches!(error, LoaderError::InstallerVersionMissing { loader: "forge", .. }),
         "got {error:?}"
     );
+    let _ = std::fs::remove_dir_all(&game_dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failed_run_removes_the_version_it_wrote() {
+    let _turn = fake_installer_turn();
+    let game_dir = scratch("installer-failed-version");
+    let java = game_dir.join("fake-java");
+    // The fake installer writes its version before it fails, as Forge does before its processors run.
+    write_script(
+        &java,
+        "mkdir -p versions/1.0-forge\nprintf '{\"inheritsFrom\":\"1.0\"}' > versions/1.0-forge/1.0-forge.json\nexit 1",
+    );
+
+    let error = run_installer(
+        "forge",
+        "1.0",
+        java,
+        game_dir.join("installer.jar"),
+        "--installClient",
+        game_dir.clone(),
+        None,
+    )
+    .expect_err("a run that exits 1 fails");
+
+    assert!(matches!(error, LoaderError::InstallerFailed { .. }), "got {error:?}");
+    assert!(
+        !game_dir.join("versions/1.0-forge").exists(),
+        "the version the failed run wrote is removed"
+    );
+    let _ = std::fs::remove_dir_all(&game_dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_version_a_run_rewrites_is_the_installed_one() {
+    let _turn = fake_installer_turn();
+    let game_dir = scratch("installer-rewrites-version");
+    let earlier = game_dir.join("versions/1.0-forge");
+    std::fs::create_dir_all(&earlier).expect("the earlier version's folder creates");
+    std::fs::write(earlier.join("1.0-forge.json"), r#"{"inheritsFrom":"1.0"}"#).expect("the earlier version writes");
+    let java = game_dir.join("fake-java");
+    write_script(&java, "printf '{\"inheritsFrom\":\"1.0\"}' > versions/1.0-forge/1.0-forge.json");
+
+    let installed = run_installer(
+        "forge",
+        "1.0",
+        java,
+        game_dir.join("installer.jar"),
+        "--installClient",
+        game_dir.clone(),
+        None,
+    )
+    .expect("the version the run rewrote is found");
+
+    assert_eq!(installed.id, "1.0-forge");
     let _ = std::fs::remove_dir_all(&game_dir);
 }
 

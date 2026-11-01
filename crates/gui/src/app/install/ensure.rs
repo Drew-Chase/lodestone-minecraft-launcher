@@ -158,10 +158,10 @@ fn object_items(paths: &LauncherPaths, id: &str, text: &str) -> Result<Vec<Item>
 
 /// Makes sure the log4j config `vanilla` names is on disk and returns its path.
 pub async fn log_config(paths: &LauncherPaths, client: &reqwest::Client, vanilla: &Manifest) -> Result<Option<PathBuf>, String> {
-    let Some(logging) = vanilla.logging.as_ref() else {
+    let Some(config) = vanilla.logging.as_ref().and_then(|logging| logging.client.as_ref()) else {
         return Ok(None);
     };
-    let file = &logging.client.file;
+    let file = &config.file;
     let path = paths.log_configs().join(&file.id);
     let item = Item {
         url: Some(file.url.clone()),

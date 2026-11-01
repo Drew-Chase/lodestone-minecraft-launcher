@@ -52,7 +52,8 @@ pub fn logging(manifest: &Manifest, config: &Path) -> Option<String> {
     manifest
         .logging
         .as_ref()
-        .map(|logging| logging.client.argument.replace("${path}", &config.display().to_string()))
+        .and_then(|logging| logging.client.as_ref())
+        .map(|client| client.argument.replace("${path}", &config.display().to_string()))
 }
 
 /// Every argument that applies on `platform`, in order.

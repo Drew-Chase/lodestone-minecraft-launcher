@@ -46,9 +46,11 @@ fn a_vanilla_version_reads_its_downloads_index_and_logging() {
     assert_eq!(index.id, "17");
     let java = manifest.java_version.expect("the Java component is listed");
     assert_eq!(java.component, "java-runtime-delta");
+    assert_eq!(java.major_version, Some(21));
     let logging = manifest.logging.expect("the logging config is listed");
-    assert_eq!(logging.client.file.id, "client-1.12.xml");
-    assert_eq!(logging.client.argument, "-Dlog4j.configurationFile=${path}");
+    let client = logging.client.expect("the logging config names a client file");
+    assert_eq!(client.file.id, "client-1.12.xml");
+    assert_eq!(client.argument, "-Dlog4j.configurationFile=${path}");
 }
 
 #[test]
@@ -86,6 +88,64 @@ fn a_loader_profile_folds_over_its_vanilla_version() {
         vec!["org.ow2.asm:asm:9.7", "net.fabricmc:fabric-loader:0.16.10", "org.lwjgl:lwjgl:3.3.3"],
         "the loader's asm replaces the vanilla one, and the loader's libraries come first"
     );
+}
+
+const VANILLA_PLATFORMS: &str = r#"{
+  "id": "1.18.2",
+  "libraries": [
+    {"name": "org.lwjgl:lwjgl:3.2.1", "rules": [{"action": "allow", "os": {"name": "osx"}}], "downloads": {"artifact": {"path": "org/lwjgl/lwjgl/3.2.1/lwjgl-3.2.1.jar", "sha1": "aa", "size": 1, "url": "https://libraries.example/lwjgl-3.2.1.jar"}}},
+    {"name": "org.lwjgl:lwjgl:3.2.2", "rules": [{"action": "allow"}, {"action": "disallow", "os": {"name": "osx"}}], "downloads": {"artifact": {"path": "org/lwjgl/lwjgl/3.2.2/lwjgl-3.2.2.jar", "sha1": "bb", "size": 1, "url": "https://libraries.example/lwjgl-3.2.2.jar"}}}
+  ]
+}"#;
+
+#[test]
+fn vanilla_platform_variants_of_one_artifact_all_stay() {
+    let vanilla = Manifest::parse(VANILLA_PLATFORMS).expect("the vanilla JSON parses");
+    let profile = Manifest::parse(r#"{"id": "loader", "inheritsFrom": "1.18.2"}"#).expect("the profile parses");
+    let merged = profile.over(vanilla);
+    let names: Vec<&str> = merged.libraries.iter().map(|library| library.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["org.lwjgl:lwjgl:3.2.1", "org.lwjgl:lwjgl:3.2.2"],
+        "the Linux build's LWJGL 3.2.2 must not be dropped for the macOS 3.2.1 entry"
+    );
+}
+
+const FORGE: &str = r#"{
+  "id": "1.21.4-forge-1",
+  "inheritsFrom": "1.21.4",
+  "mainClass": "cpw.mods.bootstraplauncher.BootstrapLauncher",
+  "logging": {},
+  "libraries": []
+}"#;
+
+#[test]
+fn an_empty_logging_block_inherits_the_vanilla_client_config() {
+    let vanilla = Manifest::parse(VANILLA).expect("the vanilla JSON parses");
+    let profile = Manifest::parse(FORGE).expect("a Forge profile with an empty logging block parses");
+    let merged = profile.over(vanilla);
+    let client = merged
+        .logging
+        .and_then(|logging| logging.client)
+        .expect("the vanilla client config is kept");
+    assert_eq!(client.file.id, "client-1.12.xml");
+    assert_eq!(client.argument, "-Dlog4j.configurationFile=${path}");
+}
+
+#[test]
+fn a_profile_client_config_overrides_the_vanilla_one() {
+    let vanilla = Manifest::parse(VANILLA).expect("the vanilla JSON parses");
+    let profile = Manifest::parse(
+        r#"{"id": "custom", "logging": {"client": {"argument": "-Dcustom=${path}", "type": "log4j2-xml",
+            "file": {"id": "custom.xml", "url": "https://data.example/custom.xml"}}}}"#,
+    )
+    .expect("the profile JSON parses");
+    let merged = profile.over(vanilla);
+    let client = merged
+        .logging
+        .and_then(|logging| logging.client)
+        .expect("the profile's client config is kept");
+    assert_eq!(client.file.id, "custom.xml");
 }
 
 #[test]

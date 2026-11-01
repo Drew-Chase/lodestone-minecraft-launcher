@@ -137,10 +137,12 @@ pub struct AssetIndex {
     pub url: String,
 }
 
-/// The logging setup the game starts with.
+/// The logging setup the game starts with. A loader profile may write an empty one, which takes the vanilla client
+/// config when the profile is folded over its parent.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Logging {
-    pub client: LoggingClient,
+    #[serde(default)]
+    pub client: Option<LoggingClient>,
 }
 
 /// The logging argument, with `${path}` standing for the config file, and the config file.
@@ -163,11 +165,20 @@ pub struct LogFile {
 
 /// The Java runtime a version asks for.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JavaVersion {
     pub component: String,
+    /// The Java major version the runtime is, such as 17 for `java-runtime-gamma`.
+    #[serde(default)]
+    pub major_version: Option<u32>,
 }
 
 impl Manifest {
+    /// The Java major version the version runs on. A version that names no runtime runs on Java 8.
+    pub fn java_major(&self) -> u32 {
+        self.java_version.as_ref().and_then(|java| java.major_version).unwrap_or(8)
+    }
+
     /// Reads one version JSON.
     pub fn parse(text: &str) -> Result<Self, String> {
         serde_json::from_str(text).map_err(|error| error.to_string())
@@ -191,22 +202,35 @@ impl Manifest {
             main_class: self.main_class.or(parent.main_class),
             arguments,
             minecraft_arguments: self.minecraft_arguments.or(parent.minecraft_arguments),
-            libraries: unique_libraries(self.libraries.into_iter().chain(parent.libraries)),
+            libraries: merge_libraries(self.libraries, parent.libraries),
             downloads: self.downloads.or(parent.downloads),
             asset_index: self.asset_index.or(parent.asset_index),
             assets: self.assets.or(parent.assets),
-            logging: self.logging.or(parent.logging),
+            logging: merge_logging(self.logging, parent.logging),
             kind: self.kind.or(parent.kind),
             java_version: self.java_version.or(parent.java_version),
         }
     }
 }
 
-/// Keeps the first library of each `group:artifact[:classifier]`, so a loader's version of a
-/// library replaces the vanilla one.
-fn unique_libraries(libraries: impl Iterator<Item = Library>) -> Vec<Library> {
-    let mut seen = HashSet::new();
-    libraries.filter(|library| seen.insert(library_key(&library.name))).collect()
+/// The logging config of a loader profile folded over its vanilla parent. The profile's client config wins where it
+/// has one, so an empty `logging` block takes the parent's.
+fn merge_logging(child: Option<Logging>, parent: Option<Logging>) -> Option<Logging> {
+    let client = child
+        .and_then(|logging| logging.client)
+        .or_else(|| parent.and_then(|logging| logging.client));
+    client.map(|client| Logging { client: Some(client) })
+}
+
+/// The loader's libraries, then the vanilla ones it does not replace. A loader's library replaces a vanilla one with the
+/// same `group:artifact[:classifier]`, whatever the version. Vanilla lists an artifact once per platform (LWJGL 3.2.1 for
+/// macOS, 3.2.2 for the rest), so vanilla entries never replace each other.
+fn merge_libraries(loader: Vec<Library>, vanilla: Vec<Library>) -> Vec<Library> {
+    let replaced: HashSet<String> = loader.iter().map(|library| library_key(&library.name)).collect();
+    loader
+        .into_iter()
+        .chain(vanilla.into_iter().filter(|library| !replaced.contains(&library_key(&library.name))))
+        .collect()
 }
 
 /// A library's identity without its version: `group:artifact`, plus `:classifier` when it has one.

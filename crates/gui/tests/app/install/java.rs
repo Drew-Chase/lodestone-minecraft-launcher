@@ -123,3 +123,22 @@ async fn an_installed_runtime_runs_once_its_flags_are_applied() {
     );
     let _ = std::fs::remove_dir_all(&home);
 }
+
+#[test]
+fn a_java_reports_its_major_version_on_the_first_line() {
+    assert_eq!(
+        parse_major("openjdk version \"17.0.20.1\" 2026-08-18\nOpenJDK Runtime Environment"),
+        Some(17)
+    );
+    assert_eq!(parse_major("openjdk version \"21\" 2023-09-19"), Some(21));
+}
+
+#[test]
+fn a_legacy_java_reports_its_major_after_the_one_point() {
+    assert_eq!(parse_major("java version \"1.8.0_202\"\nJava(TM) SE Runtime Environment"), Some(8));
+}
+
+#[test]
+fn output_without_a_version_has_no_major_version() {
+    assert_eq!(parse_major("no version is printed here"), None);
+}

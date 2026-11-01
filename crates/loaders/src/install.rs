@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use tokio::sync::mpsc::Sender;
 
@@ -27,6 +27,10 @@ const TAIL_LINES: usize = 40;
 
 /// How often a running installer is checked for a dropped line receiver.
 const POLL: Duration = Duration::from_millis(250);
+
+/// How much earlier than a run's start a file still counts as written by it. File times come from a coarser clock than
+/// `SystemTime::now`, so a write just after the start can read a few milliseconds before it.
+const CLOCK_SLACK: Duration = Duration::from_millis(50);
 
 /// Writes `json` as `versions/<id>/<id>.json` under `game_dir`.
 pub(crate) fn write_version(game_dir: &Path, id: &str, json: &serde_json::Value) -> Result<InstalledVersion, LoaderError> {
@@ -148,6 +152,7 @@ fn run_installer(
     lines: Option<Sender<String>>,
 ) -> Result<InstalledVersion, LoaderError> {
     let before = version_folders(&game_dir)?;
+    let started = SystemTime::now() - CLOCK_SLACK;
     let mut child = Command::new(&java)
         .arg("-jar")
         .arg(&installer)
@@ -185,6 +190,10 @@ fn run_installer(
     }
     let tail = output[output.len().saturating_sub(TAIL_LINES)..].join("\n");
     if !status.is_some_and(|status| status.success()) {
+        // A failed run removes the version it was writing, so the next run finds no stale folder of its own.
+        for (id, _) in written_versions(&game_dir, &before, started, minecraft).unwrap_or_default() {
+            let _ = std::fs::remove_dir_all(game_dir.join("versions").join(id));
+        }
         let status = match status {
             Some(status) => match status.code() {
                 Some(code) => format!("exit code {code}"),
@@ -199,19 +208,32 @@ fn run_installer(
         });
     }
 
-    // The installer also writes the vanilla version it builds on, which has no `inheritsFrom`.
-    // The loader's version is the new folder whose JSON inherits from `minecraft`.
-    let after = version_folders(&game_dir)?;
-    for id in after.difference(&before) {
-        let json = game_dir.join("versions").join(id).join(format!("{id}.json"));
-        if inherits_from(&json).as_deref() == Some(minecraft) {
-            return Ok(InstalledVersion { id: id.clone(), json });
+    // The installer also writes the vanilla version it builds on, which has no `inheritsFrom`. The loader's version is
+    // the one this run wrote whose JSON inherits from `minecraft`.
+    match written_versions(&game_dir, &before, started, minecraft)?.into_iter().next() {
+        Some((id, json)) => Ok(InstalledVersion { id, json }),
+        None => Err(LoaderError::InstallerVersionMissing {
+            loader,
+            directory: game_dir.join("versions"),
+        }),
+    }
+}
+
+/// The version folders a run that started at `started` wrote, as their id and version JSON: a folder the run created,
+/// or one whose JSON it rewrote, and whose JSON inherits `minecraft`. A rewritten version keeps its folder name, so
+/// a folder the run found already there still counts.
+fn written_versions(game_dir: &Path, before: &BTreeSet<String>, started: SystemTime, minecraft: &str) -> Result<Vec<(String, PathBuf)>, LoaderError> {
+    let mut written = Vec::new();
+    for id in version_folders(game_dir)? {
+        let json = game_dir.join("versions").join(&id).join(format!("{id}.json"));
+        let rewritten = std::fs::metadata(&json)
+            .and_then(|metadata| metadata.modified())
+            .is_ok_and(|modified| modified >= started);
+        if (rewritten || !before.contains(&id)) && inherits_from(&json).as_deref() == Some(minecraft) {
+            written.push((id, json));
         }
     }
-    Err(LoaderError::InstallerVersionMissing {
-        loader,
-        directory: game_dir.join("versions"),
-    })
+    Ok(written)
 }
 
 /// The `inheritsFrom` of the version JSON at `path`, when it has one.

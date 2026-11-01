@@ -227,7 +227,7 @@ async fn run(request: &InstallRequest, progress: &mut ProgressSender<InstallProg
     let (java_binary, java_name) = downloaded.java;
     let version_id = match request.loader {
         Loader::Vanilla => mc.to_string(),
-        _ => loader_stage(progress, request, &java_binary).await?,
+        _ => loader_stage(progress, request, &java_binary, vanilla.java_major()).await?,
     };
     if let Some(payload) = &request.modpack {
         modpack::stage(progress, payload, game_dir, &client).await?;
@@ -298,13 +298,26 @@ pub(crate) async fn download(
 
 /// The loader stage: installs the loader into the shared store and returns the version id it
 /// writes. The installer's output shows as the stage's detail lines.
-async fn loader_stage(progress: &mut ProgressSender<InstallProgress>, request: &InstallRequest, java: &Path) -> Result<String, String> {
+async fn loader_stage(
+    progress: &mut ProgressSender<InstallProgress>,
+    request: &InstallRequest,
+    java: &Path,
+    game_major: u32,
+) -> Result<String, String> {
     let Some(loader_version) = request.loader_version.as_deref() else {
         return Err(lang::t("install.loader.choose_version").to_owned());
     };
     let shared = request.paths.meta();
     let (lines_tx, lines) = mpsc::channel::<String>(256);
-    let work = loader::install(&shared, &request.mc_version, request.loader, loader_version, java, Some(&lines_tx));
+    let work = loader::install(
+        &shared,
+        &request.mc_version,
+        request.loader,
+        loader_version,
+        java,
+        game_major,
+        Some(&lines_tx),
+    );
     drive(
         progress,
         lines,
