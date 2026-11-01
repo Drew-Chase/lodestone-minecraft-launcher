@@ -39,7 +39,7 @@ use crate::app::pages::Page;
 use crate::app::pages::library::instance::{Instance, Loader};
 use crate::app::pages::library::instance_menu;
 use crate::app::theme::{color, fonts};
-use files::{InstanceFiles, WorldFile};
+use files::{InstanceFiles, ModFile, WorldFile};
 use watch::{Change, Update};
 
 /// The page's horizontal gutter — 28px, per the design.
@@ -202,6 +202,14 @@ impl InstancePage {
         if self.instance.as_ref().is_some_and(|shown| shown.id == instance.id) {
             self.instance = Some(instance);
         }
+    }
+
+    /// Hands the mods the folder holds now to the Mods tab, and to the count the masthead shows.
+    pub fn set_mods(&mut self, mods: Vec<ModFile>) {
+        if let Some(files) = &mut self.files {
+            files.mods = mods.clone();
+        }
+        self.mods.set_mods(mods);
     }
 
     /// The instance the page shows, if one has been shown.
