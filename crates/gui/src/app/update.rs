@@ -90,12 +90,14 @@ impl LodestoneLauncher {
             LodestoneAppMessage::NavBack => {
                 if self.router.go_back() {
                     info!("Navigated back to {}", self.router.current().title());
+                    return self.rescan_mods_on_return();
                 }
                 Task::none()
             }
             LodestoneAppMessage::NavForward => {
                 if self.router.go_forward() {
                     info!("Navigated forward to {}", self.router.current().title());
+                    return self.rescan_mods_on_return();
                 }
                 Task::none()
             }
@@ -142,6 +144,7 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Instance(InstanceMessage::Back) => {
                 if self.router.go_back() {
                     info!("Navigated back to {}", self.router.current().title());
+                    return self.rescan_mods_on_return();
                 }
                 Task::none()
             }

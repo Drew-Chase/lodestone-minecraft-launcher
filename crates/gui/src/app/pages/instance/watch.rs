@@ -1,7 +1,7 @@
-//! Watches the instance's `saves/` and `screenshots/` folders, so the Worlds and Screenshots tabs follow
-//! the game as it writes them. A game writes in bursts, so the events are gathered into a batch that is
-//! read back once the folders go quiet. The page applies what the batch reads; this module only reports
-//! which saves and captures changed.
+//! Watches the instance's `saves/`, `screenshots/` and `mods/` folders, so the Worlds, Screenshots and Mods tabs follow
+//! the game as it writes them. A game writes in bursts, so the events are gathered into a batch that is read back once
+//! the folders go quiet. The page applies what the batch reads; this module only reports which saves, captures and mod
+//! jars changed.
 
 use std::collections::{BTreeSet, HashSet};
 use std::ffi::OsStr;
@@ -17,10 +17,10 @@ use tokio::time::Instant;
 use tracing::warn;
 
 use super::Message;
-use super::files::{self, ScreenshotFile, WorldFile};
+use super::files::{self, ModFile, ScreenshotFile, WorldFile};
 
 /// The folders the watch follows, each recursively once it exists.
-const FOLDERS: [&str; 2] = ["saves", "screenshots"];
+const FOLDERS: [&str; 3] = ["saves", "screenshots", "mods"];
 /// The lock a running game holds on a save, written inside the save's folder.
 const SESSION_LOCK: &str = "session.lock";
 /// How long the folders must stay quiet before a batch is read: half a second.
@@ -39,6 +39,8 @@ pub enum Change {
     Shots,
     /// A capture changed: its file is read again.
     Shot(PathBuf),
+    /// The `mods` folder itself, or a mod jar in it, changed: every mod is read again.
+    Mods,
 }
 
 /// What reading a change back from disk found. A save or capture that is gone reads as `None`.
@@ -52,9 +54,11 @@ pub enum Update {
     Shots(Vec<ScreenshotFile>),
     /// The capture at this path, or `None` when it is gone or is not a PNG file.
     Shot(PathBuf, Option<ScreenshotFile>),
+    /// Every mod jar in `mods/`, sorted by name.
+    Mods(Vec<ModFile>),
 }
 
-/// The change a path reports, or `None` when it lies outside the two folders or is not a capture.
+/// The change a path reports, or `None` when it lies outside the three folders, or is neither a capture nor a mod jar.
 pub fn classify(folder: &Path, path: &Path) -> Option<Change> {
     let relative = path.strip_prefix(folder).ok()?;
     let parts: Vec<&OsStr> = relative.components().map(|part| part.as_os_str()).collect();
@@ -65,6 +69,8 @@ pub fn classify(folder: &Path, path: &Path) -> Option<Change> {
         [root, save, ..] if *root == OsStr::new("saves") => Some(Change::World(folder.join("saves").join(save))),
         [root] if *root == OsStr::new("screenshots") => Some(Change::Shots),
         [root, _] if *root == OsStr::new("screenshots") && is_png(path) => Some(Change::Shot(path.to_path_buf())),
+        [root] if *root == OsStr::new("mods") => Some(Change::Mods),
+        [root, _] if *root == OsStr::new("mods") && is_mod_jar(path) => Some(Change::Mods),
         _ => None,
     }
 }
@@ -79,7 +85,7 @@ pub fn coalesce(changes: impl IntoIterator<Item = Change>) -> Vec<Change> {
         .filter(|change| match change {
             Change::World(_) => !worlds,
             Change::Shot(_) => !shots,
-            Change::Worlds | Change::Shots => true,
+            Change::Worlds | Change::Shots | Change::Mods => true,
         })
         .collect()
 }
@@ -100,6 +106,7 @@ pub fn read(folder: &Path, changes: Vec<Change>) -> Vec<Update> {
                 let shot = files::read_shot(&path);
                 Update::Shot(path, shot)
             }
+            Change::Mods => Update::Mods(files::scan_mods(folder)),
         })
         .collect()
 }
@@ -238,6 +245,14 @@ fn follow(watcher: &mut RecommendedWatcher, path: &Path, followed: &mut HashSet<
 
 fn is_png(path: &Path) -> bool {
     path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+}
+
+/// Whether `path` is a mod jar, enabled or disabled.
+fn is_mod_jar(path: &Path) -> bool {
+    path.file_name().and_then(OsStr::to_str).is_some_and(|name| {
+        let name = name.to_ascii_lowercase();
+        name.ends_with(".jar") || name.ends_with(".jar.disabled")
+    })
 }
 
 #[cfg(test)]

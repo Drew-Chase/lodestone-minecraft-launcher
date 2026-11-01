@@ -20,6 +20,7 @@ use super::discover::{MODRINTH, curseforge, details_of, versions_of};
 use super::install::mods::{add_to_instance, fits};
 use super::lang;
 use super::mod_sources::{CheckContext, Checks, check_mods, sha1_of_file};
+use super::pages::Page;
 use super::pages::discover::{AddRequest, InstanceChoice, Project, Source, load_image};
 use super::pages::instance::Tab;
 use super::pages::instance::files;
@@ -158,6 +159,16 @@ impl LodestoneLauncher {
     /// Whether `generation` is the instance the Mods tab shows now.
     fn mods_fresh(&self, generation: u64) -> bool {
         generation == self.instance_page.generation()
+    }
+
+    /// Reads the mods folder again when history brings the instance page back. The watch runs only while the page is on
+    /// screen, so a jar added while another page showed is not in the list until this read.
+    pub(super) fn rescan_mods_on_return(&self) -> Task<LodestoneAppMessage> {
+        if self.router.current() == Page::Instance {
+            self.rescan_mods()
+        } else {
+            Task::none()
+        }
     }
 
     /// The mods were read. Their recorded sources are loaded, and the checks against the platforms start once the Mods
