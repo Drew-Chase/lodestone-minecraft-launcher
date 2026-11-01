@@ -45,7 +45,8 @@ pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
         M::Perf(_) => "update.Perf",
         M::Discover(_) => "update.Discover",
         M::SharedLoaded(_) => "update.SharedLoaded",
-        M::InstanceContentLoaded(_) => "update.InstanceContentLoaded",
+        M::ModSourcesLoaded(_) => "update.ModSourcesLoaded",
+        M::ModActions(_) => "update.ModActions",
         M::Resource(_) => "update.Resource",
     }
 }

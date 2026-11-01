@@ -81,6 +81,13 @@ pub fn count_mods(folder: &Path) -> usize {
     mods::count(&folder.join("mods"))
 }
 
+/// The mod jars the instance folder holds, read for their metadata and sorted by name, without the rest of the
+/// folder. The Mods tab rescans with this after it changes a jar.
+pub fn scan_mods(folder: &Path) -> Vec<ModFile> {
+    let _scope = perf::scope("io.scan_mods");
+    mods::scan(&folder.join("mods"))
+}
+
 /// Decodes the image at `path`, scaled down to fit `bounds` when given. `None`
 /// when the file is missing or is not an image the decoder reads.
 pub fn decode_image(path: &Path, bounds: Option<(u32, u32)>) -> Option<Handle> {

@@ -12,6 +12,8 @@ mod instances;
 mod lang;
 mod launch;
 mod message;
+mod mod_actions;
+mod mod_sources;
 mod new_instance;
 pub mod pages;
 pub mod paths;
@@ -46,6 +48,7 @@ use iced::Size;
 use iced::widget::image;
 use iced::window::Id;
 use lodestone_minecraft_authentication::{AuthProbe, Authentication, Session};
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
 pub use message::{LodestoneAppMessage, NavGroup};
@@ -92,6 +95,8 @@ pub struct LodestoneLauncher {
     router: Router,
     library: Library,
     instance_page: InstancePage,
+    /// When each instance's mods were last checked against their platforms, and what the check found, for the session.
+    mod_checks: HashMap<String, mod_actions::ModCheck>,
     settings: Settings,
     showcase: Showcase,
     /// The Discover page: the platform searches, and the results on screen.
@@ -151,6 +156,7 @@ impl Default for LodestoneLauncher {
             router: Router::default(),
             library: Library::default(),
             instance_page: InstancePage::default(),
+            mod_checks: HashMap::new(),
             settings: Settings,
             showcase: Showcase::default(),
             discover: Discover::new(discover::opening_source()),

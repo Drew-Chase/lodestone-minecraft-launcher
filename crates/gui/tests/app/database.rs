@@ -22,6 +22,29 @@ fn composed(background: &str, symbol: &str) -> InstanceIcon {
     }
 }
 
+/// A mod recorded against `instance`, as the jar `file_name` of the project `project_id`.
+fn source(instance: &str, project_id: &str, file_name: &str) -> ModSource {
+    ModSource {
+        instance: instance.to_string(),
+        platform: "modrinth".to_string(),
+        project_id: project_id.to_string(),
+        version_id: format!("{project_id}-release"),
+        name: format!("Project {project_id}"),
+        file_name: file_name.to_string(),
+        sha1: Some("ab".repeat(20)),
+    }
+}
+
+/// A hash of the jar `file_name`, as the Mods tab caches it.
+fn hash(file_name: &str) -> JarHash {
+    JarHash {
+        file_name: file_name.to_string(),
+        size: 1_024,
+        modified_at: 1_700_000_000,
+        sha1: "cd".repeat(20),
+    }
+}
+
 #[tokio::test]
 async fn a_fresh_database_lists_no_instances() {
     let db = Database::connect_in_memory().await.expect("in-memory db opens");
@@ -42,7 +65,7 @@ async fn instances_round_trip_through_the_table() {
     played.last_played = Some(Local::now());
     let idle = fixture("9a1b-idle", "Vanilla Survival", Loader::Vanilla);
     for instance in [&played, &idle] {
-        db.insert_instance(instance).await.expect("insert succeeds");
+        db.insert_instance(instance, &[]).await.expect("insert succeeds");
     }
 
     let loaded = db.instances().await.expect("instances load");
@@ -76,7 +99,7 @@ async fn composed_icons_and_runtime_columns_round_trip() {
     instance.art_path = Some(PathBuf::from(".lodestone/banner.png"));
     instance.java_component = Some("delta".to_string());
     instance.version_id = Some("neoforge-21.1.77".to_string());
-    db.insert_instance(&instance).await.expect("insert succeeds");
+    db.insert_instance(&instance, &[]).await.expect("insert succeeds");
 
     let restored = db.instances().await.expect("instances load").remove(0);
     assert_eq!(restored.icon, instance.icon);
@@ -90,8 +113,8 @@ async fn a_source_url_round_trips_and_is_empty_for_a_local_instance() {
     let db = Database::connect_in_memory().await.expect("in-memory db opens");
     let mut modpack = fixture("0d2e-modpack", "Fabulously Optimized", Loader::Fabric);
     modpack.source_url = Some("https://modrinth.com/modpack/fabulously-optimized".to_string());
-    db.insert_instance(&modpack).await.expect("insert succeeds");
-    db.insert_instance(&fixture("0d2e-local", "Scratch", Loader::Vanilla))
+    db.insert_instance(&modpack, &[]).await.expect("insert succeeds");
+    db.insert_instance(&fixture("0d2e-local", "Scratch", Loader::Vanilla), &[])
         .await
         .expect("insert succeeds");
 
@@ -125,7 +148,7 @@ async fn uploaded_icons_round_trip_as_their_path() {
     let db = Database::connect_in_memory().await.expect("in-memory db opens");
     let mut instance = fixture("7e2a-upload", "Uploaded", Loader::Quilt);
     instance.icon = InstanceIcon::Custom(PathBuf::from(".lodestone/icon.png"));
-    db.insert_instance(&instance).await.expect("insert succeeds");
+    db.insert_instance(&instance, &[]).await.expect("insert succeeds");
 
     let restored = db.instances().await.expect("instances load").remove(0);
     assert_eq!(restored.icon, InstanceIcon::Custom(PathBuf::from(".lodestone/icon.png")));
@@ -160,8 +183,8 @@ async fn deleting_an_instance_removes_only_its_row() {
     let db = Database::connect_in_memory().await.expect("in-memory db opens");
     let doomed = fixture("doomed", "Doomed", Loader::Vanilla);
     let kept = fixture("kept", "Kept", Loader::Fabric);
-    db.insert_instance(&doomed).await.expect("insert succeeds");
-    db.insert_instance(&kept).await.expect("insert succeeds");
+    db.insert_instance(&doomed, &[]).await.expect("insert succeeds");
+    db.insert_instance(&kept, &[]).await.expect("insert succeeds");
 
     db.delete_instance(&doomed.id).await.expect("delete succeeds");
 
@@ -181,8 +204,8 @@ async fn migration_0002_removes_the_seeded_demo_rows_only() {
     let db = Database::connect_in_memory().await.expect("in-memory db opens");
     let demo = fixture("seed-000", "Aether Legacy", Loader::Fabric);
     let real = fixture("3c9e4f0a-6b1d-4f7e-9c2a-8d5b1e7f0a42", "My Pack", Loader::Quilt);
-    db.insert_instance(&demo).await.expect("demo row inserts");
-    db.insert_instance(&real).await.expect("real row inserts");
+    db.insert_instance(&demo, &[]).await.expect("demo row inserts");
+    db.insert_instance(&real, &[]).await.expect("real row inserts");
 
     sqlx::query(include_str!("../../migrations/0002_remove_seed_instances.sql"))
         .execute(&db.pool)
@@ -197,4 +220,135 @@ async fn migration_0002_removes_the_seeded_demo_rows_only() {
         .map(|instance| instance.id)
         .collect();
     assert_eq!(ids, std::slice::from_ref(&real.id));
+}
+
+#[tokio::test]
+async fn an_instance_inserted_with_its_mods_keeps_each_mod_against_it() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    let installed = fixture("mods-a", "Modded", Loader::Fabric);
+    let other = fixture("mods-b", "Other", Loader::Fabric);
+    let sources = [source("mods-a", "sodium", "sodium.jar"), source("mods-a", "lithium", "lithium.jar")];
+    db.insert_instance(&installed, &sources).await.expect("insert succeeds");
+    db.insert_instance(&other, &[]).await.expect("insert succeeds");
+
+    let mut recorded = db.mod_sources_of("mods-a").await.expect("mods load");
+    recorded.sort_by(|left, right| left.file_name.cmp(&right.file_name));
+    assert_eq!(
+        recorded,
+        vec![source("mods-a", "lithium", "lithium.jar"), source("mods-a", "sodium", "sodium.jar")]
+    );
+    assert!(db.mod_sources_of("mods-b").await.expect("mods load").is_empty());
+    assert_eq!(db.mod_sources().await.expect("every mod loads").len(), 2);
+}
+
+#[tokio::test]
+async fn recording_a_jar_again_replaces_its_record() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    db.record_mod_sources(&[source("mods-a", "sodium", "sodium.jar")]).await.expect("records");
+    let mut newer = source("mods-a", "sodium", "sodium.jar");
+    newer.version_id = "sodium-newer".to_string();
+    db.record_mod_sources(&[newer.clone()]).await.expect("records again");
+
+    assert_eq!(db.mod_sources_of("mods-a").await.expect("mods load"), vec![newer]);
+}
+
+#[tokio::test]
+async fn replacing_a_jar_moves_its_record_and_drops_its_cached_hash() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    db.record_mod_sources(&[source("mods-a", "sodium", "sodium-1.jar")])
+        .await
+        .expect("records");
+    db.record_jar_hashes("mods-a", &[hash("sodium-1.jar")]).await.expect("hash caches");
+
+    let replacement = source("mods-a", "sodium", "sodium-2.jar");
+    db.replace_mod_source("sodium-1.jar", &replacement).await.expect("replaces");
+
+    assert_eq!(db.mod_sources_of("mods-a").await.expect("mods load"), vec![replacement]);
+    assert!(
+        db.jar_hashes("mods-a").await.expect("hashes load").is_empty(),
+        "the old jar's hash is gone"
+    );
+}
+
+#[tokio::test]
+async fn forgetting_a_jar_removes_its_record_and_its_hash() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    db.record_mod_sources(&[source("mods-a", "sodium", "sodium.jar"), source("mods-a", "lithium", "lithium.jar")])
+        .await
+        .expect("records");
+    db.record_jar_hashes("mods-a", &[hash("sodium.jar"), hash("lithium.jar")])
+        .await
+        .expect("hashes cache");
+
+    db.forget_mod_source("mods-a", "sodium.jar").await.expect("forgets");
+
+    assert_eq!(
+        db.mod_sources_of("mods-a").await.expect("mods load"),
+        vec![source("mods-a", "lithium", "lithium.jar")]
+    );
+    assert_eq!(db.jar_hashes("mods-a").await.expect("hashes load"), vec![hash("lithium.jar")]);
+}
+
+#[tokio::test]
+async fn cached_hashes_are_replaced_by_their_file_name() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    db.record_jar_hashes("mods-a", &[hash("a.jar")]).await.expect("caches");
+    let mut changed = hash("a.jar");
+    changed.size = 2_048;
+    changed.sha1 = "ef".repeat(20);
+    db.record_jar_hashes("mods-a", &[changed.clone()]).await.expect("caches again");
+
+    assert_eq!(db.jar_hashes("mods-a").await.expect("hashes load"), vec![changed]);
+    assert!(db.jar_hashes("mods-b").await.expect("hashes load").is_empty());
+}
+
+#[tokio::test]
+async fn deleting_an_instance_clears_its_mod_records_and_hashes() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    let doomed = fixture("mods-doomed", "Doomed", Loader::Fabric);
+    db.insert_instance(&doomed, &[source("mods-doomed", "sodium", "sodium.jar")])
+        .await
+        .expect("insert succeeds");
+    db.record_jar_hashes("mods-doomed", &[hash("sodium.jar")]).await.expect("caches");
+
+    db.delete_instance("mods-doomed").await.expect("delete succeeds");
+
+    assert!(db.mod_sources_of("mods-doomed").await.expect("mods load").is_empty());
+    assert!(db.jar_hashes("mods-doomed").await.expect("hashes load").is_empty());
+}
+
+#[tokio::test]
+async fn migration_0008_moves_each_discover_row_into_mod_sources() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .expect("in-memory db opens");
+    sqlx::query(include_str!("../../migrations/0007_instance_content.sql"))
+        .execute(&pool)
+        .await
+        .expect("migration 0007 runs");
+    sqlx::query("INSERT INTO instance_content VALUES ('mods-a', 'modrinth', 'sodium', 'sodium-release', 'Sodium', 'sodium.jar', 1700000000)")
+        .execute(&pool)
+        .await
+        .expect("a discover row is written");
+
+    sqlx::query(include_str!("../../migrations/0008_mod_sources.sql"))
+        .execute(&pool)
+        .await
+        .expect("migration 0008 runs");
+
+    let db = Database { pool };
+    assert_eq!(
+        db.mod_sources_of("mods-a").await.expect("mods load"),
+        vec![ModSource {
+            instance: "mods-a".to_string(),
+            platform: "modrinth".to_string(),
+            project_id: "sodium".to_string(),
+            version_id: "sodium-release".to_string(),
+            name: "Sodium".to_string(),
+            file_name: "sodium.jar".to_string(),
+            sha1: None,
+        }]
+    );
 }

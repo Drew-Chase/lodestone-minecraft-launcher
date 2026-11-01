@@ -34,6 +34,7 @@ use crate::app::launch::manifest::Manifest;
 use crate::app::launch::rules::Platform;
 use crate::app::pages::library::instance::{Biome, Instance, InstanceIcon, InstanceState, Loader};
 use crate::app::paths::LauncherPaths;
+use crate::app::shared_library::ModSource;
 use download::{PartReport, Transfer};
 
 /// The marker a finished shared install leaves behind. Without it the install runs again.
@@ -375,7 +376,18 @@ async fn finish(
         source_platform: request.source_platform.clone(),
         source_project_id: request.source_project_id.clone(),
     };
-    db.insert_instance(&instance).await?;
+    // The mods the modpack names are recorded against the new instance, in the same transaction as its row.
+    let sources: Vec<ModSource> = request.modpack.as_ref().map_or_else(Vec::new, |payload| {
+        payload
+            .sources
+            .iter()
+            .map(|source| ModSource {
+                instance: request.id.clone(),
+                ..source.clone()
+            })
+            .collect()
+    });
+    db.insert_instance(&instance, &sources).await?;
     if let Err(error) = std::fs::remove_file(game_dir.join(INSTALLING)) {
         warn!("could not remove the install marker in {}: {error}", game_dir.display());
     }

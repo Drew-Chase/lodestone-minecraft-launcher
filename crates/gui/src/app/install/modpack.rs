@@ -14,6 +14,7 @@ use super::download::{self, Part, PartReport};
 use super::{InstallProgress, Stage, Totals, drive, fraction, report};
 use crate::app::lang;
 use crate::app::launch::libraries::Item;
+use crate::app::shared_library::ModSource;
 
 /// The folder under the instance that a remote archive is fetched into until it is unpacked.
 const FETCHED: &str = ".modpack";
@@ -26,6 +27,9 @@ pub struct Payload {
     pub files: Vec<ModpackFile>,
     /// The archives the pack lays into the instance, in the order they unpack.
     pub unpacks: Vec<Unpack>,
+    /// The platform project and release of each mod the pack places, recorded against the instance once it is
+    /// installed. The records name no instance until then.
+    pub sources: Vec<ModSource>,
 }
 
 /// An archive the install lays into the instance. The entries under `folder` go to `target`, except
@@ -82,6 +86,7 @@ impl Payload {
         Payload {
             files: modpack.files.clone(),
             unpacks,
+            sources: Vec::new(),
         }
     }
 }

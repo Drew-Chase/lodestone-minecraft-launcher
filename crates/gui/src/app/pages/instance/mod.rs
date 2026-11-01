@@ -12,7 +12,7 @@ pub mod files;
 pub(crate) mod format;
 mod hero;
 pub(crate) mod logs;
-mod mods;
+pub mod mods;
 mod overview;
 pub mod screenshots;
 pub mod settings;
@@ -215,10 +215,7 @@ impl InstancePage {
                 self.tab = tab;
                 Task::none()
             }
-            Message::Mods(message) => {
-                self.mods.update(message);
-                Task::none()
-            }
+            Message::Mods(message) => self.mods.update(message).map(Message::Mods),
             Message::Worlds(worlds::Message::Rescanned { generation, worlds }) if generation == self.generation => self.rescanned_worlds(worlds),
             Message::Worlds(message) => {
                 self.worlds.update(message);
@@ -298,7 +295,30 @@ impl InstancePage {
 
     /// The viewer over the window, while it is open.
     pub fn viewer(&self, window: Size) -> Option<Element<'_, Message>> {
+        if let Some(dialog) = self.mods.dialog_view() {
+            return Some(dialog.map(Message::Mods));
+        }
         self.screenshots.overlay(window).map(|overlay| overlay.map(Message::Screenshots))
+    }
+
+    /// The generation of the instance the page shows. A result that comes back for an older one is dropped.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// The tab the page shows.
+    pub fn tab(&self) -> Tab {
+        self.tab
+    }
+
+    /// The Mods tab's state, which the root reads and fills in as the platforms answer.
+    pub fn mods(&self) -> &mods::State {
+        &self.mods
+    }
+
+    /// The Mods tab's state, for the root to fill in as the platforms answer.
+    pub fn mods_mut(&mut self) -> &mut mods::State {
+        &mut self.mods
     }
 
     /// Handles the Screenshots tab's messages the page owns. The root carries out the rest: the

@@ -1,7 +1,7 @@
 //! The shared folders: the content the Discover page downloads. Each kind of
 //! content has a folder under `<root>/shared`, outside every instance, so any
 //! instance can import from it. The mods the page adds to an instance are kept
-//! in that instance's own `mods/` folder, and recorded as [`InstanceContent`].
+//! in that instance's own `mods/` folder, and recorded as [`ModSource`].
 
 use std::path::PathBuf;
 
@@ -64,21 +64,38 @@ pub struct SharedRecord {
     pub size: Option<u64>,
 }
 
-/// A mod the Discover page added to an instance's `mods/` folder, so the page knows it is there.
+/// A mod in an instance's `mods/` folder that came from a platform: the project and release it was installed as.
+/// The Discover page, a modpack install and the Mods tab all keep these.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InstanceContent {
+pub struct ModSource {
     /// The instance's id.
     pub instance: String,
     /// The platform's key, such as `modrinth`.
     pub platform: String,
     /// The project's id on that platform.
     pub project_id: String,
-    /// The release that was added.
+    /// The release that was installed.
     pub version_id: String,
-    /// The project's name, as it was shown when added.
+    /// The project's name, or the jar's name when the platform's is not known.
     pub name: String,
+    /// The jar's file name in the instance's `mods/` folder, `.disabled` included.
+    pub file_name: String,
+    /// The SHA-1 of the jar as it was installed, when the platform gave one.
+    pub sha1: Option<String>,
+}
+
+/// The SHA-1 of a jar in an instance's `mods/` folder, with the size and modification time it had when hashed. The
+/// hash stands while the jar keeps both.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JarHash {
     /// The jar's file name in the instance's `mods/` folder.
     pub file_name: String,
+    /// The jar's size in bytes when it was hashed.
+    pub size: u64,
+    /// The jar's modification time, in seconds since the Unix epoch, when it was hashed.
+    pub modified_at: i64,
+    /// The SHA-1 of the jar, as lowercase hex.
+    pub sha1: String,
 }
 
 #[cfg(test)]

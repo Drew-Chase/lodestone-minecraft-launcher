@@ -12,7 +12,7 @@ use crate::app::pages::instance::Message as InstanceMessage;
 use crate::app::pages::instance::Tab;
 use crate::app::pages::instance::files;
 use crate::app::pages::instance::settings::Message as InstanceSettingsMessage;
-use crate::app::pages::instance::{screenshots, worlds};
+use crate::app::pages::instance::{mods, screenshots, worlds};
 use crate::app::pages::library::Message as LibraryMessage;
 use crate::app::pages::library::instance::Instance;
 use crate::app::pages::login::Message as LoginMessage;
@@ -116,13 +116,13 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Downloads(message) => self.downloads_message(message),
             LodestoneAppMessage::Discover(message) => self.discover_message(message),
             LodestoneAppMessage::Resource(message) => self.resource_message(message),
-            LodestoneAppMessage::InstanceContentLoaded(Ok(records)) => {
-                info!("Loaded {} mod(s) added to instances", records.len());
+            LodestoneAppMessage::ModSourcesLoaded(Ok(records)) => {
+                info!("Loaded {} mod(s) from a platform", records.len());
                 self.discover.set_added(&records);
                 Task::none()
             }
-            LodestoneAppMessage::InstanceContentLoaded(Err(error)) => {
-                warn!("Loading the mods added to instances failed: {error}");
+            LodestoneAppMessage::ModSourcesLoaded(Err(error)) => {
+                warn!("Loading the mods from platforms failed: {error}");
                 Task::none()
             }
             LodestoneAppMessage::SharedLoaded(Ok(records)) => {
@@ -180,6 +180,29 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::Deleted { path, result })) => self.world_deleted(path, result),
             LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::BackedUp(result))) => self.world_backed_up(result),
             LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::Imported(result))) => self.world_imported(result),
+            // The Mods tab's folder reads are checked against the platforms here, and its actions are carried out here.
+            LodestoneAppMessage::Instance(InstanceMessage::Scanned { generation, files }) if generation == self.instance_page.generation() => {
+                let apply = self
+                    .instance_page
+                    .update(InstanceMessage::Scanned { generation, files })
+                    .map(LodestoneAppMessage::Instance);
+                Task::batch([apply, self.mods_scanned(generation)])
+            }
+            LodestoneAppMessage::Instance(InstanceMessage::TabSelected(tab)) => {
+                let select = self
+                    .instance_page
+                    .update(InstanceMessage::TabSelected(tab))
+                    .map(LodestoneAppMessage::Instance);
+                Task::batch([select, self.mods_checks_due()])
+            }
+            LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Open(file_name))) => self.mod_row_pressed(file_name),
+            LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Menu { file_name, action })) => {
+                self.mod_menu_action(file_name, action)
+            }
+            LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Dialog(message))) if !message.is_local() => {
+                self.mod_dialog_action(message)
+            }
+            LodestoneAppMessage::ModActions(message) => self.mod_actions_message(message),
             LodestoneAppMessage::Instance(message) => self.instance_page.update(message).map(LodestoneAppMessage::Instance),
             LodestoneAppMessage::DatabaseReady(Ok(db)) => {
                 info!("Launcher database ready");
@@ -191,7 +214,7 @@ impl LodestoneLauncher {
                     async { tokio::task::spawn_blocking(pidfile::load_live).await.unwrap_or_default() },
                     |records| LodestoneAppMessage::Game(GameMessage::Reattach(records)),
                 );
-                Task::batch([sweep, reattach, self.load_shared(), self.load_instance_content()])
+                Task::batch([sweep, reattach, self.load_shared(), self.load_mod_sources()])
             }
             LodestoneAppMessage::DatabaseReady(Err(error)) => {
                 warn!("Launcher database unavailable: {error}");

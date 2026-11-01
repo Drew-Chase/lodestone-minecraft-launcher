@@ -26,14 +26,15 @@ fn project(project_id: &str) -> Project {
 }
 
 /// The record a finished add leaves behind.
-fn record(instance: &str, project_id: &str) -> InstanceContent {
-    InstanceContent {
+fn record(instance: &str, project_id: &str) -> ModSource {
+    ModSource {
         instance: instance.to_string(),
         platform: "modrinth".to_string(),
         project_id: project_id.to_string(),
         version_id: "v1".to_string(),
         name: "Sodium".to_string(),
         file_name: "sodium.jar".to_string(),
+        sha1: None,
     }
 }
 
@@ -113,11 +114,29 @@ fn a_vanilla_instance_refuses_mods() {
 fn a_finished_add_is_remembered_and_recorded_and_then_refused_again() {
     let mut page = mods_page();
     page.adding.insert(("a".to_string(), "modrinth".to_string(), "p1".to_string()));
-    let effects = page.mod_added("a".to_string(), "modrinth".to_string(), "p1".to_string(), Ok(record("a", "p1")));
-    assert!(matches!(effects.as_slice(), [Effect::RecordInstanceContent(saved)] if *saved == record("a", "p1")));
+    let effects = page.mod_added("a".to_string(), "modrinth".to_string(), "p1".to_string(), Ok(vec![record("a", "p1")]));
+    assert!(matches!(effects.as_slice(), [Effect::RecordModSources(saved)] if *saved == vec![record("a", "p1")]));
     assert!(page.added_to_target("p1"));
     assert!(!page.adding_to_target("p1"));
     assert!(page.add_mod(project("p1")).is_empty(), "a mod already in the instance is not added again");
+}
+
+#[test]
+fn the_dependencies_an_add_wrote_count_as_added_too() {
+    let mut page = mods_page();
+    page.adding.insert(("a".to_string(), "modrinth".to_string(), "p1".to_string()));
+    let dependency = ModSource {
+        project_id: "p2".to_string(),
+        file_name: "fabric-api.jar".to_string(),
+        ..record("a", "p2")
+    };
+    page.mod_added(
+        "a".to_string(),
+        "modrinth".to_string(),
+        "p1".to_string(),
+        Ok(vec![record("a", "p1"), dependency]),
+    );
+    assert!(page.added_to_target("p2"), "a dependency the add wrote is in the instance");
 }
 
 #[test]

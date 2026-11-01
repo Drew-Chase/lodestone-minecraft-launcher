@@ -6,6 +6,7 @@ use crate::app::components::art_cache::ArtKey;
 use crate::app::database::Database;
 use crate::app::downloads::Message as DownloadsMessage;
 use crate::app::launch::GameMessage;
+use crate::app::mod_actions;
 use crate::app::pages::Page;
 use crate::app::pages::discover::Message as DiscoverMessage;
 use crate::app::pages::instance::Message as InstanceMessage;
@@ -16,7 +17,7 @@ use crate::app::pages::resource::Message as ResourceMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
 use crate::app::pages::showcase::Message as ShowcaseMessage;
 use crate::app::perf;
-use crate::app::shared_library::{InstanceContent, SharedRecord};
+use crate::app::shared_library::{ModSource, SharedRecord};
 use crate::app::titlebar::TitlebarMessage;
 use iced::Size;
 use iced::widget::image::Handle;
@@ -55,7 +56,9 @@ pub enum LodestoneAppMessage {
     /// The downloads the Discover page made into the shared folders, as they were recorded.
     SharedLoaded(Result<Vec<SharedRecord>, String>),
     /// The mods the Discover page added to instances, as they were recorded.
-    InstanceContentLoaded(Result<Vec<InstanceContent>, String>),
+    ModSourcesLoaded(Result<Vec<ModSource>, String>),
+    /// What the platforms and the disk answered for the Mods tab.
+    ModActions(mod_actions::Message),
     /// The delete alert was answered for `instance`.
     InstanceDeleteAnswered {
         instance: String,

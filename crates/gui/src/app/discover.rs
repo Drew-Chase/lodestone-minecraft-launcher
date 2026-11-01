@@ -25,13 +25,14 @@ use super::downloads::JobState;
 use super::install::mods::add_to_instance;
 use super::install::{self, IconSource, InstallRequest, modpack::Payload};
 use super::lang;
+use super::mod_sources::{curseforge_sources, modrinth_sources};
 use super::pages::discover::{self, AddRequest, CONTENT_ID, Effect, InstallState, InstanceChoice, Message, Project, SEARCH_ID, Search, Source};
 use super::pages::instance::Tab;
 use super::pages::library::instance::Loader;
 use super::pages::library::new_instance::naming;
 use super::paths::LauncherPaths;
 use super::preferences::Preferences;
-use super::shared_library::{self, InstanceContent, SharedRecord};
+use super::shared_library::{self, ModSource, SharedRecord};
 
 /// How long the page waits after the last keystroke before it searches.
 const DEBOUNCE: Duration = Duration::from_millis(300);
@@ -55,7 +56,7 @@ pub(crate) fn opening_source() -> Source {
 }
 
 /// One client per platform, shared by every request, so connections are reused.
-static MODRINTH: LazyLock<Platform<Modrinth>> = LazyLock::new(Platform::<Modrinth>::new);
+pub(crate) static MODRINTH: LazyLock<Platform<Modrinth>> = LazyLock::new(Platform::<Modrinth>::new);
 static CURSEFORGE: LazyLock<Option<Platform<lodestone_platforms::CurseForge>>> =
     LazyLock::new(|| curseforge_key().map(Platform::<lodestone_platforms::CurseForge>::with_api_key));
 static ATLAUNCHER: LazyLock<Platform<AtLauncher>> = LazyLock::new(Platform::<AtLauncher>::new);
@@ -63,7 +64,7 @@ static FTB: LazyLock<Platform<Ftb>> = LazyLock::new(Platform::<Ftb>::new);
 static TECHNIC: LazyLock<Platform<Technic>> = LazyLock::new(Platform::<Technic>::new);
 
 /// The CurseForge handle, or the message that says why there is none.
-fn curseforge() -> Result<&'static Platform<lodestone_platforms::CurseForge>, String> {
+pub(crate) fn curseforge() -> Result<&'static Platform<lodestone_platforms::CurseForge>, String> {
     CURSEFORGE.as_ref().ok_or_else(|| lang::t("discover.curseforge.no_key").to_string())
 }
 
@@ -220,8 +221,13 @@ async fn prepare_modpack(project: Project, paths: LauncherPaths, taken: Vec<Stri
         }
     };
     let mut payload = Payload::from_modpack(&modpack, archive);
-    if project.source == Source::CurseForge {
-        payload.files = resolve_curseforge_files(payload.files).await?;
+    match project.source {
+        Source::CurseForge => {
+            payload.files = resolve_curseforge_files(payload.files).await?;
+            payload.sources = curseforge_sources(&payload.files);
+        }
+        Source::Modrinth => payload.sources = modrinth_sources(&payload.files).await,
+        _ => {}
     }
     let (biome, seed) = discover::scene_for(project.source, &project.project_id);
     // The pack's own picture becomes the instance's icon and banner. Without one, the rose symbol and the
@@ -322,7 +328,8 @@ async fn resolve_curseforge_files(files: Vec<ModpackFile>) -> Result<Vec<Modpack
     Ok(resolved)
 }
 
-/// The file with its download url filled in, asked of CurseForge when the modpack named only ids.
+/// The file with its download url, its name in `mods/` and its hash filled in, asked of CurseForge when the modpack
+/// named only ids. The manifest gives no path, so the jar's own name places it.
 async fn resolve_one(mut file: ModpackFile) -> Result<ModpackFile, String> {
     if !file.url.is_empty() {
         return Ok(file);
@@ -330,7 +337,11 @@ async fn resolve_one(mut file: ModpackFile) -> Result<ModpackFile, String> {
     let (Some(project), Some(id)) = (file.project_id.as_deref(), file.file_id.as_deref()) else {
         return Err(lang::t_with("discover.install.no_url", &[("file", file.path.as_str())]).to_string());
     };
-    file.url = curseforge()?.file_url(project, id).await.map_err(|error| error.to_string())?;
+    let jar = curseforge()?.file(project, id).await.map_err(|error| error.to_string())?;
+    file.path = format!("mods/{}", jar.name);
+    file.url = jar.url;
+    file.sha1 = jar.sha1;
+    file.size = jar.size;
     Ok(file)
 }
 
@@ -407,7 +418,7 @@ impl LodestoneLauncher {
             Effect::OpenInstance(id) => self.open_instance_page(&id, Tab::Overview),
             Effect::OpenResource(listing) => self.open_resource(listing),
             Effect::AddMod(request) => self.add_mod_task(*request),
-            Effect::RecordInstanceContent(record) => self.record_instance_content(record),
+            Effect::RecordModSources(records) => self.record_mod_sources(records),
             effect => plain_effect(effect),
         }
     }
@@ -432,28 +443,28 @@ impl LodestoneLauncher {
         })
     }
 
-    /// Saves a mod added to an instance, so the Mods tab still shows it after a restart. The instances reload too,
-    /// so the mod count on their cards is current.
-    fn record_instance_content(&mut self, record: InstanceContent) -> Task<LodestoneAppMessage> {
+    /// Saves the mods a platform install added to an instance, so the Mods tab still shows where they came from after
+    /// a restart. The instances reload too, so the mod count on their cards is current.
+    fn record_mod_sources(&mut self, records: Vec<ModSource>) -> Task<LodestoneAppMessage> {
         let reload = self.load_instances();
         let Some(db) = self.db.clone() else {
             return reload;
         };
         let save = Task::future(async move {
-            if let Err(error) = db.record_instance_content(&record).await {
-                warn!("recording the instance's mod failed: {error}");
+            if let Err(error) = db.record_mod_sources(&records).await {
+                warn!("recording the instance's mods failed: {error}");
             }
         })
         .discard();
         Task::batch([save, reload])
     }
 
-    /// Loads the mods the Discover page added to instances, once the database is open.
-    pub(super) fn load_instance_content(&self) -> Task<LodestoneAppMessage> {
+    /// Loads the mods that came from a platform, once the database is open.
+    pub(super) fn load_mod_sources(&self) -> Task<LodestoneAppMessage> {
         let Some(db) = self.db.clone() else {
             return Task::none();
         };
-        Task::perform(async move { db.instance_content().await }, LodestoneAppMessage::InstanceContentLoaded)
+        Task::perform(async move { db.mod_sources().await }, LodestoneAppMessage::ModSourcesLoaded)
     }
 
     /// Hands the Discover page the instances mods can be added to, as the library holds them now.

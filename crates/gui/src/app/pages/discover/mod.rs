@@ -23,7 +23,7 @@ use crate::app::components::scrollbar;
 use crate::app::install::InstallRequest;
 use crate::app::lang;
 use crate::app::pages::resource::Listing;
-use crate::app::shared_library::{self, InstanceContent, SharedRecord};
+use crate::app::shared_library::{self, ModSource, SharedRecord};
 use iced::widget::{Space, column, container, stack};
 use iced::{Element, Fill, Padding, Size};
 use lodestone_platforms::{ContentType, Facets, SearchPage, SearchSort};
@@ -167,7 +167,7 @@ pub enum Message {
         instance: String,
         platform: String,
         project_id: String,
-        result: Result<InstanceContent, String>,
+        result: Result<Vec<ModSource>, String>,
     },
     /// A download into the shared folders finished, or failed.
     Downloaded {
@@ -263,7 +263,7 @@ pub enum Effect {
     /// Add a mod to the instance's mods folder, with the release the user picked or the newest that fits.
     AddMod(Box<AddRequest>),
     /// Save a mod added to an instance, so the page still lists it after a restart.
-    RecordInstanceContent(InstanceContent),
+    RecordModSources(Vec<ModSource>),
 }
 
 /// The Discover page's state.

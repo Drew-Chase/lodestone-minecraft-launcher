@@ -5,11 +5,11 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Local, Utc};
-use sqlx::Row;
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};
+use sqlx::{Row, Sqlite, Transaction};
 
 use crate::app::pages::library::instance::{Biome, Instance, InstanceIcon, InstanceState, Loader};
-use crate::app::shared_library::{InstanceContent, SharedRecord};
+use crate::app::shared_library::{JarHash, ModSource, SharedRecord};
 
 /// How many icon recents are kept. The icon editor shows the newest few.
 const RECENT_ICON_LIMIT: i64 = 8;
@@ -103,10 +103,11 @@ impl Database {
             .collect())
     }
 
-    /// Writes a new instance row. The caller has already created the folder
-    /// and written its files.
-    pub async fn insert_instance(&self, instance: &Instance) -> Result<(), String> {
+    /// Writes a new instance row and the mods it was installed with, in one transaction. The caller has already
+    /// created the folder and written its files.
+    pub async fn insert_instance(&self, instance: &Instance, sources: &[ModSource]) -> Result<(), String> {
         let (icon_background, icon_symbol, icon_path) = instance.icon.to_db();
+        let mut transaction = self.pool.begin().await.map_err(|error| error.to_string())?;
         sqlx::query(
             "INSERT INTO instances \
              (id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
@@ -138,10 +139,11 @@ impl Database {
         .bind(&instance.source_url)
         .bind(&instance.source_platform)
         .bind(&instance.source_project_id)
-        .execute(&self.pool)
+        .execute(&mut *transaction)
         .await
-        .map(|_| ())
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+        write_mod_sources(&mut transaction, sources).await?;
+        transaction.commit().await.map_err(|error| error.to_string())
     }
 
     /// Sets an instance's state: `playing` while its game runs.
@@ -178,10 +180,15 @@ impl Database {
             .map_err(|error| error.to_string())
     }
 
-    /// Deletes an instance's row, and the mods the Discover page recorded for it. The caller removes its folder;
+    /// Deletes an instance's row, and the mod records and cached hashes it holds. The caller removes its folder;
     /// nothing else refers to the row.
     pub async fn delete_instance(&self, id: &str) -> Result<(), String> {
-        sqlx::query("DELETE FROM instance_content WHERE instance_id = ?")
+        sqlx::query("DELETE FROM mod_sources WHERE instance_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+        sqlx::query("DELETE FROM jar_hashes WHERE instance_id = ?")
             .bind(id)
             .execute(&self.pool)
             .await
@@ -288,42 +295,81 @@ impl Database {
             .collect())
     }
 
-    /// The mods the Discover page added to instances, most recent first.
-    pub async fn instance_content(&self) -> Result<Vec<InstanceContent>, String> {
-        let rows = sqlx::query("SELECT instance_id, platform, project_id, version_id, name, file_name FROM instance_content ORDER BY added_at DESC")
+    /// The mods the launcher knows came from a platform, across every instance, most recent first.
+    pub async fn mod_sources(&self) -> Result<Vec<ModSource>, String> {
+        let rows = sqlx::query("SELECT instance_id, platform, project_id, version_id, name, file_name, sha1 FROM mod_sources ORDER BY added_at DESC")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(rows.into_iter().map(mod_source_of).collect())
+    }
+
+    /// The mods of one instance that came from a platform.
+    pub async fn mod_sources_of(&self, instance: &str) -> Result<Vec<ModSource>, String> {
+        let rows = sqlx::query("SELECT instance_id, platform, project_id, version_id, name, file_name, sha1 FROM mod_sources WHERE instance_id = ?")
+            .bind(instance)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(rows.into_iter().map(mod_source_of).collect())
+    }
+
+    /// Records mods installed from a platform. A jar already recorded under the same file name is replaced.
+    pub async fn record_mod_sources(&self, records: &[ModSource]) -> Result<(), String> {
+        let mut transaction = self.pool.begin().await.map_err(|error| error.to_string())?;
+        write_mod_sources(&mut transaction, records).await?;
+        transaction.commit().await.map_err(|error| error.to_string())
+    }
+
+    /// Replaces the record of the jar `old_file` with `record`, the jar that took its place. The cached hash of the
+    /// old jar goes with it, and both changes are one transaction.
+    pub async fn replace_mod_source(&self, old_file: &str, record: &ModSource) -> Result<(), String> {
+        let mut transaction = self.pool.begin().await.map_err(|error| error.to_string())?;
+        delete_jar(&mut transaction, &record.instance, old_file).await?;
+        write_mod_sources(&mut transaction, std::slice::from_ref(record)).await?;
+        transaction.commit().await.map_err(|error| error.to_string())
+    }
+
+    /// Forgets the record and the cached hash of a jar that is gone.
+    pub async fn forget_mod_source(&self, instance: &str, file_name: &str) -> Result<(), String> {
+        let mut transaction = self.pool.begin().await.map_err(|error| error.to_string())?;
+        delete_jar(&mut transaction, instance, file_name).await?;
+        transaction.commit().await.map_err(|error| error.to_string())
+    }
+
+    /// The cached hashes of one instance's jars.
+    pub async fn jar_hashes(&self, instance: &str) -> Result<Vec<JarHash>, String> {
+        let rows = sqlx::query("SELECT file_name, size, modified_at, sha1 FROM jar_hashes WHERE instance_id = ?")
+            .bind(instance)
             .fetch_all(&self.pool)
             .await
             .map_err(|error| error.to_string())?;
         Ok(rows
             .into_iter()
-            .map(|row| InstanceContent {
-                instance: row.get("instance_id"),
-                platform: row.get("platform"),
-                project_id: row.get("project_id"),
-                version_id: row.get("version_id"),
-                name: row.get("name"),
+            .map(|row| JarHash {
                 file_name: row.get("file_name"),
+                size: row.get::<i64, _>("size") as u64,
+                modified_at: row.get("modified_at"),
+                sha1: row.get("sha1"),
             })
             .collect())
     }
 
-    /// Records a mod added to an instance. Adding the same project to the same instance again replaces its row.
-    pub async fn record_instance_content(&self, record: &InstanceContent) -> Result<(), String> {
-        sqlx::query(
-            "INSERT OR REPLACE INTO instance_content (instance_id, platform, project_id, version_id, name, file_name, added_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(&record.instance)
-        .bind(&record.platform)
-        .bind(&record.project_id)
-        .bind(&record.version_id)
-        .bind(&record.name)
-        .bind(&record.file_name)
-        .bind(Utc::now().timestamp())
-        .execute(&self.pool)
-        .await
-        .map(|_| ())
-        .map_err(|error| error.to_string())
+    /// Caches the hashes of one instance's jars. A hash cached under the same file name is replaced.
+    pub async fn record_jar_hashes(&self, instance: &str, hashes: &[JarHash]) -> Result<(), String> {
+        let mut transaction = self.pool.begin().await.map_err(|error| error.to_string())?;
+        for hash in hashes {
+            sqlx::query("INSERT OR REPLACE INTO jar_hashes (instance_id, file_name, size, modified_at, sha1) VALUES (?, ?, ?, ?, ?)")
+                .bind(instance)
+                .bind(&hash.file_name)
+                .bind(hash.size as i64)
+                .bind(hash.modified_at)
+                .bind(&hash.sha1)
+                .execute(&mut *transaction)
+                .await
+                .map_err(|error| error.to_string())?;
+        }
+        transaction.commit().await.map_err(|error| error.to_string())
     }
 
     /// Records a file downloaded into the shared folders. Downloading the same version again replaces its row.
@@ -345,6 +391,59 @@ impl Database {
         .map(|_| ())
         .map_err(|error| error.to_string())
     }
+}
+
+/// One row of `mod_sources`, read from a query that names its columns.
+fn mod_source_of(row: SqliteRow) -> ModSource {
+    ModSource {
+        instance: row.get("instance_id"),
+        platform: row.get("platform"),
+        project_id: row.get("project_id"),
+        version_id: row.get("version_id"),
+        name: row.get("name"),
+        file_name: row.get("file_name"),
+        sha1: row.get("sha1"),
+    }
+}
+
+/// Inserts or replaces each record, within `transaction`.
+async fn write_mod_sources(transaction: &mut Transaction<'_, Sqlite>, records: &[ModSource]) -> Result<(), String> {
+    let added_at = Utc::now().timestamp();
+    for record in records {
+        sqlx::query(
+            "INSERT OR REPLACE INTO mod_sources (instance_id, file_name, platform, project_id, version_id, name, sha1, added_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&record.instance)
+        .bind(&record.file_name)
+        .bind(&record.platform)
+        .bind(&record.project_id)
+        .bind(&record.version_id)
+        .bind(&record.name)
+        .bind(&record.sha1)
+        .bind(added_at)
+        .execute(&mut **transaction)
+        .await
+        .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+/// Removes the record and the cached hash of the jar `file_name`, within `transaction`.
+async fn delete_jar(transaction: &mut Transaction<'_, Sqlite>, instance: &str, file_name: &str) -> Result<(), String> {
+    sqlx::query("DELETE FROM mod_sources WHERE instance_id = ? AND file_name = ?")
+        .bind(instance)
+        .bind(file_name)
+        .execute(&mut **transaction)
+        .await
+        .map_err(|error| error.to_string())?;
+    sqlx::query("DELETE FROM jar_hashes WHERE instance_id = ? AND file_name = ?")
+        .bind(instance)
+        .bind(file_name)
+        .execute(&mut **transaction)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 #[cfg(test)]

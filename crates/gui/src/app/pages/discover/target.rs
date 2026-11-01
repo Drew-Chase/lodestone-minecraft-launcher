@@ -6,7 +6,7 @@ use lodestone_platforms::ContentType;
 
 use super::{Discover, Effect, Project, Source, placeholder};
 use crate::app::pages::library::instance::{Instance, Loader};
-use crate::app::shared_library::InstanceContent;
+use crate::app::shared_library::ModSource;
 
 /// An instance a mod can be added to, with what the Mods tab takes from it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,8 +61,8 @@ impl Discover {
         self.instances = instances;
     }
 
-    /// Replaces the mods the launcher knows were added, from the database when it opens.
-    pub fn set_added(&mut self, records: &[InstanceContent]) {
+    /// Replaces the mods the launcher knows came from a platform, from the database when it opens.
+    pub fn set_added(&mut self, records: &[ModSource]) {
         self.added = records
             .iter()
             .map(|record| (record.instance.clone(), record.platform.clone(), record.project_id.clone()))
@@ -114,19 +114,25 @@ impl Discover {
         vec![Effect::AddMod(Box::new(AddRequest { project, instance }))]
     }
 
-    /// Records the outcome of an add. A mod that landed is remembered and saved; one that failed is reported.
+    /// Records the outcome of an add. The mods that landed, the dependencies among them, are remembered and saved, so
+    /// their projects show as added too. A failure is reported.
     pub(super) fn mod_added(
         &mut self,
         instance: String,
         platform: String,
         project_id: String,
-        result: Result<InstanceContent, String>,
+        result: Result<Vec<ModSource>, String>,
     ) -> Vec<Effect> {
         self.adding.remove(&(instance.clone(), platform.clone(), project_id.clone()));
         match result {
-            Ok(record) => {
+            Ok(records) => {
                 self.added.insert((instance, platform, project_id));
-                vec![Effect::RecordInstanceContent(record)]
+                self.added.extend(
+                    records
+                        .iter()
+                        .map(|record| (record.instance.clone(), record.platform.clone(), record.project_id.clone())),
+                );
+                vec![Effect::RecordModSources(records)]
             }
             Err(error) => vec![Effect::Notify(error)],
         }
