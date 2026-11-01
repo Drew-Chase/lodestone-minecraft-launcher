@@ -23,6 +23,7 @@ pub mod loader_icon;
 pub mod menu;
 pub mod modal;
 pub mod nav;
+pub mod page;
 pub mod panel;
 pub mod platform_logo;
 pub mod popover;

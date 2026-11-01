@@ -167,12 +167,6 @@ const HEADER_BLOCK: f32 = 73.0;
 /// absorbs the drift — so it stays a constant instead of a measurement.
 const LIST_TOP: f32 = 497.0;
 
-/// The width of the page's content column in a window `window_width` wide: the window less the 68px rail
-/// and the page's 28px padding on each side.
-pub(super) fn content_width(window_width: f32) -> f32 {
-    window_width - 68.0 - 56.0
-}
-
 /// The grid card's art box when `columns` cards share a `content` width: the card's width less its
 /// border, and the art's height less the pixel it sits down by.
 pub(super) fn card_art_size(content: f32, columns: usize) -> (f32, f32) {

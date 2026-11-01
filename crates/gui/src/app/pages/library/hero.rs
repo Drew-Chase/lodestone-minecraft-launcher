@@ -6,6 +6,7 @@ use crate::app::components::badge::{Badge, loader_palette};
 use crate::app::components::hint::hint;
 use crate::app::components::instance_art;
 use crate::app::components::instance_card::status_chip;
+use crate::app::components::page::content_width;
 use crate::app::components::scene_art::HERO_RADIUS;
 use crate::app::components::{Dropdown, IconButton, TextButton};
 use crate::app::lang;
@@ -18,7 +19,7 @@ use iced_color_extension::rgb;
 
 use super::instance::{Instance, InstanceState};
 use super::instance_menu;
-use super::{Library, Message, chip, content_width, icon};
+use super::{Library, Message, chip, icon};
 
 /// The hero banner's height.
 pub(super) const HERO_HEIGHT: f32 = 300.0;

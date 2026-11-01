@@ -10,6 +10,7 @@ use super::{GALLERY_PER_PAGE, Message, ResourcePage};
 use crate::app::components::IconButton;
 use crate::app::components::hint::hint;
 use crate::app::components::icon_button::SECONDARY_BUTTON_STYLE;
+use crate::app::components::page::content_width;
 use crate::app::components::tile::tile;
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
@@ -18,8 +19,6 @@ use crate::app::theme::{color, fonts};
 const COLUMNS: usize = 3;
 /// The gap between the grid's pictures.
 const GAP: f32 = 16.0;
-/// The width the page keeps clear of the sidebar and its margins.
-const CHROME_WIDTH: f32 = 68.0 + 56.0;
 /// The corner radius of a picture.
 const RADIUS: f32 = 12.0;
 
@@ -28,7 +27,7 @@ pub(super) fn view<'a>(page: &'a ResourcePage, window: Size) -> Element<'a, Mess
     let pictures = page.gallery();
     let pages = pictures.len().div_ceil(GALLERY_PER_PAGE).max(1);
     let start = page.gallery_page.min(pages - 1) * GALLERY_PER_PAGE;
-    let width = ((window.width - CHROME_WIDTH - GAP * (COLUMNS as f32 - 1.0)) / COLUMNS as f32).max(160.0);
+    let width = ((content_width(window.width) - GAP * (COLUMNS as f32 - 1.0)) / COLUMNS as f32).max(160.0);
     let height = width * 9.0 / 16.0;
     let visible: Vec<(usize, &GalleryImage)> = pictures.iter().enumerate().skip(start).take(GALLERY_PER_PAGE).collect();
     let rows: Vec<Element<'a, Message>> = visible

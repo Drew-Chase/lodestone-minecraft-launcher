@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use crate::app::components::art_cache::{ArtCache, ArtKey, Kind};
 use crate::app::components::instance_card::{InstanceMessages, THUMB_SIZE, compact_row, instance_card, table_header, table_row};
+use crate::app::components::page::content_width;
 use crate::app::lang;
 use crate::app::pages::library::instance::Instance;
 use crate::app::perf;
@@ -14,7 +15,7 @@ use iced::widget::image::Handle;
 use iced::widget::{Space, Text, column, container, row};
 use iced::{Element, Fill, Length, Size, alignment};
 
-use super::{HEADER_BLOCK, LIST_TOP, Library, LibraryView, Message, card_art_size, content_width};
+use super::{HEADER_BLOCK, LIST_TOP, Library, LibraryView, Message, card_art_size};
 
 /// The rows the list builds at a window's size.
 pub(super) struct RowWindow {

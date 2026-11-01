@@ -2,6 +2,7 @@
 
 use crate::app::components::backdrop::LoginBackdrop;
 use crate::app::components::game_controls::Actions;
+use crate::app::components::page::MAX_CONTENT_WIDTH;
 use crate::app::components::sidebar::{game_block, sidebar as sidebar_view};
 use crate::app::downloads::{self, Pending};
 use crate::app::launch::GameMessage;
@@ -11,7 +12,7 @@ use crate::app::pages::login::AuthStatus;
 use crate::app::perf;
 use crate::app::theme::color::Surface;
 use iced::widget::{Space, column, container, row, stack};
-use iced::{Element, Fill};
+use iced::{Element, Fill, alignment};
 use iced_borderless_window_resize_handle_widget::ResizeHandles;
 use tracing::debug;
 
@@ -170,12 +171,14 @@ impl LodestoneLauncher {
         )
     }
 
-    /// Left edge chrome — one rail slot per [`Page::RAIL_PAGES`] entry.
-    /// The page area: the router's current page.
+    /// The page area: the router's current page. The page sits in a column at most [`MAX_CONTENT_WIDTH`]
+    /// wide, centred beside the sidebar, so a wide window keeps the page at its designed width.
     fn body(&self) -> Element<'_, LodestoneAppMessage> {
-        container(self.outlet())
+        let page = container(self.outlet()).max_width(MAX_CONTENT_WIDTH).width(Fill).height(Fill);
+        container(page)
             .width(Fill)
             .height(Fill)
+            .align_x(alignment::Horizontal::Center)
             .style(|_| container::Style {
                 background: Some(iced::Background::Color(Surface::APPLICATION)),
                 ..Default::default()
