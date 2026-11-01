@@ -60,6 +60,9 @@ fn version() -> ContentVersion {
         date: None,
         changelog_url: None,
         files: Vec::new(),
+        changelog: None,
+        channel: None,
+        dependencies: Vec::new(),
     }
 }
 
@@ -97,6 +100,9 @@ fn versions_map_with_their_minecraft_version() {
             date: version.published.map(|published| published.to_string()),
             changelog_url: None,
             files: Vec::new(),
+            changelog: None,
+            channel: None,
+            dependencies: Vec::new(),
         })
         .collect();
     assert_eq!(versions.len(), 2);

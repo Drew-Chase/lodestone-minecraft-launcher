@@ -16,7 +16,10 @@ use tokio::sync::mpsc::Sender;
 use crate::PlatformKind;
 use crate::error::PlatformError;
 use crate::http::{download_files, get_json, with_query};
-use crate::meta::{ContentDetails, ContentFile, ContentType, ContentVersion, Facet, Facets, SearchPage, SearchQuery, SearchResult, SearchSort};
+use crate::meta::{
+    Channel, ContentDetails, ContentFile, ContentType, ContentVersion, Creator, DependencyKind, DescriptionFormat, Facet, Facets, GalleryImage,
+    ProjectInfo, ProjectLinks, SearchPage, SearchQuery, SearchResult, SearchSort, VersionDependency, banner_from,
+};
 use crate::sealed;
 
 /// Marker for CurseForge (https://www.curseforge.com). Requires an API key —
@@ -100,6 +103,8 @@ struct CfMod {
     summary: String,
     #[serde(rename = "downloadCount", default)]
     download_count: u64,
+    #[serde(rename = "dateCreated", default)]
+    date_created: Option<String>,
     #[serde(rename = "dateModified", default)]
     date_modified: Option<String>,
     #[serde(default)]
@@ -108,11 +113,30 @@ struct CfMod {
     logo: Option<CfLogo>,
     #[serde(default)]
     links: Option<CfLinks>,
+    #[serde(default)]
+    categories: Vec<CfCategory>,
+    #[serde(default)]
+    screenshots: Vec<CfScreenshot>,
 }
 
 #[derive(Debug, Deserialize)]
 struct CfAuthor {
     name: String,
+    #[serde(rename = "avatarUrl", default)]
+    avatar_url: Option<String>,
+}
+
+/// One picture of a project's gallery. CurseForge names the small copy `thumbnailUrl`.
+#[derive(Debug, Deserialize)]
+struct CfScreenshot {
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(rename = "thumbnailUrl", default)]
+    thumbnail_url: Option<String>,
+    #[serde(default)]
+    url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -123,10 +147,16 @@ struct CfLogo {
     url: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct CfLinks {
     #[serde(rename = "websiteUrl", default)]
     website_url: Option<String>,
+    #[serde(rename = "wikiUrl", default)]
+    wiki_url: Option<String>,
+    #[serde(rename = "issuesUrl", default)]
+    issues_url: Option<String>,
+    #[serde(rename = "sourceUrl", default)]
+    source_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -196,6 +226,20 @@ struct CfFile {
     mod_loader: Option<i64>,
     #[serde(rename = "fileDate", default)]
     file_date: Option<String>,
+    /// `1` is a release, `2` a beta, `3` an alpha.
+    #[serde(rename = "releaseType", default)]
+    release_type: Option<i64>,
+    #[serde(default)]
+    dependencies: Vec<CfDependency>,
+}
+
+/// One project a file relates to, with CurseForge's `relationType`.
+#[derive(Debug, Deserialize)]
+struct CfDependency {
+    #[serde(rename = "modId")]
+    mod_id: i64,
+    #[serde(rename = "relationType")]
+    relation_type: i64,
 }
 
 /// One entry of `File.hashes`; `algo` 1 is sha1, 2 is md5.
@@ -221,7 +265,57 @@ struct CfDownloadLink {
     data: String,
 }
 
+/// The banner a CurseForge project shows: its first screenshot. CurseForge marks no featured one.
+fn banner_of(screenshots: &[CfScreenshot]) -> Option<String> {
+    banner_from(
+        None,
+        screenshots
+            .iter()
+            .filter_map(|shot| shot.thumbnail_url.clone().or_else(|| shot.url.clone())),
+    )
+}
+
+/// The screenshots as a gallery. A screenshot with no picture at all is left out.
+fn gallery_of(screenshots: Vec<CfScreenshot>) -> Vec<GalleryImage> {
+    screenshots
+        .into_iter()
+        .filter_map(|shot| {
+            let full_url = shot.url.clone().or_else(|| shot.thumbnail_url.clone())?;
+            Some(GalleryImage {
+                thumbnail_url: shot.thumbnail_url.unwrap_or_else(|| full_url.clone()),
+                full_url,
+                title: shot.title.filter(|title| !title.is_empty()),
+                description: shot.description.filter(|description| !description.is_empty()),
+                featured: false,
+            })
+        })
+        .collect()
+}
+
+/// A file's release channel, from CurseForge's `releaseType`.
+fn channel_of(release_type: Option<i64>) -> Option<Channel> {
+    match release_type {
+        Some(1) => Some(Channel::Release),
+        Some(2) => Some(Channel::Beta),
+        Some(3) => Some(Channel::Alpha),
+        _ => None,
+    }
+}
+
+/// How a file relates to another project, from CurseForge's `relationType`. The relations this crate does not model
+/// (tools, and projects a modpack includes) are left out.
+fn dependency_kind(relation_type: i64) -> Option<DependencyKind> {
+    match relation_type {
+        1 => Some(DependencyKind::Embedded),
+        2 => Some(DependencyKind::Optional),
+        3 => Some(DependencyKind::Required),
+        5 => Some(DependencyKind::Incompatible),
+        _ => None,
+    }
+}
+
 fn mod_to_search_result(mod_: CfMod, content: ContentType) -> SearchResult {
+    let banner_url = banner_of(&mod_.screenshots);
     SearchResult {
         id: mod_.id.to_string(),
         slug: Some(mod_.slug),
@@ -230,6 +324,7 @@ fn mod_to_search_result(mod_: CfMod, content: ContentType) -> SearchResult {
         description: mod_.summary,
         downloads: mod_.download_count,
         icon_url: mod_.logo.and_then(|logo| logo.url.or(logo.thumbnail_url)),
+        banner_url,
         web_url: mod_.links.and_then(|links| links.website_url),
         updated: mod_.date_modified,
         content_type: content,
@@ -255,6 +350,19 @@ fn file_to_content_version(project_id: &str, file: CfFile, content: ContentType)
             size: Some(file.file_length),
             primary: true,
         }],
+        changelog: None,
+        channel: channel_of(file.release_type),
+        dependencies: file
+            .dependencies
+            .iter()
+            .filter_map(|dependency| {
+                Some(VersionDependency {
+                    kind: dependency_kind(dependency.relation_type)?,
+                    project_id: Some(dependency.mod_id.to_string()),
+                    version_id: None,
+                })
+            })
+            .collect(),
     }
 }
 
@@ -327,7 +435,9 @@ impl PlatformKind for CurseForge {
     async fn details(_http: &reqwest::Client, credential: Option<&str>, id: &str, content: ContentType) -> Result<ContentDetails, PlatformError> {
         let (url, client) = request(credential, &format!("/mods/{id}"))?;
         let response = get_json(&client, &url).await?;
-        let envelope: CfModEnvelope = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
+        let data = serde_json::from_value::<CfModEnvelope>(response)
+            .map_err(|source| PlatformError::Json { url: url.clone(), source })?
+            .data;
 
         // Long-form descriptions come from a separate endpoint; a failure there
         // is not worth failing the whole call over.
@@ -339,17 +449,53 @@ impl PlatformKind for CurseForge {
             Err(_) => None,
         };
 
+        let CfLinks {
+            website_url,
+            wiki_url,
+            issues_url,
+            source_url,
+        } = data.links.unwrap_or_default();
+        let creators: Vec<Creator> = data
+            .authors
+            .into_iter()
+            .map(|author| Creator {
+                name: author.name,
+                role: None,
+                avatar_url: author.avatar_url,
+            })
+            .collect();
+        let author = creators.first().map(|creator| creator.name.clone());
         Ok(ContentDetails {
-            id: envelope.data.id.to_string(),
-            slug: Some(envelope.data.slug),
-            name: envelope.data.name,
-            author: envelope.data.authors.into_iter().next().map(|author| author.name),
-            summary: envelope.data.summary,
+            id: data.id.to_string(),
+            slug: Some(data.slug),
+            name: data.name,
+            author,
+            summary: data.summary,
             description,
-            downloads: envelope.data.download_count,
-            icon_url: envelope.data.logo.and_then(|logo| logo.url.or(logo.thumbnail_url)),
-            web_url: envelope.data.links.and_then(|links| links.website_url),
+            description_format: DescriptionFormat::Html,
+            downloads: data.download_count,
+            icon_url: data.logo.and_then(|logo| logo.url.or(logo.thumbnail_url)),
+            web_url: website_url,
             content_type: content,
+            info: ProjectInfo {
+                gallery: gallery_of(data.screenshots),
+                license: None,
+                published: data.date_created,
+                updated: data.date_modified,
+                followers: None,
+                categories: data.categories.into_iter().map(|category| category.name).collect(),
+                loaders: Vec::new(),
+                game_versions: Vec::new(),
+                environments: Vec::new(),
+                links: ProjectLinks {
+                    issues: issues_url,
+                    source: source_url,
+                    wiki: wiki_url,
+                    discord: None,
+                    donate: Vec::new(),
+                },
+                creators,
+            },
         })
     }
 

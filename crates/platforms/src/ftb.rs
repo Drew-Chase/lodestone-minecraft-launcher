@@ -14,7 +14,7 @@ use tokio::sync::mpsc::Sender;
 use crate::PlatformKind;
 use crate::error::PlatformError;
 use crate::http::{HYDRATION_CHUNK, download_files, get_json};
-use crate::meta::{ContentDetails, ContentType, ContentVersion, Facets, SearchPage, SearchQuery, SearchResult};
+use crate::meta::{ContentDetails, ContentType, ContentVersion, DescriptionFormat, Facets, ProjectInfo, SearchPage, SearchQuery, SearchResult};
 use crate::sealed;
 
 /// Marker for FTB (https://feed-the-beast.com).
@@ -112,10 +112,12 @@ impl FtbPack {
             author: None,
             summary: self.synopsis.unwrap_or_default(),
             description: self.description,
+            description_format: DescriptionFormat::default(),
             downloads: self.installs.unwrap_or(0).max(0) as u64,
             icon_url: largest_art(self.art),
             web_url: None,
             content_type: ContentType::Modpack,
+            info: ProjectInfo::default(),
         }
     }
 
@@ -128,6 +130,7 @@ impl FtbPack {
             description: self.synopsis.unwrap_or_default(),
             downloads: self.installs.unwrap_or(0).max(0) as u64,
             icon_url: largest_art(self.art),
+            banner_url: None,
             web_url: None,
             updated: None,
             content_type: ContentType::Modpack,
@@ -229,6 +232,9 @@ impl PlatformKind for Ftb {
                     date: None,
                     changelog_url: None,
                     files: Vec::new(),
+                    changelog: None,
+                    channel: None,
+                    dependencies: Vec::new(),
                 }
             })
             .collect())

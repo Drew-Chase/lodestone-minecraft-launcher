@@ -17,3 +17,14 @@ fn a_new_query_starts_at_the_first_page_with_no_filters() {
     assert!(query.text.is_empty());
     assert!(query.category.is_none() && query.loader.is_none() && query.game_version.is_none());
 }
+
+#[test]
+fn a_banner_is_the_featured_image_then_the_first_gallery_image() {
+    let gallery = || vec!["first.webp".to_string(), "second.webp".to_string()];
+    assert_eq!(
+        banner_from(Some("featured.webp".to_string()), gallery()).as_deref(),
+        Some("featured.webp")
+    );
+    assert_eq!(banner_from(None, gallery()).as_deref(), Some("first.webp"));
+    assert_eq!(banner_from(None, Vec::new()), None);
+}

@@ -97,6 +97,11 @@ impl<K: PlatformKind> Platform<K> {
 impl Platform<CurseForge> {
     pub fn with_api_key(key: impl Into<String>) -> Self;
 }
+
+// The contents of a Modrinth modpack release: the projects it bundles, named and iconed.
+impl Platform<Modrinth> {
+    pub async fn bundled(&self, version: &ContentVersion) -> Result<Vec<BundledProject>, PlatformError>;
+}
 ```
 
 | Type | Module | Role |
@@ -105,10 +110,13 @@ impl Platform<CurseForge> {
 | `PlatformKind` | lib | Sealed trait; carries per-kind endpoints/parsers and the capability consts. |
 | `Modrinth` / `CurseForge` / `AtLauncher` / `Ftb` / `Technic` | per-kind modules | Zero-sized markers. |
 | `ContentType` | meta | `Mod`, `Modpack`, `Shader`, `ResourcePack`, `DataPack`, `World`. |
-| `SearchResult` | meta | id, slug, name, author, short description, downloads, icon/web urls, content type. |
-| `ContentDetails` | meta | SearchResult + long description. |
-| `ContentVersion` | meta | id, name, version_number, `minecraft_versions`, `loaders` (join point with lodestone_loaders), downloads, date, changelog_url, files. |
+| `SearchResult` | meta | id, slug, name, author, short description, downloads, icon/web urls, `banner_url` (the featured image, else the first gallery image), content type. |
+| `ContentDetails` | meta | SearchResult + long description, `description_format` (Markdown or Html), and `info: ProjectInfo`. |
+| `ProjectInfo` | meta | The facts beside a description, all empty where a platform has none: `gallery`, `license`, `published`/`updated`, `followers`, `categories`, `loaders`, `game_versions`, `environments` (`Side`), `links` (`ProjectLinks`), `creators` (`Creator`). |
+| `GalleryImage` | meta | thumbnail and full-size urls, title, description, featured flag. |
+| `ContentVersion` | meta | id, name, version_number, `minecraft_versions`, `loaders` (join point with lodestone_loaders), downloads, date, changelog_url, files, `changelog` (markdown), `channel` (`Channel`), `dependencies` (`VersionDependency`: `DependencyKind` plus project and version ids). |
 | `ContentFile` | meta | name, url, sha1, size, primary. |
+| `BundledProject` | meta | A project a modpack release bundles: id, name, icon, and the bundled release's id and number. |
 | `Modpack` / `ModpackFile` | meta | Parsed archive: name, version, minecraft, loader + loader_version, files (direct url or CurseForge project/file ids), overrides dir. |
 | `DownloadProgress` | re-export | simple_download_utility's progress event. |
 | `PlatformError` | error | thiserror; messages user-presentable. |
@@ -135,8 +143,8 @@ search endpoint: its search is a client-side filter over the full pack list.
 
 | Kind | Endpoints | Notes |
 |---|---|---|
-| Modrinth | via ferinth: search (project-type facet), `project_get`, `version_list`, version file URLs | ferinth builds its own client; Modrinth expects a descriptive user agent |
-| CurseForge | `api.curseforge.com/v1`: `/mods/search?gameId=432&classId=…&searchFilter=…`, `/mods/{id}`, `/mods/{id}/description`, `/mods/{id}/files`, `/mods/{id}/files/{fileId}/download-link` | classIds: mods 6, modpacks 4471, resource packs 12, worlds 17; `x-api-key` header required; `modLoader` int → loader name (1 forge, 4 neoforge, 5 fabric, 6 quilt); some files hide `downloadUrl` — the download-link endpoint resolves those |
+| Modrinth | via ferinth: search (project-type facet, with `gallery` and `featured_gallery` on each hit), `project_get` (gallery with `raw_url`, licence, dates, links), `team_list_members` (creators, best-effort), `version_list` (changelog, version type, dependencies), version file URLs, and for modpacks `project_get_multiple` and `version_get_multiple` over the `embedded` dependencies (`Platform::<Modrinth>::bundled`) | ferinth builds its own client; Modrinth expects a descriptive user agent |
+| CurseForge | `api.curseforge.com/v1`: `/mods/search?gameId=432&classId=…&searchFilter=…`, `/mods/{id}`, `/mods/{id}/description`, `/mods/{id}/files`, `/mods/{id}/files/{fileId}/download-link` | classIds: mods 6, modpacks 4471, resource packs 12, worlds 17; `x-api-key` header required; `modLoader` int → loader name (1 forge, 4 neoforge, 5 fabric, 6 quilt); some files hide `downloadUrl` — the download-link endpoint resolves those; `screenshots` → gallery and banner; `releaseType` 1/2/3 → release/beta/alpha; file `relationType` 1/2/3/5 → embedded/optional/required/incompatible (the field numbers are not yet checked against a live key) |
 | ATLauncher | `api.atlauncher.com/v1`: `/pack-list`, `/pack/{code}` | search filters the pack list client-side; downloads resolve to ATLauncher's CDN pack zips |
 | FTB | `api.feed-the-beast.com/v1/modpacks`: `/public/modpack/search/{limit}?term=…`, `/public/modpack/{id}`, `/public/modpack/{id}/{versionId}` | search returns ids only — the first page is hydrated via details calls; version files carry install paths served from FTB's CDN |
 | Technic | `api.technicpack.net`: `/search/builds?q=…`, `/modpack/{slug}`, `/modpack/{slug}/build/{build}` | build JSON carries the Minecraft version and mod list; `headers[]=X-Build-Data` query parameter is required |

@@ -7,6 +7,9 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use ferinth::Ferinth;
+use ferinth::structures::project::{GalleryItem, SideType};
+use ferinth::structures::user::TeamMember;
+use ferinth::structures::version::{Dependency, DependencyType, VersionType};
 use serde::Deserialize;
 use simple_download_utility::DownloadProgress;
 use tokio::sync::mpsc::Sender;
@@ -15,7 +18,8 @@ use crate::PlatformKind;
 use crate::error::PlatformError;
 use crate::http::{download_files, get_json, with_query};
 use crate::meta::{
-    ContentDetails, ContentFile, ContentType, ContentVersion, Facet, Facets, SearchPage, SearchQuery, SearchResult, SearchSort, display_name,
+    BundledProject, Channel, ContentDetails, ContentFile, ContentType, ContentVersion, Creator, DependencyKind, DescriptionFormat, Facet, Facets,
+    GalleryImage, ProjectInfo, ProjectLinks, SearchPage, SearchQuery, SearchResult, SearchSort, Side, VersionDependency, banner_from, display_name,
 };
 use crate::sealed;
 
@@ -24,6 +28,7 @@ pub struct Modrinth;
 
 const SEARCH_BASE: &str = "https://api.modrinth.com/v2/search";
 const TAG_BASE: &str = "https://api.modrinth.com/v2/tag";
+const PROJECTS_BASE: &str = "https://api.modrinth.com/v2/projects";
 /// The largest page `/v2/search` returns.
 const MAX_PAGE: u32 = 100;
 
@@ -99,6 +104,11 @@ struct ModrinthSearchHit {
     icon_url: Option<String>,
     #[serde(default)]
     date_modified: Option<String>,
+    /// The gallery's thumbnails, in the order the project lists them.
+    #[serde(default)]
+    gallery: Vec<String>,
+    #[serde(default)]
+    featured_gallery: Option<String>,
 }
 
 /// One row of `/v2/tag/category`.
@@ -124,6 +134,7 @@ struct ModrinthGameVersion {
 }
 
 fn search_result(hit: ModrinthSearchHit, content: ContentType) -> SearchResult {
+    let banner_url = banner_from(hit.featured_gallery, hit.gallery);
     SearchResult {
         web_url: Some(web_url(&hit.project_id)),
         id: hit.project_id,
@@ -133,6 +144,7 @@ fn search_result(hit: ModrinthSearchHit, content: ContentType) -> SearchResult {
         description: hit.description,
         downloads: hit.downloads,
         icon_url: hit.icon_url,
+        banner_url,
         updated: hit.date_modified,
         content_type: content,
     }
@@ -163,6 +175,125 @@ async fn tag_list<T: serde::de::DeserializeOwned>(http: &reqwest::Client, url: &
         url: url.to_string(),
         source,
     })
+}
+
+/// The sides a project runs on: each one it is required or optional on.
+fn environments(client: SideType, server: SideType) -> Vec<Side> {
+    [(client, Side::Client), (server, Side::Server)]
+        .into_iter()
+        .filter(|(support, _)| matches!(support, SideType::Required | SideType::Optional))
+        .map(|(_, side)| side)
+        .collect()
+}
+
+/// The licence's name, or its id when it has no name. `LicenseRef-…` licences have none.
+fn license_name(name: String, id: String) -> Option<String> {
+    let name = if name.trim().is_empty() { id } else { name };
+    Some(name).filter(|name| !name.is_empty())
+}
+
+/// The team's creators with the owner first. The sort is stable, so the rest keep the team's order.
+fn owner_first(mut creators: Vec<Creator>) -> Vec<Creator> {
+    creators.sort_by_key(|creator| !creator.role.as_deref().is_some_and(|role| role.eq_ignore_ascii_case("owner")));
+    creators
+}
+
+fn creator(member: TeamMember) -> Creator {
+    Creator {
+        name: member.user.name.filter(|name| !name.trim().is_empty()).unwrap_or(member.user.username),
+        role: Some(member.role).filter(|role| !role.is_empty()),
+        avatar_url: member.user.avatar_url.map(|url| url.to_string()),
+    }
+}
+
+/// The accepted members of a project's team. A team that cannot be read has none, and the project still loads.
+async fn team_creators(team: &str) -> Vec<Creator> {
+    match API.team_list_members(team).await {
+        Ok(members) => owner_first(members.into_iter().filter(|member| member.accepted).map(creator).collect()),
+        Err(error) => {
+            tracing::warn!("reading the team of a Modrinth project failed: {error}");
+            Vec::new()
+        }
+    }
+}
+
+fn gallery_image(item: GalleryItem) -> GalleryImage {
+    GalleryImage {
+        thumbnail_url: item.url.to_string(),
+        full_url: item.raw_url.to_string(),
+        title: item.title,
+        description: item.description,
+        featured: item.featured,
+    }
+}
+
+fn channel(version_type: VersionType) -> Channel {
+    match version_type {
+        VersionType::Release => Channel::Release,
+        VersionType::Beta => Channel::Beta,
+        VersionType::Alpha => Channel::Alpha,
+    }
+}
+
+/// A dependency Modrinth names. The kinds this crate does not model are left out.
+fn dependency(dependency: Dependency) -> Option<VersionDependency> {
+    let kind = match dependency.dependency_type {
+        DependencyType::Required => DependencyKind::Required,
+        DependencyType::Optional => DependencyKind::Optional,
+        DependencyType::Incompatible => DependencyKind::Incompatible,
+        DependencyType::Embedded => DependencyKind::Embedded,
+        DependencyType::Other => return None,
+    };
+    Some(VersionDependency {
+        kind,
+        project_id: dependency.project_id,
+        version_id: dependency.version_id,
+    })
+}
+
+/// The projects a modpack release bundles, for its contents list. The projects' names and icons come from one
+/// batched call, and the bundled releases' numbers from another. A release with no bundled projects costs no call.
+pub(crate) async fn bundled(version: &ContentVersion) -> Result<Vec<BundledProject>, PlatformError> {
+    let embedded: Vec<&VersionDependency> = version
+        .dependencies
+        .iter()
+        .filter(|dependency| dependency.kind == DependencyKind::Embedded && dependency.project_id.is_some())
+        .collect();
+    if embedded.is_empty() {
+        return Ok(Vec::new());
+    }
+    let project_ids: Vec<&str> = embedded.iter().filter_map(|dependency| dependency.project_id.as_deref()).collect();
+    let projects = API
+        .project_get_multiple(&project_ids)
+        .await
+        .map_err(|source| ferinth_error(PROJECTS_BASE, source))?;
+    let version_ids: Vec<&str> = embedded.iter().filter_map(|dependency| dependency.version_id.as_deref()).collect();
+    let releases = if version_ids.is_empty() {
+        Vec::new()
+    } else {
+        API.version_get_multiple(&version_ids)
+            .await
+            .map_err(|source| ferinth_error(PROJECTS_BASE, source))?
+    };
+    Ok(embedded
+        .into_iter()
+        .filter_map(|dependency| {
+            let project_id = dependency.project_id.clone()?;
+            let project = projects.iter().find(|project| project.id == project_id);
+            let version_number = dependency
+                .version_id
+                .as_deref()
+                .and_then(|id| releases.iter().find(|release| release.id == id))
+                .map(|release| release.version_number.clone());
+            Some(BundledProject {
+                name: project.map_or_else(|| project_id.clone(), |project| project.title.clone()),
+                icon_url: project.and_then(|project| project.icon_url.as_ref().map(ToString::to_string)),
+                version_id: dependency.version_id.clone(),
+                version_number,
+                project_id,
+            })
+        })
+        .collect())
 }
 
 impl sealed::Sealed for Modrinth {}
@@ -248,17 +379,39 @@ impl PlatformKind for Modrinth {
     async fn details(_http: &reqwest::Client, _credential: Option<&str>, id: &str, content: ContentType) -> Result<ContentDetails, PlatformError> {
         let url = web_url(id);
         let project = API.project_get(id).await.map_err(|source| ferinth_error(&url, source))?;
+        let creators = team_creators(&project.team).await;
+        let author = creators.first().map(|creator| creator.name.clone());
         Ok(ContentDetails {
             id: project.id,
             slug: Some(project.slug),
             name: project.title,
-            author: None, // Modrinth resolves authors via the team endpoint; not fetched in this slice
+            author,
             summary: project.description,
             description: Some(project.body),
+            description_format: DescriptionFormat::Markdown,
             downloads: project.downloads as u64,
             icon_url: project.icon_url.map(|url| url.to_string()),
             web_url: Some(url),
             content_type: content,
+            info: ProjectInfo {
+                gallery: project.gallery.into_iter().map(gallery_image).collect(),
+                license: license_name(project.license.name, project.license.id),
+                published: Some(project.published.to_rfc3339()),
+                updated: Some(project.updated.to_rfc3339()),
+                followers: Some(project.followers as u64),
+                categories: project.categories.into_iter().chain(project.additional_categories).collect(),
+                loaders: project.loaders,
+                game_versions: project.game_versions,
+                environments: environments(project.client_side, project.server_side),
+                links: ProjectLinks {
+                    issues: project.issues_url.map(|url| url.to_string()),
+                    source: project.source_url.map(|url| url.to_string()),
+                    wiki: project.wiki_url.map(|url| url.to_string()),
+                    discord: project.discord_url.map(|url| url.to_string()),
+                    donate: project.donation_urls.into_iter().map(|link| link.url.to_string()).collect(),
+                },
+                creators,
+            },
         })
     }
 
@@ -294,6 +447,9 @@ impl PlatformKind for Modrinth {
                         primary: file.primary,
                     })
                     .collect(),
+                changelog: version.changelog,
+                channel: Some(channel(version.version_type)),
+                dependencies: version.dependencies.into_iter().filter_map(dependency).collect(),
             })
             .collect())
     }

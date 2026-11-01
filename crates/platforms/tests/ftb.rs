@@ -111,6 +111,9 @@ fn listing_versions_from_the_pack_payload() {
             date: None,
             changelog_url: None,
             files: Vec::new(),
+            changelog: None,
+            channel: None,
+            dependencies: Vec::new(),
         })
         .collect();
     assert_eq!(versions.len(), 2);

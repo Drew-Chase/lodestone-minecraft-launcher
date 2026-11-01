@@ -54,6 +54,9 @@ fn version() -> ContentVersion {
         date: None,
         changelog_url: None,
         files: Vec::new(),
+        changelog: None,
+        channel: None,
+        dependencies: Vec::new(),
     }
 }
 

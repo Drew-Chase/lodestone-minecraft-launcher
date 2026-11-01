@@ -51,6 +51,9 @@ pub struct SearchResult {
     pub downloads: u64,
     /// The icon url, when the project has one.
     pub icon_url: Option<String>,
+    /// The picture a card shows behind its name: the platform's featured image, else its first gallery
+    /// image. `None` when the project has neither.
+    pub banner_url: Option<String>,
     /// The project's web page, when the platform provides one.
     pub web_url: Option<String>,
     /// When the project was last updated, as the platform writes it (ISO 8601), when it says.
@@ -156,6 +159,12 @@ pub(crate) fn display_name(id: &str) -> String {
         .join(" ")
 }
 
+/// The picture a card shows behind its name: the platform's featured image when it has one, else the first
+/// gallery image. `None` when the project has neither.
+pub(crate) fn banner_from(featured: Option<String>, gallery: impl IntoIterator<Item = String>) -> Option<String> {
+    featured.or_else(|| gallery.into_iter().next())
+}
+
 #[cfg(test)]
 #[path = "../tests/meta.rs"]
 mod tests;
@@ -175,6 +184,8 @@ pub struct ContentDetails {
     pub summary: String,
     /// The long-form description, when the platform provides one separately.
     pub description: Option<String>,
+    /// How `description` is written. Meaningless when there is no description.
+    pub description_format: DescriptionFormat,
     /// Total download count, when the platform provides one.
     pub downloads: u64,
     /// The icon url, when the project has one.
@@ -183,6 +194,95 @@ pub struct ContentDetails {
     pub web_url: Option<String>,
     /// The content type this project is.
     pub content_type: ContentType,
+    /// The facts the project shows beside its description. Empty where the platform has none.
+    pub info: ProjectInfo,
+}
+
+/// One picture of a project's gallery.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GalleryImage {
+    /// A smaller copy of the picture, for thumbnails.
+    pub thumbnail_url: String,
+    /// The picture at full size.
+    pub full_url: String,
+    /// The picture's title, when it has one.
+    pub title: Option<String>,
+    /// The picture's description, when it has one.
+    pub description: Option<String>,
+    /// Whether the author featured this picture.
+    pub featured: bool,
+}
+
+/// A person on a project's team.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Creator {
+    /// The person's display name, or their user name when they have none.
+    pub name: String,
+    /// The person's role on the team, when the platform names one.
+    pub role: Option<String>,
+    /// The person's avatar, when they have one.
+    pub avatar_url: Option<String>,
+}
+
+/// The links a project lists.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProjectLinks {
+    /// The issue tracker.
+    pub issues: Option<String>,
+    /// The source code.
+    pub source: Option<String>,
+    /// The wiki.
+    pub wiki: Option<String>,
+    /// The project's Discord server.
+    pub discord: Option<String>,
+    /// Donation pages, in the order the project lists them.
+    pub donate: Vec<String>,
+}
+
+/// One side of a connection a project runs on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Side {
+    /// The game client.
+    Client,
+    /// A dedicated server.
+    Server,
+}
+
+/// The facts a project shows beside its description. A platform that does not provide one leaves it empty.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProjectInfo {
+    /// The project's gallery, in the platform's order.
+    pub gallery: Vec<GalleryImage>,
+    /// The licence's name, or its id when it has no name.
+    pub license: Option<String>,
+    /// When the project was first published, as ISO 8601.
+    pub published: Option<String>,
+    /// When the project was last updated, as ISO 8601.
+    pub updated: Option<String>,
+    /// How many people follow the project, when the platform counts them.
+    pub followers: Option<u64>,
+    /// The categories and tags the project is filed under.
+    pub categories: Vec<String>,
+    /// The loaders the project supports.
+    pub loaders: Vec<String>,
+    /// The Minecraft versions the project supports.
+    pub game_versions: Vec<String>,
+    /// The sides the project runs on.
+    pub environments: Vec<Side>,
+    /// The links the project lists.
+    pub links: ProjectLinks,
+    /// The people on the project's team, the owner first.
+    pub creators: Vec<Creator>,
+}
+
+/// How a project's long-form description is written.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DescriptionFormat {
+    /// Markdown, which Modrinth writes.
+    #[default]
+    Markdown,
+    /// HTML, which CurseForge writes.
+    Html,
 }
 
 /// One downloadable file belonging to a [`ContentVersion`].
@@ -230,6 +330,62 @@ pub struct ContentVersion {
     pub changelog_url: Option<String>,
     /// The downloadable files of this release.
     pub files: Vec<ContentFile>,
+    /// The release's changelog in markdown, when the platform provides one.
+    pub changelog: Option<String>,
+    /// The channel the release is published on, when the platform names one.
+    pub channel: Option<Channel>,
+    /// The projects this release relates to, including the ones a modpack bundles.
+    pub dependencies: Vec<VersionDependency>,
+}
+
+/// The channel a release is published on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Channel {
+    /// A stable release.
+    Release,
+    /// A release for testing, which may still change.
+    Beta,
+    /// An early build, which may be broken.
+    Alpha,
+}
+
+/// How one release relates to another project.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DependencyKind {
+    /// The release does not work without the other project.
+    Required,
+    /// The other project adds to the release, but is not needed.
+    Optional,
+    /// The release does not work alongside the other project.
+    Incompatible,
+    /// The other project is bundled inside the release.
+    Embedded,
+}
+
+/// One project a release relates to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VersionDependency {
+    /// How the release relates to the project.
+    pub kind: DependencyKind,
+    /// The other project's id, when the platform names it.
+    pub project_id: Option<String>,
+    /// The other project's release, when the platform names one.
+    pub version_id: Option<String>,
+}
+
+/// A project a modpack bundles, as the modpack's release names it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BundledProject {
+    /// The bundled project's id.
+    pub project_id: String,
+    /// The bundled project's name.
+    pub name: String,
+    /// The bundled project's icon, when it has one.
+    pub icon_url: Option<String>,
+    /// The bundled release's id, when the modpack names one.
+    pub version_id: Option<String>,
+    /// The bundled release's number, when it is known.
+    pub version_number: Option<String>,
 }
 
 /// One mod file a parsed modpack wants installed.

@@ -44,3 +44,77 @@ fn a_search_hit_keeps_its_update_date_and_links_to_its_project() {
     assert_eq!(result.updated.as_deref(), Some("2026-10-01T12:00:00Z"));
     assert_eq!(result.downloads, 42);
 }
+
+/// A search hit with the given gallery fields, written as the JSON they would be.
+fn hit_with_gallery(featured: &str, gallery: &str) -> SearchResult {
+    let hit: ModrinthSearchHit = serde_json::from_str(&format!(
+        r#"{{ "project_id": "AANobbMI", "title": "Sodium", "author": "jellysquid3", "description": "Fast rendering",
+             "featured_gallery": {featured}, "gallery": {gallery} }}"#
+    ))
+    .expect("recorded hit parses");
+    search_result(hit, ContentType::Mod)
+}
+
+#[test]
+fn a_search_hit_banner_is_its_featured_image_else_its_first_gallery_image() {
+    let featured = hit_with_gallery("\"https://cdn.example/featured.webp\"", "[\"https://cdn.example/a.webp\"]");
+    assert_eq!(featured.banner_url.as_deref(), Some("https://cdn.example/featured.webp"));
+    let first = hit_with_gallery("null", "[\"https://cdn.example/a.webp\", \"https://cdn.example/b.webp\"]");
+    assert_eq!(first.banner_url.as_deref(), Some("https://cdn.example/a.webp"));
+    assert_eq!(hit_with_gallery("null", "[]").banner_url, None);
+}
+
+#[test]
+fn a_project_runs_on_the_sides_it_is_required_or_optional_on() {
+    assert_eq!(environments(SideType::Required, SideType::Unsupported), vec![Side::Client]);
+    assert_eq!(environments(SideType::Unknown, SideType::Optional), vec![Side::Server]);
+    assert_eq!(environments(SideType::Required, SideType::Required), vec![Side::Client, Side::Server]);
+}
+
+#[test]
+fn a_licence_without_a_name_shows_its_id() {
+    assert_eq!(
+        license_name(String::new(), "LicenseRef-Polyform-Shield-1.0.0".to_string()).as_deref(),
+        Some("LicenseRef-Polyform-Shield-1.0.0")
+    );
+    assert_eq!(license_name("MIT License".to_string(), "MIT".to_string()).as_deref(), Some("MIT License"));
+    assert_eq!(license_name(String::new(), String::new()), None);
+}
+
+#[test]
+fn the_owner_of_a_team_comes_first_and_the_rest_keep_their_order() {
+    let creator = |name: &str, role: &str| Creator {
+        name: name.to_string(),
+        role: Some(role.to_string()),
+        avatar_url: None,
+    };
+    let names: Vec<String> = owner_first(vec![
+        creator("IMS", "Maintainer"),
+        creator("robotkoer", "Owner"),
+        creator("alexjs", "Member"),
+    ])
+    .into_iter()
+    .map(|creator| creator.name)
+    .collect();
+    assert_eq!(names, ["robotkoer", "IMS", "alexjs"]);
+}
+
+#[test]
+fn a_version_names_its_channel_and_keeps_the_dependencies_it_models() {
+    assert_eq!(channel(VersionType::Beta), Channel::Beta);
+    let embedded: Dependency =
+        serde_json::from_str(r#"{ "version_id": "cqRSJ7PC", "project_id": "ZDCwiIc3", "file_name": null, "dependency_type": "embedded" }"#)
+            .expect("recorded dependency parses");
+    assert_eq!(
+        dependency(embedded),
+        Some(VersionDependency {
+            kind: DependencyKind::Embedded,
+            project_id: Some("ZDCwiIc3".to_string()),
+            version_id: Some("cqRSJ7PC".to_string()),
+        })
+    );
+    let unknown: Dependency =
+        serde_json::from_str(r#"{ "version_id": null, "project_id": "AANobbMI", "file_name": null, "dependency_type": "something-new" }"#)
+            .expect("recorded dependency parses");
+    assert_eq!(dependency(unknown), None);
+}

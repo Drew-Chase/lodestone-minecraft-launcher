@@ -16,7 +16,10 @@ use tokio::sync::mpsc::Sender;
 use crate::PlatformKind;
 use crate::error::PlatformError;
 use crate::http::{HYDRATION_CHUNK, get_json};
-use crate::meta::{ContentDetails, ContentType, ContentVersion, Facets, Modpack, ModpackArchive, ModpackFile, SearchPage, SearchQuery, SearchResult};
+use crate::meta::{
+    ContentDetails, ContentType, ContentVersion, DescriptionFormat, Facets, Modpack, ModpackArchive, ModpackFile, ProjectInfo, SearchPage,
+    SearchQuery, SearchResult,
+};
 use crate::sealed;
 
 /// Marker for ATLauncher (https://atlauncher.com).
@@ -176,6 +179,7 @@ async fn hydrate(http: &reqwest::Client, packs: &[SimplePack]) -> Vec<SearchResu
                     description: detail.description.unwrap_or_default(),
                     downloads: 0,
                     icon_url: Some(icon_url(&pack.safe_name)),
+                    banner_url: None,
                     web_url: Some(web_url(&pack.safe_name)),
                     updated: None,
                     content_type: ContentType::Modpack,
@@ -382,10 +386,12 @@ impl PlatformKind for AtLauncher {
             author: None,
             summary: pack.description.clone().unwrap_or_default(),
             description: pack.description,
+            description_format: DescriptionFormat::default(),
             downloads: 0,
             icon_url: Some(icon_url(id)),
             web_url: Some(web_url(id)),
             content_type: ContentType::Modpack,
+            info: ProjectInfo::default(),
         })
     }
 
@@ -412,6 +418,9 @@ impl PlatformKind for AtLauncher {
                 changelog_url: None,
                 // A pack's files come from `Configs.json`, which `Platform::modpack` reads.
                 files: Vec::new(),
+                changelog: None,
+                channel: None,
+                dependencies: Vec::new(),
             })
             .collect())
     }

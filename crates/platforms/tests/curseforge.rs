@@ -119,3 +119,63 @@ fn the_files_payload_maps_onto_versions() {
     assert_eq!(versions[1].loaders, ["neoforge"]);
     assert_eq!(versions[1].files[0].url, "");
 }
+
+#[test]
+fn a_project_banners_its_first_screenshot_and_lists_them_all_as_its_gallery() {
+    let shots: Vec<CfScreenshot> = serde_json::from_str(
+        r#"[
+            { "title": "Overview", "description": "", "thumbnailUrl": "https://img.test/a-thumb.png", "url": "https://img.test/a.png" },
+            { "title": null, "thumbnailUrl": null, "url": "https://img.test/b.png" }
+        ]"#,
+    )
+    .expect("recorded screenshots parse");
+    assert_eq!(banner_of(&shots).as_deref(), Some("https://img.test/a-thumb.png"));
+    let gallery = gallery_of(shots);
+    assert_eq!(gallery.len(), 2);
+    assert_eq!(gallery[0].thumbnail_url, "https://img.test/a-thumb.png");
+    assert_eq!(gallery[0].full_url, "https://img.test/a.png");
+    assert_eq!(gallery[0].title.as_deref(), Some("Overview"));
+    assert_eq!(gallery[0].description, None, "an empty description is no description");
+    // A screenshot with no thumbnail shows its full picture as its thumbnail.
+    assert_eq!(gallery[1].thumbnail_url, "https://img.test/b.png");
+    assert_eq!(gallery[1].title, None);
+}
+
+#[test]
+fn a_file_names_its_release_channel_and_the_projects_it_relates_to() {
+    let file: CfFile = serde_json::from_str(
+        r#"{
+            "id": 9, "fileName": "testmod-2.0.0-beta.jar", "fileLength": 1, "releaseType": 2,
+            "dependencies": [
+                { "modId": 111, "relationType": 3 },
+                { "modId": 222, "relationType": 2 },
+                { "modId": 333, "relationType": 4 },
+                { "modId": 444, "relationType": 5 }
+            ]
+        }"#,
+    )
+    .expect("recorded file parses");
+    let version = file_to_content_version("306612", file, ContentType::Mod);
+    assert_eq!(version.channel, Some(Channel::Beta));
+    // Tools (relation 4) are not modelled, so they are left out.
+    assert_eq!(
+        version.dependencies,
+        vec![
+            VersionDependency {
+                kind: DependencyKind::Required,
+                project_id: Some("111".to_string()),
+                version_id: None,
+            },
+            VersionDependency {
+                kind: DependencyKind::Optional,
+                project_id: Some("222".to_string()),
+                version_id: None,
+            },
+            VersionDependency {
+                kind: DependencyKind::Incompatible,
+                project_id: Some("444".to_string()),
+                version_id: None,
+            },
+        ]
+    );
+}

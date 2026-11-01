@@ -15,7 +15,10 @@ use tokio::sync::mpsc::Sender;
 use crate::PlatformKind;
 use crate::error::PlatformError;
 use crate::http::{download_files, get_json, with_query};
-use crate::meta::{ContentDetails, ContentFile, ContentType, ContentVersion, Facets, Modpack, ModpackFile, SearchPage, SearchQuery, SearchResult};
+use crate::meta::{
+    ContentDetails, ContentFile, ContentType, ContentVersion, DescriptionFormat, Facets, Modpack, ModpackFile, ProjectInfo, SearchPage, SearchQuery,
+    SearchResult,
+};
 use crate::sealed;
 
 /// Marker for Technic (https://www.technicpack.net).
@@ -120,6 +123,7 @@ fn hit_to_result(hit: TechnicHit) -> SearchResult {
         description: String::new(),
         downloads: 0,
         icon_url: hit.icon_url,
+        banner_url: None,
         web_url: hit.url,
         updated: None,
         content_type: ContentType::Modpack,
@@ -158,10 +162,12 @@ fn details_of(id: &str, pack: TechnicModpack) -> ContentDetails {
         author: pack.user,
         summary: pack.description.clone().unwrap_or_default(),
         description: pack.description,
+        description_format: DescriptionFormat::default(),
         downloads: pack.installs.unwrap_or(0),
         icon_url: pack.icon.and_then(|icon| icon.url),
         web_url: Some(pack.platform_url.unwrap_or_else(|| format!("{WEB_BASE}{id}"))),
         content_type: ContentType::Modpack,
+        info: ProjectInfo::default(),
     }
 }
 
@@ -183,6 +189,9 @@ fn solder_versions(id: &str, minecraft: Option<&str>, builds: Vec<String>) -> Ve
             date: None,
             changelog_url: None,
             files: Vec::new(),
+            changelog: None,
+            channel: None,
+            dependencies: Vec::new(),
         })
         .collect()
 }
@@ -214,6 +223,9 @@ fn zip_versions(id: &str, pack: &TechnicModpack) -> Vec<ContentVersion> {
         date: None,
         changelog_url: None,
         files,
+        changelog: None,
+        channel: None,
+        dependencies: Vec::new(),
     }]
 }
 

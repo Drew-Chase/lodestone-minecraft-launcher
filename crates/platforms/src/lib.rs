@@ -73,8 +73,9 @@ pub use curseforge::CurseForge;
 pub use error::PlatformError;
 pub use ftb::Ftb;
 pub use meta::{
-    ContentDetails, ContentFile, ContentType, ContentVersion, Facet, Facets, Modpack, ModpackArchive, ModpackFile, SearchPage, SearchQuery,
-    SearchResult, SearchSort,
+    BundledProject, Channel, ContentDetails, ContentFile, ContentType, ContentVersion, Creator, DependencyKind, DescriptionFormat, Facet, Facets,
+    GalleryImage, Modpack, ModpackArchive, ModpackFile, ProjectInfo, ProjectLinks, SearchPage, SearchQuery, SearchResult, SearchSort, Side,
+    VersionDependency,
 };
 pub use modrinth::Modrinth;
 pub use simple_download_utility::DownloadProgress;
@@ -299,5 +300,13 @@ impl Platform<AtLauncher> {
     /// version must come from [`Platform::versions`], which names its pack.
     pub async fn modpack(&self, version: &ContentVersion) -> Result<Modpack, PlatformError> {
         atlauncher::modpack(&self.http, version).await
+    }
+}
+
+impl Platform<Modrinth> {
+    /// The projects a modpack release bundles, with their names and icons, for its contents list. The
+    /// release must come from [`Platform::versions`], which carries its dependencies.
+    pub async fn bundled(&self, version: &ContentVersion) -> Result<Vec<BundledProject>, PlatformError> {
+        modrinth::bundled(version).await
     }
 }
