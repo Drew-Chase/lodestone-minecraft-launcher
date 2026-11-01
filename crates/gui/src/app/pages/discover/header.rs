@@ -142,12 +142,16 @@ fn status(page: &Discover) -> Element<'_, Message> {
         .into()
 }
 
+/// The width of one content tab. It holds the longest label, "Resource Packs", with room either side.
+const TAB_WIDTH: f32 = 128.0;
+
 /// The content tabs. A tab the platform does not host is dimmed and cannot be picked.
 pub(super) fn tabs(page: &Discover) -> Element<'_, Message> {
-    row(TABS.into_iter().map(|content| tab(page, content))).spacing(4).width(Fill).into()
+    row(TABS.into_iter().map(|content| tab(page, content))).spacing(4).into()
 }
 
-/// One content tab, with an underline when it is the one shown.
+/// One content tab: a fixed-width target with its label centred, and the 2px bar along its bottom edge when it is the
+/// one shown. The bar lies over the button, so the whole tab is the target, bar included.
 fn tab(page: &Discover, content: ContentType) -> Element<'_, Message> {
     let supported = page.source.supports(content);
     let active = page.content == content;
@@ -158,12 +162,17 @@ fn tab(page: &Discover, content: ContentType) -> Element<'_, Message> {
     } else {
         color::Text::MUTED
     };
-    let label = Text::new(tab_label(content))
-        .size(13)
-        .font(if active { fonts::Inter::SEMI_BOLD } else { fonts::Inter::MEDIUM })
-        .color(ink);
+    let label = container(
+        Text::new(tab_label(content))
+            .size(13)
+            .font(if active { fonts::Inter::SEMI_BOLD } else { fonts::Inter::MEDIUM })
+            .color(ink),
+    )
+    .width(Fill)
+    .align_x(alignment::Horizontal::Center);
     let button = TextButton::content(label)
         .variant(Variant::Tab)
+        .width(Fill)
         .padding(Padding::new(0.0).left(14).right(14).top(12).bottom(10))
         .disabled(!supported)
         .on_press(Message::ContentSelected(content));
@@ -175,7 +184,8 @@ fn tab(page: &Discover, content: ContentType) -> Element<'_, Message> {
         },
         ..container::Style::default()
     });
-    iced::widget::column![button, underline].into()
+    let bar = container(underline).width(Fill).height(Fill).align_y(alignment::Vertical::Bottom);
+    stack![button, bar].width(Length::Fixed(TAB_WIDTH)).into()
 }
 
 /// The tab's label.
