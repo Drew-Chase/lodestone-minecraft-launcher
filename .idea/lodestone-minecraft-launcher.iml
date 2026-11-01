@@ -44,8 +44,10 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/platforms/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/platforms/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/platforms/tests" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/crates/gui/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/auth/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/export/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/export/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/gui/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/gui/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/crates/lodestone-gui/src-tauri/gen/schemas" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
