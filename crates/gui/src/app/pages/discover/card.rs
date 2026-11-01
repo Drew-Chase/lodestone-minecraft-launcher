@@ -29,6 +29,8 @@ const TABLE_ROW_HEIGHT: f32 = 88.0;
 const LINE_SPACING: f32 = 1.3;
 /// The side of a compact row's and a table row's thumbnail.
 pub const THUMB_SIZE: f32 = 44.0;
+/// The side of the icon beside a grid card's name, as the library card's icon is drawn.
+const TITLE_ICON_SIZE: f32 = 36.0;
 /// The width of the table's source column, and of its numbers.
 const TABLE_SOURCE_WIDTH: f32 = 130.0;
 const TABLE_NUMBER_WIDTH: f32 = 110.0;
@@ -67,7 +69,7 @@ pub fn short_count(count: u64) -> String {
 }
 
 /// The date part of an ISO 8601 timestamp, or nothing when it has none.
-fn date_only(updated: Option<&str>) -> &str {
+pub fn date_only(updated: Option<&str>) -> &str {
     updated.and_then(|stamp| stamp.get(..10)).unwrap_or("")
 }
 
@@ -202,11 +204,19 @@ pub fn panel(_: &iced::Theme) -> container::Style {
     }
 }
 
-/// A project as a grid card: its scene art with the platform's chip, then the name, author, summary, and a footer
-/// with the downloads and `action`. The card is `GRID_CARD_HEIGHT` tall, and the summary takes what is left.
-pub fn grid_card<'a>(source: Source, hit: &'a SearchResult, width: f32, artwork: Artwork<'_>, action: Element<'a, Message>) -> Element<'a, Message> {
-    let cover = stack![
-        cover_art(source, hit, artwork, width, GRID_ART_HEIGHT),
+/// A project as a grid card: its banner with the platform's chip, then the icon beside the name and author, the
+/// summary, and a footer with the downloads and `action`. The card is `GRID_CARD_HEIGHT` tall, and the summary takes
+/// what is left. `cover` is the banner, and `icon` the project's own picture.
+pub fn grid_card<'a>(
+    source: Source,
+    hit: &'a SearchResult,
+    width: f32,
+    cover: Artwork<'_>,
+    icon: Artwork<'_>,
+    action: Element<'a, Message>,
+) -> Element<'a, Message> {
+    let art = stack![
+        cover_art(source, hit, cover, width, GRID_ART_HEIGHT),
         container(chip(source))
             .width(Fill)
             .height(Fill)
@@ -215,27 +225,37 @@ pub fn grid_card<'a>(source: Source, hit: &'a SearchResult, width: f32, artwork:
             .align_y(alignment::Vertical::Top),
     ];
     // Two lines for the name, so a long one wraps rather than pushing the author down.
+    let heading = row![
+        thumb(source, hit, icon, TITLE_ICON_SIZE),
+        column![
+            lines_box(
+                Text::new(hit.name.as_str())
+                    .size(15)
+                    .font(fonts::Inter::BOLD)
+                    .color(color::Text::HEADLINE),
+                15.0,
+                2.0,
+            ),
+            lines_box(
+                Text::new(author_of(hit)).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
+                12.0,
+                1.0,
+            ),
+        ]
+        .spacing(2)
+        .width(Fill),
+    ]
+    .spacing(12)
+    .align_y(alignment::Vertical::Center);
     let body = column![
-        lines_box(
-            Text::new(hit.name.as_str())
-                .size(15)
-                .font(fonts::Inter::BOLD)
-                .color(color::Text::HEADLINE),
-            15.0,
-            2.0,
-        ),
-        lines_box(
-            Text::new(author_of(hit)).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
-            12.0,
-            1.0,
-        ),
+        heading,
         summary(hit.description.as_str(), color::Text::DEFAULT),
         row![downloads(hit), Space::new().width(Fill), action].align_y(alignment::Vertical::Center),
     ]
     .spacing(8)
     .padding(Padding::new(14.0))
     .height(Fill);
-    container(column![cover, body].width(width).height(Fill))
+    container(column![art, body].width(width).height(Fill))
         .width(width)
         .height(Length::Fixed(GRID_CARD_HEIGHT))
         .style(panel)

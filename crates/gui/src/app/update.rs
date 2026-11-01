@@ -115,6 +115,16 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Library(LibraryMessage::NewInstance(message)) => self.new_instance_message(message),
             LodestoneAppMessage::Downloads(message) => self.downloads_message(message),
             LodestoneAppMessage::Discover(message) => self.discover_message(message),
+            LodestoneAppMessage::Resource(message) => self.resource_message(message),
+            LodestoneAppMessage::InstanceContentLoaded(Ok(records)) => {
+                info!("Loaded {} mod(s) added to instances", records.len());
+                self.discover.set_added(&records);
+                Task::none()
+            }
+            LodestoneAppMessage::InstanceContentLoaded(Err(error)) => {
+                warn!("Loading the mods added to instances failed: {error}");
+                Task::none()
+            }
             LodestoneAppMessage::SharedLoaded(Ok(records)) => {
                 info!("Loaded {} shared download(s)", records.len());
                 self.discover.set_library(&records);
@@ -138,6 +148,8 @@ impl LodestoneLauncher {
             // The page's reveal and delete actions need the root's IO and alerts, so they are routed here.
             LodestoneAppMessage::Instance(InstanceMessage::RevealFolder) => self.reveal_current_instance(),
             LodestoneAppMessage::Instance(InstanceMessage::OpenSource) => self.open_current_source(),
+            // The Mods tab's Add opens Discover on the instance's mods.
+            LodestoneAppMessage::Instance(InstanceMessage::AddMods) => self.add_mods_from_instance(),
             LodestoneAppMessage::Instance(InstanceMessage::Menu(action)) => self.current_instance_menu(action),
             LodestoneAppMessage::SourceOpened(result) => self.source_opened(result),
             LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::RevealFolder)) => self.reveal_current_instance(),
@@ -179,7 +191,7 @@ impl LodestoneLauncher {
                     async { tokio::task::spawn_blocking(pidfile::load_live).await.unwrap_or_default() },
                     |records| LodestoneAppMessage::Game(GameMessage::Reattach(records)),
                 );
-                Task::batch([sweep, reattach, self.load_shared()])
+                Task::batch([sweep, reattach, self.load_shared(), self.load_instance_content()])
             }
             LodestoneAppMessage::DatabaseReady(Err(error)) => {
                 warn!("Launcher database unavailable: {error}");

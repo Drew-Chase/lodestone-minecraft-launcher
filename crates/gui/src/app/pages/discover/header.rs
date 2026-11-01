@@ -186,6 +186,6 @@ fn tab_label(content: ContentType) -> &'static str {
         ContentType::Shader => lang::t("discover.tab.shaders"),
         ContentType::World => lang::t("discover.tab.worlds"),
         ContentType::DataPack => lang::t("discover.tab.data_packs"),
-        ContentType::Mod => lang::t("discover.tab.modpacks"),
+        ContentType::Mod => lang::t("discover.tab.mods"),
     }
 }

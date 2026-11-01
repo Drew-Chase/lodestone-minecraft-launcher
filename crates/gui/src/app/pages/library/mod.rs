@@ -242,6 +242,11 @@ impl Library {
 
     /// Looks an instance up by id — the root uses this to open the detail
     /// page when a card or the hero is clicked. An install still running counts.
+    /// The instances the library holds, in the order it lists them.
+    pub fn instances(&self) -> &[Instance] {
+        &self.instances
+    }
+
     pub fn instance(&self, id: &str) -> Option<Instance> {
         self.every_instance().find(|instance| instance.id == id).cloned()
     }

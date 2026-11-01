@@ -12,6 +12,7 @@ fn hit(id: &str) -> SearchResult {
         description: String::new(),
         downloads: 0,
         icon_url: None,
+        banner_url: None,
         web_url: None,
         updated: None,
         content_type: ContentType::Modpack,

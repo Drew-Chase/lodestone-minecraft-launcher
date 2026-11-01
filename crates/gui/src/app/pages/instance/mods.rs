@@ -5,7 +5,7 @@
 //! of the visible rows current, so `view` only walks them.
 
 use aurora_leaf::Icon;
-use iced::widget::{Space, Text, column, container, row, text_input};
+use iced::widget::{Space, Text, column, container, image, row, text_input};
 use iced::{Background, Border, Color, Element, Fill, Padding, alignment};
 use iced_color_extension::rgb;
 
@@ -13,6 +13,7 @@ use super::GUTTER;
 use super::files::ModFile;
 use crate::app::components::badge::Badge;
 use crate::app::components::button::Variant;
+use crate::app::components::hint::hint;
 use crate::app::components::icon_button::SECONDARY_BUTTON_STYLE;
 use crate::app::components::input;
 use crate::app::components::panel::{divided_panel, panel};
@@ -97,7 +98,9 @@ impl State {
 
     /// The filter bar, which stays at the top of the tab while the list of mods scrolls beneath it. Both take
     /// the page gutter here, so the list's scroll runs to the page's edge and its scrollbar sits in the gutter.
-    pub fn view(&self) -> Element<'_, Message> {
+    /// The tab. `takes_mods` is whether the instance runs a mod loader: a vanilla instance cannot take mods, so its Add
+    /// stands dimmed.
+    pub fn view(&self, takes_mods: bool) -> Element<'_, Message> {
         let rows: Vec<Element<'_, Message>> = self.visible.iter().map(|&index| mod_row(index, &self.entries[index])).collect();
         let list = if rows.is_empty() {
             let message = if self.entries.is_empty() {
@@ -114,7 +117,7 @@ impl State {
         let list = container(list)
             .width(Fill)
             .padding(Padding::new(0.0).left(GUTTER).right(GUTTER).bottom(40.0));
-        let toolbar = container(self.toolbar())
+        let toolbar = container(self.toolbar(takes_mods))
             .width(Fill)
             .padding(Padding::new(0.0).left(GUTTER).right(GUTTER));
 
@@ -125,7 +128,14 @@ impl State {
             .into()
     }
 
-    fn toolbar(&self) -> Element<'_, Message> {
+    fn toolbar(&self, takes_mods: bool) -> Element<'_, Message> {
+        let add = TextButton::labeled_icon(Icon::lucide().plus(), lang::t("instance.mods.add"), Variant::Primary);
+        let add = if takes_mods { add.on_press(Message::Add) } else { add.disabled(true) };
+        let add_hint = if takes_mods {
+            lang::t("instance.mods.add_hint")
+        } else {
+            lang::t("instance.mods.add_vanilla")
+        };
         row![
             text_input(lang::t("instance.mods.filter_placeholder"), &self.filter.query)
                 .on_input(Message::Query)
@@ -133,7 +143,7 @@ impl State {
                 .padding(Padding::new(0.0).left(14).right(14).top(10).bottom(10))
                 .size(13)
                 .width(Fill),
-            TextButton::labeled_icon(Icon::lucide().plus(), lang::t("instance.mods.add"), Variant::Primary).on_press(Message::Add),
+            hint(add, add_hint),
         ]
         .spacing(10)
         .align_y(alignment::Vertical::Center)
@@ -149,12 +159,17 @@ fn mod_row(index: usize, entry: &ModFile) -> Element<'_, Message> {
     } else {
         (color::Text::MUTED, rgb!(255, 255, 255, 6%))
     };
-    let tile = container(utility::icon(Icon::lucide().package(), 15.0, Some((ink, ink))))
-        .width(32)
-        .height(32)
-        .align_x(alignment::Horizontal::Center)
-        .align_y(alignment::Vertical::Center)
-        .style(move |_| tile_style(fill));
+    // The jar's own icon fills the tile when the jar declares one. Otherwise the tile holds the package glyph.
+    let tile: Element<'_, Message> = match &entry.icon {
+        Some(icon) => image(icon.clone()).width(32).height(32).into(),
+        None => container(utility::icon(Icon::lucide().package(), 15.0, Some((ink, ink))))
+            .width(32)
+            .height(32)
+            .align_x(alignment::Horizontal::Center)
+            .align_y(alignment::Vertical::Center)
+            .style(move |_| tile_style(fill))
+            .into(),
+    };
 
     let mut title = row![
         Text::new(entry.name.as_str())

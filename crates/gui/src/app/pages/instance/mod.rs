@@ -36,7 +36,7 @@ use crate::app::downloads::Pending;
 use crate::app::lang;
 use crate::app::launch::games::GameView;
 use crate::app::pages::Page;
-use crate::app::pages::library::instance::Instance;
+use crate::app::pages::library::instance::{Instance, Loader};
 use crate::app::pages::library::instance_menu;
 use crate::app::theme::{color, fonts};
 use files::{InstanceFiles, WorldFile};
@@ -94,6 +94,8 @@ pub enum Message {
     /// Starts another process of an instance, from the button beside its running game. The root launches
     /// it.
     LaunchNew(String),
+    /// The Mods tab's Add was pressed. The root opens Discover on the mods of this instance.
+    AddMods,
     /// Requests navigation — the root intercepts this before the page's
     /// `update` runs (the `<Link>` of this framework).
     Navigate(Page),
@@ -253,7 +255,8 @@ impl InstancePage {
             | Message::Launch
             | Message::Kill
             | Message::Restart
-            | Message::LaunchNew(_) => Task::none(),
+            | Message::LaunchNew(_)
+            | Message::AddMods => Task::none(),
             // Results for an instance the page no longer shows, and ticks the
             // Logs tab no longer needs.
             Message::Scanned { .. }
@@ -563,7 +566,10 @@ impl InstancePage {
     ) -> Element<'a, Message> {
         let content: Element<'a, Message> = match self.tab {
             Tab::Overview => overview::view(instance, &self.screenshots, install),
-            Tab::Mods => self.mods.view().map(Message::Mods),
+            Tab::Mods => self.mods.view(instance.loader != Loader::Vanilla).map(|message| match message {
+                mods::Message::Add => Message::AddMods,
+                other => Message::Mods(other),
+            }),
             Tab::Worlds => self.worlds.view().map(Message::Worlds),
             Tab::Screenshots => screenshots::view(&self.screenshots).map(Message::Screenshots),
             Tab::Logs => self.logs.view(console).map(Message::Logs),

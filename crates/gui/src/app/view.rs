@@ -92,6 +92,11 @@ impl LodestoneLauncher {
                 Some(viewer) => viewer.map(LodestoneAppMessage::Instance),
                 None => Space::new().into(),
             },
+            // The gallery's picture viewer covers the resource page the same way.
+            Page::Resource => match self.resource.viewer() {
+                Some(viewer) => viewer.map(LodestoneAppMessage::Resource),
+                None => Space::new().into(),
+            },
             _ => Space::new().into(),
         };
         // The overlay sits under the resize handles and above everything else. It is an empty slot unless
@@ -144,7 +149,11 @@ impl LodestoneLauncher {
             self.face.clone(),
             self.account.as_ref().map(Account::username).map(str::to_string),
             matches!(self.account, Some(Account::Microsoft { .. })),
-            if self.router.current() == Page::Discover { 1 } else { 0 },
+            if matches!(self.router.current(), Page::Discover | Page::Resource) {
+                1
+            } else {
+                0
+            },
             |index| match index {
                 0 => LodestoneAppMessage::Navigate(Page::Home),
                 1 => LodestoneAppMessage::Navigate(Page::Discover),
@@ -183,6 +192,7 @@ impl LodestoneLauncher {
             Page::Login => "view.login",
             Page::Home => "view.library",
             Page::Instance => "view.instance",
+            Page::Resource => "view.resource",
             Page::Settings => "view.settings",
             Page::Showcase => "view.showcase",
             Page::Discover => "view.discover",
@@ -194,6 +204,10 @@ impl LodestoneLauncher {
                 .instance_page
                 .view(self.window_size, self.page_game_view(), self.instance_install())
                 .map(LodestoneAppMessage::Instance),
+            Page::Resource => match self.resource_status() {
+                Some(status) => self.resource.view(self.window_size, &status).map(LodestoneAppMessage::Resource),
+                None => Space::new().into(),
+            },
             Page::Settings => self.settings.view().map(LodestoneAppMessage::Settings),
             Page::Showcase => self.showcase.view().map(LodestoneAppMessage::Showcase),
             Page::Discover => self.discover.view(self.window_size).map(LodestoneAppMessage::Discover),

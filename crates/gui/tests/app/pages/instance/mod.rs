@@ -35,6 +35,7 @@ fn sample_files() -> InstanceFiles {
             name: "Sodium".to_string(),
             author: Some("JellySquid".to_string()),
             version: Some("0.5.8".to_string()),
+            icon: None,
         }],
         worlds: vec![files::WorldFile {
             path: PathBuf::from("/instances/aether/saves/Aether Hub"),

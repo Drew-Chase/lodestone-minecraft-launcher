@@ -2,6 +2,7 @@
 //! of results, and the layout switcher. Once the page scrolls past it, the same
 //! row is pinned over the results.
 
+use aurora_leaf::Icon;
 use iced::widget::{Space, Text, container, opaque, row};
 use iced::{Background, Element, Fill, Length, Padding, alignment};
 
@@ -9,10 +10,12 @@ use super::{Discover, DiscoverView, GAP, Message, SIDE};
 use crate::app::components::{Select, scrollbar, segmented, select};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
-use lodestone_platforms::{Facets, SearchSort};
+use lodestone_platforms::{ContentType, Facets, SearchSort};
 
 /// The width of each filter selector.
 const SELECT_WIDTH: f32 = 176.0;
+/// The width of the Mods tab's instance selector, which carries the instance's name.
+const INSTANCE_SELECT_WIDTH: f32 = 220.0;
 
 /// The height of the filter row. It is the selectors' trigger height. The row keeps it wherever it sits, so
 /// a pinned row leaves a gap of the same height behind.
@@ -21,6 +24,9 @@ pub(super) const HEIGHT: f32 = select::TRIGGER_HEIGHT;
 /// The filter selectors, the count and the layout switcher.
 pub(super) fn view(page: &Discover) -> Element<'_, Message> {
     let mut controls: Vec<Element<'_, Message>> = Vec::new();
+    if page.content == ContentType::Mod {
+        controls.push(instance_select(page));
+    }
     if let Some(facets) = page.facets().filter(|_| page.source.has_filters()) {
         controls.extend(filters(page, facets));
     }
@@ -108,6 +114,25 @@ fn select<'a>(options: Vec<String>, selected: usize, message: fn(usize) -> Messa
         .on_select(message)
         .width(Length::Fixed(SELECT_WIDTH))
         .into()
+}
+
+/// The Mods tab's selector for the instance mods are added to. It lists the instances the library holds, and it is
+/// dimmed when there are none.
+fn instance_select(page: &Discover) -> Element<'_, Message> {
+    let names: Vec<String> = page.instances.iter().map(|choice| choice.name.clone()).collect();
+    let selected = page
+        .target
+        .as_ref()
+        .and_then(|id| page.instances.iter().position(|choice| &choice.id == id));
+    let picker = Select::new(names.clone(), selected)
+        .leading_icon(Icon::lucide().package())
+        .on_select(Message::InstanceSelected)
+        .width(Length::Fixed(INSTANCE_SELECT_WIDTH));
+    if names.is_empty() {
+        picker.placeholder(lang::t("discover.mods.no_instances")).disabled(true).into()
+    } else {
+        picker.placeholder(lang::t("discover.mods.choose_instance")).into()
+    }
 }
 
 /// The sort selector, offering the sorts the platform can express.

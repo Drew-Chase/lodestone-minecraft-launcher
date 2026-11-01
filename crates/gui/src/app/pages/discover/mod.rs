@@ -14,6 +14,7 @@ mod images;
 mod query;
 mod results;
 mod source;
+mod target;
 mod toolbar;
 
 use std::collections::{HashMap, HashSet};
@@ -21,14 +22,16 @@ use std::collections::{HashMap, HashSet};
 use crate::app::components::scrollbar;
 use crate::app::install::InstallRequest;
 use crate::app::lang;
-use crate::app::shared_library::{self, SharedRecord};
+use crate::app::pages::resource::Listing;
+use crate::app::shared_library::{self, InstanceContent, SharedRecord};
 use iced::widget::{Space, column, container, stack};
 use iced::{Element, Fill, Padding, Size};
 use lodestone_platforms::{ContentType, Facets, SearchPage, SearchSort};
 
-pub use card::scene_for;
-pub use images::{Picture, load as load_icon, pack_art};
+pub use card::{date_only, scene_for, short_count};
+pub use images::{Picture, load as load_icon, load_image, pack_art};
 pub use source::Source;
+pub use target::{AddRequest, InstanceChoice};
 
 /// The art a project shows while the page is open.
 #[derive(Debug, Clone, Copy)]
@@ -41,9 +44,10 @@ pub(super) enum Artwork<'a> {
     Scene,
 }
 
-/// The content tabs, in the order the page shows them. The Mods tab is left out on purpose.
-pub const TABS: [ContentType; 5] = [
+/// The content tabs, in the order the page shows them.
+pub const TABS: [ContentType; 6] = [
     ContentType::Modpack,
+    ContentType::Mod,
     ContentType::ResourcePack,
     ContentType::Shader,
     ContentType::World,
@@ -152,6 +156,19 @@ pub enum Message {
     Install(String),
     /// A card's open button was pressed for the instance with this id.
     OpenInstance(String),
+    /// A card's add button was pressed for the project with this id: it goes into the Mods tab's instance.
+    AddMod(String),
+    /// An instance was picked in the Mods tab's selector, by its index in the page's list.
+    InstanceSelected(usize),
+    /// A card or the hero was pressed for the project with this id: its resource page opens.
+    OpenResource(String),
+    /// A mod was added to an instance, or could not be. The key is the instance, platform and project.
+    ModAdded {
+        instance: String,
+        platform: String,
+        project_id: String,
+        result: Result<InstanceContent, String>,
+    },
     /// A download into the shared folders finished, or failed.
     Downloaded {
         kind: String,
@@ -189,6 +206,29 @@ pub struct Project {
     pub icon_url: Option<String>,
     /// The Minecraft version the filters ask for, when they ask for one.
     pub game_version: Option<String>,
+    /// The release the user picked, when they picked one. `None` takes the newest that fits the filters.
+    pub version_id: Option<String>,
+}
+
+/// What the page knows of one project, for the resource page's actions to show.
+#[derive(Debug, Clone)]
+pub struct ProjectStatus {
+    /// Whether the project is in its shared folder.
+    pub in_library: bool,
+    /// Whether a download of the project is running.
+    pub downloading: bool,
+    /// The install of a modpack, when the launcher knows of one.
+    pub install: Option<InstallState>,
+    /// The instance the Mods tab adds to, when one is picked.
+    pub target: Option<InstanceChoice>,
+    /// The names of the instances a mod can be added to, in the order the selector lists them.
+    pub instances: Vec<String>,
+    /// The index of the target among the instances, when one is picked.
+    pub target_index: Option<usize>,
+    /// Whether the project is already in the target instance.
+    pub added: bool,
+    /// Whether the project is being added to the target instance now.
+    pub adding: bool,
 }
 
 /// What the root does for the page after an update.
@@ -218,6 +258,12 @@ pub enum Effect {
     Notify(String),
     /// Open an instance's page.
     OpenInstance(String),
+    /// Open a project's resource page.
+    OpenResource(Listing),
+    /// Add a mod to the instance's mods folder, with the release the user picked or the newest that fits.
+    AddMod(Box<AddRequest>),
+    /// Save a mod added to an instance, so the page still lists it after a restart.
+    RecordInstanceContent(InstanceContent),
 }
 
 /// The Discover page's state.
@@ -252,6 +298,14 @@ pub struct Discover {
     installs: HashMap<(String, String), InstallState>,
     /// The downloads still running, by (shared folder, platform key, project id).
     busy: HashSet<(String, String, String)>,
+    /// The instances a mod can be added to, in the order the library lists them.
+    instances: Vec<InstanceChoice>,
+    /// The instance the Mods tab adds to, by id, once one is picked.
+    target: Option<String>,
+    /// The mods already added to an instance, by (instance id, platform key, project id).
+    added: HashSet<(String, String, String)>,
+    /// The mods being added now, by the same key.
+    adding: HashSet<(String, String, String)>,
 }
 
 impl Discover {
@@ -279,6 +333,10 @@ impl Discover {
             library: HashSet::new(),
             installs: HashMap::new(),
             busy: HashSet::new(),
+            instances: Vec::new(),
+            target: None,
+            added: HashSet::new(),
+            adding: HashSet::new(),
         }
     }
 
@@ -350,8 +408,8 @@ impl Discover {
         shared_library::folder_name(self.content).to_string()
     }
 
-    /// The project a card asked for, with the Minecraft version the filters ask for.
-    fn project(&self, project_id: &str) -> Project {
+    /// The project a card asked for, with the Minecraft version the filters ask for, and the release when one was picked.
+    pub fn project(&self, project_id: &str, version_id: Option<&str>) -> Project {
         let hit = self.results.hits.iter().find(|hit| hit.id == project_id);
         Project {
             source: self.source,
@@ -361,6 +419,77 @@ impl Discover {
             web_url: hit.and_then(|hit| hit.web_url.clone()),
             icon_url: hit.and_then(|hit| hit.icon_url.clone()),
             game_version: self.game_version.clone(),
+            version_id: version_id.map(str::to_string),
+        }
+    }
+
+    /// What the card showed of a project, for its resource page to show while the page loads.
+    fn listing(&self, project_id: &str) -> Listing {
+        let hit = self.results.hits.iter().find(|hit| hit.id == project_id);
+        Listing {
+            source: self.source,
+            content: self.content,
+            project_id: project_id.to_string(),
+            name: hit.map_or_else(|| project_id.to_string(), |hit| hit.name.clone()),
+            author: hit.and_then(|hit| hit.author.clone()),
+            summary: hit.map(|hit| hit.description.clone()).unwrap_or_default(),
+            downloads: hit.map_or(0, |hit| hit.downloads),
+            icon_url: hit.and_then(|hit| hit.icon_url.clone()),
+            web_url: hit.and_then(|hit| hit.web_url.clone()),
+            updated: hit.and_then(|hit| hit.updated.clone()),
+        }
+    }
+
+    /// Starts a download of a project, or of one of its releases, into the shared folder of its kind. A project
+    /// already in that folder, or downloading, starts nothing.
+    pub fn download(&mut self, project: Project) -> Vec<Effect> {
+        let key = (
+            shared_library::folder_name(project.content).to_string(),
+            project.source.key().to_string(),
+            project.project_id.clone(),
+        );
+        if self.library.contains(&key) || self.busy.contains(&key) {
+            return Vec::new();
+        }
+        self.busy.insert(key);
+        vec![Effect::Download(project)]
+    }
+
+    /// Starts the install of a modpack, or of one of its releases. A pack already installing starts nothing.
+    pub fn install(&mut self, project: Project) -> Vec<Effect> {
+        let key = (project.source.key().to_string(), project.project_id.clone());
+        if self.installs.contains_key(&key) {
+            return Vec::new();
+        }
+        self.installs.insert(key, InstallState::Preparing);
+        vec![Effect::Install(project)]
+    }
+
+    /// What the page knows of one project: whether it is downloaded, installed, or being added to the Mods tab's
+    /// instance. The resource page's actions show this, so a project looks the same on both pages.
+    pub fn status_of(&self, source: Source, content: ContentType, project_id: &str) -> ProjectStatus {
+        let folder = shared_library::folder_name(content).to_string();
+        let platform = source.key().to_string();
+        let project = project_id.to_string();
+        let target = self.target().cloned();
+        let in_target = |set: &HashSet<(String, String, String)>| {
+            target
+                .as_ref()
+                .is_some_and(|choice| set.contains(&(choice.id.clone(), platform.clone(), project.clone())))
+        };
+        let target_index = self
+            .target
+            .as_ref()
+            .and_then(|id| self.instances.iter().position(|choice| &choice.id == id));
+        ProjectStatus {
+            in_library: self.library.contains(&(folder.clone(), platform.clone(), project.clone())),
+            downloading: self.busy.contains(&(folder, platform.clone(), project.clone())),
+            install: self.installs.get(&(platform.clone(), project.clone())).cloned(),
+            added: in_target(&self.added),
+            adding: in_target(&self.adding),
+            instances: self.instances.iter().map(|choice| choice.name.clone()).collect(),
+            target_index,
+            target,
         }
     }
 
@@ -378,7 +507,8 @@ impl Discover {
     }
 
     /// Clears the filters, which belong to one platform and tab. The sort goes
-    /// back to the default when the new platform cannot express the old one.
+    /// back to the default when the new platform cannot express the old one. On the
+    /// Mods tab the instance's loader and Minecraft version are set again.
     fn reset_filters(&mut self) {
         self.category = None;
         self.loader = None;
@@ -386,6 +516,7 @@ impl Discover {
         if !self.source.sorts().contains(&self.sort) {
             self.sort = self.source.sorts()[0];
         }
+        self.apply_target_filters();
     }
 
     /// Asks for the filters of the selected platform and tab, unless they are already known.
@@ -566,20 +697,25 @@ impl Discover {
             Message::Open(url) => vec![Effect::Open(url)],
             Message::FocusSearch => vec![Effect::Focus],
             Message::Download(project_id) => {
-                if self.in_library(&project_id) || self.downloading(&project_id) {
-                    return Vec::new();
-                }
-                self.busy.insert((self.folder(), self.source.key().to_string(), project_id.clone()));
-                vec![Effect::Download(self.project(&project_id))]
+                let project = self.project(&project_id, None);
+                self.download(project)
             }
             Message::Install(project_id) => {
-                let key = (self.source.key().to_string(), project_id.clone());
-                if self.installs.contains_key(&key) {
-                    return Vec::new();
-                }
-                self.installs.insert(key, InstallState::Preparing);
-                vec![Effect::Install(self.project(&project_id))]
+                let project = self.project(&project_id, None);
+                self.install(project)
             }
+            Message::AddMod(project_id) => {
+                let project = self.project(&project_id, None);
+                self.add_mod(project)
+            }
+            Message::InstanceSelected(index) => self.select_instance(index),
+            Message::OpenResource(project_id) => vec![Effect::OpenResource(self.listing(&project_id))],
+            Message::ModAdded {
+                instance,
+                platform,
+                project_id,
+                result,
+            } => self.mod_added(instance, platform, project_id, result),
             Message::OpenInstance(id) => vec![Effect::OpenInstance(id)],
             Message::Downloaded {
                 kind,
@@ -625,10 +761,10 @@ impl Discover {
     pub fn wanted_icons(&mut self) -> Vec<String> {
         let mut wanted = Vec::new();
         for hit in &self.results.hits {
-            if let Some(url) = &hit.icon_url
-                && self.requested.insert(url.clone())
-            {
-                wanted.push(url.clone());
+            for url in [&hit.icon_url, &hit.banner_url].into_iter().flatten() {
+                if self.requested.insert(url.clone()) {
+                    wanted.push(url.clone());
+                }
             }
         }
         wanted

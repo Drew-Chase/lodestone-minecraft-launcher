@@ -11,6 +11,7 @@ fn entry(name: &str, author: Option<&str>, enabled: bool) -> ModFile {
         name: name.to_string(),
         author: author.map(str::to_string),
         version: Some("1.0.0".to_string()),
+        icon: None,
     }
 }
 
@@ -75,6 +76,7 @@ fn a_mod_without_metadata_is_described_by_its_file_name() {
         name: "bare-1.0".to_string(),
         author: None,
         version: None,
+        icon: None,
     };
     assert_eq!(subtitle(&bare), "bare-1.0.jar");
     assert_eq!(subtitle(&entry("Sodium", Some("JellySquid"), true)), "by JellySquid · v1.0.0");

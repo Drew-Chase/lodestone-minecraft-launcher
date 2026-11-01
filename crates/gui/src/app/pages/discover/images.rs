@@ -57,6 +57,20 @@ pub async fn load(url: String) -> Option<Picture> {
     tokio::task::spawn_blocking(move || decode(&bytes)).await.ok().flatten()
 }
 
+/// The picture at `url` as it is, for pictures shown whole: readme images, gallery thumbnails and avatars. It has no
+/// banner form, so it costs one decode. `None` when it cannot be had or decoded.
+pub async fn load_image(url: String) -> Option<image::Handle> {
+    let bytes = fetch(&url).await?;
+    tokio::task::spawn_blocking(move || decode_image(&bytes)).await.ok().flatten()
+}
+
+/// The picture decoded as it is.
+fn decode_image(bytes: &[u8]) -> Option<image::Handle> {
+    let picture = ::image::load_from_memory(bytes).ok()?.to_rgba8();
+    let (width, height) = picture.dimensions();
+    Some(image::Handle::from_rgba(width, height, picture.into_raw()))
+}
+
 /// The picture's bytes: from the disk cache when they are there, otherwise over the network, and then into
 /// the cache. `None` when they cannot be had.
 async fn fetch(url: &str) -> Option<Vec<u8>> {

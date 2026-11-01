@@ -17,6 +17,7 @@ pub mod pages;
 pub mod paths;
 pub mod perf;
 mod preferences;
+mod resource;
 pub mod router;
 mod screenshot_actions;
 mod shared_library;
@@ -34,6 +35,7 @@ use crate::app::pages::discover::Discover;
 use crate::app::pages::instance::InstancePage;
 use crate::app::pages::library::Library;
 use crate::app::pages::login::Login;
+use crate::app::pages::resource::ResourcePage;
 use crate::app::pages::settings::Settings;
 use crate::app::pages::showcase::Showcase;
 use crate::app::paths::LauncherPaths;
@@ -94,6 +96,8 @@ pub struct LodestoneLauncher {
     showcase: Showcase,
     /// The Discover page: the platform searches, and the results on screen.
     discover: Discover,
+    /// The resource page: the project it shows, and what it has loaded of it.
+    resource: ResourcePage,
     login: Login,
     /// The launcher database — `None` until the boot-time connect lands.
     db: Option<Database>,
@@ -150,6 +154,7 @@ impl Default for LodestoneLauncher {
             settings: Settings,
             showcase: Showcase::default(),
             discover: Discover::new(discover::opening_source()),
+            resource: ResourcePage::default(),
             login: Login::default(),
             db: None,
             paths: LauncherPaths::default(),

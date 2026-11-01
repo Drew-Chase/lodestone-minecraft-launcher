@@ -13,7 +13,8 @@ use iced::widget::scrollable::AbsoluteOffset;
 use iced::widget::{Id, operation};
 
 use lodestone_platforms::{
-    AtLauncher, ContentType, ContentVersion, Facets, Ftb, Modpack, ModpackFile, Modrinth, Platform, SearchPage, SearchQuery, Technic,
+    AtLauncher, BundledProject, ContentDetails, ContentType, ContentVersion, Facets, Ftb, Modpack, ModpackFile, Modrinth, Platform, SearchPage,
+    SearchQuery, Technic,
 };
 use tracing::warn;
 
@@ -21,15 +22,16 @@ use super::LodestoneAppMessage;
 use super::LodestoneLauncher;
 use super::components::alert::Alert;
 use super::downloads::JobState;
+use super::install::mods::add_to_instance;
 use super::install::{self, IconSource, InstallRequest, modpack::Payload};
 use super::lang;
-use super::pages::discover::{self, CONTENT_ID, Effect, InstallState, Message, Project, SEARCH_ID, Search, Source};
+use super::pages::discover::{self, AddRequest, CONTENT_ID, Effect, InstallState, InstanceChoice, Message, Project, SEARCH_ID, Search, Source};
 use super::pages::instance::Tab;
 use super::pages::library::instance::Loader;
 use super::pages::library::new_instance::naming;
 use super::paths::LauncherPaths;
 use super::preferences::Preferences;
-use super::shared_library::{self, SharedRecord};
+use super::shared_library::{self, InstanceContent, SharedRecord};
 
 /// How long the page waits after the last keystroke before it searches.
 const DEBOUNCE: Duration = Duration::from_millis(300);
@@ -94,7 +96,7 @@ async fn load_facets(source: Source, content: ContentType) -> Result<Facets, Str
 }
 
 /// The versions of one project on `source`.
-async fn versions_of(source: Source, content: ContentType, project_id: &str) -> Result<Vec<ContentVersion>, String> {
+pub(super) async fn versions_of(source: Source, content: ContentType, project_id: &str) -> Result<Vec<ContentVersion>, String> {
     match source {
         Source::Modrinth => MODRINTH.versions(project_id, content).await.map_err(|error| error.to_string()),
         Source::CurseForge => curseforge()?.versions(project_id, content).await.map_err(|error| error.to_string()),
@@ -104,8 +106,32 @@ async fn versions_of(source: Source, content: ContentType, project_id: &str) -> 
     }
 }
 
+/// The details of one project on `source`: its description, facts and gallery.
+pub(super) async fn details_of(source: Source, content: ContentType, project_id: &str) -> Result<ContentDetails, String> {
+    match source {
+        Source::Modrinth => MODRINTH.details(project_id, content).await.map_err(|error| error.to_string()),
+        Source::CurseForge => curseforge()?.details(project_id, content).await.map_err(|error| error.to_string()),
+        Source::AtLauncher => ATLAUNCHER.details(project_id, content).await.map_err(|error| error.to_string()),
+        Source::Ftb => FTB.details(project_id, content).await.map_err(|error| error.to_string()),
+        Source::Technic => TECHNIC.details(project_id, content).await.map_err(|error| error.to_string()),
+    }
+}
+
+/// The projects a Modrinth modpack release bundles, for its contents list.
+pub(super) async fn bundled_of(version: &ContentVersion) -> Result<Vec<BundledProject>, String> {
+    MODRINTH.bundled(version).await.map_err(|error| error.to_string())
+}
+
+/// The release a project's action takes: the one the user picked, or else the newest that fits the filters.
+fn chosen_release(versions: Vec<ContentVersion>, project: &Project) -> Option<ContentVersion> {
+    match project.version_id.as_deref() {
+        Some(id) => versions.into_iter().find(|version| version.id == id),
+        None => pick_version(versions, project.game_version.as_deref()),
+    }
+}
+
 /// Downloads one version's files into `into`, returning their paths.
-async fn download_version(source: Source, version: &ContentVersion, into: &Path) -> Result<Vec<PathBuf>, String> {
+pub(super) async fn download_version(source: Source, version: &ContentVersion, into: &Path) -> Result<Vec<PathBuf>, String> {
     match source {
         Source::Modrinth => MODRINTH.download(version, into, None).await.map_err(|error| error.to_string()),
         Source::CurseForge => curseforge()?.download(version, into, None).await.map_err(|error| error.to_string()),
@@ -134,7 +160,7 @@ fn download_folder(project: &Project, version: &ContentVersion) -> String {
 /// Downloads a project's newest matching version into its shared folder.
 async fn download_project(project: Project, shared: PathBuf) -> Result<SharedRecord, String> {
     let versions = versions_of(project.source, project.content, &project.project_id).await?;
-    let version = pick_version(versions, project.game_version.as_deref()).ok_or_else(|| lang::t("discover.no_version").to_string())?;
+    let version = chosen_release(versions, &project).ok_or_else(|| lang::t("discover.no_version").to_string())?;
     let folder = download_folder(&project, &version);
     download_version(project.source, &version, &shared.join(&folder)).await?;
     let sizes: Vec<u64> = version.files.iter().filter_map(|file| file.size).collect();
@@ -152,7 +178,7 @@ async fn download_project(project: Project, shared: PathBuf) -> Result<SharedRec
 /// Reads a modpack, downloading its archive into the shared folder when it has one, and returns the install that makes its instance.
 async fn prepare_modpack(project: Project, paths: LauncherPaths, taken: Vec<String>) -> Result<InstallRequest, String> {
     let versions = versions_of(project.source, project.content, &project.project_id).await?;
-    let version = pick_version(versions, project.game_version.as_deref()).ok_or_else(|| lang::t("discover.no_version").to_string())?;
+    let version = chosen_release(versions, &project).ok_or_else(|| lang::t("discover.no_version").to_string())?;
     let folder = download_folder(&project, &version);
     let shared = shared_library::folder(&paths, ContentType::Modpack).join(&folder);
     let (modpack, archive) = match project.source {
@@ -349,6 +375,7 @@ impl LodestoneLauncher {
     /// Routes one message of the Discover page: the page updates, its effects run, and the icons its
     /// results need start loading. A changed platform is remembered for the next launch.
     pub(super) fn discover_message(&mut self, message: Message) -> Task<LodestoneAppMessage> {
+        self.sync_discover_instances();
         let before = self.discover.source();
         let effects = self.discover.update(message);
         let mut tasks: Vec<Task<LodestoneAppMessage>> = Vec::new();
@@ -362,6 +389,7 @@ impl LodestoneLauncher {
 
     /// Starts the page's first search when the page is opened, and loads the icons its results need.
     pub(super) fn open_discover(&mut self) -> Task<LodestoneAppMessage> {
+        self.sync_discover_instances();
         let effects = self.discover.opening();
         let mut tasks: Vec<Task<LodestoneAppMessage>> = effects.into_iter().map(|effect| self.discover_effect(effect)).collect();
         tasks.push(self.icon_tasks());
@@ -369,7 +397,7 @@ impl LodestoneLauncher {
     }
 
     /// Carries out one effect of the page.
-    fn discover_effect(&mut self, effect: Effect) -> Task<LodestoneAppMessage> {
+    pub(super) fn discover_effect(&mut self, effect: Effect) -> Task<LodestoneAppMessage> {
         match effect {
             Effect::Download(project) => self.download_task(project),
             Effect::Install(project) => self.install_task(project),
@@ -377,8 +405,61 @@ impl LodestoneLauncher {
             Effect::Record(record) => self.record_download(record),
             Effect::Notify(error) => self.notify_discover(error),
             Effect::OpenInstance(id) => self.open_instance_page(&id, Tab::Overview),
+            Effect::OpenResource(listing) => self.open_resource(listing),
+            Effect::AddMod(request) => self.add_mod_task(*request),
+            Effect::RecordInstanceContent(record) => self.record_instance_content(record),
             effect => plain_effect(effect),
         }
+    }
+
+    /// Adds a mod to its instance's `mods/` folder, with the required dependencies the folder lacks. The answer
+    /// comes back as `ModAdded`.
+    fn add_mod_task(&mut self, request: AddRequest) -> Task<LodestoneAppMessage> {
+        let instance = request.instance.id.clone();
+        let platform = request.project.source.key().to_string();
+        let project_id = request.project.project_id.clone();
+        let Some(directory) = self.library.instance(&instance).map(|found| found.directory_name) else {
+            return self.notify_discover(lang::t("discover.mods.gone").to_string());
+        };
+        let mods = self.paths.instance(&directory).join("mods");
+        Task::perform(add_to_instance(request, mods), move |result| {
+            LodestoneAppMessage::Discover(Message::ModAdded {
+                instance,
+                platform,
+                project_id,
+                result,
+            })
+        })
+    }
+
+    /// Saves a mod added to an instance, so the Mods tab still shows it after a restart. The instances reload too,
+    /// so the mod count on their cards is current.
+    fn record_instance_content(&mut self, record: InstanceContent) -> Task<LodestoneAppMessage> {
+        let reload = self.load_instances();
+        let Some(db) = self.db.clone() else {
+            return reload;
+        };
+        let save = Task::future(async move {
+            if let Err(error) = db.record_instance_content(&record).await {
+                warn!("recording the instance's mod failed: {error}");
+            }
+        })
+        .discard();
+        Task::batch([save, reload])
+    }
+
+    /// Loads the mods the Discover page added to instances, once the database is open.
+    pub(super) fn load_instance_content(&self) -> Task<LodestoneAppMessage> {
+        let Some(db) = self.db.clone() else {
+            return Task::none();
+        };
+        Task::perform(async move { db.instance_content().await }, LodestoneAppMessage::InstanceContentLoaded)
+    }
+
+    /// Hands the Discover page the instances mods can be added to, as the library holds them now.
+    pub(super) fn sync_discover_instances(&mut self) {
+        let choices: Vec<InstanceChoice> = self.library.instances().iter().map(InstanceChoice::of).collect();
+        self.discover.set_instances(choices);
     }
 
     /// Downloads a project into its shared folder. The answer comes back as `Downloaded`.

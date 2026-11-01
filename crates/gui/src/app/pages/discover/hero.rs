@@ -24,15 +24,15 @@ pub(super) fn view(page: &Discover, window: Size) -> Option<Element<'_, Message>
     }
     let hit = page.results.hits.first()?;
     let width = (window.width - 68.0 - 56.0).max(320.0);
-    let art = cover_art(page.source, hit, page.artwork(hit.icon_url.as_deref()), width, HEIGHT);
+    let art = cover_art(page.source, hit, page.artwork(hit.banner_url.as_deref()), width, HEIGHT);
     let shade = container(Space::new().width(Fill).height(Fill)).style(|_| container::Style {
         background: Some(Background::Color(Color::from_rgba(0.03, 0.04, 0.05, 0.55))),
         ..container::Style::default()
     });
 
-    let mut open = TextButton::content(
+    let open = TextButton::content(
         row![
-            glyph(Icon::lucide().external_link(), 14.0, color::Primary::ON),
+            glyph(Icon::lucide().book_open(), 14.0, color::Primary::ON),
             Text::new(super::card::view_label())
                 .size(13)
                 .font(fonts::Inter::BOLD)
@@ -42,12 +42,8 @@ pub(super) fn view(page: &Discover, window: Size) -> Option<Element<'_, Message>
         .align_y(alignment::Vertical::Center),
     )
     .variant(Variant::Primary)
-    .padding(Padding::new(0.0).left(18).right(18).top(10).bottom(10));
-    if let Some(url) = &hit.web_url {
-        open = open.on_press(Message::Open(url.clone()));
-    } else {
-        open = open.disabled(true);
-    }
+    .padding(Padding::new(0.0).left(18).right(18).top(10).bottom(10))
+    .on_press(Message::OpenResource(hit.id.clone()));
 
     let text = column![
         row![

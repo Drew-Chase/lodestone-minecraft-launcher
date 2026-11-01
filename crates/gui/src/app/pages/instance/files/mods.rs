@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use iced::widget::image;
 use lodestone_loaders::{Fabric, Loader};
 
 /// One mod jar.
@@ -17,6 +18,8 @@ pub struct ModFile {
     pub author: Option<String>,
     /// The version the mod declares.
     pub version: Option<String>,
+    /// The icon the mod declares in its jar, when it declares one that can be read.
+    pub icon: Option<image::Handle>,
 }
 
 /// A jar found in `mods/`, before its metadata is read.
@@ -46,6 +49,7 @@ pub fn scan(dir: &Path) -> Vec<ModFile> {
             ModFile {
                 author: info.as_ref().and_then(|info| info.authors.first().cloned()),
                 version: info.and_then(|info| info.version),
+                icon: lodestone_loaders::mod_icon(&jar.path).map(image::Handle::from_bytes),
                 file_name: jar.file_name,
                 enabled: jar.enabled,
                 name,

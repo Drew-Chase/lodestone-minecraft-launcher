@@ -1,6 +1,7 @@
 //! The shared folders: the content the Discover page downloads. Each kind of
 //! content has a folder under `<root>/shared`, outside every instance, so any
-//! instance can import from it.
+//! instance can import from it. The mods the page adds to an instance are kept
+//! in that instance's own `mods/` folder, and recorded as [`InstanceContent`].
 
 use std::path::PathBuf;
 
@@ -61,6 +62,23 @@ pub struct SharedRecord {
     pub path: String,
     /// The size in bytes, when the platform gave one.
     pub size: Option<u64>,
+}
+
+/// A mod the Discover page added to an instance's `mods/` folder, so the page knows it is there.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstanceContent {
+    /// The instance's id.
+    pub instance: String,
+    /// The platform's key, such as `modrinth`.
+    pub platform: String,
+    /// The project's id on that platform.
+    pub project_id: String,
+    /// The release that was added.
+    pub version_id: String,
+    /// The project's name, as it was shown when added.
+    pub name: String,
+    /// The jar's file name in the instance's `mods/` folder.
+    pub file_name: String,
 }
 
 #[cfg(test)]

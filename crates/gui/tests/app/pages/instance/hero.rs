@@ -28,6 +28,7 @@ fn the_mod_badge_counts_the_jars_the_scan_found() {
                 name: "A".to_string(),
                 author: None,
                 version: None,
+                icon: None,
             },
             ModFile {
                 file_name: "b.jar.disabled".to_string(),
@@ -35,6 +36,7 @@ fn the_mod_badge_counts_the_jars_the_scan_found() {
                 name: "B".to_string(),
                 author: None,
                 version: None,
+                icon: None,
             },
         ],
         ..InstanceFiles::default()

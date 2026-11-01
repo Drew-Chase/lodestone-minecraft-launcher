@@ -2,7 +2,8 @@
 //! project offers, and the lines that say why there is nothing to show.
 
 use aurora_leaf::Icon;
-use iced::widget::{Text, column, container, row};
+use iced::mouse;
+use iced::widget::{Text, column, container, mouse_area, row};
 use iced::{Element, Fill, Padding, Size, alignment};
 use lodestone_platforms::{ContentType, SearchResult};
 
@@ -22,9 +23,13 @@ const GAP: f32 = 16.0;
 /// The width at which compact rows sit two to a line.
 const COMPACT_TWO_COLUMNS: f32 = 760.0;
 
-/// The results in the chosen layout, with the line that explains an empty or failed search.
+/// The results in the chosen layout, with the lines that explain an empty or failed search and a Mods tab with no
+/// instance that takes mods.
 pub(super) fn view(page: &Discover, window: Size) -> Element<'_, Message> {
     let mut stack = column![].spacing(16).width(Fill);
+    if let Some(line) = mods_note(page) {
+        stack = stack.push(line);
+    }
     if let Some(line) = state_line(page) {
         stack = stack.push(line);
     }
@@ -36,6 +41,20 @@ pub(super) fn view(page: &Discover, window: Size) -> Element<'_, Message> {
         });
     }
     stack.into()
+}
+
+/// The line over the Mods tab's results when the instance it adds to runs vanilla Minecraft, which takes no mods.
+fn mods_note(page: &Discover) -> Option<Element<'_, Message>> {
+    if page.content != ContentType::Mod || page.target().is_none_or(|target| target.takes_mods()) {
+        return None;
+    }
+    Some(
+        Text::new(lang::t("discover.mods.vanilla"))
+            .size(13)
+            .font(fonts::Inter::REGULAR)
+            .color(color::Text::MUTED)
+            .into(),
+    )
 }
 
 /// The line under the filters: why a platform cannot be searched, the error of a failed
@@ -84,7 +103,17 @@ fn grid_layout(page: &Discover, window: Size) -> Element<'_, Message> {
         .results
         .hits
         .iter()
-        .map(|hit| grid_card(page.source, hit, width, page.artwork(hit.icon_url.as_deref()), action(page, hit)))
+        .map(|hit| {
+            let card = grid_card(
+                page.source,
+                hit,
+                width,
+                page.artwork(hit.banner_url.as_deref()),
+                page.artwork(hit.icon_url.as_deref()),
+                action(page, hit),
+            );
+            pressable(card, &hit.id)
+        })
         .collect();
     grid::grid(cells, columns, GAP)
 }
@@ -97,24 +126,42 @@ fn compact_layout(page: &Discover, window: Size) -> Element<'_, Message> {
         .results
         .hits
         .iter()
-        .map(|hit| compact_row(page.source, hit, page.artwork(hit.icon_url.as_deref()), action(page, hit)))
+        .map(|hit| {
+            pressable(
+                compact_row(page.source, hit, page.artwork(hit.icon_url.as_deref()), action(page, hit)),
+                &hit.id,
+            )
+        })
         .collect();
     grid::grid(cells, columns, GAP)
 }
 
 /// The table: a header row, then one row per project.
 fn table_layout(page: &Discover) -> Element<'_, Message> {
-    let rows = page
-        .results
-        .hits
-        .iter()
-        .map(|hit| table_row(page.source, hit, page.artwork(hit.icon_url.as_deref()), action(page, hit)));
+    let rows = page.results.hits.iter().map(|hit| {
+        pressable(
+            table_row(page.source, hit, page.artwork(hit.icon_url.as_deref()), action(page, hit)),
+            &hit.id,
+        )
+    });
     container(column![table_header(), column(rows)]).width(Fill).style(panel).into()
 }
 
-/// The button a project's card shows. A modpack installs, and then opens its instance. Any other
-/// project downloads into its shared folder, and then says it is in the library.
+/// A card or row that opens its project's resource page when it is pressed. The buttons inside take their own presses.
+fn pressable<'a>(content: Element<'a, Message>, project_id: &str) -> Element<'a, Message> {
+    mouse_area(content)
+        .on_press(Message::OpenResource(project_id.to_string()))
+        .interaction(mouse::Interaction::Pointer)
+        .into()
+}
+
+/// The button a project's card shows. A mod is added to the instance the Mods tab picked. A modpack
+/// installs, and then opens its instance. Any other project downloads into its shared folder, and then
+/// says it is in the library.
 fn action<'a>(page: &Discover, hit: &'a SearchResult) -> Element<'a, Message> {
+    if page.content == ContentType::Mod {
+        return mod_action(page, hit);
+    }
     if page.content == ContentType::Modpack {
         return match page.install_of(&hit.id) {
             Some(InstallState::Installed(instance)) => primary(
@@ -142,6 +189,21 @@ fn action<'a>(page: &Discover, hit: &'a SearchResult) -> Element<'a, Message> {
         Icon::lucide().download(),
         Message::Download(hit.id.clone()),
     )
+}
+
+/// The button a mod's card shows: it adds the mod to the instance the Mods tab picked, and then says it is there.
+/// Without an instance that takes mods, the button stands dimmed.
+fn mod_action<'a>(page: &Discover, hit: &'a SearchResult) -> Element<'a, Message> {
+    if page.added_to_target(&hit.id) {
+        return disabled(lang::t("discover.action.added"));
+    }
+    if page.adding_to_target(&hit.id) {
+        return disabled(lang::t("discover.action.adding"));
+    }
+    match page.target() {
+        Some(target) if target.takes_mods() => primary(lang::t("discover.action.add"), Icon::lucide().plus(), Message::AddMod(hit.id.clone())),
+        _ => disabled(lang::t("discover.action.add")),
+    }
 }
 
 /// A filled button with an icon: the action a card is for.

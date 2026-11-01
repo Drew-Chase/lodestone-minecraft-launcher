@@ -12,10 +12,11 @@ use crate::app::pages::instance::Message as InstanceMessage;
 use crate::app::pages::library::Message as LibraryMessage;
 use crate::app::pages::library::instance::Instance;
 use crate::app::pages::login::Message as LoginMessage;
+use crate::app::pages::resource::Message as ResourceMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
 use crate::app::pages::showcase::Message as ShowcaseMessage;
 use crate::app::perf;
-use crate::app::shared_library::SharedRecord;
+use crate::app::shared_library::{InstanceContent, SharedRecord};
 use crate::app::titlebar::TitlebarMessage;
 use iced::Size;
 use iced::widget::image::Handle;
@@ -40,6 +41,8 @@ pub enum LodestoneAppMessage {
     Library(LibraryMessage),
     /// The Discover page: a search, a filter or a layout change, and the answers the root sends back.
     Discover(DiscoverMessage),
+    /// The resource page: its tabs, its answers, and its actions.
+    Resource(ResourceMessage),
     Instance(InstanceMessage),
     Settings(SettingsMessage),
     Showcase(ShowcaseMessage),
@@ -51,6 +54,8 @@ pub enum LodestoneAppMessage {
     InstancesLoaded(Result<Vec<Instance>, String>),
     /// The downloads the Discover page made into the shared folders, as they were recorded.
     SharedLoaded(Result<Vec<SharedRecord>, String>),
+    /// The mods the Discover page added to instances, as they were recorded.
+    InstanceContentLoaded(Result<Vec<InstanceContent>, String>),
     /// The delete alert was answered for `instance`.
     InstanceDeleteAnswered {
         instance: String,

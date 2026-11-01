@@ -9,7 +9,7 @@ use sqlx::Row;
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
 use crate::app::pages::library::instance::{Biome, Instance, InstanceIcon, InstanceState, Loader};
-use crate::app::shared_library::SharedRecord;
+use crate::app::shared_library::{InstanceContent, SharedRecord};
 
 /// How many icon recents are kept. The icon editor shows the newest few.
 const RECENT_ICON_LIMIT: i64 = 8;
@@ -178,8 +178,14 @@ impl Database {
             .map_err(|error| error.to_string())
     }
 
-    /// Deletes an instance's row. The caller removes its folder; nothing else refers to the row.
+    /// Deletes an instance's row, and the mods the Discover page recorded for it. The caller removes its folder;
+    /// nothing else refers to the row.
     pub async fn delete_instance(&self, id: &str) -> Result<(), String> {
+        sqlx::query("DELETE FROM instance_content WHERE instance_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
         sqlx::query("DELETE FROM instances WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
@@ -280,6 +286,44 @@ impl Database {
                 size: row.get::<Option<i64>, _>("size").map(|size| size as u64),
             })
             .collect())
+    }
+
+    /// The mods the Discover page added to instances, most recent first.
+    pub async fn instance_content(&self) -> Result<Vec<InstanceContent>, String> {
+        let rows = sqlx::query("SELECT instance_id, platform, project_id, version_id, name, file_name FROM instance_content ORDER BY added_at DESC")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(rows
+            .into_iter()
+            .map(|row| InstanceContent {
+                instance: row.get("instance_id"),
+                platform: row.get("platform"),
+                project_id: row.get("project_id"),
+                version_id: row.get("version_id"),
+                name: row.get("name"),
+                file_name: row.get("file_name"),
+            })
+            .collect())
+    }
+
+    /// Records a mod added to an instance. Adding the same project to the same instance again replaces its row.
+    pub async fn record_instance_content(&self, record: &InstanceContent) -> Result<(), String> {
+        sqlx::query(
+            "INSERT OR REPLACE INTO instance_content (instance_id, platform, project_id, version_id, name, file_name, added_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&record.instance)
+        .bind(&record.platform)
+        .bind(&record.project_id)
+        .bind(&record.version_id)
+        .bind(&record.name)
+        .bind(&record.file_name)
+        .bind(Utc::now().timestamp())
+        .execute(&self.pool)
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string())
     }
 
     /// Records a file downloaded into the shared folders. Downloading the same version again replaces its row.

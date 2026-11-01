@@ -11,6 +11,7 @@ pub(crate) mod ensure;
 pub(crate) mod java;
 pub(crate) mod loader;
 pub mod modpack;
+pub(crate) mod mods;
 
 use std::collections::HashSet;
 use std::future::Future;

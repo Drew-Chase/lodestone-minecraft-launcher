@@ -15,10 +15,21 @@ use crate::app::database::Database;
 use crate::app::downloads;
 use crate::app::lang;
 use crate::app::pages::Page;
+use crate::app::pages::discover::InstanceChoice;
 use crate::app::pages::instance::{Message as InstanceMessage, Tab};
 use crate::app::pages::library::instance_menu::Action;
 
 impl LodestoneLauncher {
+    /// Opens the Discover page on the Mods tab for the instance on screen, as the Mods tab's Add asks. The page's
+    /// loader and Minecraft version become the filters, and the mods are added to this instance.
+    pub(super) fn add_mods_from_instance(&mut self) -> Task<LodestoneAppMessage> {
+        let Some(instance) = self.instance_page.instance() else {
+            return Task::none();
+        };
+        self.discover.prepare_mods(InstanceChoice::of(instance));
+        self.navigate(Page::Discover)
+    }
+
     /// Opens an instance's detail page on `tab`. An id that is no longer loaded is ignored.
     pub(super) fn open_instance_page(&mut self, id: &str, tab: Tab) -> Task<LodestoneAppMessage> {
         let Some(instance) = self.library.instance(id) else {

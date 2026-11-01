@@ -21,6 +21,7 @@ pub mod discover;
 pub mod instance;
 pub mod library;
 pub mod login;
+pub mod resource;
 pub mod settings;
 pub mod showcase;
 
@@ -43,6 +44,9 @@ pub enum Page {
     /// root's `InstancePage`; the route stays parameterless so the router
     /// keeps `Copy`/`Eq` history semantics.
     Instance,
+    /// A project's resource page, opened from Discover. The project lives in the root's `ResourcePage`, as the
+    /// instance page's does.
+    Resource,
     /// Launcher preferences.
     Settings,
     /// Style-guide gallery of every core control.
@@ -57,6 +61,7 @@ impl Page {
             Page::Home => "Library",
             Page::Discover => "Discover",
             Page::Instance => "Instance",
+            Page::Resource => "Resource",
             Page::Settings => "Settings",
             Page::Showcase => "Showcase",
         }
