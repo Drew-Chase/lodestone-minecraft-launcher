@@ -179,3 +179,35 @@ fn a_file_names_its_release_channel_and_the_projects_it_relates_to() {
         ]
     );
 }
+
+#[test]
+fn the_files_listing_names_how_many_files_the_project_has() {
+    let list: CfFileList = serde_json::from_str(FILES).expect("recorded payload parses");
+    assert_eq!(list.pagination.map(|pagination| pagination.total_count), Some(2));
+}
+
+/// Recorded slice of the real `/v1/mods/{id}/files/{fileId}` response. The download url is hidden.
+const FILE: &str = r#"{
+    "data": {
+        "id": 4838285,
+        "fileName": "testmod-1.0.0.jar",
+        "downloadUrl": null,
+        "fileLength": 123456,
+        "hashes": [
+            { "value": "0123456789abcdef0123456789abcdef01234567", "algo": 1 },
+            { "value": "ff", "algo": 2 }
+        ]
+    }
+}"#;
+
+#[test]
+fn a_file_detail_names_the_jar_and_its_sha1_and_size() {
+    let envelope: CfFileEnvelope = serde_json::from_str(FILE).expect("recorded file parses");
+    assert_eq!(envelope.data.file_name, "testmod-1.0.0.jar");
+    assert_eq!(
+        sha1_of(&envelope.data.hashes).as_deref(),
+        Some("0123456789abcdef0123456789abcdef01234567")
+    );
+    assert_eq!(envelope.data.file_length, 123456);
+    assert!(envelope.data.download_url.is_none());
+}

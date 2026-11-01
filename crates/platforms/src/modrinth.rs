@@ -3,13 +3,14 @@
 //! Search and the tag lists are hand-rolled: ferinth serializes its facets
 //! through `Debug`, which Modrinth answers with zero hits.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use ferinth::Ferinth;
 use ferinth::structures::project::{GalleryItem, SideType};
 use ferinth::structures::user::TeamMember;
-use ferinth::structures::version::{Dependency, DependencyType, VersionType};
+use ferinth::structures::version::{Dependency, DependencyType, LatestVersionBody, Version, VersionType};
 use serde::Deserialize;
 use simple_download_utility::DownloadProgress;
 use tokio::sync::mpsc::Sender;
@@ -29,8 +30,11 @@ pub struct Modrinth;
 const SEARCH_BASE: &str = "https://api.modrinth.com/v2/search";
 const TAG_BASE: &str = "https://api.modrinth.com/v2/tag";
 const PROJECTS_BASE: &str = "https://api.modrinth.com/v2/projects";
+const VERSION_FILES_BASE: &str = "https://api.modrinth.com/v2/version_files";
 /// The largest page `/v2/search` returns.
 const MAX_PAGE: u32 = 100;
+/// How many hashes or project ids one bulk call names. A longer list is split across calls.
+const BATCH: usize = 250;
 
 /// ferinth builds and owns its own client (Modrinth expects a descriptive user
 /// agent), so it is shared immutably across calls; `Platform::with_client` does
@@ -251,6 +255,36 @@ fn dependency(dependency: Dependency) -> Option<VersionDependency> {
     })
 }
 
+/// A Modrinth release as a [`ContentVersion`], its files and dependencies included.
+fn content_version(version: Version, content: ContentType) -> ContentVersion {
+    ContentVersion {
+        id: version.id,
+        project_id: Some(version.project_id),
+        name: Some(version.name),
+        version_number: version.version_number,
+        content_type: content,
+        minecraft_versions: version.game_versions,
+        loaders: version.loaders,
+        downloads: version.downloads as u64,
+        date: Some(version.date_published.to_rfc3339()),
+        changelog_url: None,
+        files: version
+            .files
+            .into_iter()
+            .map(|file| ContentFile {
+                name: file.filename,
+                url: file.url.to_string(),
+                sha1: Some(file.hashes.sha1),
+                size: Some(file.size as u64),
+                primary: file.primary,
+            })
+            .collect(),
+        changelog: version.changelog,
+        channel: Some(channel(version.version_type)),
+        dependencies: version.dependencies.into_iter().filter_map(dependency).collect(),
+    }
+}
+
 /// The projects a modpack release bundles, for its contents list. The projects' names and icons come from one
 /// batched call, and the bundled releases' numbers from another. A release with no bundled projects costs no call.
 pub(crate) async fn bundled(version: &ContentVersion) -> Result<Vec<BundledProject>, PlatformError> {
@@ -294,6 +328,64 @@ pub(crate) async fn bundled(version: &ContentVersion) -> Result<Vec<BundledProje
             })
         })
         .collect())
+}
+
+/// The release each file hash belongs to, keyed by the hash. Every file is taken to be a mod's jar, and a hash no
+/// release has is left out.
+pub(crate) async fn versions_by_hashes(hashes: &[String]) -> Result<HashMap<String, ContentVersion>, PlatformError> {
+    let mut found = HashMap::with_capacity(hashes.len());
+    for batch in hashes.chunks(BATCH) {
+        let answer = API
+            .version_get_from_multiple_hashes(batch.to_vec())
+            .await
+            .map_err(|source| ferinth_error(VERSION_FILES_BASE, source))?;
+        found.extend(
+            answer
+                .into_iter()
+                .map(|(hash, version)| (hash, content_version(version, ContentType::Mod))),
+        );
+    }
+    Ok(found)
+}
+
+/// The newest release of each file's project that runs on one of `loaders` and one of `game_versions`, keyed by the
+/// hash of the file it updates. A hash with no such release is left out.
+pub(crate) async fn latest_by_hashes(
+    hashes: &[String],
+    loaders: &[String],
+    game_versions: &[String],
+) -> Result<HashMap<String, ContentVersion>, PlatformError> {
+    let mut found = HashMap::with_capacity(hashes.len());
+    for batch in hashes.chunks(BATCH) {
+        let filters = LatestVersionBody {
+            loaders: loaders.to_vec(),
+            game_versions: game_versions.to_vec(),
+        };
+        let answer = API
+            .version_get_latest_from_multiple_hashes(batch.to_vec(), filters)
+            .await
+            .map_err(|source| ferinth_error(VERSION_FILES_BASE, source))?;
+        found.extend(
+            answer
+                .into_iter()
+                .map(|(hash, version)| (hash, content_version(version, ContentType::Mod))),
+        );
+    }
+    Ok(found)
+}
+
+/// The names of projects, keyed by project id. An id Modrinth does not know is left out.
+pub(crate) async fn project_names(project_ids: &[String]) -> Result<HashMap<String, String>, PlatformError> {
+    let mut names = HashMap::with_capacity(project_ids.len());
+    for batch in project_ids.chunks(BATCH) {
+        let ids: Vec<&str> = batch.iter().map(String::as_str).collect();
+        let projects = API
+            .project_get_multiple(&ids)
+            .await
+            .map_err(|source| ferinth_error(PROJECTS_BASE, source))?;
+        names.extend(projects.into_iter().map(|project| (project.id, project.title)));
+    }
+    Ok(names)
 }
 
 impl sealed::Sealed for Modrinth {}
@@ -423,35 +515,7 @@ impl PlatformKind for Modrinth {
     ) -> Result<Vec<ContentVersion>, PlatformError> {
         let url = web_url(id);
         let versions = API.version_list(id).await.map_err(|source| ferinth_error(&url, source))?;
-        Ok(versions
-            .into_iter()
-            .map(|version| ContentVersion {
-                id: version.id,
-                project_id: Some(version.project_id),
-                name: Some(version.name),
-                version_number: version.version_number,
-                content_type: content,
-                minecraft_versions: version.game_versions,
-                loaders: version.loaders,
-                downloads: version.downloads as u64,
-                date: Some(version.date_published.to_rfc3339()),
-                changelog_url: None,
-                files: version
-                    .files
-                    .into_iter()
-                    .map(|file| ContentFile {
-                        name: file.filename,
-                        url: file.url.to_string(),
-                        sha1: Some(file.hashes.sha1),
-                        size: Some(file.size as u64),
-                        primary: file.primary,
-                    })
-                    .collect(),
-                changelog: version.changelog,
-                channel: Some(channel(version.version_type)),
-                dependencies: version.dependencies.into_iter().filter_map(dependency).collect(),
-            })
-            .collect())
+        Ok(versions.into_iter().map(|version| content_version(version, content)).collect())
     }
 
     async fn download(

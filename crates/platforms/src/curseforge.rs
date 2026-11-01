@@ -31,6 +31,10 @@ const BASE: &str = "https://api.curseforge.com/v1";
 const MINECRAFT_GAME_ID: u32 = 432;
 /// The largest page `/mods/search` returns.
 const MAX_PAGE: u32 = 50;
+/// The largest page `/mods/{id}/files` returns.
+const FILE_PAGE: u32 = 50;
+/// The most file pages one listing reads, which is 2,000 files.
+const MAX_FILE_PAGES: usize = 40;
 
 /// CurseForge's top-level content classes that map onto [`ContentType`]s.
 fn class_id(content: ContentType) -> Option<u32> {
@@ -258,6 +262,14 @@ fn sha1_of(hashes: &[CfHash]) -> Option<String> {
 #[derive(Debug, Deserialize)]
 struct CfFileList {
     data: Vec<CfFile>,
+    #[serde(default)]
+    pagination: Option<CfPagination>,
+}
+
+/// One file, as `/mods/{id}/files/{fileId}` answers it.
+#[derive(Debug, Deserialize)]
+struct CfFileEnvelope {
+    data: CfFile,
 }
 
 #[derive(Debug, Deserialize)]
@@ -505,10 +517,19 @@ impl PlatformKind for CurseForge {
         id: &str,
         content: ContentType,
     ) -> Result<Vec<ContentVersion>, PlatformError> {
-        let (url, client) = request(credential, &format!("/mods/{id}/files"))?;
-        let response = get_json(&client, &url).await?;
-        let list: CfFileList = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
-        Ok(list.data.into_iter().map(|file| file_to_content_version(id, file, content)).collect())
+        let mut files: Vec<CfFile> = Vec::new();
+        for _ in 0..MAX_FILE_PAGES {
+            let (url, client) = request(credential, &format!("/mods/{id}/files?index={}&pageSize={FILE_PAGE}", files.len()))?;
+            let response = get_json(&client, &url).await?;
+            let list: CfFileList = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
+            let total = list.pagination.map_or(0, |pagination| pagination.total_count);
+            let received = list.data.len();
+            files.extend(list.data);
+            if received == 0 || files.len() as u64 >= total {
+                break;
+            }
+        }
+        Ok(files.into_iter().map(|file| file_to_content_version(id, file, content)).collect())
     }
 
     async fn download(
@@ -555,6 +576,53 @@ pub(crate) async fn file_url(credential: Option<&str>, project_id: &str, file_id
     let response = get_json(&client, &url).await?;
     let link: CfDownloadLink = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
     Ok(link.data)
+}
+
+/// The files of a project that run on a Minecraft version and a loader, newest first. CurseForge filters the files
+/// itself, so the first page holds every file that fits. Reached through `Platform::<CurseForge>::fitting_files`.
+pub(crate) async fn fitting_files(
+    credential: Option<&str>,
+    project_id: &str,
+    game_version: &str,
+    loader: &str,
+) -> Result<Vec<ContentVersion>, PlatformError> {
+    let mut path = with_query(
+        &format!("/mods/{project_id}/files?index=0&pageSize={FILE_PAGE}"),
+        "gameVersion",
+        game_version,
+    );
+    if let Some((_, id)) = LOADERS.iter().find(|(name, _)| *name == loader) {
+        path = format!("{path}&modLoaderType={id}");
+    }
+    let (url, client) = request(credential, &path)?;
+    let response = get_json(&client, &url).await?;
+    let list: CfFileList = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
+    Ok(list
+        .data
+        .into_iter()
+        .map(|file| file_to_content_version(project_id, file, ContentType::Mod))
+        .collect())
+}
+
+/// One file of a project: its name, its download url, and its sha1 and size. A file whose listing hides its url
+/// is resolved through the download-link endpoint. Reached through `Platform::<CurseForge>::file`.
+pub(crate) async fn file(credential: Option<&str>, project_id: &str, file_id: &str) -> Result<ContentFile, PlatformError> {
+    let (url, client) = request(credential, &format!("/mods/{project_id}/files/{file_id}"))?;
+    let response = get_json(&client, &url).await?;
+    let file = serde_json::from_value::<CfFileEnvelope>(response)
+        .map_err(|source| PlatformError::Json { url: url.clone(), source })?
+        .data;
+    let download = match file.download_url.filter(|link| !link.is_empty()) {
+        Some(link) => link,
+        None => file_url(credential, project_id, file_id).await?,
+    };
+    Ok(ContentFile {
+        name: file.file_name,
+        url: download,
+        sha1: sha1_of(&file.hashes),
+        size: Some(file.file_length),
+        primary: true,
+    })
 }
 
 #[cfg(test)]

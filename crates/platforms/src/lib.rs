@@ -81,6 +81,7 @@ pub use modrinth::Modrinth;
 pub use simple_download_utility::DownloadProgress;
 pub use technic::Technic;
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
@@ -275,6 +276,18 @@ impl Platform<CurseForge> {
     pub async fn file_url(&self, project_id: &str, file_id: &str) -> Result<String, PlatformError> {
         curseforge::file_url(self.credential.as_deref(), project_id, file_id).await
     }
+
+    /// One file of a project: its name, its download url, and its sha1 and size. A file whose listing hides its
+    /// url is resolved through the download-link endpoint.
+    pub async fn file(&self, project_id: &str, file_id: &str) -> Result<ContentFile, PlatformError> {
+        curseforge::file(self.credential.as_deref(), project_id, file_id).await
+    }
+
+    /// The files of a project that run on a Minecraft version and a loader, newest first. CurseForge filters them, so
+    /// the first page holds every file that fits.
+    pub async fn fitting_files(&self, project_id: &str, game_version: &str, loader: &str) -> Result<Vec<ContentVersion>, PlatformError> {
+        curseforge::fitting_files(self.credential.as_deref(), project_id, game_version, loader).await
+    }
 }
 
 impl Platform<Ftb> {
@@ -308,5 +321,27 @@ impl Platform<Modrinth> {
     /// release must come from [`Platform::versions`], which carries its dependencies.
     pub async fn bundled(&self, version: &ContentVersion) -> Result<Vec<BundledProject>, PlatformError> {
         modrinth::bundled(version).await
+    }
+
+    /// The release each file hash belongs to, keyed by the hash. Every file is taken to be a mod's jar, and a hash
+    /// no release has is left out. Hashes are lowercase SHA-1 hex.
+    pub async fn versions_by_hashes(&self, hashes: &[String]) -> Result<HashMap<String, ContentVersion>, PlatformError> {
+        modrinth::versions_by_hashes(hashes).await
+    }
+
+    /// The newest release of each file's project that runs on one of `loaders` and one of `game_versions`, keyed by
+    /// the hash of the file it updates. A hash with no such release is left out.
+    pub async fn latest_by_hashes(
+        &self,
+        hashes: &[String],
+        loaders: &[String],
+        game_versions: &[String],
+    ) -> Result<HashMap<String, ContentVersion>, PlatformError> {
+        modrinth::latest_by_hashes(hashes, loaders, game_versions).await
+    }
+
+    /// The names of projects, keyed by project id. An id the platform does not know is left out.
+    pub async fn project_names(&self, project_ids: &[String]) -> Result<HashMap<String, String>, PlatformError> {
+        modrinth::project_names(project_ids).await
     }
 }
