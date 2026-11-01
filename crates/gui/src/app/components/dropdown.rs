@@ -177,6 +177,8 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Dropdown<Message
                     } else {
                         state.menu.close();
                     }
+                    // The menu draws on the next frame, not on the next pointer move.
+                    shell.request_redraw();
                     shell.capture_event();
                 }
             }
