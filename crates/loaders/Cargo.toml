@@ -19,6 +19,7 @@ piston-mc = { workspace = true }
 simple_download_utility = { workspace = true }
 modcrawl = { workspace = true }
 zipcrawl = { workspace = true }
+toml = "1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

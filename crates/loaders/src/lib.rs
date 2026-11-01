@@ -213,3 +213,12 @@ impl<K: LoaderKind> Loader<K> {
         K::extract_mod_info(jar.as_ref())
     }
 }
+
+/// The picture a mod jar declares as its icon, as the bytes of the file. `None` when the jar declares none,
+/// or the file it names is missing, too large, or unreadable.
+///
+/// Each loader names its icon in its own metadata, and this reads it from there, so the icon is found even
+/// when the jar's metadata does not parse. Any loader's jar works, so no loader marker is needed.
+pub fn mod_icon(jar: impl AsRef<Path>) -> Option<Vec<u8>> {
+    mod_info::icon::read(jar.as_ref())
+}

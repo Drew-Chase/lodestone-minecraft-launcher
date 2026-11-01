@@ -4,7 +4,7 @@
 mod fixture;
 
 use fixture::jar;
-use lodestone_loaders::{Fabric, Forge, Loader, LoaderError, NeoForge, Quilt, Vanilla};
+use lodestone_loaders::{Fabric, Forge, Loader, LoaderError, NeoForge, Quilt, Vanilla, mod_icon};
 
 #[test]
 fn fabric_mod_json_maps_onto_mod_info() {
@@ -232,4 +232,85 @@ fn vanilla_has_no_mod_metadata() {
     let path = jar("vanilla", &[]);
     let result = Loader::<Vanilla>::new().extract_mod_info(&path);
     assert!(matches!(result, Err(LoaderError::ModInfoUnsupported { loader: "vanilla" })));
+}
+
+#[test]
+fn a_fabric_jar_yields_the_picture_its_metadata_names() {
+    let path = jar(
+        "icon-fabric",
+        &[
+            (
+                "fabric.mod.json",
+                r#"{ "schemaVersion": 1, "id": "testmod", "version": "1.0.0", "icon": "assets/testmod/icon.png" }"#,
+            ),
+            ("assets/testmod/icon.png", "PNG-BYTES"),
+        ],
+    );
+    assert_eq!(mod_icon(&path), Some(b"PNG-BYTES".to_vec()));
+}
+
+#[test]
+fn a_fabric_icon_written_as_a_map_still_yields_its_largest_picture() {
+    // A map of sizes is not the string modcrawl reads, so the metadata does not parse. The picture is still found.
+    let path = jar(
+        "icon-map",
+        &[
+            (
+                "fabric.mod.json",
+                r#"{ "schemaVersion": 1, "id": "testmod", "version": "1.0.0",
+                     "icon": { "16": "assets/testmod/16.png", "64": "assets/testmod/64.png" } }"#,
+            ),
+            ("assets/testmod/16.png", "SMALL"),
+            ("assets/testmod/64.png", "LARGE"),
+        ],
+    );
+    assert_eq!(mod_icon(&path), Some(b"LARGE".to_vec()));
+}
+
+#[test]
+fn a_forge_jar_yields_the_logo_its_mods_toml_names_at_the_top() {
+    let path = jar(
+        "icon-forge",
+        &[
+            (
+                "META-INF/mods.toml",
+                "logoFile = \"logo.png\"\n\n[[mods]]\nmodId = \"testmod\"\nversion = \"1.0.0\"\n",
+            ),
+            ("logo.png", "FORGE-LOGO"),
+        ],
+    );
+    assert_eq!(mod_icon(&path), Some(b"FORGE-LOGO".to_vec()));
+}
+
+#[test]
+fn a_quilt_jar_yields_the_icon_in_its_loader_metadata() {
+    let path = jar(
+        "icon-quilt",
+        &[
+            (
+                "quilt.mod.json",
+                r#"{ "schema_version": 1, "quilt_loader": { "id": "testmod", "version": "1.0.0", "metadata": { "icon": "quilt.png" } } }"#,
+            ),
+            ("quilt.png", "QUILT"),
+        ],
+    );
+    assert_eq!(mod_icon(&path), Some(b"QUILT".to_vec()));
+}
+
+#[test]
+fn a_jar_with_no_icon_or_a_missing_icon_file_has_none() {
+    let bare = jar(
+        "icon-none",
+        &[("fabric.mod.json", r#"{ "schemaVersion": 1, "id": "testmod", "version": "1.0.0" }"#)],
+    );
+    assert_eq!(mod_icon(&bare), None);
+    let missing = jar(
+        "icon-missing",
+        &[(
+            "fabric.mod.json",
+            r#"{ "schemaVersion": 1, "id": "testmod", "version": "1.0.0", "icon": "gone.png" }"#,
+        )],
+    );
+    assert_eq!(mod_icon(&missing), None);
+    assert_eq!(mod_icon("/nonexistent/mod.jar"), None);
 }

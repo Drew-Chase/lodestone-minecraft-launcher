@@ -18,6 +18,7 @@ use serde_json::Value;
 use crate::error::LoaderError;
 use crate::meta::{ModDependency, ModDependencyKind, ModInfo};
 
+pub(crate) mod icon;
 pub(crate) mod quilt;
 
 /// The `[[mods]]` entry of a `mods.toml`-shaped metadata, flattened.
