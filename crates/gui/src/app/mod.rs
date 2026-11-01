@@ -5,6 +5,7 @@ pub mod components;
 pub mod database;
 mod discover;
 mod downloads;
+mod export;
 pub mod face;
 mod games;
 mod install;
@@ -18,6 +19,7 @@ mod new_instance;
 pub mod pages;
 pub mod paths;
 pub mod perf;
+pub mod portable;
 mod preferences;
 mod resource;
 pub mod router;
@@ -140,6 +142,10 @@ pub struct LodestoneLauncher {
     runs_open: launch::games::RunsOpen,
     /// The installs queued, running, paused and finished, which the Downloads popover lists.
     downloads: downloads::Downloads,
+    /// The export dialog, while it is open. It sits above the page, beside the alerts.
+    export: Option<export::Dialog>,
+    /// The package this launcher carries, when it is a portable launcher. Its launch replaces the library.
+    portable: Option<portable::Portable>,
     /// The library's scene art, rendered to pixels in the background.
     art: components::art_cache::ArtCache,
     /// TEMPORARY resize-latency probe counter (env-gated).
@@ -178,6 +184,8 @@ impl Default for LodestoneLauncher {
             games: launch::games::Games::default(),
             runs_open: launch::games::RunsOpen::default(),
             downloads: downloads::Downloads::default(),
+            export: None,
+            portable: portable::launch(),
             art: components::art_cache::ArtCache::default(),
             perf: perf::Hud::default(),
         }

@@ -21,7 +21,7 @@ use super::{Account, LodestoneAppMessage, LodestoneLauncher, NavGroup};
 impl LodestoneLauncher {
     pub fn view(&self) -> Element<'_, LodestoneAppMessage> {
         let _scope = perf::scope("view.root");
-        let content: Element<'_, LodestoneAppMessage> = if self.router.current() == Page::Login {
+        let content: Element<'_, LodestoneAppMessage> = if self.router.current() == Page::Login || self.portable_signing_in() {
             // The login gate: the backdrop fills the whole window and the
             // chrome floats over it, transparent. No rail, no history.
             let auth_status = self.auth_status.as_ref().map(|result| match result {
@@ -57,6 +57,20 @@ impl LodestoneLauncher {
                 .height(Fill),
             ]
             .into()
+        } else if self.portable.is_some() {
+            // A portable launcher has no library: its page sits under the same chrome as the sign-in gate.
+            stack![
+                LoginBackdrop::new(),
+                column![
+                    self.titlebar
+                        .view(self.router.can_go_back(), self.router.can_go_forward(), true, &GameBar::default(), false)
+                        .map(LodestoneAppMessage::TitlebarMessage),
+                    self.portable_page(),
+                ]
+                .width(Fill)
+                .height(Fill),
+            ]
+            .into()
         } else {
             let bar = self.game_bar();
             column![
@@ -87,6 +101,11 @@ impl LodestoneLauncher {
             Some(dialog) => dialog.map(LodestoneAppMessage::Library),
             None => Space::new().into(),
         };
+        // The export dialog covers the page the same way, under the alerts.
+        let export: Element<'_, LodestoneAppMessage> = match self.export.as_ref() {
+            Some(dialog) => dialog.view().map(LodestoneAppMessage::Export),
+            None => Space::new().into(),
+        };
         // The screenshot viewer covers the whole window, under the alerts. It is open only on the instance page.
         let viewer: Element<'_, LodestoneAppMessage> = match self.router.current() {
             Page::Instance => match self.instance_page.viewer(self.window_size) {
@@ -107,6 +126,7 @@ impl LodestoneLauncher {
             stack![
                 content,
                 dialog,
+                export,
                 viewer,
                 alert,
                 hud,

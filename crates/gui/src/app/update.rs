@@ -116,6 +116,8 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Library(LibraryMessage::OpenNewInstance) => self.open_new_instance(),
             LodestoneAppMessage::Library(LibraryMessage::NewInstance(message)) => self.new_instance_message(message),
             LodestoneAppMessage::Downloads(message) => self.downloads_message(message),
+            LodestoneAppMessage::Export(message) => self.export_message(message),
+            LodestoneAppMessage::Portable(message) => self.portable_message(message),
             LodestoneAppMessage::Discover(message) => self.discover_message(message),
             LodestoneAppMessage::Resource(message) => self.resource_message(message),
             LodestoneAppMessage::ModSourcesLoaded(Ok(records)) => {
@@ -217,7 +219,13 @@ impl LodestoneLauncher {
                     async { tokio::task::spawn_blocking(pidfile::load_live).await.unwrap_or_default() },
                     |records| LodestoneAppMessage::Game(GameMessage::Reattach(records)),
                 );
-                Task::batch([sweep, reattach, self.load_shared(), self.load_mod_sources()])
+                Task::batch([
+                    sweep,
+                    reattach,
+                    self.load_shared(),
+                    self.load_mod_sources(),
+                    self.portable_database_ready(),
+                ])
             }
             LodestoneAppMessage::DatabaseReady(Err(error)) => {
                 warn!("Launcher database unavailable: {error}");

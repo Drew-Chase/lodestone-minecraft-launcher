@@ -3,7 +3,7 @@
 //! the alerts and the library belong to the root, so these sit beside the other root handlers in `app`.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::{Local, TimeDelta};
 use iced::Task;
@@ -130,15 +130,54 @@ impl LodestoneLauncher {
                     self.start_ready_downloads()
                 }
             }
-            Message::Cancel(job) => self
-                .alerts
-                .show(Alert::warn(lang::t("new_instance.cancel_confirm")).yes_no())
-                .map(move |confirmed| queue(Message::CancelAnswered { job, confirmed })),
+            Message::Cancel(job) => {
+                let question = if self.downloads.is_export(job) {
+                    lang::t("export.cancel_confirm")
+                } else {
+                    lang::t("new_instance.cancel_confirm")
+                };
+                self.alerts
+                    .show(Alert::warn(question).yes_no())
+                    .map(move |confirmed| queue(Message::CancelAnswered { job, confirmed }))
+            }
             Message::CancelAnswered { job, confirmed: true } => self.cancel_download(job),
             Message::CancelAnswered { confirmed: false, .. } => Task::none(),
             Message::ClearCompleted => {
                 self.downloads.clear_completed();
                 Task::none()
+            }
+            Message::ExportProgress { job, progress } => {
+                self.downloads.record_export(job, progress);
+                Task::none()
+            }
+            Message::ExportFinished { job, result } => self.export_finished(job, result),
+            Message::RevealExport(job) => match self
+                .downloads
+                .export_target(job)
+                .and_then(|target| target.parent().map(Path::to_path_buf))
+            {
+                Some(folder) => crate::app::instances::reveal_folder(folder),
+                None => Task::none(),
+            },
+        }
+    }
+
+    /// Ends an export. A cancelled export has already left the queue, so its late result is dropped. A failure shows
+    /// its reason in an alert as well as in the popover.
+    fn export_finished(&mut self, job: u64, result: Result<PathBuf, String>) -> Task<LodestoneAppMessage> {
+        if self.downloads.job(job).is_none() {
+            return Task::none();
+        }
+        match result {
+            Ok(_) => {
+                self.downloads.finish(job, Ok(()));
+                Task::none()
+            }
+            Err(error) => {
+                self.downloads.finish(job, Err(error.clone()));
+                self.alerts
+                    .show(Alert::error(lang::t_with("export.failed", &[("error", error.as_str())])))
+                    .discard()
             }
         }
     }
@@ -154,9 +193,11 @@ impl LodestoneLauncher {
                 self.downloads.finish(job, Ok(()));
                 self.library.add_instance(*instance);
                 tasks.push(self.load_instances());
+                tasks.push(self.portable_install_ended(job, Ok(())));
             }
             Err(error) => {
                 self.downloads.finish(job, Err(error.clone()));
+                tasks.push(self.portable_install_ended(job, Err(error.clone())));
                 tasks.push(
                     self.alerts
                         .show(Alert::error(lang::t_with("new_instance.not_created", &[("error", error.as_str())])))

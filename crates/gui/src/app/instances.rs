@@ -63,6 +63,7 @@ impl LodestoneLauncher {
             Some(Action::Play) => self.launch_game(id),
             Some(Action::Edit) => self.open_instance_page(id, Tab::Settings),
             Some(Action::Reveal) => self.reveal_instance(id),
+            Some(Action::Export) => self.open_export(id),
             Some(Action::Delete) => self.ask_instance_delete(id),
             Some(Action::CancelInstall) => match self.downloads.job_for_instance(id) {
                 Some(job) => self.downloads_message(downloads::Message::Cancel(job)),

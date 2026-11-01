@@ -3,7 +3,7 @@
 //! and a footer with the day's and the week's totals.
 
 use aurora_leaf::Icon;
-use iced::widget::{Column, Space, Text, column, container, row, stack};
+use iced::widget::{Column, Space, Text, column, container, row, stack, svg};
 use iced::{Background, Border, Color, Element, Fill, Padding, Shadow, Vector, alignment};
 use iced_color_extension::rgb;
 
@@ -13,6 +13,8 @@ use crate::app::components::hint::hint;
 use crate::app::components::icon_button::{self, IconButton, IconButtonStyle};
 use crate::app::components::popover::{Placement, Popover};
 use crate::app::components::{ProgressBar, TextButton, instance_icon, platform_logo, scrollbar};
+use crate::app::export::format_label;
+use crate::app::export::job::ExportJob;
 use crate::app::install::download::Transfer;
 use crate::app::install::{InstallProgress, InstallRequest};
 use crate::app::lang;
@@ -256,7 +258,46 @@ fn running_row(job: &Job) -> Element<'static, Message> {
     match &job.kind {
         JobKind::Install(request) => running_job(job, request),
         JobKind::Mod(mod_job) => running_mod(job, mod_job),
+        JobKind::Export(export) => running_export(job, export),
     }
+}
+
+/// One running export: its mark, name, format and stage, a cancel button, and a bar with the share written.
+fn running_export(job: &Job, export: &ExportJob) -> Element<'static, Message> {
+    let progress = export.progress;
+    let fraction = progress.and_then(|progress| progress.fraction());
+    let stage = progress.map_or_else(
+        || lang::t("export.stage.starting").to_owned(),
+        |progress| progress.stage.label().to_owned(),
+    );
+    running_card(
+        column![
+            row![
+                art(job, 40.0),
+                column![title(&export.name), mono_line(format!("{} · {}", format_label(export.format), stage))]
+                    .spacing(2)
+                    .width(Fill),
+                small_button(
+                    Icon::lucide().x(),
+                    Message::Cancel(job.id),
+                    lang::t("downloads.cancel"),
+                    icon_button::DANGER_BUTTON_STYLE,
+                ),
+            ]
+            .spacing(10)
+            .align_y(alignment::Vertical::Center),
+            row![
+                ProgressBar::new(fraction.unwrap_or(0.0)).indeterminate(fraction.is_none()).width(Fill),
+                Text::new(fraction.map_or_else(String::new, percent_label))
+                    .size(11)
+                    .font(fonts::JetBrainsMono::SEMI_BOLD)
+                    .color(color::Text::HEADLINE),
+            ]
+            .spacing(10)
+            .align_y(alignment::Vertical::Center),
+        ]
+        .spacing(8),
+    )
 }
 
 /// One running install, in a tinted card: its art, name and buttons, its bar with the share done at the
@@ -353,7 +394,32 @@ fn art(job: &Job, size: f32) -> Element<'static, Message> {
     match &job.kind {
         JobKind::Install(request) => instance_icon::icon(&icon_of(request), size),
         JobKind::Mod(mod_job) => platform_logo::logo(mod_job.source.logo(), size),
+        JobKind::Export(_) => export_mark(size),
     }
+}
+
+/// An export's mark, where an install shows its art: the package glyph on a green tile.
+fn export_mark(size: f32) -> Element<'static, Message> {
+    let glyph = svg(svg::Handle::from_memory(Icon::lucide().package().as_bytes()))
+        .width(size * 0.5)
+        .height(size * 0.5)
+        .style(|_, _| svg::Style {
+            color: Some(color::Primary::DEFAULT),
+        });
+    container(glyph)
+        .width(size)
+        .height(size)
+        .align_x(alignment::Horizontal::Center)
+        .align_y(alignment::Vertical::Center)
+        .style(move |_| container::Style {
+            background: Some(Background::Color(color::Primary::TINT)),
+            border: Border {
+                radius: (size * 0.25).into(),
+                ..Border::default()
+            },
+            ..container::Style::default()
+        })
+        .into()
 }
 
 /// A running install's loader, version and stage, in the mono line under its name.
@@ -406,14 +472,22 @@ fn ended_job(job: &Job) -> Element<'static, Message> {
         JobState::Failed(error) => (lang::t_with("downloads.failed", &[("error", error.as_str())]), color::Accents::PINK),
         _ => (lang::t("downloads.done").to_owned(), color::Text::MUTED),
     };
-    row![
+    let mut items = row![
         art(job, 36.0),
         column![title(job.name()), subtitle(job)].spacing(2).width(Fill),
         Text::new(status).size(11).font(fonts::Inter::REGULAR).color(ink),
     ]
     .spacing(10)
-    .align_y(alignment::Vertical::Center)
-    .into()
+    .align_y(alignment::Vertical::Center);
+    if matches!(job.kind, JobKind::Export(_)) && job.state == JobState::Done {
+        items = items.push(small_button(
+            Icon::lucide().folder(),
+            Message::RevealExport(job.id),
+            lang::t("export.show"),
+            icon_button::SECONDARY_BUTTON_STYLE,
+        ));
+    }
+    items.into()
 }
 
 /// The footer: the day's and the week's totals, and the button that clears the jobs that have ended.
@@ -472,6 +546,7 @@ fn subtitle(job: &Job) -> Text<'static> {
     match &job.kind {
         JobKind::Install(request) => mono_line(format!("{} · {}", request.loader.label(), request.mc_version)),
         JobKind::Mod(mod_job) => mono_line(mod_job.instance.clone()),
+        JobKind::Export(export) => mono_line(format_label(export.format).to_owned()),
     }
 }
 

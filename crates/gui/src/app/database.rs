@@ -38,8 +38,7 @@ impl Database {
     /// Opens (creating when missing) the launcher database and brings the
     /// schema up to date.
     pub async fn connect() -> Result<Self, String> {
-        let mut path = dirs::config_dir().ok_or("no config directory")?;
-        path.push("lodestone");
+        let mut path = crate::app::paths::config_dir().ok_or("no config directory")?;
         std::fs::create_dir_all(&path).map_err(|error| format!("creating {}: {error}", path.display()))?;
         path.push("launcher.db");
         let url = format!("sqlite://{}?mode=rwc", path.display());

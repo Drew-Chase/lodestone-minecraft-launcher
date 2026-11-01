@@ -1,6 +1,7 @@
 //! The downloads queue. Each install the New Instance dialog starts is a job here: it waits for a
 //! running slot, runs, can be paused and resumed, and ends as done or failed. A mod added to an instance
 //! from Discover is a job too. It runs at once, cannot be paused or cancelled, and ends as done or failed.
+//! An export is a job as well: it runs at once, outside the install slots, and can be cancelled.
 //! The Downloads popover beside the sidebar lists the jobs, and the library cards and instance pages show
 //! the installs still pending. This module is the state; `actions.rs` starts and stops the installs, and
 //! `panel.rs` draws the popover.
@@ -38,6 +39,12 @@ pub enum Message {
     TogglePauseAll,
     /// Drops the jobs that have ended.
     ClearCompleted,
+    /// An export reported its progress.
+    ExportProgress { job: u64, progress: ExportProgress },
+    /// An export ended, with the path of its package or the error that stopped it.
+    ExportFinished { job: u64, result: Result<PathBuf, String> },
+    /// Opens the folder that holds the package a finished export wrote.
+    RevealExport(u64),
 }
 
 use std::path::PathBuf;
@@ -48,6 +55,7 @@ use chrono::{DateTime, Local};
 use iced::task::Handle;
 
 use crate::app::database::DownloadTotals;
+use crate::app::export::job::{ExportJob, ExportProgress};
 use crate::app::install::{IconSource, InstallProgress, InstallRequest};
 use crate::app::pages::discover::Source;
 use crate::app::pages::library::instance::{Instance, InstanceIcon, InstanceState};
@@ -76,6 +84,8 @@ pub enum JobKind {
     Install(Box<InstallRequest>),
     /// Adds a mod to an instance, or swaps the mod's jar for another release.
     Mod(ModJob),
+    /// Writes an instance out as a package. It runs outside the install slots, like a mod, and can be cancelled.
+    Export(ExportJob),
 }
 
 /// A mod going into an instance, as the popover shows it.
@@ -113,15 +123,16 @@ impl Job {
     pub fn install(&self) -> Option<&InstallRequest> {
         match &self.kind {
             JobKind::Install(request) => Some(request.as_ref()),
-            JobKind::Mod(_) => None,
+            JobKind::Mod(_) | JobKind::Export(_) => None,
         }
     }
 
-    /// The job's name: the instance's name for an install, the mod's for a mod.
+    /// The job's name: the instance's name for an install or an export, the mod's for a mod.
     pub fn name(&self) -> &str {
         match &self.kind {
             JobKind::Install(request) => &request.name,
             JobKind::Mod(mod_job) => &mod_job.name,
+            JobKind::Export(export) => &export.name,
         }
     }
 
@@ -218,6 +229,31 @@ impl Downloads {
     /// Starts a mod going into an instance and returns its job id. The mod runs at once, outside the install slots.
     pub fn enqueue_mod(&mut self, mod_job: ModJob) -> u64 {
         self.push(JobKind::Mod(mod_job), JobState::Running)
+    }
+
+    /// Starts an export and returns its job id. It runs at once, outside the install slots.
+    pub fn enqueue_export(&mut self, export: ExportJob) -> u64 {
+        self.push(JobKind::Export(export), JobState::Running)
+    }
+
+    /// Records a report from a running export.
+    pub fn record_export(&mut self, id: u64, progress: ExportProgress) {
+        if let Some(JobKind::Export(export)) = self.job_mut(id).map(|job| &mut job.kind) {
+            export.progress = Some(progress);
+        }
+    }
+
+    /// The package job `id` writes, when the job is an export.
+    pub fn export_target(&self, id: u64) -> Option<PathBuf> {
+        match &self.job(id)?.kind {
+            JobKind::Export(export) => Some(export.target.clone()),
+            _ => None,
+        }
+    }
+
+    /// Whether job `id` is an export.
+    pub fn is_export(&self, id: u64) -> bool {
+        self.job(id).is_some_and(|job| matches!(job.kind, JobKind::Export(_)))
     }
 
     fn push(&mut self, kind: JobKind, state: JobState) -> u64 {
@@ -388,11 +424,19 @@ impl Downloads {
         }
     }
 
-    /// Removes install `id`. A running install is stopped, and its folder goes with the drop of its sipper. A paused
-    /// job has no sipper, so its folder is returned for the caller to remove. A mod cannot be cancelled, so it stays.
+    /// Removes install or export `id`. A running install is stopped, and its folder goes with the drop of its sipper. A
+    /// paused job has no sipper, so its folder is returned for the caller to remove. An export is stopped at its next
+    /// file, and removes its own partial package. A mod cannot be cancelled, so it stays.
     pub fn cancel(&mut self, id: u64) -> Option<PathBuf> {
-        let index = self.jobs.iter().position(|job| job.id == id && job.install().is_some())?;
+        let index = self
+            .jobs
+            .iter()
+            .position(|job| job.id == id && matches!(job.kind, JobKind::Install(_) | JobKind::Export(_)))?;
         let job = self.jobs.remove(index);
+        if let JobKind::Export(export) = &job.kind {
+            export.cancel.store(true, Ordering::SeqCst);
+            return None;
+        }
         if let Some(abort) = &job.abort {
             abort.abort();
         }

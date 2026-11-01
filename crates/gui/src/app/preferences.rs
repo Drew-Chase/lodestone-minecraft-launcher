@@ -55,8 +55,7 @@ impl Preferences {
 
 /// `<config_dir>/lodestone/preferences.json`.
 fn preferences_path() -> PathBuf {
-    let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    path.push("lodestone");
+    let mut path = crate::app::paths::config_dir().unwrap_or_else(|| PathBuf::from("."));
     path.push("preferences.json");
     path
 }

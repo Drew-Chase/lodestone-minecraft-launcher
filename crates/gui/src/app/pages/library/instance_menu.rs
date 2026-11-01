@@ -12,6 +12,8 @@ pub enum Action {
     Play,
     Edit,
     Reveal,
+    /// Opens the export dialog, which writes the instance out as a package.
+    Export,
     Delete,
     /// Stops an install that has not finished, and removes what it made.
     CancelInstall,
@@ -35,6 +37,7 @@ pub fn menu(installing: bool, reveal: bool) -> Menu {
         if reveal {
             actions.push(Some(Action::Reveal));
         }
+        actions.push(Some(Action::Export));
         actions.push(None);
         actions.push(Some(Action::Delete));
         actions
@@ -55,6 +58,7 @@ fn item(action: Action) -> MenuItem {
         Action::Play => (lang::t("common.play"), Icon::lucide().play(), false),
         Action::Edit => (lang::t("instance.menu.edit"), Icon::lucide().settings(), false),
         Action::Reveal => (lang::t("instance.menu.reveal"), Icon::lucide().folder(), false),
+        Action::Export => (lang::t("instance.menu.export"), Icon::lucide().upload(), false),
         Action::Delete => (lang::t("instance.menu.delete"), Icon::lucide().trash(), true),
         Action::CancelInstall => (lang::t("downloads.cancel_install"), Icon::lucide().x(), true),
     };

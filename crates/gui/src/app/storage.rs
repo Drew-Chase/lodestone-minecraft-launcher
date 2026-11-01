@@ -75,8 +75,7 @@ impl StoredCredentials {
 
 /// `<config_dir>/lodestone/credentials.json`.
 fn credentials_path() -> PathBuf {
-    let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    path.push("lodestone");
+    let mut path = crate::app::paths::config_dir().unwrap_or_else(|| PathBuf::from("."));
     path.push("credentials.json");
     path
 }

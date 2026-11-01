@@ -7,6 +7,7 @@ pub mod brand_tag;
 pub mod button;
 pub mod card;
 pub mod carousel;
+pub mod checkbox;
 pub mod context_menu;
 pub mod dropdown;
 pub mod game_controls;

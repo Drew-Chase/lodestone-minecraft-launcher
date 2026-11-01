@@ -28,6 +28,7 @@ notify = "8"
 lodestone_loaders = { path = "../loaders" }
 lodestone_launch = { path = "../launcher" }
 lodestone_platforms = { path = "../platforms" }
+lodestone_export = { path = "../export" }
 md-5 = "0.10"
 zip = "9"
 sha1 = "0.10"

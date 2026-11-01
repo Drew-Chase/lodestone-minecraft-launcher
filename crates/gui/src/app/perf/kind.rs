@@ -25,6 +25,8 @@ pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
         M::Settings(_) => "update.Settings",
         M::Showcase(_) => "update.Showcase",
         M::Downloads(_) => "update.Downloads",
+        M::Export(_) => "update.Export",
+        M::Portable(_) => "update.Portable",
         M::DatabaseReady(_) => "update.DatabaseReady",
         M::InstancesLoaded(_) => "update.InstancesLoaded",
         M::InstanceDeleteAnswered { .. } => "update.InstanceDeleteAnswered",

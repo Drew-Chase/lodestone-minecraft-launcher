@@ -30,8 +30,7 @@ pub struct Record {
 
 /// The folder the pid files live in: `<config dir>/lodestone/running`.
 pub fn dir() -> Option<PathBuf> {
-    let mut path = dirs::config_dir()?;
-    path.push("lodestone");
+    let mut path = crate::app::paths::config_dir()?;
     path.push("running");
     Some(path)
 }

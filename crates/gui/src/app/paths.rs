@@ -5,6 +5,7 @@
 //! libraries, the asset index and objects, extracted natives and log configs.
 
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 /// The launcher's data root and the folders under it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,9 +97,46 @@ impl LauncherPaths {
 }
 
 impl Default for LauncherPaths {
-    /// `<data dir>/lodestone`, the folder the instance list has always used.
+    /// `<data dir>/lodestone`, the folder the instance list has always used. A portable launcher uses its own root.
     fn default() -> Self {
-        Self::new(dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("lodestone"))
+        Self::new(data_root())
+    }
+}
+
+/// The roots a portable launcher keeps its files under. They are set once, before the window opens, when the launcher
+/// carries a package.
+static PORTABLE_ROOTS: OnceLock<PortableRoots> = OnceLock::new();
+
+struct PortableRoots {
+    config: PathBuf,
+    data: PathBuf,
+}
+
+/// Moves the launcher's folders under the portable roots of the package `id`. A portable launcher then never shares a
+/// library, a database or a sign-in with the launcher installed beside it.
+pub fn use_portable_roots(id: &str) {
+    let config = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("lodestone-portable")
+        .join(id);
+    let data = dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("lodestone-portable").join(id);
+    let _ = PORTABLE_ROOTS.set(PortableRoots { config, data });
+}
+
+/// The folder the launcher keeps its settings, its sign-in, its database and the records of its running games in:
+/// `<config dir>/lodestone`, or the portable root when the launcher is portable.
+pub fn config_dir() -> Option<PathBuf> {
+    match PORTABLE_ROOTS.get() {
+        Some(roots) => Some(roots.config.clone()),
+        None => dirs::config_dir().map(|dir| dir.join("lodestone")),
+    }
+}
+
+/// The data root: `<data dir>/lodestone`, or the portable root when the launcher is portable.
+fn data_root() -> PathBuf {
+    match PORTABLE_ROOTS.get() {
+        Some(roots) => roots.data.clone(),
+        None => dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("lodestone"),
     }
 }
 

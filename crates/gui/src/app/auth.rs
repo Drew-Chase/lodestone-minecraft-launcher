@@ -5,7 +5,6 @@
 use iced::Task;
 use tracing::{debug, info, warn};
 
-use crate::app::pages::Page;
 use crate::app::pages::login::Message as LoginMessage;
 use crate::app::storage::StoredMicrosoft;
 
@@ -83,8 +82,8 @@ impl LodestoneLauncher {
                         |result| LodestoneAppMessage::FaceReady(result),
                     ),
                 };
-                self.router.replace(Page::Home);
-                Task::batch([save, face_task])
+                let entered = self.enter_launcher();
+                Task::batch([save, face_task, entered])
             }
             LoginMessage::SignInFinished(generation, Err(error)) if generation == self.auth_generation => {
                 warn!("Sign-in failed: {error}");
@@ -149,8 +148,8 @@ impl LodestoneLauncher {
                     async move { auth.fetch_default_steve_face().await.map_err(|error| error.to_string()) },
                     |result| LodestoneAppMessage::FaceReady(result),
                 );
-                self.router.replace(Page::Home);
-                Task::batch([save, face_task])
+                let entered = self.enter_launcher();
+                Task::batch([save, face_task, entered])
             }
             LoginMessage::DemoMode => {
                 info!("Entering offline mode as Demo Player");
@@ -159,8 +158,8 @@ impl LodestoneLauncher {
                 let save = self.save_credentials();
                 self.account = Some(Account::Offline { username });
                 self.login.update(LoginMessage::Reset);
-                self.router.replace(Page::Home);
-                save
+                let entered = self.enter_launcher();
+                Task::batch([save, entered])
             }
             LoginMessage::LearnMore => {
                 info!("'Learn more' requested — opening a browser is not wired yet");

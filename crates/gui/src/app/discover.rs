@@ -310,7 +310,7 @@ fn write_manifest(dir: &Path, modpack: &Modpack) -> Result<(), String> {
 }
 
 /// Resolves the CurseForge files of a modpack to their download urls, a few at a time.
-async fn resolve_curseforge_files(files: Vec<ModpackFile>) -> Result<Vec<ModpackFile>, String> {
+pub(crate) async fn resolve_curseforge_files(files: Vec<ModpackFile>) -> Result<Vec<ModpackFile>, String> {
     let mut resolved = Vec::with_capacity(files.len());
     let mut remaining = files.into_iter();
     loop {

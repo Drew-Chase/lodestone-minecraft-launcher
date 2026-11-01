@@ -8,6 +8,8 @@ use color_eyre::Result;
 use tracing::info;
 
 pub fn run() -> Result<()> {
+    // A launcher that carries a package boots as a portable launcher, with its own roots, before the window opens.
+    app::portable::prepare();
     info!("Starting Lodestone Launcher v{}#{}", LodestoneLauncher::VERSION, LodestoneLauncher::BUILD);
     iced::application(LodestoneLauncher::boot, LodestoneLauncher::update, LodestoneLauncher::view)
         .title(LodestoneLauncher::TITLE)
