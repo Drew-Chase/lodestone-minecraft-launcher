@@ -72,8 +72,8 @@ pub enum JobState {
 
 /// What a job does: create an instance, or put a mod into one.
 pub enum JobKind {
-    /// Creates an instance from its request.
-    Install(InstallRequest),
+    /// Creates an instance from its request. Boxed, so the job's small mod variant does not take the install's space.
+    Install(Box<InstallRequest>),
     /// Adds a mod to an instance, or swaps the mod's jar for another release.
     Mod(ModJob),
 }
@@ -112,7 +112,7 @@ impl Job {
     /// The install the job runs, when it is an install.
     pub fn install(&self) -> Option<&InstallRequest> {
         match &self.kind {
-            JobKind::Install(request) => Some(request),
+            JobKind::Install(request) => Some(request.as_ref()),
             JobKind::Mod(_) => None,
         }
     }
@@ -212,7 +212,7 @@ pub struct Downloads {
 impl Downloads {
     /// Queues an install and returns its job id.
     pub fn enqueue(&mut self, request: InstallRequest) -> u64 {
-        self.push(JobKind::Install(request), JobState::Queued)
+        self.push(JobKind::Install(Box::new(request)), JobState::Queued)
     }
 
     /// Starts a mod going into an instance and returns its job id. The mod runs at once, outside the install slots.
