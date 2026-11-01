@@ -76,6 +76,13 @@ When reasoning about a change or answering a question about impact, work through
 - Verify correctness with the Rust toolchain: `cargo fmt` (config in `rustfmt.toml`), `cargo clippy`, and `cargo test`, run across the workspace
 - Never use Python for any tooling or scripts
 
+## Progress Tracking
+
+- Keep the task list the app shows (`update_plan`) current as the work moves, not only at the start and end of a turn. Check a step off in the same call that starts the next one, and never leave a finished step unchecked or a started step unmarked.
+- Keep exactly one step in progress. A step is done when it is built, tested or read back, not when its edit is written. Verification steps (fmt, clippy, tests, visual checks) count as steps too, and are checked off only after they pass.
+- When the plan changes (a step is added, split, dropped or reordered), resend the whole list so the list shown matches the work.
+- Before the final message, every step is either done or named as not done, with the reason.
+
 ## Commits
 
 You may create commits. When you do, follow this rule exactly:
