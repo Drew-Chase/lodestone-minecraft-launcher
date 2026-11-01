@@ -26,6 +26,10 @@ use crate::app::face::AVATAR_RADIUS;
 /// The rail's width — the reference sidebar's 68px.
 pub const WIDTH: f32 = 68.0;
 
+/// The padding above the logo. Windows draws its 32px titlebar above the rail, so the logo sits 50px from the top there.
+/// macOS draws no titlebar, so its traffic lights sit over the rail's top 32px; the padding takes that strip in too.
+const TOP_PADDING: f32 = if cfg!(target_os = "macos") { 50.0 } else { 18.0 };
+
 /// The top nav group: Library, Discover, Worlds, Servers, Friends.
 const TOP_ICONS: [&str; 5] = ["home", "compass", "globe", "server", "users"];
 /// The bottom nav group: Settings. The Downloads trigger sits above it.
@@ -74,7 +78,7 @@ pub fn sidebar<Message: Clone + 'static>(
         .push(bottom_rail)
         .push(avatar(face, username, online));
 
-    container(rail.padding(Padding::new(0.0).top(18).bottom(18)))
+    container(rail.padding(Padding::new(0.0).top(TOP_PADDING).bottom(18)))
         .width(WIDTH)
         .height(Fill)
         .style(|_| container::Style {
