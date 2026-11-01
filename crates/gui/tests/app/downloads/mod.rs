@@ -6,6 +6,7 @@ use iced::Task;
 use super::*;
 use crate::app::install::Stage;
 use crate::app::install::download::Transfer;
+use crate::app::pages::discover::Source;
 use crate::app::pages::library::instance::{Biome, Loader};
 use crate::app::paths::LauncherPaths;
 
@@ -210,4 +211,76 @@ fn take_all_bytes_sums_every_run_and_resets_them() {
 
     assert_eq!(queue.take_all_bytes(), 100);
     assert_eq!(queue.take_all_bytes(), 0);
+}
+
+/// A mod going into the instance "Aether", as the popover lists it.
+fn mod_job(name: &str, replacing: bool) -> ModJob {
+    ModJob {
+        name: name.to_owned(),
+        source: Source::Modrinth,
+        instance: "Aether".to_owned(),
+        replacing,
+    }
+}
+
+#[test]
+fn a_mod_runs_at_once_and_takes_no_install_slot() {
+    let mut queue = Downloads::default();
+    let first = queue.enqueue(request("First"));
+    let second = queue.enqueue(request("Second"));
+    let third = queue.enqueue(request("Third"));
+    let sodium = queue.enqueue_mod(mod_job("Sodium", false));
+
+    assert_eq!(queue.running(), 1, "the mod runs at once, before any install starts");
+    assert_eq!(queue.installs_running(), 0);
+    assert_eq!(queue.next_start(), Some(first), "the installs still start in order");
+    queue.start(first, handle());
+    queue.start(second, handle());
+    assert_eq!(queue.next_start(), None, "two installs fill the slots, and the mod does not count");
+    assert_eq!(queue.installs_running(), 2);
+    assert_eq!(queue.running(), 3, "the mod is one of the running jobs");
+    assert_eq!(queue.badge(), 4, "the mod counts on the badge like an install");
+    assert!(queue.job(third).is_some_and(|job| job.state == JobState::Queued));
+    assert!(queue.job(sodium).is_some_and(|job| job.mod_job().is_some()));
+}
+
+#[test]
+fn a_mod_creates_no_instance_and_reserves_no_directory() {
+    let mut queue = Downloads::default();
+    queue.enqueue_mod(mod_job("Sodium", false));
+
+    assert!(queue.pending().is_empty(), "the library lists instances, and a mod makes none");
+    assert!(queue.reserved_directories().is_empty());
+}
+
+#[test]
+fn a_mod_cannot_be_paused_or_cancelled() {
+    let mut queue = Downloads::default();
+    let sodium = queue.enqueue_mod(mod_job("Sodium", false));
+
+    assert!(queue.pause(sodium).is_none());
+    assert!(!queue.has_pausable(), "pause all has nothing to pause");
+    assert_eq!(queue.cancel(sodium), None);
+    assert!(
+        queue.job(sodium).is_some_and(|job| job.state == JobState::Running),
+        "the mod keeps running"
+    );
+}
+
+#[test]
+fn a_mod_ends_as_done_or_failed_and_is_cleared_with_the_rest() {
+    let mut queue = Downloads::default();
+    let sodium = queue.enqueue_mod(mod_job("Sodium", false));
+    let iris = queue.enqueue_mod(mod_job("Iris", true));
+    queue.finish(sodium, Ok(()));
+    queue.finish(iris, Err("the jar is locked".to_owned()));
+
+    assert_eq!(queue.badge(), 0, "ended jobs are not counted");
+    assert!(queue.job(sodium).is_some_and(|job| job.state == JobState::Done));
+    assert_eq!(
+        queue.job(iris).map(|job| job.state.clone()),
+        Some(JobState::Failed("the jar is locked".to_owned()))
+    );
+    queue.clear_completed();
+    assert!(queue.jobs().is_empty());
 }

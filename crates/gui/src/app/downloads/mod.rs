@@ -1,8 +1,9 @@
 //! The downloads queue. Each install the New Instance dialog starts is a job here: it waits for a
-//! running slot, runs, can be paused and resumed, and ends as done or failed. The Downloads popover
-//! beside the sidebar lists the jobs, and the library cards and instance pages show the ones still
-//! pending. This module is the state; `actions.rs` starts and stops the installs, and `panel.rs`
-//! draws the popover.
+//! running slot, runs, can be paused and resumed, and ends as done or failed. A mod added to an instance
+//! from Discover is a job too. It runs at once, cannot be paused or cancelled, and ends as done or failed.
+//! The Downloads popover beside the sidebar lists the jobs, and the library cards and instance pages show
+//! the installs still pending. This module is the state; `actions.rs` starts and stops the installs, and
+//! `panel.rs` draws the popover.
 
 mod actions;
 mod panel;
@@ -48,9 +49,10 @@ use iced::task::Handle;
 
 use crate::app::database::DownloadTotals;
 use crate::app::install::{IconSource, InstallProgress, InstallRequest};
+use crate::app::pages::discover::Source;
 use crate::app::pages::library::instance::{Instance, InstanceIcon, InstanceState};
 
-/// How many installs run at once. The rest wait in the queue.
+/// How many installs run at once. The rest wait in the queue. Mods are not counted against it.
 pub const RUNNING_LIMIT: usize = 2;
 
 /// Where a job is in its life.
@@ -58,24 +60,45 @@ pub const RUNNING_LIMIT: usize = 2;
 pub enum JobState {
     /// Waiting for a running slot.
     Queued,
-    /// Installing now.
+    /// Installing now, or adding a mod now.
     Running,
     /// Stopped with its folder kept, to resume later.
     Paused,
-    /// Finished, and its instance exists.
+    /// Finished. The instance exists, or the mod is in its folder.
     Done,
-    /// Stopped by an error. Its folder is gone.
+    /// Stopped by an error. An install's folder is gone.
     Failed(String),
 }
 
-/// One install: what it will create, and how far it has got.
+/// What a job does: create an instance, or put a mod into one.
+pub enum JobKind {
+    /// Creates an instance from its request.
+    Install(InstallRequest),
+    /// Adds a mod to an instance, or swaps the mod's jar for another release.
+    Mod(ModJob),
+}
+
+/// A mod going into an instance, as the popover shows it.
+#[derive(Debug, Clone)]
+pub struct ModJob {
+    /// The mod's name.
+    pub name: String,
+    /// The platform the mod comes from.
+    pub source: Source,
+    /// The name of the instance the mod goes into.
+    pub instance: String,
+    /// Whether the job swaps the mod's jar for another release, rather than adding the mod.
+    pub replacing: bool,
+}
+
+/// One job in the queue: an install or a mod, and how far it has got.
 pub struct Job {
     pub id: u64,
-    pub request: InstallRequest,
+    pub kind: JobKind,
     pub state: JobState,
-    /// The latest report of the running install.
+    /// The latest report of the running install. Mods report none.
     pub progress: Option<InstallProgress>,
-    /// The most bytes the install's downloads have moved, which is what the totals count.
+    /// The most bytes the job's downloads have moved, which is what the totals count.
     pub bytes: u64,
     /// Set while the job is paused, so the install keeps its folder when it stops.
     pub keep_folder: Arc<AtomicBool>,
@@ -86,26 +109,35 @@ pub struct Job {
 }
 
 impl Job {
-    /// The icon the job's instance will have. An uploaded icon is not on disk yet, so it shows the
-    /// catalogue's fallback until the install writes it.
-    pub fn icon(&self) -> InstanceIcon {
-        match &self.request.icon {
-            IconSource::Composed { background, symbol } => InstanceIcon::Composed {
-                background: background.clone(),
-                symbol: symbol.clone(),
-            },
-            IconSource::Uploaded(_) => InstanceIcon::Composed {
-                background: String::new(),
-                symbol: String::new(),
-            },
+    /// The install the job runs, when it is an install.
+    pub fn install(&self) -> Option<&InstallRequest> {
+        match &self.kind {
+            JobKind::Install(request) => Some(request),
+            JobKind::Mod(_) => None,
         }
     }
 
-    /// The instance the job will create. The library card and the instance page show it while the
-    /// install runs.
-    pub fn instance(&self) -> Instance {
-        let request = &self.request;
-        Instance {
+    /// The mod the job adds, when it is a mod.
+    pub fn mod_job(&self) -> Option<&ModJob> {
+        match &self.kind {
+            JobKind::Install(_) => None,
+            JobKind::Mod(mod_job) => Some(mod_job),
+        }
+    }
+
+    /// The job's name: the instance's name for an install, the mod's for a mod.
+    pub fn name(&self) -> &str {
+        match &self.kind {
+            JobKind::Install(request) => &request.name,
+            JobKind::Mod(mod_job) => &mod_job.name,
+        }
+    }
+
+    /// The instance the job will create. The library card and the instance page show it while the install runs.
+    /// `None` for a mod, which creates no instance.
+    pub fn instance(&self) -> Option<Instance> {
+        let request = self.install()?;
+        Some(Instance {
             id: request.id.clone(),
             name: request.name.clone(),
             mc_version: request.mc_version.clone(),
@@ -120,19 +152,34 @@ impl Job {
             biome: request.biome,
             art_seed: request.art_seed,
             art_path: None,
-            icon: self.icon(),
+            icon: icon_of(request),
             directory_name: request.directory_name.clone(),
             java_component: request.java_component.clone(),
             version_id: None,
             source_url: request.source_url.clone(),
             source_platform: request.source_platform.clone(),
             source_project_id: request.source_project_id.clone(),
-        }
+        })
     }
 
     /// Whether the job has ended, one way or the other.
     fn ended(&self) -> bool {
         matches!(self.state, JobState::Done | JobState::Failed(_))
+    }
+}
+
+/// The icon an instance gets from its install request. An uploaded icon is not on disk yet, so it shows the
+/// catalogue's fallback until the install writes it.
+pub fn icon_of(request: &InstallRequest) -> InstanceIcon {
+    match &request.icon {
+        IconSource::Composed { background, symbol } => InstanceIcon::Composed {
+            background: background.clone(),
+            symbol: symbol.clone(),
+        },
+        IconSource::Uploaded(_) => InstanceIcon::Composed {
+            background: String::new(),
+            symbol: String::new(),
+        },
     }
 }
 
@@ -173,12 +220,21 @@ pub struct Downloads {
 impl Downloads {
     /// Queues an install and returns its job id.
     pub fn enqueue(&mut self, request: InstallRequest) -> u64 {
+        self.push(JobKind::Install(request), JobState::Queued)
+    }
+
+    /// Starts a mod going into an instance and returns its job id. The mod runs at once, outside the install slots.
+    pub fn enqueue_mod(&mut self, mod_job: ModJob) -> u64 {
+        self.push(JobKind::Mod(mod_job), JobState::Running)
+    }
+
+    fn push(&mut self, kind: JobKind, state: JobState) -> u64 {
         self.next_id += 1;
         let id = self.next_id;
         self.jobs.push(Job {
             id,
-            request,
-            state: JobState::Queued,
+            kind,
+            state,
             progress: None,
             bytes: 0,
             keep_folder: Arc::new(AtomicBool::new(false)),
@@ -223,17 +279,28 @@ impl Downloads {
         self.jobs.iter().filter(|job| !job.ended()).count()
     }
 
-    /// How many installs are running now.
+    /// How many jobs are running now, installs and mods alike.
     pub fn running(&self) -> usize {
         self.jobs.iter().filter(|job| job.state == JobState::Running).count()
     }
 
-    /// The next queued job to start, when a running slot is free.
+    /// How many installs are running now. Only installs take the slots that [`RUNNING_LIMIT`] allows.
+    pub fn installs_running(&self) -> usize {
+        self.jobs
+            .iter()
+            .filter(|job| job.install().is_some() && job.state == JobState::Running)
+            .count()
+    }
+
+    /// The next queued install to start, when a running slot is free.
     pub fn next_start(&self) -> Option<u64> {
-        if self.running() >= RUNNING_LIMIT {
+        if self.installs_running() >= RUNNING_LIMIT {
             return None;
         }
-        self.jobs.iter().find(|job| job.state == JobState::Queued).map(|job| job.id)
+        self.jobs
+            .iter()
+            .find(|job| job.install().is_some() && job.state == JobState::Queued)
+            .map(|job| job.id)
     }
 
     /// The keep flag the install of job `id` shares, so a pause can set it.
@@ -243,7 +310,7 @@ impl Downloads {
 
     /// The request the install of job `id` runs.
     pub fn request(&self, id: u64) -> Option<&InstallRequest> {
-        self.job(id).map(|job| &job.request)
+        self.job(id).and_then(|job| job.install())
     }
 
     /// Marks job `id` as running, with the handle that stops its install.
@@ -262,10 +329,10 @@ impl Downloads {
         }
     }
 
-    /// Pauses job `id`. A running install is stopped with its folder kept, and the handle that stops
-    /// it is returned for the caller to abort.
+    /// Pauses job `id`. A running install is stopped with its folder kept, and the handle that stops it is returned for
+    /// the caller to abort. A mod cannot be paused, so it is left running.
     pub fn pause(&mut self, id: u64) -> Option<Handle> {
-        let job = self.job_mut(id)?;
+        let job = self.job_mut(id).filter(|job| job.install().is_some())?;
         match job.state {
             JobState::Queued => {
                 job.state = JobState::Paused;
@@ -288,12 +355,12 @@ impl Downloads {
         }
     }
 
-    /// Pauses every job that has not ended, and returns the handles of the installs that were running.
+    /// Pauses every install that has not ended, and returns the handles of the installs that were running.
     pub fn pause_all(&mut self) -> Vec<Handle> {
         let ids: Vec<u64> = self
             .jobs
             .iter()
-            .filter(|job| matches!(job.state, JobState::Queued | JobState::Running))
+            .filter(|job| job.install().is_some() && matches!(job.state, JobState::Queued | JobState::Running))
             .map(|job| job.id)
             .collect();
         ids.into_iter().filter_map(|id| self.pause(id)).collect()
@@ -304,9 +371,11 @@ impl Downloads {
         self.jobs.iter().any(|job| job.state == JobState::Paused)
     }
 
-    /// Whether any job is queued or running, so pause-all has something to pause.
+    /// Whether any install is queued or running, so pause-all has something to pause.
     pub fn has_pausable(&self) -> bool {
-        self.jobs.iter().any(|job| matches!(job.state, JobState::Queued | JobState::Running))
+        self.jobs
+            .iter()
+            .any(|job| job.install().is_some() && matches!(job.state, JobState::Queued | JobState::Running))
     }
 
     /// Takes the bytes job `id` moved in its current run, so each run's bytes are counted once.
@@ -327,21 +396,21 @@ impl Downloads {
         }
     }
 
-    /// Removes job `id`. A running install is stopped, and its folder goes with the drop of its
-    /// sipper. A paused job has no sipper, so its folder is returned for the caller to remove.
+    /// Removes install `id`. A running install is stopped, and its folder goes with the drop of its sipper. A paused
+    /// job has no sipper, so its folder is returned for the caller to remove. A mod cannot be cancelled, so it stays.
     pub fn cancel(&mut self, id: u64) -> Option<PathBuf> {
-        let index = self.jobs.iter().position(|job| job.id == id)?;
+        let index = self.jobs.iter().position(|job| job.id == id && job.install().is_some())?;
         let job = self.jobs.remove(index);
         if let Some(abort) = &job.abort {
             abort.abort();
         }
         match job.state {
-            JobState::Paused => Some(job.request.paths.instance(&job.request.directory_name)),
+            JobState::Paused => job.install().map(|request| request.paths.instance(&request.directory_name)),
             _ => None,
         }
     }
 
-    /// Ends job `id`: done, or failed with the error that stopped its install.
+    /// Ends job `id`: done, or failed with the error that stopped it.
     pub fn finish(&mut self, id: u64, outcome: Result<(), String>) {
         if let Some(job) = self.job_mut(id) {
             job.state = match outcome {
@@ -360,32 +429,37 @@ impl Downloads {
 
     /// The job whose install will create the instance `id`, while that install has not ended.
     pub fn job_for_instance(&self, id: &str) -> Option<u64> {
-        self.jobs.iter().find(|job| !job.ended() && job.request.id == id).map(|job| job.id)
+        self.jobs
+            .iter()
+            .find(|job| !job.ended() && job.install().is_some_and(|request| request.id == id))
+            .map(|job| job.id)
     }
 
-    /// The directory names the jobs that have not ended will create, so a new install avoids them.
+    /// The directory names the installs that have not ended will create, so a new install avoids them.
     pub fn reserved_directories(&self) -> Vec<String> {
         self.jobs
             .iter()
             .filter(|job| !job.ended())
-            .map(|job| job.request.directory_name.clone())
+            .filter_map(|job| job.install().map(|request| request.directory_name.clone()))
             .collect()
     }
 
-    /// The installs that have not ended, as the library shows them.
+    /// The installs that have not ended, as the library shows them. A mod creates no instance, so it is not listed.
     pub fn pending(&self) -> Vec<Pending> {
         self.jobs
             .iter()
             .filter(|job| !job.ended())
-            .map(|job| Pending {
-                instance: job.instance(),
-                state: job.state.clone(),
-                progress: job.progress.clone(),
+            .filter_map(|job| {
+                Some(Pending {
+                    instance: job.instance()?,
+                    state: job.state.clone(),
+                    progress: job.progress.clone(),
+                })
             })
             .collect()
     }
 
-    /// The running installs added up, for the popover's header.
+    /// The running installs added up, for the popover's header. Mods report no progress, so they add nothing.
     pub fn summary(&self) -> Summary {
         let running: Vec<&InstallProgress> = self
             .jobs

@@ -561,7 +561,10 @@ impl LodestoneLauncher {
             if matches!(job.state, JobState::Done | JobState::Failed(_)) {
                 continue;
             }
-            if let (Some(platform), Some(project)) = (&job.request.source_platform, &job.request.source_project_id) {
+            let Some(request) = job.install() else {
+                continue;
+            };
+            if let (Some(platform), Some(project)) = (&request.source_platform, &request.source_project_id) {
                 installs.insert((platform.clone(), project.clone()), InstallState::Queued);
             }
         }

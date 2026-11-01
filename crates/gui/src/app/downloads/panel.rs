@@ -7,14 +7,14 @@ use iced::widget::{Column, Space, Text, column, container, row, stack};
 use iced::{Background, Border, Color, Element, Fill, Padding, Shadow, Vector, alignment};
 use iced_color_extension::rgb;
 
-use super::{Downloads, Job, JobState, Message, Summary};
+use super::{Downloads, Job, JobKind, JobState, Message, ModJob, Summary, icon_of};
 use crate::app::components::badge::Badge;
 use crate::app::components::hint::hint;
 use crate::app::components::icon_button::{self, IconButton, IconButtonStyle};
 use crate::app::components::popover::{Placement, Popover};
-use crate::app::components::{ProgressBar, TextButton, instance_icon, scrollbar};
-use crate::app::install::InstallProgress;
+use crate::app::components::{ProgressBar, TextButton, instance_icon, platform_logo, scrollbar};
 use crate::app::install::download::Transfer;
+use crate::app::install::{InstallProgress, InstallRequest};
 use crate::app::lang;
 use crate::app::pages::instance::format::format_bytes;
 use crate::app::theme::{color, fonts, utility};
@@ -95,7 +95,7 @@ fn trigger_style(active: bool) -> IconButtonStyle {
 /// The popover's panel for `downloads`.
 pub fn view(downloads: &Downloads) -> Element<'static, Message> {
     let mut body = Column::new().spacing(12).width(Fill).push(header(downloads));
-    if downloads.running() > 0 {
+    if downloads.installs_running() > 0 {
         body = body.push(overall(downloads.summary()));
     }
     body = body.push(rule()).push(jobs_list(downloads)).push(rule()).push(footer(downloads));
@@ -131,10 +131,7 @@ fn rule() -> Element<'static, Message> {
 
 /// The title, the running count, and the pause-all and settings buttons.
 fn header(downloads: &Downloads) -> Element<'static, Message> {
-    let pausable = downloads
-        .jobs()
-        .iter()
-        .any(|job| matches!(job.state, JobState::Queued | JobState::Running));
+    let pausable = downloads.has_pausable();
     let mut actions = row![].spacing(6).align_y(alignment::Vertical::Center);
     if pausable || downloads.any_paused() {
         let (icon, label) = if pausable {
@@ -225,7 +222,7 @@ fn jobs_list(downloads: &Downloads) -> Element<'static, Message> {
             &[("count", running.len().to_string().as_str())],
         )));
         for job in running {
-            list = list.push(running_job(job));
+            list = list.push(running_row(job));
         }
     }
     if !waiting.is_empty() {
@@ -254,48 +251,86 @@ fn jobs_list(downloads: &Downloads) -> Element<'static, Message> {
     container(scrollbar::scroll(list).width(Fill)).max_height(LIST_HEIGHT).into()
 }
 
+/// One running job, as the running section lists it: an install's card, or a mod's.
+fn running_row(job: &Job) -> Element<'static, Message> {
+    match &job.kind {
+        JobKind::Install(request) => running_job(job, request),
+        JobKind::Mod(mod_job) => running_mod(job, mod_job),
+    }
+}
+
 /// One running install, in a tinted card: its art, name and buttons, its bar with the share done at the
 /// right, and its rate and time left.
-fn running_job(job: &Job) -> Element<'static, Message> {
+fn running_job(job: &Job, request: &InstallRequest) -> Element<'static, Message> {
     let progress = job.progress.as_ref();
     let fraction = progress.and_then(|progress| progress.fraction);
     let stage = progress.map_or_else(|| lang::t("downloads.starting").to_owned(), |progress| progress.stage.label().to_owned());
     let transfer = progress.map(|progress| progress.transfer).unwrap_or_default();
-    let card = column![
-        row![
-            instance_icon::icon(&job.icon(), 40.0),
-            column![title(&job.request.name), running_subtitle(job, &stage)].spacing(2).width(Fill),
-            small_button(
-                Icon::lucide().pause(),
-                Message::Pause(job.id),
-                lang::t("downloads.pause"),
-                icon_button::SECONDARY_BUTTON_STYLE,
-            ),
-            small_button(
-                Icon::lucide().x(),
-                Message::Cancel(job.id),
-                lang::t("downloads.cancel"),
-                icon_button::DANGER_BUTTON_STYLE,
-            ),
-        ]
-        .spacing(10)
-        .align_y(alignment::Vertical::Center),
-        row![
-            ProgressBar::new(fraction.unwrap_or(0.0)).indeterminate(fraction.is_none()).width(Fill),
-            Text::new(fraction.map_or_else(String::new, percent_label))
+    running_card(
+        column![
+            row![
+                art(job, 40.0),
+                column![title(&request.name), running_subtitle(request, &stage)].spacing(2).width(Fill),
+                small_button(
+                    Icon::lucide().pause(),
+                    Message::Pause(job.id),
+                    lang::t("downloads.pause"),
+                    icon_button::SECONDARY_BUTTON_STYLE,
+                ),
+                small_button(
+                    Icon::lucide().x(),
+                    Message::Cancel(job.id),
+                    lang::t("downloads.cancel"),
+                    icon_button::DANGER_BUTTON_STYLE,
+                ),
+            ]
+            .spacing(10)
+            .align_y(alignment::Vertical::Center),
+            row![
+                ProgressBar::new(fraction.unwrap_or(0.0)).indeterminate(fraction.is_none()).width(Fill),
+                Text::new(fraction.map_or_else(String::new, percent_label))
+                    .size(11)
+                    .font(fonts::JetBrainsMono::SEMI_BOLD)
+                    .color(color::Text::HEADLINE),
+            ]
+            .spacing(10)
+            .align_y(alignment::Vertical::Center),
+            Text::new(rate_line(transfer.per_second, transfer_eta(transfer)))
                 .size(11)
-                .font(fonts::JetBrainsMono::SEMI_BOLD)
-                .color(color::Text::HEADLINE),
+                .font(fonts::JetBrainsMono::REGULAR)
+                .color(color::Primary::DEFAULT),
         ]
-        .spacing(10)
-        .align_y(alignment::Vertical::Center),
-        Text::new(rate_line(transfer.per_second, transfer_eta(transfer)))
-            .size(11)
-            .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Primary::DEFAULT),
-    ]
-    .spacing(8);
-    container(card)
+        .spacing(8),
+    )
+}
+
+/// One mod being added or replaced. A mod reports no progress, so its bar runs without a share, and it has no buttons,
+/// since it cannot be paused or cancelled.
+fn running_mod(job: &Job, mod_job: &ModJob) -> Element<'static, Message> {
+    let verb = if mod_job.replacing {
+        lang::t("downloads.mod.replacing")
+    } else {
+        lang::t("downloads.mod.adding")
+    };
+    running_card(
+        column![
+            row![
+                art(job, 40.0),
+                column![title(&mod_job.name), mono_line(format!("{} · {}", mod_job.instance, verb))]
+                    .spacing(2)
+                    .width(Fill),
+            ]
+            .spacing(10)
+            .align_y(alignment::Vertical::Center),
+            ProgressBar::new(0.0).indeterminate(true).width(Fill),
+        ]
+        .spacing(8),
+    )
+}
+
+/// The tinted card a running job sits in.
+fn running_card(content: impl Into<Element<'static, Message>>) -> Element<'static, Message> {
+    container(content)
         .padding(10)
         .width(Fill)
         .style(|_| container::Style {
@@ -313,12 +348,22 @@ fn running_job(job: &Job) -> Element<'static, Message> {
         .into()
 }
 
+/// A job's picture: the instance's icon for an install, or the platform's mark for a mod.
+fn art(job: &Job, size: f32) -> Element<'static, Message> {
+    match &job.kind {
+        JobKind::Install(request) => instance_icon::icon(&icon_of(request), size),
+        JobKind::Mod(mod_job) => platform_logo::logo(mod_job.source.logo(), size),
+    }
+}
+
 /// A running install's loader, version and stage, in the mono line under its name.
-fn running_subtitle(job: &Job, stage: &str) -> Text<'static> {
-    Text::new(format!("{} · {} · {}", job.request.loader.label(), job.request.mc_version, stage))
-        .size(11)
-        .font(fonts::JetBrainsMono::REGULAR)
-        .color(color::Text::MUTED)
+fn running_subtitle(request: &InstallRequest, stage: &str) -> Text<'static> {
+    mono_line(format!("{} · {} · {}", request.loader.label(), request.mc_version, stage))
+}
+
+/// A line of mono text under a job's name.
+fn mono_line(line: String) -> Text<'static> {
+    Text::new(line).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED)
 }
 
 /// One queued or paused install. A queued one shows its place in the queue; a paused one can resume.
@@ -336,8 +381,8 @@ fn waiting_job(job: &Job, place: Option<usize>) -> Element<'static, Message> {
         _ => (format!("#{}", place.unwrap_or_default()), None),
     };
     let mut items = row![
-        instance_icon::icon(&job.icon(), 36.0),
-        column![title(&job.request.name), subtitle(job)].spacing(2).width(Fill),
+        art(job, 36.0),
+        column![title(job.name()), subtitle(job)].spacing(2).width(Fill),
         Text::new(status).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),
     ]
     .spacing(10)
@@ -362,8 +407,8 @@ fn ended_job(job: &Job) -> Element<'static, Message> {
         _ => (lang::t("downloads.done").to_owned(), color::Text::MUTED),
     };
     row![
-        instance_icon::icon(&job.icon(), 36.0),
-        column![title(&job.request.name), subtitle(job)].spacing(2).width(Fill),
+        art(job, 36.0),
+        column![title(job.name()), subtitle(job)].spacing(2).width(Fill),
         Text::new(status).size(11).font(fonts::Inter::REGULAR).color(ink),
     ]
     .spacing(10)
@@ -422,12 +467,12 @@ fn title(name: &str) -> Text<'static> {
     Text::new(name.to_owned()).size(13).font(fonts::Inter::BOLD).color(color::Text::HEADLINE)
 }
 
-/// A job's loader and Minecraft version, in the mono line under its name.
+/// A job's line under its name: an install's loader and Minecraft version, or the instance a mod goes into.
 fn subtitle(job: &Job) -> Text<'static> {
-    Text::new(format!("{} · {}", job.request.loader.label(), job.request.mc_version))
-        .size(11)
-        .font(fonts::JetBrainsMono::REGULAR)
-        .color(color::Text::MUTED)
+    match &job.kind {
+        JobKind::Install(request) => mono_line(format!("{} · {}", request.loader.label(), request.mc_version)),
+        JobKind::Mod(mod_job) => mono_line(mod_job.instance.clone()),
+    }
 }
 
 /// An icon-only button with a hover hint that names it.
