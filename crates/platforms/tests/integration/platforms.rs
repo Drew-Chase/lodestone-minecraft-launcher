@@ -120,7 +120,7 @@ fn curseforge_exports_parse_through_the_curseforge_kind() {
     assert_eq!(modpack.name, "CF Pack");
     assert_eq!(modpack.minecraft, "1.20.1");
     assert_eq!(modpack.loader, Some("forge"));
-    assert_eq!(modpack.loader_version.as_deref(), Some("47.4.0"));
+    assert_eq!(modpack.loader_version.as_deref(), Some("1.20.1-47.4.0"));
     assert_eq!(modpack.files.len(), 1);
     assert_eq!(modpack.files[0].project_id.as_deref(), Some("306612"));
     assert_eq!(modpack.files[0].file_id.as_deref(), Some("4838285"));

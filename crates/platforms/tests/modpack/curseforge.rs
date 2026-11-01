@@ -26,7 +26,7 @@ fn the_manifest_maps_onto_modpack() {
     assert_eq!(modpack.version.as_deref(), Some("1.2.3"));
     assert_eq!(modpack.minecraft, "1.20.1");
     assert_eq!(modpack.loader, Some("forge"));
-    assert_eq!(modpack.loader_version.as_deref(), Some("47.4.0"));
+    assert_eq!(modpack.loader_version.as_deref(), Some("1.20.1-47.4.0"));
     assert_eq!(modpack.overrides.as_deref(), Some("overrides"));
     assert_eq!(modpack.files.len(), 2);
     assert_eq!(modpack.files[0].project_id.as_deref(), Some("306612"));
@@ -50,4 +50,33 @@ fn a_non_primary_loader_is_used_when_no_primary_exists() {
     let modpack = parse(document, Path::new("test.zip")).expect("parses");
     assert_eq!(modpack.loader, Some("fabric"));
     assert_eq!(modpack.loader_version.as_deref(), Some("0.16.14"));
+}
+
+#[test]
+fn a_forge_build_takes_its_minecraft_version_in_front() {
+    let document = r#"{
+        "minecraft": { "version": "1.12.2", "modLoaders": [ { "id": "forge-14.23.5.2860", "primary": true } ] }
+    }"#;
+    let modpack = parse(document, Path::new("test.zip")).expect("parses");
+    assert_eq!(modpack.loader, Some("forge"));
+    assert_eq!(modpack.loader_version.as_deref(), Some("1.12.2-14.23.5.2860"));
+}
+
+#[test]
+fn a_forge_build_that_already_names_its_minecraft_version_is_kept() {
+    let document = r#"{
+        "minecraft": { "version": "1.12.2", "modLoaders": [ { "id": "forge-1.12.2-14.23.5.2860", "primary": true } ] }
+    }"#;
+    let modpack = parse(document, Path::new("test.zip")).expect("parses");
+    assert_eq!(modpack.loader_version.as_deref(), Some("1.12.2-14.23.5.2860"));
+}
+
+#[test]
+fn a_neoforge_build_keeps_its_own_version() {
+    let document = r#"{
+        "minecraft": { "version": "1.21.1", "modLoaders": [ { "id": "neoforge-21.1.95", "primary": true } ] }
+    }"#;
+    let modpack = parse(document, Path::new("test.zip")).expect("parses");
+    assert_eq!(modpack.loader, Some("neoforge"));
+    assert_eq!(modpack.loader_version.as_deref(), Some("21.1.95"));
 }

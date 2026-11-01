@@ -9,6 +9,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use super::combined_forge;
 use crate::error::PlatformError;
 use crate::meta::{Modpack, ModpackFile};
 
@@ -72,6 +73,12 @@ pub(super) fn parse(raw: &str, archive: &Path) -> Result<Modpack, PlatformError>
         source: Box::new(source),
     })?;
 
+    let minecraft = manifest
+        .minecraft
+        .as_ref()
+        .and_then(|minecraft| minecraft.version.clone())
+        .unwrap_or_default();
+
     // The primary loader wins; manifests typically carry exactly one.
     let (loader, loader_version) = manifest
         .minecraft
@@ -82,8 +89,11 @@ pub(super) fn parse(raw: &str, archive: &Path) -> Result<Modpack, PlatformError>
             loader.map(|loader| split_loader(&loader.id)).unwrap_or((None, None))
         })
         .unwrap_or((None, None));
-
-    let minecraft = manifest.minecraft.and_then(|minecraft| minecraft.version).unwrap_or_default();
+    // A Forge build is listed with its Minecraft version in front, as the loader's own versions name it.
+    let loader_version = match loader {
+        Some("forge") => loader_version.map(|version| combined_forge(&minecraft, &version)),
+        _ => loader_version,
+    };
 
     Ok(Modpack {
         name: manifest.name.unwrap_or_else(|| "CurseForge modpack".to_string()),

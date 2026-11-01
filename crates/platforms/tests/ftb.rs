@@ -119,3 +119,28 @@ fn listing_versions_from_the_pack_payload() {
     assert_eq!(versions.len(), 2);
     assert_eq!(versions[0].id, "100028");
 }
+
+#[test]
+fn a_forge_target_takes_its_minecraft_version_in_front() {
+    let forge: FtbVersion = serde_json::from_str(
+        r#"{
+        "status": "success",
+        "id": 100029,
+        "name": "1.0.1",
+        "type": "release",
+        "targets": [
+            { "name": "minecraft", "version": "1.12.2", "type": "game" },
+            { "name": "forge", "version": "14.23.5.2860", "type": "modloader" }
+        ],
+        "files": []
+    }"#,
+    )
+    .expect("recorded payload parses");
+    assert_eq!(loader_version_of(&forge, "1.12.2").as_deref(), Some("1.12.2-14.23.5.2860"));
+    let neoforge: FtbVersion = serde_json::from_str(VERSION).expect("recorded payload parses");
+    assert_eq!(
+        loader_version_of(&neoforge, "1.21.1").as_deref(),
+        Some("21.1.115"),
+        "a NeoForge version is its own id"
+    );
+}

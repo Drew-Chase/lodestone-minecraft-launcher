@@ -50,3 +50,14 @@ pub(crate) fn parse(archive: &Path) -> Result<Modpack, PlatformError> {
         Err(PlatformError::ModpackFormatUnknown { path: archive.to_path_buf() })
     }
 }
+
+/// The Forge version a manifest names, in the form the loader's own versions take: the Minecraft version in front,
+/// as `1.12.2-14.23.5.2860`. A version that already writes it that way is left as it is. Without a Minecraft version
+/// there is nothing to combine it with, so the Forge version stands alone.
+pub(crate) fn combined_forge(minecraft: &str, forge: &str) -> String {
+    if minecraft.is_empty() || forge.starts_with(&format!("{minecraft}-")) {
+        forge.to_string()
+    } else {
+        format!("{minecraft}-{forge}")
+    }
+}

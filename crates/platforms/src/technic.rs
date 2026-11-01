@@ -19,6 +19,7 @@ use crate::meta::{
     ContentDetails, ContentFile, ContentType, ContentVersion, DescriptionFormat, Facets, Modpack, ModpackFile, ProjectInfo, SearchPage, SearchQuery,
     SearchResult,
 };
+use crate::modpack::combined_forge;
 use crate::sealed;
 
 /// Marker for Technic (https://www.technicpack.net).
@@ -140,17 +141,6 @@ async fn fetch_pack(http: &reqwest::Client, slug: &str) -> Result<TechnicModpack
     let url = build_url(&format!("{BASE}/modpack/{slug}"));
     let response = get_json(http, &url).await?;
     serde_json::from_value(response).map_err(|source| PlatformError::Json { url, source })
-}
-
-/// The Forge version a Solder manifest names, in the `minecraft-forge` form the Forge installer takes.
-/// A manifest that already writes it that way is left as it is. Without a Minecraft version there is
-/// nothing to combine it with, so the Forge version stands alone.
-fn combined_forge(minecraft: &str, forge: &str) -> String {
-    if minecraft.is_empty() || forge.starts_with(&format!("{minecraft}-")) {
-        forge.to_string()
-    } else {
-        format!("{minecraft}-{forge}")
-    }
 }
 
 /// The details of a pack, from its record on the Technic API.

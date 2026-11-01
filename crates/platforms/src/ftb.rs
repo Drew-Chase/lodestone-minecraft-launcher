@@ -15,6 +15,7 @@ use crate::PlatformKind;
 use crate::error::PlatformError;
 use crate::http::{HYDRATION_CHUNK, download_files, get_json};
 use crate::meta::{ContentDetails, ContentType, ContentVersion, DescriptionFormat, Facets, ProjectInfo, SearchPage, SearchQuery, SearchResult};
+use crate::modpack::combined_forge;
 use crate::sealed;
 
 /// Marker for FTB (https://feed-the-beast.com).
@@ -298,13 +299,18 @@ fn loader_of(version: &FtbVersion) -> Option<&'static str> {
     ["fabric", "forge", "neoforge", "quilt"].into_iter().find(|known| *known == name)
 }
 
-/// The loader version a version's modloader target pins.
-fn loader_version_of(version: &FtbVersion) -> Option<String> {
-    version
+/// The loader version a version's modloader target pins. A Forge version takes the Minecraft version in front, as the
+/// loader's own versions name it.
+fn loader_version_of(version: &FtbVersion, minecraft: &str) -> Option<String> {
+    let pinned = version
         .targets
         .iter()
         .find(|target| target.target_type.as_deref() == Some("modloader"))
-        .and_then(|target| target.version.clone())
+        .and_then(|target| target.version.clone())?;
+    Some(match loader_of(version) {
+        Some("forge") => combined_forge(minecraft, &pinned),
+        _ => pinned,
+    })
 }
 
 /// The installable modpack of one FTB version: its files at their install paths on FTB's CDN, and the
@@ -339,12 +345,14 @@ pub(crate) async fn modpack(http: &reqwest::Client, version: &ContentVersion) ->
             })
         })
         .collect();
+    let minecraft = minecraft_versions.into_iter().next().unwrap_or_default();
+    let loader_version = loader_version_of(&detail, &minecraft);
     Ok(crate::meta::Modpack {
         name: pack.name,
         version: Some(version.version_number.clone()),
-        minecraft: minecraft_versions.into_iter().next().unwrap_or_default(),
+        minecraft,
         loader: loader_of(&detail),
-        loader_version: loader_version_of(&detail),
+        loader_version,
         files,
         overrides: None,
         overrides_skip: Vec::new(),

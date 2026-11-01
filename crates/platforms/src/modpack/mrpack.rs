@@ -5,6 +5,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use super::combined_forge;
 use crate::error::PlatformError;
 use crate::meta::{Modpack, ModpackFile};
 
@@ -40,12 +41,14 @@ struct MrpackDependencies {
 }
 
 impl MrpackDependencies {
-    /// The loader name and version, derived from which dependency key is set.
+    /// The loader name and version, derived from which dependency key is set. A Forge version takes the Minecraft
+    /// version in front, as the loader's own versions name it.
     fn loader(&self) -> (Option<&'static str>, Option<String>) {
         if let Some(version) = &self.fabric_loader {
             (Some("fabric"), Some(version.clone()))
         } else if let Some(version) = &self.forge {
-            (Some("forge"), Some(version.clone()))
+            let minecraft = self.minecraft.as_deref().unwrap_or_default();
+            (Some("forge"), Some(combined_forge(minecraft, version)))
         } else if let Some(version) = &self.quilt_loader {
             (Some("quilt"), Some(version.clone()))
         } else if let Some(version) = &self.neoforge {

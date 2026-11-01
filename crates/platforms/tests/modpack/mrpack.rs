@@ -45,13 +45,26 @@ fn the_mrpack_manifest_maps_onto_modpack() {
 
 #[test]
 fn every_loader_dependency_key_maps() {
-    for (key, expected) in [("forge", "forge"), ("quilt-loader", "quilt"), ("neoforge", "neoforge")] {
+    for (key, expected, version) in [
+        ("forge", "forge", "1.0-9.9"),
+        ("quilt-loader", "quilt", "9.9"),
+        ("neoforge", "neoforge", "9.9"),
+    ] {
         let document = format!(r#"{{ "dependencies": {{ "minecraft": "1.0", "{key}": "9.9" }} }}"#);
         let index: MrpackIndex = serde_json::from_str(&document).expect("parses");
-        let (loader, version) = index.dependencies.loader();
+        let (loader, loader_version) = index.dependencies.loader();
         assert_eq!(loader, Some(expected));
-        assert_eq!(version.as_deref(), Some("9.9"));
+        assert_eq!(loader_version.as_deref(), Some(version));
     }
+}
+
+#[test]
+fn a_forge_build_takes_its_minecraft_version_in_front_once() {
+    let bare: MrpackIndex = serde_json::from_str(r#"{ "dependencies": { "minecraft": "1.12.2", "forge": "14.23.5.2860" } }"#).expect("parses");
+    assert_eq!(bare.dependencies.loader(), (Some("forge"), Some("1.12.2-14.23.5.2860".to_string())));
+    let combined: MrpackIndex =
+        serde_json::from_str(r#"{ "dependencies": { "minecraft": "1.12.2", "forge": "1.12.2-14.23.5.2860" } }"#).expect("parses");
+    assert_eq!(combined.dependencies.loader(), (Some("forge"), Some("1.12.2-14.23.5.2860".to_string())));
 }
 
 #[test]
