@@ -1,0 +1,18 @@
+[package]
+name = "lodestone_export"
+version = "0.1.0"
+edition = "2024"
+# Tests mirror src/ under tests/ and are wired in with #[path], so top-level files there are not
+# separate test targets.
+autotests = false
+
+[dependencies]
+thiserror = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+zip = "9"
+tar = "0.4"
+xz2 = "0.1.7"
+sha1 = "0.10"
+sha2 = "0.10"
