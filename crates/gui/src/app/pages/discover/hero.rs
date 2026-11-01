@@ -6,10 +6,12 @@ use aurora_leaf::Icon;
 use iced::widget::{Space, Text, column, container, row, stack};
 use iced::{Background, Color, Element, Fill, Length, Padding, Size, alignment};
 
-use super::card::{chip, cover_art, glyph, short_count};
+use super::card::{Corners, chip, cover_art, glyph, short_count};
 use super::{Discover, Message};
 use crate::app::components::TextButton;
 use crate::app::components::button::Variant;
+use crate::app::components::page::content_width;
+use crate::app::components::scene_art;
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
 
@@ -23,10 +25,22 @@ pub(super) fn view(page: &Discover, window: Size) -> Option<Element<'_, Message>
         return None;
     }
     let hit = page.results.hits.first()?;
-    let width = (window.width - 68.0 - 56.0).max(320.0);
-    let art = cover_art(page.source, hit, page.artwork(hit.banner_url.as_deref()), width, HEIGHT);
+    let width = content_width(window.width).max(320.0);
+    // The picture sits a pixel inside the frame, and rounds its corners concentric with the frame's.
+    let art = cover_art(
+        page.source,
+        hit,
+        page.artwork(hit.banner_url.as_deref()),
+        width - 2.0,
+        HEIGHT - 2.0,
+        Corners::Hero,
+    );
     let shade = container(Space::new().width(Fill).height(Fill)).style(|_| container::Style {
         background: Some(Background::Color(Color::from_rgba(0.03, 0.04, 0.05, 0.55))),
+        border: iced::Border {
+            radius: scene_art::DISCOVER_HERO_ART_RADIUS.into(),
+            ..iced::Border::default()
+        },
         ..container::Style::default()
     });
 
@@ -83,6 +97,7 @@ pub(super) fn view(page: &Discover, window: Size) -> Option<Element<'_, Message>
 
     Some(
         container(stack![art, shade, body])
+            .padding(Padding::new(1.0))
             .width(width)
             .height(HEIGHT)
             .style(|_| container::Style {

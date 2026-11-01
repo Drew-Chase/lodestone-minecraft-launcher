@@ -260,3 +260,47 @@ fn the_filters_pin_once_the_page_scrolls_up_to_them() {
 fn a_page_without_a_hero_keeps_its_filters_at_the_top() {
     assert!(filters_pinned(0.0, false));
 }
+
+#[test]
+fn the_pointer_over_a_card_marks_it_until_it_leaves() {
+    let mut page = answered(3, 3);
+    page.update(Message::Hover {
+        project_id: "1".to_string(),
+        hovered: true,
+    });
+    assert!(page.is_hovered("1"));
+    assert!(!page.is_hovered("0"));
+    page.update(Message::Hover {
+        project_id: "1".to_string(),
+        hovered: false,
+    });
+    assert!(!page.is_hovered("1"));
+}
+
+#[test]
+fn an_exit_clears_only_the_card_it_was_for() {
+    let mut page = answered(3, 3);
+    page.update(Message::Hover {
+        project_id: "2".to_string(),
+        hovered: true,
+    });
+    page.update(Message::Hover {
+        project_id: "1".to_string(),
+        hovered: false,
+    });
+    assert!(page.is_hovered("2"), "a late exit for another card leaves this one hovered");
+}
+
+#[test]
+fn any_other_message_ends_the_hover() {
+    let mut page = answered(3, 3);
+    page.update(Message::Hover {
+        project_id: "1".to_string(),
+        hovered: true,
+    });
+    page.update(Message::Scrolled {
+        remaining: 2000.0,
+        offset: 10.0,
+    });
+    assert!(!page.is_hovered("1"), "a card that scrolled away never sends its exit");
+}

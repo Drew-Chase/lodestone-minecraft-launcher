@@ -143,7 +143,7 @@ fn status(page: &Discover) -> Element<'_, Message> {
 }
 
 /// The width of one content tab. It holds the longest label, "Resource Packs", with room either side.
-const TAB_WIDTH: f32 = 128.0;
+const TAB_WIDTH: f32 = 152.0;
 
 /// The content tabs. A tab the platform does not host is dimmed and cannot be picked.
 pub(super) fn tabs(page: &Discover) -> Element<'_, Message> {

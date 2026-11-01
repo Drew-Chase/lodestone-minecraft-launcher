@@ -89,6 +89,10 @@ pub(crate) const SIZE_STEP: f32 = 4.0;
 pub const CARD_RADIUS: f32 = 13.0;
 /// The library hero's corner radius (`--r-lg`). Its art is clipped to it in pixels, and the banner's border matches.
 pub const HERO_RADIUS: f32 = 18.0;
+/// The discover card's art corner radius: one inside the card's 16px border, so the two stay concentric.
+pub const DISCOVER_CARD_ART_RADIUS: f32 = 15.0;
+/// The discover hero's picture corner radius: one inside its 18px frame.
+pub const DISCOVER_HERO_ART_RADIUS: f32 = 17.0;
 
 /// The scene slot a biome occupies — must follow the [`SCENES`] grouping.
 fn slot(biome: Biome) -> usize {
@@ -129,6 +133,10 @@ static GENERATED: LazyLock<Mutex<HashMap<GeneratedKey, Handle>>> = LazyLock::new
 enum Wrapper {
     /// The masthead band.
     Banner,
+    /// A discover card's art, its top corners rounded.
+    CardArt,
+    /// A discover hero's picture, all four corners rounded.
+    HeroArt,
 }
 
 /// The scene artwork for an instance — deterministic per `(biome, seed)`:
@@ -150,6 +158,18 @@ pub fn banner_handle(biome: Biome, seed: u64, size: Size) -> Handle {
     generated(Wrapper::Banner, biome, seed, size)
 }
 
+/// A discover card's art at `size`: the scene covered and cropped, with its top corners rounded by
+/// [`DISCOVER_CARD_ART_RADIUS`].
+pub fn card_art_handle(biome: Biome, seed: u64, size: Size) -> Handle {
+    generated(Wrapper::CardArt, biome, seed, size)
+}
+
+/// A discover hero's picture at `size`: the scene covered and cropped, with all four corners rounded by
+/// [`DISCOVER_HERO_ART_RADIUS`].
+pub fn hero_art_handle(biome: Biome, seed: u64, size: Size) -> Handle {
+    generated(Wrapper::HeroArt, biome, seed, size)
+}
+
 /// The cached wrapper for `wrapper` at `size`, built on first use.
 fn generated(wrapper: Wrapper, biome: Biome, seed: u64, size: Size) -> Handle {
     let index = scene_index(biome, seed);
@@ -167,6 +187,8 @@ fn generated(wrapper: Wrapper, biome: Biome, seed: u64, size: Size) -> Handle {
     let (scene, width, height) = (SCENES[index].1, width as f32, height as f32);
     let svg = match wrapper {
         Wrapper::Banner => banner_wrapped(scene, width, height),
+        Wrapper::CardArt => rounded_wrapped(scene, width, height, DISCOVER_CARD_ART_RADIUS, true),
+        Wrapper::HeroArt => rounded_wrapped(scene, width, height, DISCOVER_HERO_ART_RADIUS, false),
     };
     let handle = Handle::from_memory(svg.into_bytes());
     cache.insert(key, handle.clone());
@@ -256,12 +278,26 @@ fn banner_wrapped(scene: &str, width: f32, height: f32) -> String {
 /// a shape with its top corners rounded by [`CARD_RADIUS`]. The bottom corners stay square, since
 /// the card's information block continues below the art.
 pub(crate) fn card_wrapped(scene: &str, width: f32, height: f32) -> String {
+    rounded_wrapped(scene, width, height, CARD_RADIUS, true)
+}
+
+/// The scene at `width`×`height`: covered and cropped by [`cover`], and clipped to a rectangle whose corners are
+/// rounded by `radius`. With `top_only`, the bottom corners stay square.
+fn rounded_wrapped(scene: &str, width: f32, height: f32, radius: f32, top_only: bool) -> String {
     let (scale, x, y) = cover(width, height);
-    let r = CARD_RADIUS;
+    let r = radius;
+    let (right, bottom) = (width - r, height - r);
+    let outline = if top_only {
+        format!("M0,{r} A{r},{r} 0 0 1 {r},0 H{right} A{r},{r} 0 0 1 {width},{r} V{height} H0 Z")
+    } else {
+        format!(
+            "M{r},0 H{right} A{r},{r} 0 0 1 {width},{r} V{bottom} A{r},{r} 0 0 1 {right},{height} H{r} A{r},{r} 0 0 1 0,{bottom} V{r} A{r},{r} 0 0 1 {r},0 Z"
+        )
+    };
     format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
   <defs>
-    <clipPath id="card"><path d="M0,{r} A{r},{r} 0 0 1 {r},0 H{right} A{r},{r} 0 0 1 {width},{r} V{height} H0 Z"/></clipPath>
+    <clipPath id="card"><path d="{outline}"/></clipPath>
   </defs>
   <g clip-path="url(#card)">
   <g transform="translate({x} {y}) scale({scale})">
@@ -269,7 +305,6 @@ pub(crate) fn card_wrapped(scene: &str, width: f32, height: f32) -> String {
   </g>
   </g>
 </svg>"##,
-        right = width - r,
         inner = scene_inner(scene),
     )
 }

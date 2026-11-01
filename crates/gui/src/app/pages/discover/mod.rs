@@ -10,6 +10,7 @@
 mod card;
 mod header;
 mod hero;
+mod hover;
 mod images;
 mod query;
 mod results;
@@ -162,6 +163,8 @@ pub enum Message {
     InstanceSelected(usize),
     /// A card or the hero was pressed for the project with this id: its resource page opens.
     OpenResource(String),
+    /// The pointer entered (`hovered`) or left the grid card of the project with this id, which grows while hovered.
+    Hover { project_id: String, hovered: bool },
     /// A mod was added to an instance, or replaced there, or could not be. The key is the instance, platform and project.
     /// `job` is the downloads job that carried the add, which the root finishes before the page sees the answer.
     ModAdded {
@@ -312,6 +315,8 @@ pub struct Discover {
     added: HashMap<(String, String, String), ModSource>,
     /// The mods being added or replaced now, by the same key.
     adding: HashSet<(String, String, String)>,
+    /// The project whose grid card the pointer is over, if any.
+    hovered: Option<String>,
 }
 
 impl Discover {
@@ -343,6 +348,7 @@ impl Discover {
             target: None,
             added: HashMap::new(),
             adding: HashSet::new(),
+            hovered: None,
         }
     }
 
@@ -582,6 +588,11 @@ impl Discover {
     /// Carries out one message. Display state changes here; anything that needs
     /// the network comes back as an [`Effect`] for the root to run.
     pub fn update(&mut self, message: Message) -> Vec<Effect> {
+        // Any message but a hover ends the hover: the card under the pointer may have moved or gone, and then its
+        // exit would never arrive.
+        if !matches!(message, Message::Hover { .. }) {
+            self.hovered = None;
+        }
         match message {
             Message::SourceSelected(source) => {
                 if source == self.source || !source.enabled() {
@@ -716,6 +727,10 @@ impl Discover {
             }
             Message::InstanceSelected(index) => self.select_instance(index),
             Message::OpenResource(project_id) => vec![Effect::OpenResource(self.listing(&project_id))],
+            Message::Hover { project_id, hovered } => {
+                self.hover(project_id, hovered);
+                Vec::new()
+            }
             Message::ModAdded {
                 instance,
                 platform,

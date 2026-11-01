@@ -5,6 +5,7 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use aurora_leaf::Icon;
+use iced::border::Radius;
 use iced::widget::{Space, Text, column, container, image, row, stack, svg};
 use iced::{Background, Border, Color, ContentFit, Element, Fill, Length, Padding, Size, alignment};
 use lodestone_platforms::SearchResult;
@@ -19,8 +20,11 @@ use crate::app::theme::{color, fonts};
 
 /// The height of a grid card's art.
 pub const GRID_ART_HEIGHT: f32 = 150.0;
-/// A grid card's height. Every card is this tall, and a summary longer than its body scrolls.
-const GRID_CARD_HEIGHT: f32 = 370.0;
+/// A grid card's height: the art, the name and author, the footer and about three lines of summary. A longer
+/// summary scrolls in its body.
+const GRID_CARD_HEIGHT: f32 = 330.0;
+/// A card's corner radius. Its border and its hover ring follow it, and its art sits a pixel inside it.
+pub const CARD_RADIUS: f32 = 16.0;
 /// A compact row's height. Every row is this tall, and a summary longer than its body scrolls.
 const COMPACT_ROW_HEIGHT: f32 = 172.0;
 /// A table row's height. Every row is this tall, and a summary longer than its cell scrolls.
@@ -127,15 +131,19 @@ fn author_of(hit: &SearchResult) -> String {
     hit.author.clone().unwrap_or_default()
 }
 
-/// The surface a picture shows while it loads: the platform's mark on the panel colour.
-fn loading_surface<'a>(source: Source, width: f32, height: f32) -> Element<'a, Message> {
+/// The surface a picture shows while it loads: the platform's mark on the panel colour, rounded as the picture is.
+fn loading_surface<'a>(source: Source, width: f32, height: f32, corners: Radius) -> Element<'a, Message> {
     container(platform_logo::logo(source.logo(), width.min(height) * 0.5))
         .width(width)
         .height(height)
         .align_x(alignment::Horizontal::Center)
         .align_y(alignment::Vertical::Center)
-        .style(|_| container::Style {
+        .style(move |_| container::Style {
             background: Some(Background::Color(color::Surface::BG3)),
+            border: Border {
+                radius: corners,
+                ..Border::default()
+            },
             ..container::Style::default()
         })
         .into()
@@ -145,7 +153,7 @@ fn loading_surface<'a>(source: Source, width: f32, height: f32) -> Element<'a, M
 fn thumb<'a>(source: Source, hit: &SearchResult, artwork: Artwork<'_>, size: f32) -> Element<'a, Message> {
     match artwork {
         Artwork::Loaded(picture) => image(picture.icon.clone()).width(size).height(size).into(),
-        Artwork::Loading => loading_surface(source, size, size),
+        Artwork::Loading => loading_surface(source, size, size, Radius::default()),
         Artwork::Scene => {
             let (biome, seed) = scene_for(source, &hit.id);
             svg(scene_art::scene_handle(biome, seed)).width(size).height(size).into()
@@ -171,24 +179,67 @@ fn summary<'a>(text: &'a str, tint: Color) -> Element<'a, Message> {
         .into()
 }
 
-/// A project's art across a card or the hero: the platform's banner, a placeholder while it loads,
-/// or the generated scene when the platform gave no picture.
-pub fn cover_art<'a>(source: Source, hit: &SearchResult, artwork: Artwork<'_>, width: f32, height: f32) -> Element<'a, Message> {
-    match artwork {
-        Artwork::Loaded(picture) => image(picture.banner.clone())
-            .width(width)
-            .height(height)
-            .content_fit(ContentFit::Cover)
-            .into(),
-        Artwork::Loading => loading_surface(source, width, height),
-        Artwork::Scene => {
-            let (biome, seed) = scene_for(source, &hit.id);
-            svg(scene_art::banner_handle(biome, seed, Size::new(width, height)))
-                .width(width)
-                .height(height)
-                .into()
+/// Which corners a picture rounds. A grid card's art rounds its top two, since the card's information continues below
+/// it. A hero's picture rounds all four.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Corners {
+    /// A grid card's art: the top two corners.
+    Card,
+    /// A hero's picture: all four corners.
+    Hero,
+}
+
+impl Corners {
+    /// The corner radius of the picture's frame, all four corners alike.
+    fn radius(self) -> f32 {
+        match self {
+            Corners::Card => scene_art::DISCOVER_CARD_ART_RADIUS,
+            Corners::Hero => scene_art::DISCOVER_HERO_ART_RADIUS,
         }
     }
+
+    /// How far a picture is drawn past the bottom of its box, which then cuts it off. iced rounds an image's corners
+    /// in an order that does not fit a top-only radius, so a card's picture rounds all four corners and draws a radius
+    /// lower, leaving its rounded bottom corners outside the box. A hero's picture fills its box as it is.
+    fn bleed(self) -> f32 {
+        match self {
+            Corners::Card => self.radius(),
+            Corners::Hero => 0.0,
+        }
+    }
+}
+
+/// A project's art across a card or the hero: the platform's banner, a placeholder while it loads, or the generated
+/// scene when the platform gave no picture. The art fills `width`×`height` and rounds its `corners`.
+pub fn cover_art<'a>(source: Source, hit: &SearchResult, artwork: Artwork<'_>, width: f32, height: f32, corners: Corners) -> Element<'a, Message> {
+    let drawn = height + corners.bleed();
+    match artwork {
+        Artwork::Loaded(picture) => cut(
+            image(picture.banner.clone())
+                .width(width)
+                .height(drawn)
+                .content_fit(ContentFit::Cover)
+                .border_radius(corners.radius())
+                .into(),
+            width,
+            height,
+        ),
+        Artwork::Loading => cut(loading_surface(source, width, drawn, Radius::from(corners.radius())), width, height),
+        Artwork::Scene => {
+            let (biome, seed) = scene_for(source, &hit.id);
+            let size = Size::new(width, height);
+            let handle = match corners {
+                Corners::Card => scene_art::card_art_handle(biome, seed, size),
+                Corners::Hero => scene_art::hero_art_handle(biome, seed, size),
+            };
+            svg(handle).width(width).height(height).into()
+        }
+    }
+}
+
+/// `content` cut to `width`×`height`, so the part of a picture drawn past its box does not show.
+fn cut<'a>(content: Element<'a, Message>, width: f32, height: f32) -> Element<'a, Message> {
+    container(content).width(width).height(height).clip(true).into()
 }
 
 /// A card's surface: the dark panel with a hairline border.
@@ -196,7 +247,7 @@ pub fn panel(_: &iced::Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(color::Surface::BG2)),
         border: Border {
-            radius: 16.0.into(),
+            radius: CARD_RADIUS.into(),
             width: 1.0,
             color: color::Surface::LINE,
         },
@@ -215,15 +266,19 @@ pub fn grid_card<'a>(
     icon: Artwork<'_>,
     action: Element<'a, Message>,
 ) -> Element<'a, Message> {
-    let art = stack![
-        cover_art(source, hit, cover, width, GRID_ART_HEIGHT),
+    // The art sits a pixel inside the border, so the border shows above and beside it, and its top corners follow
+    // the border's radius from inside.
+    let art = container(stack![
+        cover_art(source, hit, cover, width - 2.0, GRID_ART_HEIGHT - 1.0, Corners::Card),
         container(chip(source))
             .width(Fill)
             .height(Fill)
             .padding(Padding::new(10.0))
             .align_x(alignment::Horizontal::Left)
             .align_y(alignment::Vertical::Top),
-    ];
+    ])
+    .padding(Padding::new(1.0).bottom(0.0))
+    .width(width);
     // Two lines for the name, so a long one wraps rather than pushing the author down.
     let heading = row![
         thumb(source, hit, icon, TITLE_ICON_SIZE),

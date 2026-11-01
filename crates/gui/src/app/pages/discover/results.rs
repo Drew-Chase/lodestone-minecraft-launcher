@@ -7,15 +7,15 @@ use iced::widget::{Text, column, container, mouse_area, row};
 use iced::{Element, Fill, Padding, Size, alignment};
 use lodestone_platforms::{ContentType, SearchResult};
 
-use super::card::{compact_row, glyph, grid_card, panel, table_header, table_row};
+use super::card::{CARD_RADIUS, compact_row, glyph, grid_card, panel, table_header, table_row};
 use super::{Discover, DiscoverView, InstallState, Message, Source};
 use crate::app::components::button::Variant;
-use crate::app::components::{TextButton, grid};
+use crate::app::components::hover_scale::HoverScale;
+use crate::app::components::page::content_width;
+use crate::app::components::{TextButton, anim, grid};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
 
-/// The width the page keeps clear of the sidebar and its margins.
-const CHROME_WIDTH: f32 = 68.0 + 56.0;
 /// The narrowest a grid card may be.
 const CARD_MIN_WIDTH: f32 = 280.0;
 /// The space between cards and rows.
@@ -96,7 +96,7 @@ fn unavailable(source: Source) -> Element<'static, Message> {
 
 /// The grid: as many cards a row as the width allows, each at least `CARD_MIN_WIDTH` wide.
 fn grid_layout(page: &Discover, window: Size) -> Element<'_, Message> {
-    let available = (window.width - CHROME_WIDTH).max(CARD_MIN_WIDTH);
+    let available = content_width(window.width).max(CARD_MIN_WIDTH);
     let columns = ((available + GAP) / (CARD_MIN_WIDTH + GAP)).floor().clamp(1.0, 4.0) as usize;
     let width = (available - GAP * (columns as f32 - 1.0)) / columns as f32;
     let cells = page
@@ -112,7 +112,7 @@ fn grid_layout(page: &Discover, window: Size) -> Element<'_, Message> {
                 page.artwork(hit.icon_url.as_deref()),
                 action(page, hit),
             );
-            pressable(card, &hit.id)
+            hoverable(card, page, &hit.id)
         })
         .collect();
     grid::grid(cells, columns, GAP)
@@ -120,7 +120,7 @@ fn grid_layout(page: &Discover, window: Size) -> Element<'_, Message> {
 
 /// The compact rows: two to a line when the window is wide enough, one otherwise.
 fn compact_layout(page: &Discover, window: Size) -> Element<'_, Message> {
-    let available = (window.width - CHROME_WIDTH).max(320.0);
+    let available = content_width(window.width).max(320.0);
     let columns = if available >= COMPACT_TWO_COLUMNS { 2 } else { 1 };
     let cells = page
         .results
@@ -152,6 +152,25 @@ fn pressable<'a>(content: Element<'a, Message>, project_id: &str) -> Element<'a,
     mouse_area(content)
         .on_press(Message::OpenResource(project_id.to_string()))
         .interaction(mouse::Interaction::Pointer)
+        .into()
+}
+
+/// A grid card that opens its project's resource page when it is pressed. While the pointer is over it, it grows and
+/// lights a ring as a library card does. The buttons inside take their own presses.
+fn hoverable<'a>(card: Element<'a, Message>, page: &Discover, project_id: &str) -> Element<'a, Message> {
+    let pressable = mouse_area(card)
+        .on_press(Message::OpenResource(project_id.to_string()))
+        .on_enter(Message::Hover {
+            project_id: project_id.to_string(),
+            hovered: true,
+        })
+        .on_exit(Message::Hover {
+            project_id: project_id.to_string(),
+            hovered: false,
+        })
+        .interaction(mouse::Interaction::Pointer);
+    HoverScale::new(pressable, page.is_hovered(project_id))
+        .ring(CARD_RADIUS, anim::fade(color::Primary::DEFAULT, 0.6))
         .into()
 }
 
