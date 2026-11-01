@@ -1,7 +1,7 @@
 //! Project pictures: fetched once, kept on disk, and decoded on the blocking
 //! pool, so a picture never holds up a frame. Each picture comes in two forms:
-//! the image itself, for thumbnails, and a banner that centres it on a blurred
-//! copy of itself, for the art of a card or the hero.
+//! the image itself, for thumbnails, and a banner that the picture covers, cropped
+//! to the banner's box, for the art of a card or the hero.
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Cursor;
@@ -24,8 +24,6 @@ static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 const BANNER_WIDTH: u32 = 1200;
 /// The banner's height in pixels.
 const BANNER_HEIGHT: u32 = 400;
-/// The longest side the picture takes on the banner, in pixels.
-const PICTURE_SIDE: u32 = 300;
 /// The side of an instance's icon in pixels. Instance icons are drawn small, so this is ample.
 const ICON_SIDE: u32 = 256;
 
@@ -34,7 +32,7 @@ const ICON_SIDE: u32 = 256;
 pub struct Picture {
     /// The picture as the platform gave it, for thumbnails.
     pub icon: image::Handle,
-    /// The picture centred on a blurred, darkened copy of itself, for card and hero art.
+    /// The picture scaled to cover the banner's box, for card and hero art.
     pub banner: image::Handle,
 }
 
@@ -150,9 +148,12 @@ fn encode_png(image: &RgbaImage) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
-/// Decodes the picture and builds both of its forms.
+/// Decodes the picture and builds both of its forms. `None` for a picture with no pixels, which has no banner to cover.
 fn decode(bytes: &[u8]) -> Option<Picture> {
     let picture = ::image::load_from_memory(bytes).ok()?.to_rgba8();
+    if picture.width() == 0 || picture.height() == 0 {
+        return None;
+    }
     let banner = banner(&picture);
     let (width, height) = picture.dimensions();
     Some(Picture {
@@ -161,33 +162,28 @@ fn decode(bytes: &[u8]) -> Option<Picture> {
     })
 }
 
-/// The banner: a blurred, darkened copy of the picture covering the banner's box, with the picture
-/// centred on it at its own proportions. Nothing in it is generated, so it is the platform's art.
+/// The banner: the picture scaled to cover the banner's box, keeping its proportions, with the middle of it kept and
+/// its edges cropped away. Nothing is stretched and no backdrop is drawn, so it is the platform's art as it is.
 fn banner(picture: &RgbaImage) -> RgbaImage {
-    let stretched = imageops::resize(picture, BANNER_WIDTH, BANNER_HEIGHT, imageops::FilterType::Triangle);
-    let mut backdrop = imageops::blur(&stretched, 20.0);
-    imageops::colorops::brighten_in_place(&mut backdrop, -80);
-    let (width, height) = fitted(picture.width(), picture.height(), PICTURE_SIDE);
-    let foreground = imageops::resize(picture, width, height, imageops::FilterType::Lanczos3);
-    imageops::overlay(
-        &mut backdrop,
-        &foreground,
-        i64::from((BANNER_WIDTH - width) / 2),
-        i64::from((BANNER_HEIGHT - height) / 2),
-    );
-    backdrop
+    let (width, height) = covering(picture.width(), picture.height(), BANNER_WIDTH, BANNER_HEIGHT);
+    let scaled = imageops::resize(picture, width, height, imageops::FilterType::Lanczos3);
+    imageops::crop_imm(
+        &scaled,
+        (width - BANNER_WIDTH) / 2,
+        (height - BANNER_HEIGHT) / 2,
+        BANNER_WIDTH,
+        BANNER_HEIGHT,
+    )
+    .to_image()
 }
 
-/// The size a `width` by `height` picture takes when its longer side is `side` pixels, keeping its proportions.
-fn fitted(width: u32, height: u32, side: u32) -> (u32, u32) {
-    let longest = width.max(height);
-    if longest == 0 {
-        return (side, side);
-    }
-    let scale = side as f32 / longest as f32;
+/// The smallest size that keeps a `width` by `height` picture's proportions and covers a `box_width` by `box_height`
+/// box. Neither side is less than the box's, so a centred crop always fits.
+fn covering(width: u32, height: u32, box_width: u32, box_height: u32) -> (u32, u32) {
+    let scale = (f64::from(box_width) / f64::from(width)).max(f64::from(box_height) / f64::from(height));
     (
-        ((width as f32 * scale).round() as u32).max(1),
-        ((height as f32 * scale).round() as u32).max(1),
+        ((f64::from(width) * scale).ceil() as u32).max(box_width),
+        ((f64::from(height) * scale).ceil() as u32).max(box_height),
     )
 }
 
