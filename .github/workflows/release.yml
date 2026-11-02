@@ -1,5 +1,9 @@
 # A pushed tag `vX.Y.Z` builds the launcher for Windows, macOS and Linux, then publishes a GitHub release that holds
-# the artifacts and installers, with no changelog. A manual run builds the artifacts only.
+# the artifacts and installers, with no changelog.
+#
+# A manual run (Actions > Release > Run workflow) takes the same path, from the branch it is run on. It needs no tag
+# and creates no release. Its artifacts, and the assembled set with the checksums and the Linux installer script, are
+# uploaded to the run, so the whole pipeline can be checked before a tag is pushed.
 name: Release
 
 on:
@@ -172,10 +176,8 @@ jobs:
           path: Lodestone-${{ needs.version.outputs.tag }}-linux-x86_64.tar.gz
 
   release:
-    name: Publish the release
+    name: Assemble the release
     needs: [version, windows, macos, linux]
-    # A manual run stops after the builds, so nothing is published from it.
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -197,7 +199,17 @@ jobs:
           sha256sum Lodestone-* installer.sh > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
+      - name: Upload the assembled set for a manual run
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          if-no-files-found: error
+          path: dist/*
+
       - name: Create the release with no changelog
+        # Only a pushed tag publishes. A manual run stops before this step, so it creates no release.
+        if: github.ref_type == 'tag'
         run: |
           prerelease=()
           if [[ "$TAG" == *-* ]]; then
