@@ -1,7 +1,5 @@
 //! The saved worlds in `saves/`. A save is a folder that holds a `level.dat`.
 
-use std::fs::File;
-use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -9,6 +7,7 @@ use chrono::{DateTime, Local, Utc};
 use flate2::read::GzDecoder;
 use iced::widget::image::Handle;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 
 use super::{decode_world_art, dir_size};
 use crate::app::lang;
@@ -52,6 +51,28 @@ impl Difficulty {
             Difficulty::Easy => lang::t("instance.worlds.difficulty.easy"),
             Difficulty::Normal => lang::t("instance.worlds.difficulty.normal"),
             Difficulty::Hard => lang::t("instance.worlds.difficulty.hard"),
+        }
+    }
+
+    /// The difficulty a name in `difficulty_settings` gives, as the game writes it from 26.1.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "peaceful" => Some(Difficulty::Peaceful),
+            "easy" => Some(Difficulty::Easy),
+            "normal" => Some(Difficulty::Normal),
+            "hard" => Some(Difficulty::Hard),
+            _ => None,
+        }
+    }
+
+    /// The difficulty a number in `level.dat` gives, before 26.1: 0 peaceful, 1 easy, 2 normal, 3 hard.
+    pub fn from_code(code: Option<i8>) -> Option<Self> {
+        match code? {
+            0 => Some(Difficulty::Peaceful),
+            1 => Some(Difficulty::Easy),
+            2 => Some(Difficulty::Normal),
+            3 => Some(Difficulty::Hard),
+            _ => None,
         }
     }
 }
@@ -115,24 +136,26 @@ pub fn read_world(path: &Path) -> Option<WorldFile> {
     let folder = path.file_name()?.to_string_lossy().into_owned();
     // A `level.dat` that will not decode still lists the save, with the folder
     // name and no details.
-    let level = read_level(&level_path).unwrap_or_default();
+    let level = read_nbt::<LevelFile>(&level_path).map(|file| file.data).unwrap_or_default();
     let backed_up = has_backup(path, &folder);
     let art = decode_world_art(&path.join("icon.png"));
 
-    let game_mode = match (level.hardcore.unwrap_or(0) != 0, level.game_type) {
+    // Minecraft 26.1 moved hardcore and the difficulty into `difficulty_settings`, and writes the difficulty as a
+    // name. Older saves keep both at the top of `Data`, as a number.
+    let settings = level.difficulty_settings.as_ref();
+    let hardcore = settings.and_then(|settings| settings.hardcore).or(level.hardcore).unwrap_or(0) != 0;
+    let game_mode = match (hardcore, level.game_type) {
         (true, _) => Some(GameMode::Hardcore),
         (false, Some(0)) => Some(GameMode::Survival),
         (false, Some(1)) => Some(GameMode::Creative),
         (false, Some(2)) => Some(GameMode::Adventure),
         _ => None,
     };
-    let difficulty = match level.difficulty {
-        Some(0) => Some(Difficulty::Peaceful),
-        Some(1) => Some(Difficulty::Easy),
-        Some(2) => Some(Difficulty::Normal),
-        Some(3) => Some(Difficulty::Hard),
-        _ => None,
-    };
+    let difficulty = settings
+        .and_then(|settings| settings.difficulty.as_deref())
+        .and_then(Difficulty::from_name)
+        .or_else(|| Difficulty::from_code(level.difficulty));
+    let seed = read_seed(path, &level);
     // `LastPlayed` is epoch milliseconds. A zero or negative value is not a time, so the file's last
     // write stands in for it.
     let saved = level
@@ -151,7 +174,7 @@ pub fn read_world(path: &Path) -> Option<WorldFile> {
         name: level.level_name.filter(|name| !name.trim().is_empty()).unwrap_or(folder),
         game_mode,
         difficulty,
-        seed: level.world_gen_settings.and_then(|settings| settings.seed).or(level.random_seed),
+        seed,
         version: level.version.and_then(|version| version.name),
         size_bytes: dir_size(path),
         saved,
@@ -194,12 +217,29 @@ fn looks_like_stamp(stamp: &str) -> bool {
         })
 }
 
-/// Decodes a `level.dat`, which is gzip-compressed NBT. `None` when the file is
-/// missing or does not decode.
-fn read_level(path: &Path) -> Option<LevelData> {
-    let file = File::open(path).ok()?;
-    let level: LevelFile = fastnbt::from_reader(GzDecoder::new(BufReader::new(file))).ok()?;
-    Some(level.data)
+/// The first two bytes of a gzip stream.
+const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
+
+/// Decodes the NBT file at `path`. The game gzip-compresses its files, but a file without the gzip header is read
+/// as it is. `None` when the file is missing or does not decode.
+fn read_nbt<T: DeserializeOwned>(path: &Path) -> Option<T> {
+    let bytes = std::fs::read(path).ok()?;
+    if bytes.starts_with(&GZIP_MAGIC) {
+        fastnbt::from_reader(GzDecoder::new(&bytes[..])).ok()
+    } else {
+        fastnbt::from_bytes(&bytes).ok()
+    }
+}
+
+/// The world seed, from the newest place that holds it. From Minecraft 26.1 it is `data.seed` in
+/// `data/minecraft/world_gen_settings.dat`. Before that it was `WorldGenSettings.seed` in `level.dat`, and before
+/// 1.16 it was `RandomSeed` there. A file that is missing, or has no seed, falls through to the next place.
+fn read_seed(path: &Path, level: &LevelData) -> Option<i64> {
+    read_nbt::<WorldGenSettingsFile>(&path.join("data").join("minecraft").join("world_gen_settings.dat"))
+        .and_then(|file| file.data)
+        .and_then(|data| data.seed)
+        .or_else(|| level.world_gen_settings.as_ref().and_then(|settings| settings.seed))
+        .or(level.random_seed)
 }
 
 /// The top of `level.dat`: every key sits under `Data`.
@@ -230,6 +270,29 @@ struct LevelData {
     last_played: Option<i64>,
     /// Ticks the world has existed, 20 to the second.
     time: Option<i64>,
+    /// Minecraft 26.1 and later: the hardcore flag and the difficulty name.
+    #[serde(rename = "difficulty_settings")]
+    difficulty_settings: Option<DifficultySettings>,
+}
+
+/// `difficulty_settings` in `level.dat` from 26.1, where the difficulty is a name and hardcore moved.
+#[derive(Debug, Deserialize)]
+struct DifficultySettings {
+    /// "peaceful", "easy", "normal" or "hard".
+    difficulty: Option<String>,
+    /// A byte flag, written in lowercase as `hardcore` is above.
+    hardcore: Option<i8>,
+}
+
+/// The top of `data/minecraft/world_gen_settings.dat` from 26.1: the seed sits under `data`.
+#[derive(Deserialize)]
+struct WorldGenSettingsFile {
+    data: Option<WorldGenSettingsData>,
+}
+
+#[derive(Deserialize)]
+struct WorldGenSettingsData {
+    seed: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]

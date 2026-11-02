@@ -30,6 +30,9 @@ pub const BANNER_HEIGHT: f32 = 150.0;
 const FOOTER_HEIGHT: f32 = 80.0;
 /// The grid card's fixed height, so the virtualized rows keep an exact pitch.
 pub const CARD_HEIGHT: f32 = BANNER_HEIGHT + 1.0 + FOOTER_HEIGHT;
+/// The widest a grid card is drawn: the reference's card width, so a card reads the same on the Worlds page and on
+/// an instance's Worlds tab. A caller that gives a card more room keeps it at this width.
+pub const CARD_MAX_WIDTH: f32 = 374.0;
 /// The card's corner radius. The hover ring follows it.
 const CARD_CORNER: f32 = 14.0;
 /// The side of the icon on the banner: twice its 64px, so every pixel of the icon stays whole.

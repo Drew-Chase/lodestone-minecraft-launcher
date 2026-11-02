@@ -264,3 +264,185 @@ fn a_save_with_an_icon_has_the_icon_and_a_backdrop() {
     assert!(world.backdrop.is_some(), "the blurred backdrop is made beside it");
     fs::remove_dir_all(&root).ok();
 }
+
+/// Minecraft 26.1 and later: `level.dat` keeps hardcore and the difficulty name under `difficulty_settings`, and
+/// has no seed.
+#[derive(Serialize)]
+struct ModernLevel {
+    #[serde(rename = "Data")]
+    data: ModernData,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct ModernData {
+    level_name: String,
+    game_type: i32,
+    #[serde(rename = "difficulty_settings")]
+    difficulty_settings: ModernDifficulty,
+    version: TestVersion,
+}
+
+#[derive(Serialize)]
+struct ModernDifficulty {
+    difficulty: String,
+    hardcore: i8,
+    locked: i8,
+}
+
+/// Before 1.16: the seed is `RandomSeed` at the top of `Data`.
+#[derive(Serialize)]
+struct LegacyLevel {
+    #[serde(rename = "Data")]
+    data: LegacyData,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct LegacyData {
+    level_name: String,
+    random_seed: i64,
+}
+
+/// `data/minecraft/world_gen_settings.dat` from 26.1: the seed sits under `data`, beside the root's `DataVersion`.
+#[derive(Serialize)]
+struct GenSettingsFile {
+    #[serde(rename = "DataVersion")]
+    data_version: i32,
+    data: GenSettingsData,
+}
+
+#[derive(Serialize)]
+struct GenSettingsData {
+    seed: i64,
+    generate_structures: i8,
+}
+
+/// The bytes of `nbt`, gzip-compressed as the game stores them.
+fn gzipped(nbt: &[u8]) -> Vec<u8> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(nbt).expect("gzip writes");
+    encoder.finish().expect("gzip finishes")
+}
+
+/// A 26.1 `level.dat` with the given difficulty name and hardcore flag.
+fn modern_level_dat(difficulty: &str, hardcore: i8) -> Vec<u8> {
+    let nbt = fastnbt::to_bytes(&ModernLevel {
+        data: ModernData {
+            level_name: "Aether Hub".to_string(),
+            game_type: 0,
+            difficulty_settings: ModernDifficulty {
+                difficulty: difficulty.to_string(),
+                hardcore,
+                locked: 0,
+            },
+            version: TestVersion { name: "26.1".to_string() },
+        },
+    })
+    .expect("nbt encodes");
+    gzipped(&nbt)
+}
+
+/// A 26.1 `world_gen_settings.dat` holding `seed`, gzip-compressed.
+fn gen_settings_dat(seed: i64) -> Vec<u8> {
+    gzipped(&gen_settings_nbt(seed))
+}
+
+/// The uncompressed NBT of a 26.1 `world_gen_settings.dat` holding `seed`.
+fn gen_settings_nbt(seed: i64) -> Vec<u8> {
+    fastnbt::to_bytes(&GenSettingsFile {
+        data_version: 4790,
+        data: GenSettingsData {
+            seed,
+            generate_structures: 1,
+        },
+    })
+    .expect("nbt encodes")
+}
+
+#[test]
+fn from_26_1_the_seed_is_in_the_world_gen_settings_file() {
+    let root = scratch("gen-file");
+    let save = root.join("Hub");
+    write(&save.join("level.dat"), &modern_level_dat("normal", 0));
+    write(&save.join("data/minecraft/world_gen_settings.dat"), &gen_settings_dat(77));
+
+    let world = read_world(&save).expect("the save lists");
+    assert_eq!(world.seed, Some(77));
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn the_world_gen_settings_file_wins_over_a_seed_left_in_level_dat() {
+    let root = scratch("both-seeds");
+    let save = root.join("Hub");
+    write(&save.join("level.dat"), &level_dat(hub()));
+    write(&save.join("data/minecraft/world_gen_settings.dat"), &gen_settings_dat(77));
+
+    let world = read_world(&save).expect("the save lists");
+    assert_eq!(world.seed, Some(77), "the newer file is the one the game reads");
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_damaged_world_gen_settings_file_falls_back_to_the_seed_in_level_dat() {
+    let root = scratch("damaged-gen");
+    let save = root.join("Hub");
+    write(&save.join("level.dat"), &level_dat(hub()));
+    write(&save.join("data/minecraft/world_gen_settings.dat"), b"not nbt");
+
+    let world = read_world(&save).expect("the save lists");
+    assert_eq!(world.seed, Some(-4_827_193_047_281));
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_world_gen_settings_file_without_gzip_is_read_as_it_is() {
+    let root = scratch("raw-gen");
+    let save = root.join("Hub");
+    write(&save.join("level.dat"), &modern_level_dat("normal", 0));
+    write(&save.join("data/minecraft/world_gen_settings.dat"), &gen_settings_nbt(77));
+
+    let world = read_world(&save).expect("the save lists");
+    assert_eq!(world.seed, Some(77));
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn before_1_16_the_seed_is_random_seed() {
+    let root = scratch("legacy-seed");
+    let save = root.join("Hub");
+    let nbt = fastnbt::to_bytes(&LegacyLevel {
+        data: LegacyData {
+            level_name: "Old Hub".to_string(),
+            random_seed: 4242,
+        },
+    })
+    .expect("nbt encodes");
+    write(&save.join("level.dat"), &gzipped(&nbt));
+
+    let world = read_world(&save).expect("the save lists");
+    assert_eq!(world.seed, Some(4242));
+    assert_eq!(world.name, "Old Hub");
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn from_26_1_hardcore_and_the_difficulty_name_come_from_difficulty_settings() {
+    let root = scratch("modern-difficulty");
+    write(&root.join("Hard/level.dat"), &modern_level_dat("hard", 1));
+    write(&root.join("Easy/level.dat"), &modern_level_dat("easy", 0));
+
+    let worlds = scan(&root);
+    let hard = worlds
+        .iter()
+        .find(|world| world.name == "Aether Hub" && world.path.ends_with("Hard"))
+        .expect("Hard lists");
+    assert_eq!(hard.game_mode, Some(GameMode::Hardcore));
+    assert_eq!(hard.difficulty, Some(Difficulty::Hard));
+    let easy = worlds.iter().find(|world| world.path.ends_with("Easy")).expect("Easy lists");
+    assert_eq!(easy.game_mode, Some(GameMode::Survival));
+    assert_eq!(easy.difficulty, Some(Difficulty::Easy));
+    assert_eq!(hard.version.as_deref(), Some("26.1"), "the rest of level.dat still reads");
+    fs::remove_dir_all(&root).ok();
+}

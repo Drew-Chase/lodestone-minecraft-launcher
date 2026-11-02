@@ -21,7 +21,7 @@ use crate::app::components::button::Variant;
 use crate::app::components::grid::grid;
 use crate::app::components::input;
 use crate::app::components::panel::panel;
-use crate::app::components::world_card::{WorldLabels, WorldMessages, world_card};
+use crate::app::components::world_card::{CARD_MAX_WIDTH, WorldLabels, WorldMessages, world_card};
 use crate::app::lang;
 use crate::app::theme::{color, fonts, utility};
 use crate::app::world_pins::WorldPins;
@@ -129,7 +129,10 @@ impl State {
                     pinned: pins.contains(instance, &world.folder()),
                 };
                 let hovered = self.hovered.as_deref() == Some(world.path.as_path());
-                world_card(world, labels, hovered, messages(&world.path))
+                // A card stops at the reference width, so one card on a wide page does not stretch across it.
+                container(world_card(world, labels, hovered, messages(&world.path)))
+                    .max_width(CARD_MAX_WIDTH)
+                    .into()
             })
             .collect();
         let body = if cards.is_empty() {
