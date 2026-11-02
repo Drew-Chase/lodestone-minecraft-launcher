@@ -2,7 +2,8 @@
 ;
 ; Build from the repository root (CI passes absolute paths):
 ;   makensis /DAPP_VERSION=0.1.0 /DBIN_DIR=C:\path\to\target\release /DOUT_FILE=C:\path\to\Lodestone-setup.exe res\installer.nsi
-; Without the defines it builds from ..\target\release and writes Lodestone-setup.exe there.
+; Without the defines it builds from ..\target\release and writes Lodestone-setup.exe there. NSIS takes every relative
+; path from this script's folder, so these defaults do not depend on where makensis is run from.
 ;
 ; The installer writes to Program Files, so it asks for administrator rights. `/S` runs it silently; the launcher's
 ; own updater does that.
@@ -17,17 +18,17 @@ Unicode true
   !define APP_VERSION "0.1.0"
 !endif
 !ifndef BIN_DIR
-  !define BIN_DIR "${__FILEDIR__}\..\target\release"
+  !define BIN_DIR "..\target\release"
 !endif
 !ifndef OUT_FILE
-  !define OUT_FILE "${__FILEDIR__}\..\target\release\Lodestone-setup.exe"
+  !define OUT_FILE "..\target\release\Lodestone-setup.exe"
 !endif
 
 !define APP_NAME      "Lodestone"
 !define APP_PRODUCT   "Lodestone Minecraft Launcher"
 !define APP_PUBLISHER "Drew Chase"
 !define APP_EXE       "lodestone_launcher.exe"
-!define APP_ICON      "${__FILEDIR__}\icon\icon.ico"
+!define APP_ICON      "icon\icon.ico"
 !define UNINST_KEY    "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
 
 Name "${APP_PRODUCT}"
