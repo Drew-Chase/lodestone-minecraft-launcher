@@ -1,0 +1,206 @@
+# A pushed tag `vX.Y.Z` builds the launcher for Windows, macOS and Linux, then publishes a GitHub release that holds
+# the artifacts and installers, with no changelog. A manual run builds the artifacts only.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Check the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      base: ${{ steps.version.outputs.base }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare the tag with the crate version
+        id: version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/gui/Cargo.toml | head -n 1)
+          if [ -z "$version" ]; then
+            echo "::error::Could not read the version from crates/gui/Cargo.toml"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::The tag $GITHUB_REF_NAME does not match lodestone_launcher $version"
+            exit 1
+          fi
+          # The installers take the numeric part only, so a prerelease keeps its base version there.
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "base=${version%%-*}" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+  windows:
+    name: Windows
+    needs: version
+    runs-on: windows-latest
+    env:
+      LODESTONE_CURSEFORGE_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+      TAG: ${{ needs.version.outputs.tag }}
+      BASE: ${{ needs.version.outputs.base }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check the CurseForge key
+        shell: bash
+        run: |
+          if [ -z "$LODESTONE_CURSEFORGE_KEY" ]; then
+            echo "::error::The CURSEFORGE_API_KEY secret is not set"
+            exit 1
+          fi
+
+      - name: Build the launcher
+        run: cargo build --release -p lodestone_launcher
+
+      - name: Zip the launcher
+        shell: pwsh
+        run: Compress-Archive -Path target/release/lodestone_launcher.exe -DestinationPath "Lodestone-$env:TAG-windows-x64.zip"
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            choco install nsis --yes --no-progress
+            $env:Path += ";${env:ProgramFiles(x86)}\NSIS"
+          }
+          $out = Join-Path $env:GITHUB_WORKSPACE "Lodestone-$env:TAG-setup.exe"
+          $bin = Join-Path $env:GITHUB_WORKSPACE "target\release"
+          makensis "/DAPP_VERSION=$env:BASE" "/DBIN_DIR=$bin" "/DOUT_FILE=$out" res\installer.nsi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          if-no-files-found: error
+          path: |
+            Lodestone-${{ needs.version.outputs.tag }}-windows-x64.zip
+            Lodestone-${{ needs.version.outputs.tag }}-setup.exe
+
+  macos:
+    name: macOS
+    needs: version
+    runs-on: macos-latest
+    env:
+      LODESTONE_CURSEFORGE_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      TAG: ${{ needs.version.outputs.tag }}
+      BASE: ${{ needs.version.outputs.base }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check the CurseForge key
+        run: |
+          if [ -z "$LODESTONE_CURSEFORGE_KEY" ]; then
+            echo "::error::The CURSEFORGE_API_KEY secret is not set"
+            exit 1
+          fi
+
+      - name: Build both architectures into one binary
+        run: |
+          cargo build --release -p lodestone_launcher --target aarch64-apple-darwin
+          cargo build --release -p lodestone_launcher --target x86_64-apple-darwin
+          mkdir -p target/universal
+          lipo -create -output target/universal/lodestone_launcher \
+            target/aarch64-apple-darwin/release/lodestone_launcher \
+            target/x86_64-apple-darwin/release/lodestone_launcher
+
+      - name: Bundle Lodestone.app and the disk image
+        run: |
+          cargo xtask bundle-macos --binary target/universal/lodestone_launcher --version "$BASE" --out dist --dmg "dist/Lodestone-$TAG-macos-universal.dmg"
+
+      - name: Zip the app
+        run: ditto -c -k --sequesterRsrc --keepParent dist/Lodestone.app "dist/Lodestone-$TAG-macos-universal.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          if-no-files-found: error
+          path: |
+            dist/Lodestone-${{ needs.version.outputs.tag }}-macos-universal.zip
+            dist/Lodestone-${{ needs.version.outputs.tag }}-macos-universal.dmg
+
+  linux:
+    name: Linux
+    needs: version
+    # The oldest Ubuntu image on offer keeps the binary runnable on older glibc versions.
+    runs-on: ubuntu-22.04
+    env:
+      LODESTONE_CURSEFORGE_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check the CurseForge key
+        run: |
+          if [ -z "$LODESTONE_CURSEFORGE_KEY" ]; then
+            echo "::error::The CURSEFORGE_API_KEY secret is not set"
+            exit 1
+          fi
+
+      - name: Build the launcher
+        run: cargo build --release -p lodestone_launcher
+
+      - name: Archive the launcher
+        run: tar -czf "Lodestone-$TAG-linux-x86_64.tar.gz" -C target/release lodestone_launcher
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          if-no-files-found: error
+          path: Lodestone-${{ needs.version.outputs.tag }}-linux-x86_64.tar.gz
+
+  release:
+    name: Publish the release
+    needs: [version, windows, macos, linux]
+    # A manual run stops after the builds, so nothing is published from it.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Add the Linux installer script and the checksums
+        run: |
+          cp res/installer.sh dist/installer.sh
+          cd dist
+          sha256sum Lodestone-* installer.sh > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create the release with no changelog
+        run: |
+          prerelease=()
+          if [[ "$TAG" == *-* ]]; then
+            prerelease=(--prerelease)
+          fi
+          gh release create "$TAG" dist/* --verify-tag --title "$TAG" --notes "" "${prerelease[@]}"
