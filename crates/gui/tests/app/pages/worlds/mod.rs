@@ -6,7 +6,7 @@ use std::time::Duration;
 use chrono::{Local, TimeZone};
 
 use super::*;
-use crate::app::pages::instance::files::GameMode;
+use crate::app::pages::instance::files::{BackupFile, GameMode};
 use crate::app::world_pins::WorldPins;
 use filters::{WorldFilter, WorldSort};
 
@@ -40,12 +40,20 @@ fn entry(instance: &str, name: &str, mode: Option<GameMode>, seed: Option<i64>, 
     }
 }
 
-/// A page whose scan has landed with `entries`.
-fn loaded(entries: Vec<WorldEntry>) -> State {
+/// A page whose scan has landed with `worlds` and `backups`.
+fn scanned(worlds: Vec<WorldEntry>, backups: Vec<BackupEntry>) -> State {
     let mut state = State::default();
     let generation = state.begin_scan(&[]);
-    state.update(Message::Scanned { generation, entries });
+    state.update(Message::Scanned {
+        generation,
+        scan: Scan { worlds, backups },
+    });
     state
+}
+
+/// A page whose scan has landed with `entries`.
+fn loaded(entries: Vec<WorldEntry>) -> State {
+    scanned(entries, Vec::new())
 }
 
 /// The names of the visible worlds, in order.
@@ -74,7 +82,7 @@ fn the_chips_count_their_worlds_and_narrow_the_list() {
     let mut state = loaded(sample());
     state.set_pins(WorldPins::from_rows(vec![("skyfall".to_owned(), "Sky".to_owned())]));
 
-    assert_eq!(state.counts, [4, 1, 2, 1, 1], "all, pinned, survival, creative, hardcore");
+    assert_eq!(state.counts, [4, 1, 2, 1, 1, 0], "all, pinned, survival, creative, hardcore, backups");
 
     state.update(Message::Filter(WorldFilter::Survival));
     assert_eq!(visible_names(&state), ["Hub", "Mines"]);
@@ -125,14 +133,20 @@ fn a_scan_a_newer_scan_overtook_is_dropped() {
 
     state.update(Message::Scanned {
         generation: first,
-        entries: sample(),
+        scan: Scan {
+            worlds: sample(),
+            backups: Vec::new(),
+        },
     });
     assert!(!state.loaded, "the first scan answers a page that has moved on");
     assert!(state.entries.is_empty());
 
     state.update(Message::Scanned {
         generation: second,
-        entries: sample(),
+        scan: Scan {
+            worlds: sample(),
+            backups: Vec::new(),
+        },
     });
     assert!(state.loaded);
     assert_eq!(state.visible.len(), 4);
@@ -185,4 +199,60 @@ fn the_summary_counts_worlds_and_instances() {
     let state = loaded(sample());
 
     assert!(state.summary().starts_with("4 worlds across 2 instances"), "got: {}", state.summary());
+}
+
+/// A backup of the save `folder` in the instance `instance`, made on October `day` at noon.
+fn backup(instance: &str, folder: &str, day: u32) -> BackupEntry {
+    BackupEntry {
+        instance_id: instance.to_owned(),
+        instance_name: format!("{instance} instance"),
+        backup: BackupFile {
+            path: PathBuf::from(format!("/instances/{instance}/backups/{folder}-2026-10-{day:02}_12.00.00.zip")),
+            folder: folder.to_owned(),
+            taken: at(2026, 10, day, 12, 0),
+            size_bytes: 2048,
+        },
+    }
+}
+
+/// The folders of the backups the page shows, in order.
+fn visible_backup_folders(state: &State) -> Vec<&str> {
+    state
+        .visible_backups
+        .iter()
+        .map(|&index| state.backups[index].backup.folder.as_str())
+        .collect()
+}
+
+#[test]
+fn the_backups_chip_counts_the_backups_and_lists_them_in_place_of_the_worlds() {
+    let mut state = scanned(sample(), vec![backup("aether", "Hub", 20), backup("skyfall", "Sky", 25)]);
+
+    assert_eq!(state.counts, [4, 0, 2, 1, 1, 2], "the Backups chip counts the backups, not the worlds");
+
+    state.update(Message::Filter(WorldFilter::Backups));
+    assert!(state.visible.is_empty(), "no world passes the Backups chip");
+    assert_eq!(visible_backup_folders(&state), ["Hub", "Sky"]);
+}
+
+#[test]
+fn the_search_narrows_the_backups_by_their_save_or_instance() {
+    let mut state = scanned(sample(), vec![backup("aether", "Hub", 20), backup("skyfall", "Sky", 25)]);
+    state.update(Message::Filter(WorldFilter::Backups));
+
+    state.update(Message::Search("hub".to_owned()));
+    assert_eq!(visible_backup_folders(&state), ["Hub"]);
+
+    state.update(Message::Search("skyfall instance".to_owned()));
+    assert_eq!(visible_backup_folders(&state), ["Sky"], "an instance name matches its backups");
+}
+
+#[test]
+fn choosing_a_chip_closes_an_open_menu() {
+    let mut state = loaded(sample());
+    state.update(Message::ToggleMenu(Menu::Sort));
+
+    state.update(Message::Filter(WorldFilter::Backups));
+
+    assert_eq!(state.menu, None, "the sort menu does not stay open behind the Backups chip");
 }

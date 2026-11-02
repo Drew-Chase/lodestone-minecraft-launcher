@@ -26,16 +26,19 @@ pub enum WorldFilter {
     Survival,
     Creative,
     Hardcore,
+    /// The backups of the saves, listed as rows in place of the worlds.
+    Backups,
 }
 
 impl WorldFilter {
     /// Every chip, in the order the row shows them.
-    pub const ALL: [WorldFilter; 5] = [
+    pub const ALL: [WorldFilter; 6] = [
         WorldFilter::All,
         WorldFilter::Pinned,
         WorldFilter::Survival,
         WorldFilter::Creative,
         WorldFilter::Hardcore,
+        WorldFilter::Backups,
     ];
 
     fn label(self) -> &'static str {
@@ -45,10 +48,12 @@ impl WorldFilter {
             WorldFilter::Survival => lang::t("worlds.filter.survival"),
             WorldFilter::Creative => lang::t("worlds.filter.creative"),
             WorldFilter::Hardcore => lang::t("worlds.filter.hardcore"),
+            WorldFilter::Backups => lang::t("worlds.filter.backups"),
         }
     }
 
-    /// Whether `entry` passes this chip. `pinned` says whether the entry's world is pinned.
+    /// Whether `entry` passes this chip. `pinned` says whether the entry's world is pinned. The Backups chip lists no
+    /// world, so no world passes it.
     pub fn matches(self, entry: &WorldEntry, pinned: bool) -> bool {
         let mode = entry.world.game_mode;
         match self {
@@ -57,6 +62,7 @@ impl WorldFilter {
             WorldFilter::Survival => mode == Some(GameMode::Survival),
             WorldFilter::Creative => mode == Some(GameMode::Creative),
             WorldFilter::Hardcore => mode == Some(GameMode::Hardcore),
+            WorldFilter::Backups => false,
         }
     }
 }
@@ -110,18 +116,25 @@ pub enum WorldView {
 }
 
 /// The toolbar: the filter chips on the left, and on the right the sort menu and the switch between the grid and
-/// the table.
+/// the table. The Backups chip lists rows that have no order to sort by and no grid, so it leaves the right empty.
 pub fn view(state: &State) -> Element<'_, Message> {
     let chips: Vec<Element<'_, Message>> = WorldFilter::ALL
         .iter()
         .enumerate()
         .map(|(index, &filter)| chip(filter, state.counts[index], state.filter == filter))
         .collect();
+    let trailing: Element<'_, Message> = if state.filter == WorldFilter::Backups {
+        Space::new().into()
+    } else {
+        row![sort_menu(state), view_switch(state)]
+            .spacing(12)
+            .align_y(alignment::Vertical::Center)
+            .into()
+    };
     row![
         row(chips).spacing(4).align_y(alignment::Vertical::Center),
         Space::new().width(Fill),
-        sort_menu(state),
-        view_switch(state),
+        trailing,
     ]
     .spacing(12)
     .align_y(alignment::Vertical::Center)

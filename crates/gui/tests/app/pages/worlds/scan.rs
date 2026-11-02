@@ -22,6 +22,13 @@ fn save(instance: &Path, name: &str) {
     fs::write(folder.join("level.dat"), b"not gzip").expect("level.dat writes");
 }
 
+/// A backup zip named `name` in the `backups/` of the instance folder `instance`.
+fn backup(instance: &Path, name: &str) {
+    let folder = instance.join("backups");
+    fs::create_dir_all(&folder).expect("backups folder");
+    fs::write(folder.join(name), b"zip").expect("backup writes");
+}
+
 #[test]
 fn every_source_lists_its_own_saves_under_its_instance() {
     let root = scratch("sources");
@@ -64,6 +71,46 @@ fn every_source_lists_its_own_saves_under_its_instance() {
             ("aether-id".to_owned(), "Spawn".to_owned()),
             ("skyfall-id".to_owned(), "Sky".to_owned()),
         ]
+    );
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn every_source_lists_its_backups_newest_first_under_its_instance() {
+    let root = scratch("backups");
+    let aether = root.join("aether");
+    let skyfall = root.join("skyfall");
+    backup(&aether, "Hub-2026-10-20_12.00.00.zip");
+    backup(&skyfall, "Sky-2026-10-25_12.00.00.zip");
+    backup(&aether, "Spawn-2026-10-28_12.00.00.zip");
+    let sources = vec![
+        Source {
+            id: "aether-id".into(),
+            name: "Aether Legacy".into(),
+            mc_version: "1.20.1".into(),
+            folder: aether,
+        },
+        Source {
+            id: "skyfall-id".into(),
+            name: "Skyfall".into(),
+            mc_version: "1.20.4".into(),
+            folder: skyfall,
+        },
+    ];
+
+    let listed: Vec<(String, String)> = scan_backups(&sources)
+        .into_iter()
+        .map(|entry| (entry.instance_id, entry.backup.folder))
+        .collect();
+
+    assert_eq!(
+        listed,
+        [
+            ("aether-id".to_owned(), "Spawn".to_owned()),
+            ("skyfall-id".to_owned(), "Sky".to_owned()),
+            ("aether-id".to_owned(), "Hub".to_owned()),
+        ],
+        "newest first, whichever instance holds the backup"
     );
     fs::remove_dir_all(&root).ok();
 }

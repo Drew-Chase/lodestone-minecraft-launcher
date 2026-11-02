@@ -1,7 +1,8 @@
 //! The Worlds page: every saved world across every instance, as a grid of cards or a table, with a search, filter
-//! chips and a sort. Each time the page opens, the saves are read from every instance's `saves/` folder on the
-//! blocking pool. The actions a world offers are the root's (`app/world_actions.rs`), and each names the instance
-//! its world belongs to.
+//! chips and a sort. The Backups chip lists every instance's backups as rows in place of the worlds. Each time the
+//! page opens, the saves and backups are read from every instance's `saves/` and `backups/` folders on the blocking
+//! pool. The actions a world offers are the root's (`app/world_actions.rs`), and each names the instance its world
+//! belongs to.
 
 mod filters;
 mod format;
@@ -16,7 +17,7 @@ use chrono::{DateTime, Local};
 use iced::widget::{Column, container};
 use iced::{Element, Fill, Padding, Size};
 
-pub use scan::{Source, WorldEntry, scan_all};
+pub use scan::{BackupEntry, Scan, Source, WorldEntry};
 
 use crate::app::components::scrollbar;
 use crate::app::lang;
@@ -55,10 +56,10 @@ pub enum Message {
     },
     /// A world's request, which the root carries out.
     World(WorldMessage),
-    /// The saves were read. Stale when `generation` has moved on.
+    /// The saves and the backups were read. Stale when `generation` has moved on.
     Scanned {
         generation: u64,
-        entries: Vec<WorldEntry>,
+        scan: Scan,
     },
 }
 
@@ -86,6 +87,8 @@ impl Totals {
 pub struct State {
     /// Every save of every instance, as the last scan read them.
     entries: Vec<WorldEntry>,
+    /// Every backup of every instance, newest first, as the last scan read them.
+    backups: Vec<BackupEntry>,
     /// Whether a scan has landed. Until then the page says the saves are being read.
     loaded: bool,
     /// Bumped by every scan. A result from an older scan is dropped.
@@ -107,8 +110,10 @@ pub struct State {
     menu: Option<Menu>,
     /// Indices into `entries` that pass the search and the filter, in the sort order. `refilter` keeps it current.
     visible: Vec<usize>,
-    /// How many entries each filter chip lists, in `WorldFilter::ALL` order.
-    counts: [usize; 5],
+    /// Indices into `backups` that pass the search. `refilter` keeps it current.
+    visible_backups: Vec<usize>,
+    /// How many each filter chip lists, in `WorldFilter::ALL` order: worlds, or backups for the Backups chip.
+    counts: [usize; WorldFilter::ALL.len()],
     totals: Totals,
 }
 
@@ -136,6 +141,15 @@ impl State {
             .map(|entry| &entry.world)
     }
 
+    /// The save in the folder `folder` of the instance `instance`, when the page lists it. A backup names its save
+    /// by folder, so this is how its row finds the save's art.
+    fn saved_world(&self, instance: &str, folder: &str) -> Option<&WorldFile> {
+        self.entries
+            .iter()
+            .find(|entry| entry.instance_id == instance && entry.world.path.file_name().and_then(|name| name.to_str()) == Some(folder))
+            .map(|entry| &entry.world)
+    }
+
     /// Drops the save at `path` of the instance `instance`, as it went to the trash.
     pub fn remove(&mut self, instance: &str, path: &Path) {
         self.entries
@@ -156,6 +170,7 @@ impl State {
             }
             Message::Filter(filter) => {
                 self.filter = filter;
+                self.menu = None;
                 self.refilter();
             }
             Message::Sort(sort) => {
@@ -168,9 +183,10 @@ impl State {
             Message::Hovered(path) => self.hovered = path,
             Message::ToggleMenu(menu) => self.menu = if self.menu == Some(menu) { None } else { Some(menu) },
             Message::DismissMenu | Message::Pick { .. } => self.menu = None,
-            Message::Scanned { generation, entries } => {
+            Message::Scanned { generation, scan } => {
                 if generation == self.generation {
-                    self.entries = entries;
+                    self.entries = scan.worlds;
+                    self.backups = scan.backups;
                     self.loaded = true;
                     self.refilter();
                 }
@@ -189,19 +205,24 @@ impl State {
             .map(|entry| pins.contains(&entry.instance_id, &entry.world.folder()))
             .collect();
 
-        let mut counts = [0; 5];
+        let mut counts = [0; WorldFilter::ALL.len()];
         for (count, filter) in counts.iter_mut().zip(WorldFilter::ALL) {
-            *count = (0..entries.len()).filter(|&index| filter.matches(&entries[index], pinned[index])).count();
+            *count = match filter {
+                WorldFilter::Backups => self.backups.len(),
+                _ => (0..entries.len()).filter(|&index| filter.matches(&entries[index], pinned[index])).count(),
+            };
         }
         let mut visible: Vec<usize> = (0..entries.len())
             .filter(|&index| self.filter.matches(&entries[index], pinned[index]) && entries[index].matches(&query))
             .collect();
         let sort = self.sort;
         visible.sort_by(|&a, &b| sort.compare(&entries[a], &entries[b]));
+        let visible_backups = (0..self.backups.len()).filter(|&index| self.backups[index].matches(&query)).collect();
 
         self.counts = counts;
         self.totals = Totals::of(entries);
         self.visible = visible;
+        self.visible_backups = visible_backups;
     }
 
     /// The header's line: how many worlds, across how many instances, and their size. Until a scan lands it says the

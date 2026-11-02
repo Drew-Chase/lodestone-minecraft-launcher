@@ -5,7 +5,7 @@
 use std::rc::Rc;
 
 use aurora_leaf::Icon;
-use iced::widget::image::FilterMethod;
+use iced::widget::image::{FilterMethod, Handle};
 use iced::widget::{Row, Space, Text, column, container, image, mouse_area, row, stack};
 use iced::{Background, Border, Color, ContentFit, Element, Fill, Length, Padding, alignment, color, mouse};
 use iced_color_extension::rgb;
@@ -38,7 +38,7 @@ const CARD_CORNER: f32 = 14.0;
 /// The side of the icon on the banner: twice its 64px, so every pixel of the icon stays whole.
 const BANNER_ICON: f32 = 128.0;
 /// The side of the buttons in the seed row and the ⋯ button.
-const BUTTON_SIZE: f32 = 30.0;
+pub const BUTTON_SIZE: f32 = 30.0;
 /// The side of a table row's thumbnail.
 pub const THUMB_SIZE: f32 = 44.0;
 /// One table row's fixed height.
@@ -167,22 +167,22 @@ pub fn table_row<Message: Clone + 'static>(
         .size(14)
         .font(fonts::Inter::SEMI_BOLD)
         .color(color::Text::HEADLINE);
-    let name: Element<'static, Message> = if labels.pinned {
-        row![
-            title,
-            utility::icon(Icon::lucide().pin(), 11.0, Some((color::Primary::DEFAULT, color::Primary::DEFAULT))),
-        ]
-        .spacing(6)
-        .align_y(alignment::Vertical::Center)
-        .into()
-    } else {
-        title.into()
-    };
+    let mut name_line: Row<'static, Message> = Row::new().spacing(6).align_y(alignment::Vertical::Center).push(title);
+    if labels.pinned {
+        name_line = name_line.push(utility::icon(
+            Icon::lucide().pin(),
+            11.0,
+            Some((color::Primary::DEFAULT, color::Primary::DEFAULT)),
+        ));
+    }
+    if world.backed_up {
+        name_line = name_line.push(backed_up_badge());
+    }
     let body = container(
         row![
-            thumbnail(world),
+            thumbnail(world.icon.as_ref()),
             column![
-                name,
+                name_line,
                 Text::new(labels.subtitle)
                     .size(10)
                     .font(fonts::JetBrainsMono::REGULAR)
@@ -267,13 +267,16 @@ fn badges<Message: 'static>(world: &WorldFile, pinned: bool) -> Element<'static,
     }
     items.push(Space::new().width(Fill).into());
     if world.backed_up {
-        items.push(
-            Badge::new(lang::t("worlds.badge.backed_up"), color::Accents::CYAN, color::Accents::CYAN_TINT)
-                .compact()
-                .into(),
-        );
+        items.push(backed_up_badge());
     }
     row(items).align_y(alignment::Vertical::Center).width(Fill).into()
+}
+
+/// The BACKED UP badge, shown while a zip of the save is in the instance's `backups/`.
+pub fn backed_up_badge<Message: 'static>() -> Element<'static, Message> {
+    Badge::new(lang::t("worlds.badge.backed_up"), color::Accents::CYAN, color::Accents::CYAN_TINT)
+        .compact()
+        .into()
 }
 
 /// The name over the banner's foot, with its subtitle beneath.
@@ -434,9 +437,9 @@ fn load_button<Message: Clone + 'static>(play: Message) -> Element<'static, Mess
         .into()
 }
 
-/// The world's thumbnail in a table row: its icon, or a neutral placeholder without one.
-fn thumbnail<Message: 'static>(world: &WorldFile) -> Element<'static, Message> {
-    let art: Element<'static, Message> = match &world.icon {
+/// A table row's thumbnail: the save's icon, or a neutral placeholder without one.
+pub fn thumbnail<Message: 'static>(icon: Option<&Handle>) -> Element<'static, Message> {
+    let art: Element<'static, Message> = match icon {
         Some(handle) => image(handle.clone()).border_radius(10.0).width(THUMB_SIZE).height(THUMB_SIZE).into(),
         None => placeholder_art(10.0),
     };

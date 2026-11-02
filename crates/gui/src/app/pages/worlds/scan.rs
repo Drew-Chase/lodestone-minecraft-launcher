@@ -1,8 +1,8 @@
-//! The saves of every instance, read for the Worlds page on the blocking pool.
+//! The saves and backups of every instance, read for the Worlds page on the blocking pool.
 
 use std::path::PathBuf;
 
-use crate::app::pages::instance::files::{self, WorldFile};
+use crate::app::pages::instance::files::{self, BackupFile, WorldFile};
 use crate::app::perf;
 
 /// An instance whose saves the page lists.
@@ -52,6 +52,54 @@ pub fn scan_all(sources: &[Source]) -> Vec<WorldEntry> {
             })
         })
         .collect()
+}
+
+/// One backup on the Worlds page, and the instance it belongs to.
+#[derive(Debug, Clone)]
+pub struct BackupEntry {
+    pub instance_id: String,
+    pub instance_name: String,
+    pub backup: BackupFile,
+}
+
+impl BackupEntry {
+    /// Whether the save's folder name or its instance's name contains `query`, which is lower case.
+    pub fn matches(&self, query: &str) -> bool {
+        query.is_empty() || self.backup.folder.to_lowercase().contains(query) || self.instance_name.to_lowercase().contains(query)
+    }
+}
+
+/// Every backup of every source, newest first across the instances.
+pub fn scan_backups(sources: &[Source]) -> Vec<BackupEntry> {
+    let mut backups: Vec<BackupEntry> = sources
+        .iter()
+        .flat_map(|source| {
+            files::scan_backups(&source.folder).into_iter().map(move |backup| BackupEntry {
+                instance_id: source.id.clone(),
+                instance_name: source.name.clone(),
+                backup,
+            })
+        })
+        .collect();
+    backups.sort_by_key(|entry| std::cmp::Reverse(entry.backup.taken));
+    backups
+}
+
+/// What the Worlds page lists: the saves and the backups of every source, read in one pass.
+#[derive(Debug, Clone, Default)]
+pub struct Scan {
+    pub worlds: Vec<WorldEntry>,
+    pub backups: Vec<BackupEntry>,
+}
+
+impl Scan {
+    /// Reads the saves and the backups of every source.
+    pub fn read(sources: &[Source]) -> Self {
+        Self {
+            worlds: scan_all(sources),
+            backups: scan_backups(sources),
+        }
+    }
 }
 
 #[cfg(test)]

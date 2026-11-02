@@ -11,7 +11,7 @@ use crate::app::lang;
 pub enum Action {
     /// Quick-plays the world, or starts the instance when the version cannot.
     Play,
-    /// Opens the world's folder in the file manager.
+    /// Opens the world's folder in the file manager. A backup's row sends the backups folder instead.
     Reveal,
     /// Copies the world's seed to the clipboard.
     CopySeed,

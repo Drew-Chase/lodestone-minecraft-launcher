@@ -18,11 +18,11 @@ fn only_the_rows_around_the_scroll_are_built() {
     let viewport = Size::new(1200.0, 800.0);
     let pitch = CARD_HEIGHT + GAP;
 
-    let top = window(&state, viewport, 3, pitch);
+    let top = window(state.scroll_y, state.visible.len(), viewport, 3, pitch);
     assert_eq!((top.first, top.end, top.total), (0, 7, 34));
 
     state.scroll_y = 2470.0;
-    let scrolled = window(&state, viewport, 3, pitch);
+    let scrolled = window(state.scroll_y, state.visible.len(), viewport, 3, pitch);
     assert_eq!(
         (scrolled.first, scrolled.end),
         (8, 15),

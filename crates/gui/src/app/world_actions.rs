@@ -1,5 +1,6 @@
 //! The Worlds actions the root carries out: playing a world, opening its folder, copying its seed, backing it up,
-//! pinning it, importing a zipped world, and moving it to the trash once the user has said so. The Worlds pages
+//! restoring a backup as a new save, pinning it, importing a zipped world, and moving it to the trash once the user
+//! has said so. The Worlds pages
 //! ask for them, and each request names the instance its world belongs to, so an action never reads the instance
 //! another page shows. The alerts, the file dialog and the game belong to the root.
 
@@ -19,7 +20,7 @@ use crate::app::pages::Page;
 use crate::app::pages::instance::files;
 use crate::app::pages::instance::files::WorldFile;
 use crate::app::pages::instance::world_menu::Action;
-use crate::app::pages::worlds::{Menu, Message as WorldsMessage, Source, scan_all};
+use crate::app::pages::worlds::{Menu, Message as WorldsMessage, Scan, Source};
 
 /// A world request from a Worlds page, or the answer to one. The instance is named by its id.
 #[derive(Debug, Clone)]
@@ -44,6 +45,11 @@ pub enum WorldMessage {
     },
     /// A backup was written, or could not be.
     BackedUp { instance: String, result: Result<PathBuf, String> },
+    /// The Restore button of a backup row was pressed: the zip at `archive`, which holds the save `folder`, is restored
+    /// as a new save of `instance`.
+    Restore { instance: String, archive: PathBuf, folder: String },
+    /// A backup was restored as the save `folder` under the instance's `saves/`, or could not be.
+    Restored { instance: String, result: Result<String, String> },
     /// A world was extracted into the instance's `saves/` under this folder name, or could not be.
     Imported { instance: String, result: Result<String, String> },
     /// A pin was written, or could not be. The pin already shows `pinned`.
@@ -65,6 +71,8 @@ impl LodestoneLauncher {
             WorldMessage::DeleteAnswered { instance, path, confirmed } => self.answer_world_delete(instance, path, confirmed),
             WorldMessage::Deleted { instance, path, result } => self.world_deleted(instance, path, result),
             WorldMessage::BackedUp { instance, result } => self.world_backed_up(instance, result),
+            WorldMessage::Restore { instance, archive, folder } => self.restore_backup(instance, archive, folder),
+            WorldMessage::Restored { instance, result } => self.world_restored(instance, result),
             WorldMessage::Imported { instance, result } => self.world_imported(instance, result),
             WorldMessage::PinSaved {
                 instance,
@@ -204,6 +212,39 @@ impl LodestoneLauncher {
         Task::batch([report, self.rescan_worlds_of(&instance)])
     }
 
+    /// Restores the backup at `archive` as a new save of `instance`, which holds the save `folder`. The outcome returns
+    /// as `Restored`.
+    fn restore_backup(&mut self, instance: String, archive: PathBuf, folder: String) -> Task<LodestoneAppMessage> {
+        let Some(row) = self.library.instance(&instance) else {
+            return Task::none();
+        };
+        let saves = self.paths.instance(&row.directory_name).join("saves");
+        Task::perform(restore_archive(archive, saves, folder), move |result| {
+            LodestoneAppMessage::World(WorldMessage::Restored { instance, result })
+        })
+    }
+
+    /// Reports a backup that was restored, or could not be. A restored save is listed with the others, so the lists
+    /// that show `instance` read again.
+    fn world_restored(&mut self, instance: String, result: Result<String, String>) -> Task<LodestoneAppMessage> {
+        match result {
+            Ok(folder) => {
+                info!("Restored a backup as the save {folder}");
+                let report = self
+                    .alerts
+                    .show(Alert::info(lang::t_with("instance.worlds.restore.done", &[("name", folder.as_str())])))
+                    .discard();
+                Task::batch([report, self.rescan_worlds_of(&instance)])
+            }
+            Err(error) => {
+                warn!("Restoring a backup failed: {error}");
+                self.alerts
+                    .show(Alert::error(lang::t_with("instance.worlds.restore.failed", &[("error", error.as_str())])))
+                    .discard()
+            }
+        }
+    }
+
     /// Asks before the save at `path` goes to the trash. The answer returns as `DeleteAnswered`. A game running on
     /// the instance may have the world open, so the delete waits until it stops.
     fn ask_world_delete(&mut self, instance: &str, path: PathBuf) -> Task<LodestoneAppMessage> {
@@ -324,8 +365,8 @@ impl LodestoneLauncher {
         Task::batch(tasks)
     }
 
-    /// Opens the Worlds page's list of every instance's saves, read on the blocking pool. The page takes the pins
-    /// it lists with, and a scan that a newer one has overtaken is dropped when it lands.
+    /// Opens the Worlds page's list of every instance's saves and backups, read on the blocking pool. The page takes
+    /// the pins it lists with, and a scan that a newer one has overtaken is dropped when it lands.
     pub(super) fn open_worlds(&mut self) -> Task<LodestoneAppMessage> {
         let sources: Vec<Source> = self
             .library
@@ -341,8 +382,8 @@ impl LodestoneLauncher {
         self.worlds.set_pins(self.world_pins.clone());
         let generation = self.worlds.begin_scan(&sources);
         Task::perform(
-            async move { tokio::task::spawn_blocking(move || scan_all(&sources)).await.unwrap_or_default() },
-            move |entries| LodestoneAppMessage::Worlds(WorldsMessage::Scanned { generation, entries }),
+            async move { tokio::task::spawn_blocking(move || Scan::read(&sources)).await.unwrap_or_default() },
+            move |scan| LodestoneAppMessage::Worlds(WorldsMessage::Scanned { generation, scan }),
         )
     }
 
@@ -401,6 +442,13 @@ async fn import_archive(archive: PathBuf, saves: PathBuf) -> Result<String, Stri
 /// Zips the world at `world` into `backups` on the blocking pool.
 async fn back_up_archive(world: PathBuf, backups: PathBuf) -> Result<PathBuf, String> {
     tokio::task::spawn_blocking(move || files::world_archive::back_up(&world, &backups, Local::now()))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+/// Restores the backup at `archive` as a save of `saves` named `folder` on the blocking pool.
+async fn restore_archive(archive: PathBuf, saves: PathBuf, folder: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || files::world_archive::restore(&archive, &saves, &folder))
         .await
         .map_err(|error| error.to_string())?
 }
