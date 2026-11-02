@@ -1,273 +1,114 @@
-//! The section bodies of the Settings tab. Each is a divided panel of setting
-//! rows; the danger zone sits in a red-bordered panel.
+//! The Game Version, Paths & Files and Danger Zone sections. The launch sections are built from the shared rows in
+//! `components::launch_rows`, and the General section in `general.rs`.
 
-use iced::widget::{Space, Text, column, container, rich_text, row, slider, span, text_input};
-use iced::{Background, Border, Element, Fill, Padding, alignment};
-use iced_color_extension::rgb;
+use std::path::Path;
 
+use iced::widget::{Space, Text, column, row};
+use iced::{Element, Fill, Padding, alignment};
+use lodestone_loaders::LoaderVersion;
+
+use super::{Edit, Message};
 use crate::app::components::badge::{Badge, loader_palette};
 use crate::app::components::button::Variant;
+use crate::app::components::launch_rows;
 use crate::app::components::panel::{bordered_panel, divided, divided_panel};
-use crate::app::components::segmented::segmented;
-use crate::app::components::setting_row::{described_setting, setting};
-use crate::app::components::slider::style as slider_style;
-use crate::app::components::{Select, TextButton, Toggle, anim, input};
+use crate::app::components::setting_row::{self, described_setting, setting};
+use crate::app::components::{Select, TextButton, Toggle, anim};
+use crate::app::install::catalog::VersionEntry;
 use crate::app::lang;
-use crate::app::pages::library::instance::Instance;
+use crate::app::pages::library::instance::{Instance, Loader};
 use crate::app::theme::{color, fonts};
 
-use super::{
-    Axis, Choice, GARBAGE_COLLECTORS, JAVA_RUNTIMES, MEMORY_RANGE, MINECRAFT_VERSIONS, Message, SYSTEM_MEMORY_GB, Section, Settings, Switch,
-    launch_modes, parse_dimension,
-};
+/// The Game Version rows: the Minecraft version and the loader build, the loader's type, and the snapshots toggle.
+/// The lists show their own errors, and the loader rows are left out for vanilla.
+pub fn game_version<'a>(
+    instance: &'a Instance,
+    versions: &'a [VersionEntry],
+    versions_error: Option<&'a str>,
+    builds: Option<&'a [LoaderVersion]>,
+    builds_error: Option<&'a str>,
+) -> Element<'a, Message> {
+    let snapshots = instance.settings.snapshots;
+    let ids: Vec<String> = versions
+        .iter()
+        .filter(|version| snapshots || !version.snapshot)
+        .map(|version| version.id.clone())
+        .collect();
+    let selected = ids.iter().position(|id| *id == instance.mc_version);
+    let minecraft = Select::new(ids.clone(), selected)
+        .on_select(move |index| Message::Edit(Edit::MinecraftVersion(ids[index].clone())))
+        .searchable()
+        .width(180);
 
-/// The body of `section`, built from the tab's settings and the instance.
-pub fn body<'a>(section: Section, settings: &'a Settings, instance: &'a Instance) -> Element<'a, Message> {
-    match section {
-        Section::JavaMemory => java_memory(settings),
-        Section::Window => window(settings),
-        Section::LaunchArgs => launch_args(settings),
-        Section::GameVersion => game_version(settings, instance),
-        Section::PathsFiles => paths_files(instance),
-        Section::Advanced => advanced(settings),
-        Section::DangerZone => danger_zone(),
+    let mut rows = vec![setting(lang::t("instance.settings.minecraft"), minecraft)];
+
+    if instance.loader == Loader::Vanilla {
+        let (ink, fill) = loader_palette(instance.loader);
+        let badge = Badge::new(instance.loader.label(), ink, fill).with_loader(instance.loader);
+        rows.push(setting(lang::t("instance.settings.mod_loader"), badge));
+    } else {
+        rows.push(setting(lang::t("instance.settings.mod_loader"), loader_control(instance, builds)));
     }
+
+    let snapshot_toggle = Toggle::new(snapshots).on_toggle(Message::Edit(Edit::Snapshots(!snapshots)));
+    rows.push(setting(lang::t("instance.settings.snapshots"), snapshot_toggle));
+
+    if let Some(error) = versions_error {
+        rows.push(error_row(error));
+    }
+    if let Some(error) = builds_error {
+        rows.push(error_row(error));
+    }
+    divided_panel(rows, launch_rows::panel_padding())
 }
 
-/// Horizontal padding inside every section panel.
-fn panel_padding() -> Padding {
-    Padding::new(0.0).left(18.0).right(18.0)
+/// The loader's type badge beside its build select. The build list is empty while it loads.
+fn loader_control<'a>(instance: &'a Instance, builds: Option<&'a [LoaderVersion]>) -> Element<'a, Message> {
+    let (ink, fill) = loader_palette(instance.loader);
+    let badge = Badge::new(instance.loader.label(), ink, fill).with_loader(instance.loader);
+    let versions: Vec<String> = builds.unwrap_or_default().iter().map(|build| build.version.clone()).collect();
+    let selected = versions.iter().position(|version| Some(version) == instance.loader_version.as_ref());
+    let picks = versions.clone();
+    let build = Select::new(versions, selected)
+        .placeholder(lang::t("instance.settings.loader_loading"))
+        .on_select(move |index| Message::Edit(Edit::LoaderBuild(picks[index].clone())))
+        .searchable()
+        .width(180);
+    row![badge, build].spacing(10).align_y(alignment::Vertical::Center).into()
 }
 
-/// A switch that reports its new value under `switch`.
-fn toggle(on: bool, switch: Switch) -> Toggle<Message> {
-    Toggle::new(on).on_toggle_with(move |value| Message::Switch(switch, value))
-}
-
-fn java_memory(settings: &Settings) -> Element<'_, Message> {
-    let java = Select::new(JAVA_RUNTIMES, Some(settings.java_runtime))
-        .on_select(|index| Message::Choose(Choice::JavaRuntime, index))
-        .width(200);
-    let collector = Select::new(GARBAGE_COLLECTORS, Some(settings.garbage_collector))
-        .on_select(|index| Message::Choose(Choice::GarbageCollector, index))
-        .width(200);
-    let memory = row![
-        slider(
-            f32::from(*MEMORY_RANGE.start())..=f32::from(*MEMORY_RANGE.end()),
-            f32::from(settings.memory_gb),
-            Message::Memory,
-        )
-        .step(1.0_f32)
-        .style(slider_style)
-        .width(200),
-        Text::new(format!("{} GB", settings.memory_gb))
-            .size(12)
-            .font(fonts::JetBrainsMono::SEMI_BOLD)
-            .color(color::Primary::DEFAULT),
-    ]
-    .spacing(14)
-    .align_y(alignment::Vertical::Center);
-    let allocation = lang::t_with(
-        "instance.settings.memory_hint",
-        &[
-            ("allocated", settings.memory_gb.to_string().as_str()),
-            ("total", SYSTEM_MEMORY_GB.to_string().as_str()),
-        ],
-    );
-
-    divided_panel(
-        vec![
-            described_setting(
-                lang::t("instance.settings.java_runtime"),
-                lang::t("instance.settings.java_runtime_hint"),
-                java,
-            ),
-            described_setting(lang::t("instance.settings.allocated_memory"), allocation, memory),
-            described_setting(
-                lang::t("instance.settings.garbage_collector"),
-                lang::t("instance.settings.garbage_collector_hint"),
-                collector,
-            ),
-            setting(lang::t("instance.settings.system_java"), toggle(settings.system_java, Switch::SystemJava)),
-            jvm_arguments(),
-        ],
-        panel_padding(),
-    )
-}
-
-/// The JVM arguments as a code block, each flag coloured by what it tunes.
-fn jvm_arguments() -> Element<'static, Message> {
-    let flags = rich_text::<(), Message, iced::Theme, iced::Renderer>([
-        span("-XX:+UseG1GC ").color(color::Primary::DEFAULT),
-        span("-XX:+ParallelRefProcEnabled ").color(color::Text::DEFAULT),
-        span("-XX:MaxGCPauseMillis=200 ").color(color::Accents::AMBER),
-        span("-XX:+UnlockExperimentalVMOptions -XX:G1NewSizePercent=30 ").color(color::Text::DEFAULT),
-        span("-Dfml.ignoreInvalidMinecraftCertificates=true").color(color::Accents::CYAN),
-    ])
-    .font(fonts::JetBrainsMono::REGULAR)
-    .size(11);
-
-    column![
-        Text::new(lang::t("instance.settings.jvm_arguments"))
-            .size(10)
-            .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::PLACEHOLDER),
-        container(flags)
-            .width(Fill)
-            .padding(Padding::new(0.0).left(12).right(12).top(10).bottom(10))
-            .style(|_| container::Style {
-                background: Some(Background::Color(rgb!(0, 0, 0, 30%))),
-                border: Border {
-                    radius: 10.0.into(),
-                    width: 1.0,
-                    color: color::Surface::LINE,
-                },
-                ..container::Style::default()
-            }),
-    ]
-    .spacing(8)
-    .padding(Padding::new(0.0).top(14).bottom(14))
-    .into()
-}
-
-fn window(settings: &Settings) -> Element<'_, Message> {
-    let valid = parse_dimension(&settings.width).is_some() && parse_dimension(&settings.height).is_some();
-    let resolution = row![
-        dimension_input(&settings.width, valid, Axis::Width),
-        Text::new("×").size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
-        dimension_input(&settings.height, valid, Axis::Height),
-    ]
-    .spacing(10)
-    .align_y(alignment::Vertical::Center);
-
-    divided_panel(
-        vec![
-            setting(
-                lang::t("instance.settings.launch_mode_label"),
-                segmented(&launch_modes(), settings.launch_mode, Message::LaunchMode),
-            ),
-            setting(lang::t("instance.settings.resolution"), resolution),
-            described_setting(
-                lang::t("instance.settings.hide_launcher"),
-                lang::t("instance.settings.hide_launcher_hint"),
-                toggle(settings.hide_launcher, Switch::HideLauncher),
-            ),
-            setting(
-                lang::t("instance.settings.quit_after_exit"),
-                toggle(settings.quit_after_exit, Switch::QuitAfterExit),
-            ),
-        ],
-        panel_padding(),
-    )
-}
-
-/// A width or height field: digits only, outlined red while the pair is not
-/// a valid resolution.
-fn dimension_input(value: &str, valid: bool, axis: Axis) -> Element<'_, Message> {
-    text_input("", value)
-        .on_input(move |text| Message::Dimension(axis, text))
-        .style(move |theme, status| {
-            let mut style = input::style(theme, status);
-            if !valid {
-                style.border.color = color::buttons::Danger::BACKGROUND_HOVER;
-            }
-            style
-        })
-        .font(fonts::JetBrainsMono::REGULAR)
-        .size(13)
-        .padding(Padding::new(0.0).left(12).right(12).top(8).bottom(8))
-        .width(96)
+/// A row that names a list's error.
+fn error_row<'a>(error: &'a str) -> Element<'a, Message> {
+    Text::new(error)
+        .size(11)
+        .font(fonts::Inter::REGULAR)
+        .color(color::buttons::Danger::BACKGROUND_HOVER)
         .into()
 }
 
-fn launch_args(settings: &Settings) -> Element<'_, Message> {
-    let arguments = text_input("--width 1280", &settings.game_args)
-        .on_input(Message::GameArgs)
-        .style(input::style)
+/// The instance folder, and a button that opens it.
+pub fn paths_files(folder: &Path) -> Element<'_, Message> {
+    // The path takes the width the button leaves, so a long one wraps instead of pushing the button off the panel.
+    let path = Text::new(folder.display().to_string())
+        .size(11)
         .font(fonts::JetBrainsMono::REGULAR)
-        .size(13)
-        .padding(Padding::new(0.0).left(12).right(12).top(8).bottom(8))
-        .width(360);
-
-    divided_panel(
-        vec![described_setting(
-            lang::t("instance.settings.game_arguments"),
-            lang::t("instance.settings.game_arguments_hint"),
-            arguments,
-        )],
-        panel_padding(),
-    )
-}
-
-fn game_version<'a>(settings: &'a Settings, instance: &'a Instance) -> Element<'a, Message> {
-    let (ink, fill) = loader_palette(instance.loader);
-    let minecraft = Select::new(MINECRAFT_VERSIONS, Some(settings.minecraft_version))
-        .on_select(|index| Message::Choose(Choice::MinecraftVersion, index))
-        .width(160);
-    let loader = row![
-        Badge::new(instance.loader.label(), ink, fill).with_loader(instance.loader),
-        Select::new(&settings.loader_versions, Some(settings.loader_version))
-            .on_select(|index| Message::Choose(Choice::LoaderVersion, index))
-            .width(160),
+        .color(color::Text::MUTED)
+        .width(Fill);
+    let row = row![
+        column![setting_row::label(lang::t("instance.settings.instance_folder")), path]
+            .spacing(3)
+            .width(Fill),
+        TextButton::ghost(lang::t("common.reveal")).on_press(Message::RevealFolder),
     ]
-    .spacing(10)
-    .align_y(alignment::Vertical::Center);
-
-    divided_panel(
-        vec![
-            setting("Minecraft", minecraft),
-            setting(lang::t("instance.settings.mod_loader"), loader),
-            setting(lang::t("instance.settings.snapshots"), toggle(settings.snapshots, Switch::Snapshots)),
-        ],
-        panel_padding(),
-    )
+    .spacing(16)
+    .align_y(alignment::Vertical::Center)
+    .padding(Padding::new(0.0).top(14).bottom(14));
+    divided_panel(vec![row.into()], launch_rows::panel_padding())
 }
 
-fn paths_files(instance: &Instance) -> Element<'_, Message> {
-    let folder = format!("/instances/{}", instance.directory_name);
-    divided_panel(
-        vec![described_setting(
-            lang::t("instance.settings.instance_folder"),
-            folder,
-            TextButton::ghost(lang::t("common.reveal")).on_press(Message::RevealFolder),
-        )],
-        panel_padding(),
-    )
-}
-
-fn advanced(settings: &Settings) -> Element<'_, Message> {
-    divided_panel(
-        vec![
-            described_setting(
-                lang::t("instance.settings.env_vars"),
-                lang::t("instance.settings.env_vars_hint"),
-                TextButton::ghost(lang::t_with(
-                    "instance.settings.env_set",
-                    &[("count", settings.environment_variables.to_string().as_str())],
-                ))
-                .on_press(Message::EditEnvironment),
-            ),
-            described_setting(
-                lang::t("instance.settings.pre_launch_hook"),
-                lang::t("instance.settings.pre_launch_hook_hint"),
-                TextButton::ghost(lang::t("instance.settings.add_script")).on_press(Message::AddScript),
-            ),
-            described_setting(
-                lang::t("instance.settings.verbose_logging"),
-                lang::t("instance.settings.verbose_logging_hint"),
-                toggle(settings.verbose_logging, Switch::VerboseLogging),
-            ),
-            setting(
-                lang::t("instance.settings.skip_integrity"),
-                toggle(settings.skip_integrity, Switch::SkipIntegrity),
-            ),
-        ],
-        panel_padding(),
-    )
-}
-
-/// The destructive actions in a red-bordered panel. None of them run yet.
-fn danger_zone() -> Element<'static, Message> {
+/// The destructive actions in a red-bordered panel: reinstall the game's files, reset the launch settings, and delete
+/// the instance. Each one is answered by the root.
+pub fn danger_zone() -> Element<'static, Message> {
     let red = color::buttons::Danger::BACKGROUND_HOVER;
     let delete = row![
         column![
@@ -304,7 +145,7 @@ fn danger_zone() -> Element<'static, Message> {
             ),
             delete.into(),
         ]),
-        panel_padding(),
+        launch_rows::panel_padding(),
         anim::fade(red, 0.3),
     )
 }

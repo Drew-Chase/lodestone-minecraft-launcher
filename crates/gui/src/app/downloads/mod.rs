@@ -86,6 +86,17 @@ pub enum JobKind {
     Mod(ModJob),
     /// Writes an instance out as a package. It runs outside the install slots, like a mod, and can be cancelled.
     Export(ExportJob),
+    /// Fetches a Minecraft version's client jar and profile again. It runs outside the install slots, and has no card.
+    Reinstall(ReinstallJob),
+}
+
+/// A Minecraft version being fetched again, as the popover shows it.
+#[derive(Debug, Clone)]
+pub struct ReinstallJob {
+    /// The instance the reinstall was asked from, which the popover names.
+    pub name: String,
+    /// The Minecraft version whose files are fetched again.
+    pub mc_version: String,
 }
 
 /// A mod going into an instance, as the popover shows it.
@@ -123,7 +134,7 @@ impl Job {
     pub fn install(&self) -> Option<&InstallRequest> {
         match &self.kind {
             JobKind::Install(request) => Some(request.as_ref()),
-            JobKind::Mod(_) | JobKind::Export(_) => None,
+            JobKind::Mod(_) | JobKind::Export(_) | JobKind::Reinstall(_) => None,
         }
     }
 
@@ -133,6 +144,7 @@ impl Job {
             JobKind::Install(request) => &request.name,
             JobKind::Mod(mod_job) => &mod_job.name,
             JobKind::Export(export) => &export.name,
+            JobKind::Reinstall(reinstall) => &reinstall.name,
         }
     }
 
@@ -162,6 +174,7 @@ impl Job {
             source_url: request.source_url.clone(),
             source_platform: request.source_platform.clone(),
             source_project_id: request.source_project_id.clone(),
+            settings: request.settings.clone(),
         })
     }
 
@@ -229,6 +242,11 @@ impl Downloads {
     /// Starts a mod going into an instance and returns its job id. The mod runs at once, outside the install slots.
     pub fn enqueue_mod(&mut self, mod_job: ModJob) -> u64 {
         self.push(JobKind::Mod(mod_job), JobState::Running)
+    }
+
+    /// Starts a reinstall and returns its job id. It runs at once, outside the install slots.
+    pub fn enqueue_reinstall(&mut self, reinstall: ReinstallJob) -> u64 {
+        self.push(JobKind::Reinstall(reinstall), JobState::Running)
     }
 
     /// Starts an export and returns its job id. It runs at once, outside the install slots.

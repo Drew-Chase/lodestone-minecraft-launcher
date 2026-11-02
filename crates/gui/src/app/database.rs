@@ -2,12 +2,13 @@
 //! database file next to the credential store, schema versioned through
 //! sqlx migrations.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Local, Utc};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};
 use sqlx::{Row, Sqlite, Transaction};
 
+use crate::app::launch_settings::InstanceSettings;
 use crate::app::pages::library::instance::{Biome, Instance, InstanceIcon, InstanceState, Loader};
 use crate::app::shared_library::{JarHash, ModSource, SharedRecord};
 
@@ -60,7 +61,7 @@ impl Database {
             "SELECT id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
              last_played_at, installed_at, pinned, state, biome, art_seed, art_path, \
              icon_background, icon_symbol, icon_path, directory_name, java_component, version_id, \
-             source_url, source_platform, source_project_id FROM instances",
+             source_url, source_platform, source_project_id, settings FROM instances",
         )
         .fetch_all(&self.pool)
         .await
@@ -97,9 +98,44 @@ impl Database {
                     source_url: row.get("source_url"),
                     source_platform: row.get("source_platform"),
                     source_project_id: row.get("source_project_id"),
+                    settings: settings_of(row.get("settings")),
                 }
             })
             .collect())
+    }
+
+    /// Saves what the instance page edits: the name, the versions, the banner, the icon and the launch
+    /// overrides. Paths are stored relative to the instance `folder`, as the install writes them.
+    pub async fn save_instance(&self, instance: &Instance, folder: &Path) -> Result<(), String> {
+        let icon = match &instance.icon {
+            InstanceIcon::Custom(path) => InstanceIcon::Custom(relative_to(path, folder)),
+            composed => composed.clone(),
+        };
+        let (icon_background, icon_symbol, icon_path) = icon.to_db();
+        let art_path = instance
+            .art_path
+            .as_ref()
+            .map(|path| relative_to(path, folder).to_string_lossy().into_owned());
+        sqlx::query(
+            "UPDATE instances SET name = ?, mc_version = ?, loader_version = ?, version_id = ?, biome = ?, art_seed = ?, \
+             art_path = ?, icon_background = ?, icon_symbol = ?, icon_path = ?, settings = ? WHERE id = ?",
+        )
+        .bind(&instance.name)
+        .bind(&instance.mc_version)
+        .bind(&instance.loader_version)
+        .bind(&instance.version_id)
+        .bind(instance.biome.to_db())
+        .bind(instance.art_seed as i64)
+        .bind(art_path)
+        .bind(icon_background)
+        .bind(icon_symbol)
+        .bind(icon_path)
+        .bind(settings_json(&instance.settings))
+        .bind(&instance.id)
+        .execute(&self.pool)
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string())
     }
 
     /// Writes a new instance row and the mods it was installed with, in one transaction. The caller has already
@@ -112,8 +148,8 @@ impl Database {
              (id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
               last_played_at, installed_at, pinned, state, biome, art_seed, art_path, \
               icon_background, icon_symbol, icon_path, directory_name, java_component, version_id, \
-              source_url, source_platform, source_project_id) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              source_url, source_platform, source_project_id, settings) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&instance.id)
         .bind(&instance.name)
@@ -138,6 +174,7 @@ impl Database {
         .bind(&instance.source_url)
         .bind(&instance.source_platform)
         .bind(&instance.source_project_id)
+        .bind(settings_json(&instance.settings))
         .execute(&mut *transaction)
         .await
         .map_err(|error| error.to_string())?;
@@ -420,6 +457,28 @@ impl Database {
         .map(|_| ())
         .map_err(|error| error.to_string())
     }
+}
+
+/// The launch overrides a row holds. A missing or unreadable value means none, so the instance inherits every
+/// setting and a damaged row never blocks a launch.
+fn settings_of(json: Option<String>) -> InstanceSettings {
+    let Some(json) = json else {
+        return InstanceSettings::default();
+    };
+    serde_json::from_str(&json).unwrap_or_else(|error| {
+        tracing::warn!("instance settings are unreadable, so every setting is inherited: {error}");
+        InstanceSettings::default()
+    })
+}
+
+/// The launch overrides as the row stores them.
+fn settings_json(settings: &InstanceSettings) -> String {
+    serde_json::to_string(settings).unwrap_or_else(|_| "{}".to_string())
+}
+
+/// `path` relative to the instance `folder` when it sits inside it, and `path` as it is otherwise.
+fn relative_to(path: &Path, folder: &Path) -> PathBuf {
+    path.strip_prefix(folder).map_or_else(|_| path.to_path_buf(), Path::to_path_buf)
 }
 
 /// One row of `mod_sources`, read from a query that names its columns.

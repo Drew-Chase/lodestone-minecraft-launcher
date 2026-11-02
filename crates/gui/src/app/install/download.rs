@@ -86,6 +86,18 @@ pub async fn missing(items: Vec<Item>) -> Result<Missing, String> {
     .map_err(|error| error.to_string())
 }
 
+/// [`missing`] when `verify` is set. When it is not, the files are taken as present without being looked at, so
+/// nothing is fetched and a launch starts without checking the disk.
+pub async fn missing_when(items: Vec<Item>, verify: bool) -> Result<Missing, String> {
+    if verify {
+        return missing(items).await;
+    }
+    Ok(Missing {
+        present: items.len(),
+        missing: Vec::new(),
+    })
+}
+
 fn is_present(item: &Item) -> bool {
     match std::fs::metadata(&item.path) {
         Ok(meta) => meta.is_file() && item.size.map_or(meta.len() > 0, |size| meta.len() == size),

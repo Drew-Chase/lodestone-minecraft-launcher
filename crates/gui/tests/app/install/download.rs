@@ -57,3 +57,16 @@ async fn an_item_with_no_url_cannot_be_fetched() {
         .expect_err("nothing to download from");
     assert!(error.contains("installer-written.jar"), "the error names the file: {error}");
 }
+
+#[tokio::test]
+async fn with_verification_off_nothing_is_looked_at_and_nothing_is_fetched() {
+    let root = scratch("unverified");
+    std::fs::write(root.join("short.jar"), b"1").expect("the file writes");
+    let items = vec![item(root.join("short.jar"), Some(5)), item(root.join("absent.jar"), Some(5))];
+
+    let split = missing_when(items, false).await.expect("the check runs");
+
+    assert_eq!(split.present, 2, "every file is taken as present");
+    assert!(split.missing.is_empty(), "a file that is absent is not fetched either");
+    let _ = std::fs::remove_dir_all(&root);
+}

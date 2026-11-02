@@ -17,14 +17,12 @@ use super::libraries::{self, Plan};
 use super::manifest::Manifest;
 use super::rules::Platform;
 use crate::app::install::download::PartReport;
-use crate::app::install::{self, Downloaded, Totals, drive, fraction};
+use crate::app::install::{self, Totals, drive, fraction};
 use crate::app::lang;
+use crate::app::launch_settings::{EnvVar, JavaChoice, LaunchMode, LaunchSettings, split_arguments, valid_env_name};
 use crate::app::pages::library::instance::Loader;
 use crate::app::paths::LauncherPaths;
 use crate::app::{AZURE_CLIENT_ID, Account, LodestoneLauncher};
-
-/// The memory the game is given, in megabytes, until instances keep their own setting.
-const MEMORY_MB: u32 = 4096;
 
 /// The brand the game reports itself under.
 const LAUNCHER_NAME: &str = "Lodestone Launcher";
@@ -45,6 +43,8 @@ pub struct Target {
     /// The world to quick play into, by its folder name. Only set for a version that can (see
     /// [`supports_quick_play`]).
     pub quick_play: Option<String>,
+    /// The launch settings the instance resolves to: its overrides merged with the global defaults.
+    pub settings: LaunchSettings,
 }
 
 /// Whether a Minecraft version can quick play into a world from the command line. `--quickPlaySingleplayer`
@@ -90,21 +90,27 @@ async fn run(request: Request, progress: &mut ProgressSender<Progress>) -> Resul
     let client = reqwest::Client::new();
     let identity = identity_for(&account);
     let mc = target.mc_version.as_str();
+    let settings = &target.settings;
+    let verify = !settings.skip_integrity;
 
     let vanilla = {
         let _version = install::ensure::lock(format!("version:{mc}")).await;
         install::ensure::vanilla(&paths, &client, mc).await?
     };
-    let downloaded = download_stage(progress, &paths, &client, &vanilla).await?;
-    let (java, _) = &downloaded.java;
+    let runtime = runtime_of(&settings.java, &vanilla);
+    let (java, log_config) = download_stage(progress, &paths, &client, &vanilla, &runtime, verify).await?;
+    let log_config = match log_config {
+        Some(config) if settings.verbose_logging => Some(debug_log_config(config).await?),
+        other => other,
+    };
     let version_id = match target.loader {
         Loader::Vanilla => mc.to_string(),
-        _ => loader_stage(progress, &paths, &target, java, vanilla.java_major()).await?,
+        _ => loader_stage(progress, &paths, &target, &java, vanilla.java_major()).await?,
     };
 
     let merged = merged_manifest(&paths, &version_id, &vanilla)?;
     let plan = libraries::plan(&merged, &paths.libraries(), Platform::current());
-    libraries_stage(progress, &client, &vanilla, &plan).await?;
+    libraries_stage(progress, &client, &vanilla, &plan, verify).await?;
     let natives = paths.natives(&merged.id);
     install::ensure::natives(natives.clone(), plan.natives.clone()).await?;
 
@@ -114,29 +120,73 @@ async fn run(request: Request, progress: &mut ProgressSender<Progress>) -> Resul
         merged: &merged,
         vanilla: &vanilla,
         plan: &plan,
-        log_config: downloaded.log_config.as_deref(),
+        log_config: log_config.as_deref(),
         identity: &identity,
-        java,
+        java: &java,
         natives,
     })?;
+    if !settings.pre_launch_hook.trim().is_empty() {
+        run_hook(settings.pre_launch_hook.clone(), target.directory.clone(), settings.env.clone()).await?;
+    }
     Ok(Prepared { launcher })
 }
 
-/// Makes sure the version's shared files are on disk, the parts running side by side.
+/// Where the game's Java program comes from.
+enum Runtime {
+    /// A Mojang runtime, by component, to install and run.
+    Bundled(String),
+    /// The Java found on `JAVA_HOME` or `PATH`.
+    System,
+}
+
+/// The runtime a launch uses. Follow runs the one the version asks for, as launches always have.
+fn runtime_of(choice: &JavaChoice, vanilla: &Manifest) -> Runtime {
+    match choice {
+        JavaChoice::Follow => Runtime::Bundled(
+            vanilla
+                .java_version
+                .as_ref()
+                .map_or_else(|| "jre-legacy".to_string(), |java| java.component.clone()),
+        ),
+        JavaChoice::Bundled { component } => Runtime::Bundled(component.clone()),
+        JavaChoice::System => Runtime::System,
+    }
+}
+
+/// Makes sure the version's shared files are on disk, the parts running side by side, and returns the Java
+/// program the game runs with and the log config the version names.
 async fn download_stage(
     progress: &mut ProgressSender<Progress>,
     paths: &LauncherPaths,
     client: &reqwest::Client,
     vanilla: &Manifest,
-) -> Result<Downloaded, String> {
-    let component = vanilla
-        .java_version
-        .as_ref()
-        .map_or_else(|| "jre-legacy".to_string(), |java| java.component.clone());
+    runtime: &Runtime,
+    verify: bool,
+) -> Result<(PathBuf, Option<PathBuf>), String> {
     let (reports_tx, reports) = mpsc::channel::<PartReport>(256);
     let mut totals = Totals::default();
-    let work = install::download(paths, client, vanilla, &component, &reports_tx);
+    let work = async {
+        match runtime {
+            Runtime::Bundled(component) => install::download(paths, client, vanilla, component, &reports_tx, verify)
+                .await
+                .map(|downloaded| (downloaded.java.0, downloaded.log_config)),
+            Runtime::System => match system_java(vanilla.java_major()).await {
+                Ok(java) => install::shared_files(paths, client, vanilla, &reports_tx, verify)
+                    .await
+                    .map(|log_config| (java, log_config)),
+                Err(error) => Err(error),
+            },
+        }
+    };
     drive(progress, reports, move |report| file_progress(&mut totals, report), work).await
+}
+
+/// The Java program on the system, which must be at least `at_least` major.
+async fn system_java(at_least: u32) -> Result<PathBuf, String> {
+    install::java::system(at_least)
+        .await
+        .map(|found| found.program)
+        .ok_or_else(|| lang::t_with("launch.no_system_java", &[("major", at_least.to_string().as_str())]))
 }
 
 /// Installs the loader unless its version is already in the store, and returns the id of the
@@ -180,11 +230,17 @@ async fn loader_stage(
 }
 
 /// Makes sure every library the game's version lists is on disk.
-async fn libraries_stage(progress: &mut ProgressSender<Progress>, client: &reqwest::Client, vanilla: &Manifest, plan: &Plan) -> Result<(), String> {
+async fn libraries_stage(
+    progress: &mut ProgressSender<Progress>,
+    client: &reqwest::Client,
+    vanilla: &Manifest,
+    plan: &Plan,
+    verify: bool,
+) -> Result<(), String> {
     let _version = install::ensure::lock(format!("version:{}", vanilla.id)).await;
     let (reports_tx, reports) = mpsc::channel::<PartReport>(256);
     let mut totals = Totals::default();
-    let work = install::ensure::libraries(client, plan, &reports_tx);
+    let work = install::ensure::libraries(client, plan, &reports_tx, verify);
     drive(progress, reports, move |report| file_progress(&mut totals, report), work).await
 }
 
@@ -271,7 +327,8 @@ fn forge_bootstrap(target: &Target, merged: &Manifest) -> bool {
 }
 
 /// The launcher that spawns the game: the Java program, the classpath, the arguments and the
-/// directories the game reads.
+/// directories the game reads. The instance's launch settings shape the JVM and game arguments, the window and
+/// the environment.
 fn build(parts: Build<'_>) -> Result<Launcher, String> {
     let Build {
         paths,
@@ -284,6 +341,7 @@ fn build(parts: Build<'_>) -> Result<Launcher, String> {
         java,
         natives,
     } = parts;
+    let settings = &target.settings;
     let platform = Platform::current();
     // The client jar leads, as Modrinth's launch does, so a loader's libraries come after it. Forge's bootstrap loads
     // Minecraft from its own processed jar, and the vanilla jar would clash with that as a second module, so it stays off.
@@ -316,15 +374,18 @@ fn build(parts: Build<'_>) -> Result<Launcher, String> {
         client_id: AZURE_CLIENT_ID,
     };
 
-    let mut jvm = vec![format!("-Xmx{MEMORY_MB}M")];
+    let mut jvm = vec![format!("-Xmx{}M", settings.memory_mb), settings.collector.flag().to_string()];
     jvm.extend(arguments::jvm(merged, &values, identity, platform));
     jvm.extend(log_config.and_then(|config| arguments::logging(merged, config)));
+    jvm.extend(split_arguments(&settings.jvm_args));
     let mut game = arguments::game(merged, &values, identity, platform);
     // Quick play opens the world at once. Minecraft finds the world by its folder name.
     if let Some(world) = &target.quick_play {
         game.push("--quickPlaySingleplayer".to_string());
         game.push(world.clone());
     }
+    game.extend(window_arguments(settings));
+    game.extend(split_arguments(&settings.game_args));
     let main_class = merged.main_class.clone().ok_or_else(|| lang::t("launch.no_main_class").to_owned())?;
 
     Launcher::builder(java, &target.directory)
@@ -335,10 +396,84 @@ fn build(parts: Build<'_>) -> Result<Launcher, String> {
         .main_class(main_class)
         .classpath(classpath)
         .game_args(game)
+        .env(
+            settings
+                .env
+                .iter()
+                .filter(|var| valid_env_name(&var.name))
+                .map(|var| (var.name.clone(), var.value.clone())),
+        )
         .launcher_name(LAUNCHER_NAME)
         .launcher_version(LodestoneLauncher::VERSION)
         .build()
         .map_err(|error| error.to_string())
+}
+
+/// The arguments that size the window, and make it fullscreen when the launch mode asks for it.
+fn window_arguments(settings: &LaunchSettings) -> Vec<String> {
+    let mut arguments = vec![
+        "--width".to_string(),
+        settings.resolution.width.to_string(),
+        "--height".to_string(),
+        settings.resolution.height.to_string(),
+    ];
+    if settings.launch_mode == LaunchMode::Fullscreen {
+        arguments.push("--fullscreen".to_string());
+    }
+    arguments
+}
+
+/// The version's log config, copied with its root logger at DEBUG beside the original. The copy is what the
+/// game is given when verbose logging is on.
+async fn debug_log_config(config: PathBuf) -> Result<PathBuf, String> {
+    tokio::task::spawn_blocking(move || {
+        let name = config
+            .file_name()
+            .map_or_else(|| "log4j.xml".to_string(), |name| name.to_string_lossy().into_owned());
+        let path = config.with_file_name(format!("debug-{name}"));
+        let text = std::fs::read_to_string(&config).map_err(|error| error.to_string())?;
+        std::fs::write(&path, debug_log_text(&text)).map_err(|error| error.to_string())?;
+        Ok::<PathBuf, String>(path)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| lang::t_with("launch.log_config_failed", &[("error", error.as_str())]))
+}
+
+/// `text` with its root logger at DEBUG. A config that does not name INFO at the root comes back unchanged.
+fn debug_log_text(text: &str) -> String {
+    text.replace("<Root level=\"info\">", "<Root level=\"debug\">")
+}
+
+/// Runs the pre-launch hook through the shell, in the instance folder with the instance's variables, and waits
+/// for it. A hook that exits with an error stops the launch.
+async fn run_hook(command: String, directory: PathBuf, env: Vec<EnvVar>) -> Result<(), String> {
+    let status = tokio::task::spawn_blocking(move || {
+        let mut shell = if cfg!(windows) {
+            let mut shell = std::process::Command::new("cmd");
+            shell.arg("/C");
+            shell
+        } else {
+            let mut shell = std::process::Command::new("sh");
+            shell.arg("-c");
+            shell
+        };
+        shell
+            .arg(&command)
+            .current_dir(&directory)
+            .envs(env.iter().filter(|var| valid_env_name(&var.name)).map(|var| (&var.name, &var.value)))
+            .status()
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| lang::t_with("launch.hook_failed", &[("error", error.to_string().as_str())]))?;
+    if status.success() {
+        return Ok(());
+    }
+    let code = status
+        .code()
+        .map_or_else(|| lang::t("launch.hook_no_code").to_owned(), |code| code.to_string());
+    Err(lang::t_with("launch.hook_exit", &[("code", code.as_str())]))
 }
 
 #[cfg(test)]

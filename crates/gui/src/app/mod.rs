@@ -12,6 +12,7 @@ mod install;
 mod instances;
 mod lang;
 mod launch;
+pub mod launch_settings;
 mod message;
 mod mod_actions;
 mod mod_sources;
@@ -34,9 +35,12 @@ mod updater;
 mod view;
 mod world_actions;
 mod world_pins;
+pub mod writes;
 
 use crate::app::components::Alerts;
 use crate::app::database::Database;
+use crate::app::instances::InstanceSave;
+use crate::app::launch_settings::LaunchDefaults;
 use crate::app::pages::discover::Discover;
 use crate::app::pages::instance::InstancePage;
 use crate::app::pages::library::Library;
@@ -48,6 +52,7 @@ use crate::app::paths::LauncherPaths;
 use crate::app::router::Router;
 use crate::app::storage::{CredentialWriter, StoredCredentials};
 use crate::app::titlebar::Titlebar;
+use crate::app::writes::KeyedWriter;
 use iced::Size;
 use iced::widget::image;
 use iced::window::Id;
@@ -127,6 +132,12 @@ pub struct LodestoneLauncher {
     credentials: StoredCredentials,
     /// Keeps the background credential writes in order (see `auth.rs`).
     credential_writer: CredentialWriter,
+    /// The launch settings every instance inherits until it overrides one. Loaded with the preferences at boot.
+    launch_defaults: LaunchDefaults,
+    /// Keeps the saves of each instance's row in order, one write in flight per instance.
+    instance_saves: KeyedWriter<String, InstanceSave>,
+    /// Keeps the saves of the global defaults in order.
+    defaults_saves: KeyedWriter<&'static str, LaunchDefaults>,
     auth: Authentication,
     /// Bumped on every new/abandoned sign-in so results from stale polls
     /// (cancelled or superseded) are dropped when they arrive.
@@ -171,7 +182,7 @@ impl Default for LodestoneLauncher {
             library: Library::default(),
             instance_page: InstancePage::default(),
             mod_checks: HashMap::new(),
-            settings: Settings,
+            settings: Settings::default(),
             showcase: Showcase::default(),
             discover: Discover::new(discover::opening_source()),
             resource: ResourcePage::default(),
@@ -184,6 +195,9 @@ impl Default for LodestoneLauncher {
             account: None,
             credentials: StoredCredentials::load(),
             credential_writer: CredentialWriter::default(),
+            launch_defaults: LaunchDefaults::default(),
+            instance_saves: KeyedWriter::default(),
+            defaults_saves: KeyedWriter::default(),
             auth: Authentication::new(AZURE_CLIENT_ID),
             auth_generation: 0,
             face: None,

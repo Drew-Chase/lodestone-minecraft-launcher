@@ -7,6 +7,7 @@ use crate::app::face;
 use crate::app::lang;
 use crate::app::launch::GameMessage;
 use crate::app::launch::pidfile;
+use crate::app::launch_settings::{LaunchChange, LaunchDefaults};
 use crate::app::pages::Page;
 use crate::app::pages::instance::Message as InstanceMessage;
 use crate::app::pages::instance::Tab;
@@ -164,6 +165,14 @@ impl LodestoneLauncher {
             LodestoneAppMessage::SourceOpened(result) => self.source_opened(result),
             LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::RevealFolder)) => self.reveal_current_instance(),
             LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::DeleteInstance)) => self.ask_current_instance_delete(),
+            // The Settings tab's edits change the instance, which the root applies, saves and hands back to the page.
+            LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::Edit(edit))) => self.edit_instance(edit),
+            LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::ResetSettings)) => self.ask_instance_reset(),
+            LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::Reinstall)) => self.reinstall_instance(),
+            LodestoneAppMessage::InstanceSaved { instance, result } => self.instance_saved(instance, result),
+            LodestoneAppMessage::InstanceResetAnswered { instance, confirmed } => self.instance_reset_answered(instance, confirmed),
+            LodestoneAppMessage::DefaultsSaved(result) => self.defaults_saved(result),
+            LodestoneAppMessage::ReinstallFinished { job, result } => self.reinstall_finished(job, result),
             // The page's game controls act on the instance it shows.
             LodestoneAppMessage::Instance(InstanceMessage::Launch) => self.current_game(GameMessage::Launch),
             LodestoneAppMessage::Instance(InstanceMessage::LaunchNew(id)) => self.launch_new_game(&id),
@@ -264,6 +273,8 @@ impl LodestoneLauncher {
             // Only `Navigate` exists today; when the page grows more
             // variants, add the delegation arm per the `pages` contract.
             LodestoneAppMessage::Settings(SettingsMessage::Navigate(page)) => self.navigate(page),
+            LodestoneAppMessage::Settings(SettingsMessage::Change(change)) => self.change_defaults(change),
+            LodestoneAppMessage::Settings(message) => self.settings.update(message).map(LodestoneAppMessage::Settings),
             LodestoneAppMessage::Showcase(ShowcaseMessage::Navigate(page)) => self.navigate(page),
             // Every page's language picker routes through the same handler.
             LodestoneAppMessage::Showcase(ShowcaseMessage::SelectLanguage(code)) => select_language(code),
@@ -358,6 +369,9 @@ impl LodestoneLauncher {
             if page == Page::Worlds {
                 return self.open_worlds();
             }
+            if page == Page::Settings {
+                return self.open_settings();
+            }
         } else {
             debug!("Navigation ignored: already on {}", page.title());
         }
@@ -371,6 +385,54 @@ impl LodestoneLauncher {
         };
         Task::perform(read_instances(db, self.paths.instances()), LodestoneAppMessage::InstancesLoaded)
     }
+
+    /// Opens the Settings page: its lists load, and it shows the launch defaults as they are now.
+    pub(super) fn open_settings(&mut self) -> Task<LodestoneAppMessage> {
+        self.settings.sync(&self.launch_defaults);
+        self.settings.open().map(LodestoneAppMessage::Settings)
+    }
+
+    /// Applies a change to a global default, saves the defaults, and shows them on the instance page, which inherits them.
+    pub(super) fn change_defaults(&mut self, change: LaunchChange) -> Task<LodestoneAppMessage> {
+        self.launch_defaults.apply(change);
+        self.settings.sync(&self.launch_defaults);
+        self.refresh_instance_page();
+        match self.defaults_saves.request(DEFAULTS_KEY, self.launch_defaults.clone()) {
+            Some(defaults) => write_defaults(defaults),
+            None => Task::none(),
+        }
+    }
+
+    /// Finishes a write of the defaults. The newest defaults that arrived during it are written next. A failed write is
+    /// logged, and the defaults stay as the page shows them.
+    pub(super) fn defaults_saved(&mut self, result: Result<(), String>) -> Task<LodestoneAppMessage> {
+        if let Err(error) = &result {
+            warn!("Saving the instance defaults failed: {error}");
+        }
+        self.defaults_saves.complete(&DEFAULTS_KEY).map_or_else(Task::none, write_defaults)
+    }
+}
+
+/// The key the instance defaults are saved under. There is one set of defaults, so one write at a time.
+const DEFAULTS_KEY: &str = "defaults";
+
+/// Writes the instance defaults into the preferences, keeping the rest of the file as it is.
+fn write_defaults(defaults: LaunchDefaults) -> Task<LodestoneAppMessage> {
+    Task::perform(
+        async move {
+            match tokio::task::spawn_blocking(move || {
+                let mut preferences = Preferences::load();
+                preferences.instance_defaults = defaults;
+                preferences.store()
+            })
+            .await
+            {
+                Ok(saved) => saved,
+                Err(error) => Err(error.to_string()),
+            }
+        },
+        LodestoneAppMessage::DefaultsSaved,
+    )
 }
 
 /// Makes `code` the active language, then saves the choice. The catalogue switches

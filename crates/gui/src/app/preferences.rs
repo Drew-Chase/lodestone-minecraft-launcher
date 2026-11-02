@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::app::launch_settings::LaunchDefaults;
+
 /// The saved choices. A field that is missing from the file takes its default.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Preferences {
@@ -15,6 +17,9 @@ pub struct Preferences {
     pub language: Option<String>,
     /// The content platform the Discover page opened on last, by its key such as `modrinth`.
     pub discover_source: Option<String>,
+    /// The launch settings every instance inherits until it overrides one.
+    #[serde(default)]
+    pub instance_defaults: LaunchDefaults,
 }
 
 impl Preferences {

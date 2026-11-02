@@ -32,6 +32,7 @@ use crate::app::lang;
 use crate::app::launch::libraries;
 use crate::app::launch::manifest::Manifest;
 use crate::app::launch::rules::Platform;
+use crate::app::launch_settings::InstanceSettings;
 use crate::app::pages::library::instance::{Biome, Instance, InstanceIcon, InstanceState, Loader};
 use crate::app::paths::LauncherPaths;
 use crate::app::shared_library::ModSource;
@@ -45,7 +46,7 @@ const COMPLETE: &str = ".complete";
 const INSTALLING: &str = ".installing";
 
 /// The folder the uploaded art lives in, inside the instance folder.
-const ART_DIR: &str = ".lodestone";
+pub(crate) const ART_DIR: &str = ".lodestone";
 const ICON_FILE: &str = "icon.png";
 const BANNER_FILE: &str = "banner.png";
 
@@ -94,6 +95,8 @@ pub struct InstallRequest {
     pub source_project_id: Option<String>,
     /// The modpack's files and overrides, when the instance is installed from a modpack.
     pub modpack: Option<modpack::Payload>,
+    /// The launch overrides the instance starts with. An empty set inherits every global default.
+    pub settings: InstanceSettings,
 }
 
 /// The stages an install goes through, in order.
@@ -254,7 +257,7 @@ async fn download_stage(
 ) -> Result<Downloaded, String> {
     let (reports_tx, reports) = mpsc::channel::<PartReport>(256);
     let mut totals = Totals::default();
-    let work = download(paths, client, vanilla, component, &reports_tx);
+    let work = download(paths, client, vanilla, component, &reports_tx, true);
     drive(
         progress,
         reports,
@@ -276,24 +279,80 @@ async fn download_stage(
 }
 
 /// Makes sure every shared file of the version is on disk, the parts running side by side. The
-/// version's lock is held throughout, so a launch of the same version waits for it.
+/// version's lock is held throughout, so a launch of the same version waits for it. With `verify` off the
+/// libraries and assets are taken as present, so a launch does not look at them.
 pub(crate) async fn download(
     paths: &LauncherPaths,
     client: &reqwest::Client,
     vanilla: &Manifest,
     component: &str,
     reports: &mpsc::Sender<PartReport>,
+    verify: bool,
 ) -> Result<Downloaded, String> {
     let _version = ensure::lock(format!("version:{}", vanilla.id)).await;
     let plan = libraries::plan(vanilla, &paths.libraries(), Platform::current());
-    let (java, (), (), (), log_config) = tokio::try_join!(
+    let (java, log_config) = tokio::try_join!(
         java::ensure(paths, component, reports),
-        ensure::client_jar(paths, client, vanilla, reports),
-        ensure::libraries(client, &plan, reports),
-        ensure::assets(paths, client, vanilla, reports),
-        ensure::log_config(paths, client, vanilla),
+        version_files(paths, client, vanilla, &plan, reports, verify),
     )?;
     Ok(Downloaded { java, log_config })
+}
+
+/// The version's shared files other than Java: the client jar, the libraries, the assets and the log config.
+/// A launch on the system's Java needs these without a bundled runtime.
+pub(crate) async fn shared_files(
+    paths: &LauncherPaths,
+    client: &reqwest::Client,
+    vanilla: &Manifest,
+    reports: &mpsc::Sender<PartReport>,
+    verify: bool,
+) -> Result<Option<PathBuf>, String> {
+    let _version = ensure::lock(format!("version:{}", vanilla.id)).await;
+    let plan = libraries::plan(vanilla, &paths.libraries(), Platform::current());
+    version_files(paths, client, vanilla, &plan, reports, verify).await
+}
+
+/// Fetches Minecraft version `mc`'s client jar and JSON again. Its folder is removed first, so both come from Mojang.
+/// Every instance on the version shares them, and each fetches them again at its next launch if they are gone. The
+/// libraries and assets stay where they are, and the instance folders are never touched.
+pub(crate) async fn reinstall_version(paths: LauncherPaths, mc: String) -> Result<(), String> {
+    let client = reqwest::Client::new();
+    let _version = ensure::lock(format!("version:{mc}")).await;
+    let folder = paths.version_dir(&mc);
+    tokio::task::spawn_blocking(move || match std::fs::remove_dir_all(&folder) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+
+    let vanilla = ensure::vanilla(&paths, &client, &mc).await?;
+    // The client jar reports its progress to a channel nothing reads, so the channel is drained until it closes.
+    let (reports, mut drain) = mpsc::channel::<PartReport>(64);
+    let drained = tokio::spawn(async move { while drain.recv().await.is_some() {} });
+    let fetched = ensure::client_jar(&paths, &client, &vanilla, &reports).await;
+    drop(reports);
+    let _ = drained.await;
+    fetched
+}
+
+/// Fetches the version's files other than Java side by side, and returns the log config's path when the version names one.
+async fn version_files(
+    paths: &LauncherPaths,
+    client: &reqwest::Client,
+    vanilla: &Manifest,
+    plan: &libraries::Plan,
+    reports: &mpsc::Sender<PartReport>,
+    verify: bool,
+) -> Result<Option<PathBuf>, String> {
+    let ((), (), (), log_config) = tokio::try_join!(
+        ensure::client_jar(paths, client, vanilla, reports),
+        ensure::libraries(client, plan, reports, verify),
+        ensure::assets(paths, client, vanilla, reports, verify),
+        ensure::log_config(paths, client, vanilla),
+    )?;
+    Ok(log_config)
 }
 
 /// The loader stage: installs the loader into the shared store and returns the version id it
@@ -388,6 +447,7 @@ async fn finish(
         source_url: request.source_url.clone(),
         source_platform: request.source_platform.clone(),
         source_project_id: request.source_project_id.clone(),
+        settings: request.settings.clone(),
     };
     // The mods the modpack names are recorded against the new instance, in the same transaction as its row.
     let sources: Vec<ModSource> = request.modpack.as_ref().map_or_else(Vec::new, |payload| {

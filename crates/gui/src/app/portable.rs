@@ -437,6 +437,7 @@ fn install_request(paths: &LauncherPaths, manifest: &Manifest, payload: Payload)
         source_platform: None,
         source_project_id: None,
         modpack: Some(payload),
+        settings: Default::default(),
     }
 }
 

@@ -34,6 +34,7 @@ use crate::app::components::scrollbar;
 use crate::app::downloads::Pending;
 use crate::app::lang;
 use crate::app::launch::games::GameView;
+use crate::app::launch_settings::LaunchDefaults;
 use crate::app::pages::Page;
 use crate::app::pages::library::instance::{Instance, Loader};
 use crate::app::pages::library::instance_menu;
@@ -172,12 +173,13 @@ impl InstancePage {
         self.console_run
     }
 
-    /// Points the page at `instance`, whose files live in `folder`. Resets the
-    /// transient controls and every tab, and returns the task that reads the folder.
-    pub fn show(&mut self, instance: Instance, folder: PathBuf) -> Task<Message> {
+    /// Points the page at `instance`, whose files live in `folder`, with the launch `defaults` the instance inherits from.
+    /// Resets the transient controls and every tab, and returns the task that reads the folder.
+    pub fn show(&mut self, instance: Instance, folder: PathBuf, defaults: &LaunchDefaults) -> Task<Message> {
         self.generation += 1;
         let generation = self.generation;
-        self.settings = settings::State::for_instance(&instance);
+        self.settings = settings::State::default();
+        self.settings.sync(&instance, defaults);
         self.instance = Some(instance);
         self.folder = folder.clone();
         self.files = None;
@@ -196,10 +198,11 @@ impl InstancePage {
         )
     }
 
-    /// Replaces the shown instance's copy with a reload of it, so its state and playtime are
-    /// current. A reload of any other instance is ignored.
-    pub fn refresh(&mut self, instance: Instance) {
+    /// Replaces the shown instance's copy with a reload of it, so its state, playtime and settings are current, and
+    /// resolves its launch settings against `defaults` again. A reload of any other instance is ignored.
+    pub fn refresh(&mut self, instance: Instance, defaults: &LaunchDefaults) {
         if self.instance.as_ref().is_some_and(|shown| shown.id == instance.id) {
+            self.settings.sync(&instance, defaults);
             self.instance = Some(instance);
         }
     }
@@ -221,7 +224,10 @@ impl InstancePage {
         match message {
             Message::TabSelected(tab) => {
                 self.tab = tab;
-                Task::none()
+                match &self.instance {
+                    Some(instance) if tab == Tab::Settings => self.settings.open(instance).map(Message::Settings),
+                    _ => Task::none(),
+                }
             }
             Message::Mods(message) => self.mods.update(message).map(Message::Mods),
             Message::Worlds(worlds::Message::Rescanned { generation, worlds }) if generation == self.generation => self.rescanned_worlds(worlds),
@@ -236,10 +242,10 @@ impl InstancePage {
                 self.logs.update(message);
                 Task::none()
             }
-            Message::Settings(message) => {
-                self.settings.update(message);
-                Task::none()
-            }
+            Message::Settings(message) => match &self.instance {
+                Some(instance) => self.settings.update(message, instance).map(Message::Settings),
+                None => Task::none(),
+            },
             Message::Scanned { generation, files } if generation == self.generation => self.apply(files),
             Message::Thumbnail { generation, path, handle } if generation == self.generation => {
                 self.screenshots.store(path, handle);
@@ -305,6 +311,11 @@ impl InstancePage {
     pub fn viewer(&self, window: Size) -> Option<Element<'_, Message>> {
         if let Some(dialog) = self.mods.dialog_view() {
             return Some(dialog.map(Message::Mods));
+        }
+        if self.tab == Tab::Settings
+            && let Some(overlay) = self.settings.overlay()
+        {
+            return Some(overlay.map(Message::Settings));
         }
         self.screenshots.overlay(window).map(|overlay| overlay.map(Message::Screenshots))
     }
@@ -610,17 +621,19 @@ impl InstancePage {
             Tab::Worlds => self.worlds.view(&instance.id, pins).map(Message::Worlds),
             Tab::Screenshots => screenshots::view(&self.screenshots).map(Message::Screenshots),
             Tab::Logs => self.logs.view(console).map(Message::Logs),
-            Tab::Settings => self.settings.view(instance).map(Message::Settings),
+            Tab::Settings => self.settings.view(instance, &self.folder).map(Message::Settings),
         };
-        // The mod list pads its own gutters, so its scrollbar sits in the page's gutter.
+        // The mod list pads its own gutters, so its scrollbar sits in the page's gutter. The settings page scrolls its
+        // sections beside its sidebar, so it takes the room the page leaves and pads its own bottom.
         let padding = match self.tab {
             Tab::Mods => Padding::new(0.0).top(22.0),
+            Tab::Settings => Padding::new(0.0).left(GUTTER).right(GUTTER).top(22.0),
             _ => Padding::new(0.0).left(GUTTER).right(GUTTER).top(22.0).bottom(40.0),
         };
         let padded = container(content).width(Fill).padding(padding);
 
         match self.tab {
-            Tab::Logs | Tab::Mods => padded.height(Fill).into(),
+            Tab::Logs | Tab::Mods | Tab::Settings => padded.height(Fill).into(),
             _ => scrollbar::scroll(padded).width(Fill).height(Fill).into(),
         }
     }

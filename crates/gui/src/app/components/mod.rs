@@ -20,6 +20,7 @@ pub mod instance_art;
 pub mod instance_card;
 pub mod instance_icon;
 pub mod language_picker;
+pub mod launch_rows;
 pub mod loader_icon;
 pub mod menu;
 pub mod modal;

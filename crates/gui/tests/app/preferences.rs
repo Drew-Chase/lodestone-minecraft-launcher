@@ -10,6 +10,7 @@ fn preferences_round_trip() {
     let preferences = Preferences {
         language: Some(String::from("ru_ru")),
         discover_source: Some(String::from("ftb")),
+        ..Preferences::default()
     };
     Preferences::store_to(&path, &preferences).expect("store succeeds");
     assert_eq!(Preferences::load_from(&path), preferences);
@@ -32,7 +33,10 @@ fn a_corrupt_file_loads_the_defaults() {
 #[test]
 fn an_unset_language_serializes_as_null() {
     let json = serde_json::to_string(&Preferences::default()).expect("serializes");
-    assert_eq!(json, "{\"language\":null,\"discover_source\":null}");
+    assert!(
+        json.starts_with("{\"language\":null,\"discover_source\":null,\"instance_defaults\":{"),
+        "{json}"
+    );
 }
 
 #[test]

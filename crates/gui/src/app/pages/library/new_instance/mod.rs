@@ -2,12 +2,12 @@
 //! the install's request when the form is submitted. Queuing the install and running it
 //! belong to the root and the downloads queue.
 
-mod banner;
-mod banner_editor;
+pub mod banner;
+pub mod banner_editor;
 mod form;
-mod icon_editor;
+pub mod icon_editor;
 pub mod naming;
-mod upload;
+pub mod upload;
 
 use std::sync::Arc;
 
@@ -20,6 +20,7 @@ use crate::app::database::Database;
 use crate::app::install::catalog::{self, BundledJava, Releases, VersionInfo};
 use crate::app::install::{self, IconSource, InstallRequest};
 use crate::app::lang;
+use crate::app::launch_settings::{InstanceSettings, JavaChoice};
 use crate::app::pages::library::instance::{InstanceIcon, Loader};
 use crate::app::paths::LauncherPaths;
 
@@ -412,8 +413,14 @@ impl NewInstance {
                 (biome, seed, Some(upload.png.clone()))
             }
         };
+        // A runtime picked by hand becomes the instance's own choice. Left alone, the instance follows the global default.
+        let settings = InstanceSettings {
+            java: self.java_override.clone().map(|component| JavaChoice::Bundled { component }),
+            ..InstanceSettings::default()
+        };
         Ok(InstallRequest {
             paths: self.paths.clone(),
+            settings,
             name: name.to_string(),
             directory_name,
             mc_version: mc,

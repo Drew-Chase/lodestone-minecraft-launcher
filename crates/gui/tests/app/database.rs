@@ -378,3 +378,29 @@ async fn migration_0008_moves_each_discover_row_into_mod_sources() {
         }]
     );
 }
+
+#[test]
+fn an_unreadable_settings_value_means_every_setting_is_inherited() {
+    assert_eq!(settings_of(None), InstanceSettings::default());
+    assert_eq!(settings_of(Some("not json".to_string())), InstanceSettings::default());
+}
+
+#[tokio::test]
+async fn an_edited_instance_is_saved_with_its_overrides_and_relative_pictures() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    let mut instance = fixture("0f3c-tuned", "Aether Legacy", Loader::Fabric);
+    instance.directory_name = "aether".to_string();
+    db.insert_instance(&instance, &[]).await.expect("the row inserts");
+
+    instance.name = "Tuned".to_string();
+    instance.settings.override_with(crate::app::launch_settings::LaunchChange::Memory(8192));
+    instance.art_path = Some(PathBuf::from("/instances/aether/.lodestone/banner-1.png"));
+    instance.icon = InstanceIcon::Custom(PathBuf::from("/instances/aether/.lodestone/icon-1.png"));
+    db.save_instance(&instance, Path::new("/instances/aether")).await.expect("the edit saves");
+
+    let stored = db.instances().await.expect("instances load").into_iter().next().expect("one row");
+    assert_eq!(stored.name, "Tuned");
+    assert_eq!(stored.settings.memory_mb, Some(8192));
+    assert_eq!(stored.art_path, Some(PathBuf::from(".lodestone/banner-1.png")));
+    assert_eq!(stored.icon, InstanceIcon::Custom(PathBuf::from(".lodestone/icon-1.png")));
+}

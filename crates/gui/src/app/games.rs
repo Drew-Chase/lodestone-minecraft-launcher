@@ -7,7 +7,7 @@ use std::process::ExitStatus;
 use std::time::Duration;
 
 use chrono::{DateTime, Local, Utc};
-use iced::Task;
+use iced::{Task, window};
 use lodestone_minecraft_authentication::Session;
 use sipper::Sender as ProgressSender;
 use sipper::{Sipper, sipper};
@@ -21,6 +21,7 @@ use crate::app::launch::GameMessage;
 use crate::app::launch::games::{GameBar, GameView, LaunchStatus, Run, RunsPlace, pump};
 use crate::app::launch::pidfile::{self, Record};
 use crate::app::launch::prepare::{self, Prepared, Progress, Request, SessionCheck, Target};
+use crate::app::launch_settings::LaunchSettings;
 use crate::app::pages::instance::Tab;
 use crate::app::pages::library::instance::InstanceState;
 
@@ -147,6 +148,7 @@ impl LodestoneLauncher {
                 version_id: instance.version_id.clone(),
                 directory: self.paths.instance(&instance.directory_name),
                 quick_play,
+                settings: instance.settings.resolve(&self.launch_defaults),
             },
             account,
         };
@@ -302,13 +304,24 @@ impl LodestoneLauncher {
             }
         })
         .discard();
+        // The window goes to the taskbar while the game plays, when the instance asks for that.
+        let minimize = match self.id {
+            Some(window) if self.launch_of(id).is_some_and(|settings| settings.hide_launcher) => window::minimize(window, true),
+            _ => Task::none(),
+        };
         Task::batch([
             self.record_game_state(id, InstanceState::Playing),
             record,
             Task::sip(pump(serial, events), LodestoneAppMessage::Game, |()| {
                 LodestoneAppMessage::Game(GameMessage::StreamEnded)
             }),
+            minimize,
         ])
+    }
+
+    /// The launch settings the instance `id` resolves to now, when the library lists it.
+    fn launch_of(&self, id: &str) -> Option<LaunchSettings> {
+        self.library.instance(id).map(|instance| instance.settings.resolve(&self.launch_defaults))
     }
 
     /// Records that the run `serial` ended. Its playtime is added and its pid file removed. The
@@ -327,8 +340,19 @@ impl LodestoneLauncher {
         }
         let seconds = u32::try_from(run.since.elapsed().as_secs()).unwrap_or(u32::MAX);
         let mut tasks = vec![self.finish_game_session(&id, run.started, seconds), remove_pid_file(run.pid)];
+        // The last run of an instance brings the window back when the instance hid it, and quits the launcher when
+        // the instance asks for that. The quit waits for the tasks above, so the playtime and state are saved first.
+        let mut quit = false;
         if !self.games.is_active(&id) {
             tasks.push(self.record_game_state(&id, InstanceState::Idle));
+            if let Some(settings) = self.launch_of(&id) {
+                if let Some(window) = self.id
+                    && settings.hide_launcher
+                {
+                    tasks.push(window::minimize(window, false));
+                }
+                quit = settings.quit_after_exit && !restart;
+            }
         }
         if let Some(status) = status
             && !killed
@@ -349,7 +373,8 @@ impl LodestoneLauncher {
             // An update held for the games installs now, if this was the last of them.
             tasks.push(self.resume_held_update());
         }
-        Task::batch(tasks)
+        let batch = Task::batch(tasks);
+        if quit { batch.chain(iced::exit()) } else { batch }
     }
 
     /// Attaches to the runs a previous launcher left running. Each instance with one is recorded as

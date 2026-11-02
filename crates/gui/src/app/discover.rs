@@ -265,6 +265,7 @@ async fn prepare_modpack(project: Project, paths: LauncherPaths, taken: Vec<Stri
         source_platform: Some(project.source.key().to_string()),
         source_project_id: Some(project.project_id),
         modpack: Some(payload),
+        settings: Default::default(),
     })
 }
 

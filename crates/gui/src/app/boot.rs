@@ -14,13 +14,17 @@ use super::{LodestoneAppMessage, LodestoneLauncher, probe_enabled, updater};
 impl LodestoneLauncher {
     pub fn boot() -> (Self, Task<LodestoneAppMessage>) {
         // The saved language goes live before the first view, so the first frame is already translated.
-        if let Some(code) = Preferences::load().language
-            && !lang::set_active(&code)
+        let preferences = Preferences::load();
+        if let Some(code) = preferences.language.as_deref()
+            && !lang::set_active(code)
         {
             info!("Saved language {code} is not bundled; using the default");
         }
         let id = window::latest();
-        let mut app = Self { ..Self::default() };
+        let mut app = Self {
+            launch_defaults: preferences.instance_defaults,
+            ..Self::default()
+        };
         let mut tasks = vec![id.map(LodestoneAppMessage::WindowCreation)];
         // TEMPORARY library-view verification — env-gated: boots the Library
         // into `compact` or `table` so each view can be screenshotted.

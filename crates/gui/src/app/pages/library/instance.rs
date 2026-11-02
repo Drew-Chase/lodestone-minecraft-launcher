@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Local};
 
+use crate::app::launch_settings::InstanceSettings;
+
 /// The mod loader an instance runs through.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Loader {
@@ -189,6 +191,8 @@ pub struct Instance {
     pub source_platform: Option<String>,
     /// The project's id on that platform, which the Discover page matches against.
     pub source_project_id: Option<String>,
+    /// The launch settings this instance overrides. Each one it does not override inherits the global default.
+    pub settings: InstanceSettings,
 }
 
 impl Instance {
@@ -237,6 +241,7 @@ pub(crate) fn fixture(id: &str, name: &str, loader: Loader) -> Instance {
         source_url: None,
         source_platform: None,
         source_project_id: None,
+        settings: InstanceSettings::default(),
     }
 }
 

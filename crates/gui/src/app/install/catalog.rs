@@ -5,7 +5,7 @@
 use std::cmp::Ordering;
 
 use lodestone_loaders::{self as loaders, LoaderKind, LoaderVersion};
-use piston_mc::manifest_v2::ManifestV2;
+use piston_mc::manifest_v2::{ManifestV2, ReleaseType};
 use piston_mc::version_manifest::VersionManifest;
 
 use crate::app::lang;
@@ -25,6 +25,29 @@ pub struct Releases {
 pub struct VersionInfo {
     pub component: String,
     pub major: Option<u8>,
+}
+
+/// One Minecraft version the Game Version select offers. Snapshots are marked, so a view can leave them out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VersionEntry {
+    pub id: String,
+    pub snapshot: bool,
+}
+
+/// Mojang's releases and snapshots, newest first. Other kinds of version (old betas and alphas) are left out.
+pub async fn versions() -> Result<Vec<VersionEntry>, String> {
+    let manifest = ManifestV2::fetch()
+        .await
+        .map_err(|error| lang::t_with("install.version_list_failed", &[("error", error.to_string().as_str())]))?;
+    Ok(manifest
+        .versions
+        .iter()
+        .filter(|version| matches!(version.release_type, ReleaseType::Release | ReleaseType::Snapshot))
+        .map(|version| VersionEntry {
+            id: version.id.clone(),
+            snapshot: version.release_type == ReleaseType::Snapshot,
+        })
+        .collect())
 }
 
 /// A bundled Java runtime the platform offers: its component and a label such as

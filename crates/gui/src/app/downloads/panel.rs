@@ -7,7 +7,7 @@ use iced::widget::{Column, Space, Text, column, container, row, stack, svg};
 use iced::{Background, Border, Color, Element, Fill, Padding, Shadow, Vector, alignment};
 use iced_color_extension::rgb;
 
-use super::{Downloads, Job, JobKind, JobState, Message, ModJob, Summary, icon_of};
+use super::{Downloads, Job, JobKind, JobState, Message, ModJob, ReinstallJob, Summary, icon_of};
 use crate::app::components::badge::Badge;
 use crate::app::components::hint::hint;
 use crate::app::components::icon_button::{self, IconButton, IconButtonStyle};
@@ -259,7 +259,30 @@ fn running_row(job: &Job) -> Element<'static, Message> {
         JobKind::Install(request) => running_job(job, request),
         JobKind::Mod(mod_job) => running_mod(job, mod_job),
         JobKind::Export(export) => running_export(job, export),
+        JobKind::Reinstall(reinstall) => running_reinstall(job, reinstall),
     }
+}
+
+/// One running reinstall: its mark, the version being fetched again, and an indeterminate bar, since it reports no
+/// progress.
+fn running_reinstall(job: &Job, reinstall: &ReinstallJob) -> Element<'static, Message> {
+    running_card(
+        column![
+            row![
+                art(job, 40.0),
+                column![
+                    title(&reinstall.name),
+                    mono_line(format!("{} · {}", reinstall.mc_version, lang::t("downloads.reinstall.running")))
+                ]
+                .spacing(2)
+                .width(Fill),
+            ]
+            .spacing(10)
+            .align_y(alignment::Vertical::Center),
+            ProgressBar::new(0.0).indeterminate(true).width(Fill),
+        ]
+        .spacing(8),
+    )
 }
 
 /// One running export: its mark, name, format and stage, a cancel button, and a bar with the share written.
@@ -395,12 +418,18 @@ fn art(job: &Job, size: f32) -> Element<'static, Message> {
         JobKind::Install(request) => instance_icon::icon(&icon_of(request), size),
         JobKind::Mod(mod_job) => platform_logo::logo(mod_job.source.logo(), size),
         JobKind::Export(_) => export_mark(size),
+        JobKind::Reinstall(_) => glyph_mark(Icon::lucide().refresh_cw(), size),
     }
 }
 
 /// An export's mark, where an install shows its art: the package glyph on a green tile.
 fn export_mark(size: f32) -> Element<'static, Message> {
-    let glyph = svg(svg::Handle::from_memory(Icon::lucide().package().as_bytes()))
+    glyph_mark(Icon::lucide().package(), size)
+}
+
+/// A job's mark: a glyph on the primary tint.
+fn glyph_mark(glyph_svg: &'static str, size: f32) -> Element<'static, Message> {
+    let glyph = svg(svg::Handle::from_memory(glyph_svg.as_bytes()))
         .width(size * 0.5)
         .height(size * 0.5)
         .style(|_, _| svg::Style {
@@ -547,6 +576,7 @@ fn subtitle(job: &Job) -> Text<'static> {
         JobKind::Install(request) => mono_line(format!("{} · {}", request.loader.label(), request.mc_version)),
         JobKind::Mod(mod_job) => mono_line(mod_job.instance.clone()),
         JobKind::Export(export) => mono_line(format_label(export.format).to_owned()),
+        JobKind::Reinstall(reinstall) => mono_line(reinstall.mc_version.clone()),
     }
 }
 

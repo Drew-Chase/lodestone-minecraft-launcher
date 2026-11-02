@@ -85,17 +85,24 @@ pub async fn client_jar(
     download::fetch(client, missing, Part::Client, present, 1, reports).await
 }
 
-/// Makes sure every library in `plan` is on disk, reporting as the libraries part.
-pub async fn libraries(client: &reqwest::Client, plan: &Plan, reports: &mpsc::Sender<PartReport>) -> Result<(), String> {
+/// Makes sure every library in `plan` is on disk, reporting as the libraries part. With `verify` off they are
+/// taken as present (see [`download::missing_when`]).
+pub async fn libraries(client: &reqwest::Client, plan: &Plan, reports: &mpsc::Sender<PartReport>, verify: bool) -> Result<(), String> {
     let total = plan.items.len();
-    let Missing { missing, present } = download::missing(plan.items.clone()).await?;
+    let Missing { missing, present } = download::missing_when(plan.items.clone(), verify).await?;
     report(reports, Part::Libraries, present, total).await;
     download::fetch(client, missing, Part::Libraries, present, total, reports).await
 }
 
 /// Makes sure the asset index of `vanilla` and every object it names are on disk, reporting as
 /// the assets part. The index is kept as Mojang wrote it, so its extra fields survive.
-pub async fn assets(paths: &LauncherPaths, client: &reqwest::Client, vanilla: &Manifest, reports: &mpsc::Sender<PartReport>) -> Result<(), String> {
+pub async fn assets(
+    paths: &LauncherPaths,
+    client: &reqwest::Client,
+    vanilla: &Manifest,
+    reports: &mpsc::Sender<PartReport>,
+    verify: bool,
+) -> Result<(), String> {
     let index = vanilla
         .asset_index
         .as_ref()
@@ -103,7 +110,7 @@ pub async fn assets(paths: &LauncherPaths, client: &reqwest::Client, vanilla: &M
     let text = index_text(paths, client, index).await?;
     let items = object_items(paths, &index.id, &text)?;
     let total = items.len();
-    let Missing { missing, present } = download::missing(items).await?;
+    let Missing { missing, present } = download::missing_when(items, verify).await?;
     report(reports, Part::Assets, present, total).await;
     download::fetch(client, missing, Part::Assets, present, total, reports).await
 }

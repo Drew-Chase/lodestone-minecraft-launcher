@@ -90,18 +90,18 @@ fn starts_without_an_instance() {
 fn show_resets_the_tab() {
     let mut page = InstancePage::default();
 
-    let _ = page.show(aether(), PathBuf::new());
+    let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
     let _ = page.update(Message::TabSelected(Tab::Logs));
     assert_eq!(page.tab, Tab::Logs);
 
-    let _ = page.show(aether(), PathBuf::new());
+    let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
     assert_eq!(page.tab, Tab::Overview, "opening another instance starts on Overview");
 }
 
 #[test]
 fn game_controls_are_left_to_the_root() {
     let mut page = InstancePage::default();
-    let _ = page.show(aether(), PathBuf::new());
+    let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
     let _ = page.update(Message::Launch);
     let _ = page.update(Message::Kill);
     let _ = page.update(Message::Restart);
@@ -115,13 +115,13 @@ fn game_controls_are_left_to_the_root() {
 #[test]
 fn a_reload_replaces_only_the_shown_instance() {
     let mut page = InstancePage::default();
-    let _ = page.show(aether(), PathBuf::new());
+    let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
     let mut reloaded = aether();
     reloaded.playtime_seconds = 90;
-    page.refresh(reloaded);
+    page.refresh(reloaded, &LaunchDefaults::default());
     assert_eq!(page.instance().map(|instance| instance.playtime_seconds), Some(90));
 
-    page.refresh(fixture("beta", "Beta", Loader::Quilt));
+    page.refresh(fixture("beta", "Beta", Loader::Quilt), &LaunchDefaults::default());
     assert_eq!(
         page.instance().map(|instance| instance.id.as_str()),
         Some("aether"),
@@ -132,7 +132,7 @@ fn a_reload_replaces_only_the_shown_instance() {
 #[test]
 fn the_menu_and_the_source_link_are_left_to_the_root() {
     let mut page = InstancePage::default();
-    let _ = page.show(aether(), PathBuf::new());
+    let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
     let _ = page.update(Message::Menu(None));
     let _ = page.update(Message::OpenSource);
     assert_eq!(page.tab, Tab::Overview, "the root carries these out, so the page keeps its tab");
@@ -141,7 +141,7 @@ fn the_menu_and_the_source_link_are_left_to_the_root() {
 #[test]
 fn back_and_navigation_are_left_to_the_root() {
     let mut page = InstancePage::default();
-    let _ = page.show(aether(), PathBuf::new());
+    let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
     let _ = page.update(Message::TabSelected(Tab::Mods));
     let _ = page.update(Message::Back);
     let _ = page.update(Message::Navigate(Page::Home));
@@ -151,7 +151,7 @@ fn back_and_navigation_are_left_to_the_root() {
 #[test]
 fn a_scan_for_the_current_instance_lands() {
     let mut page = InstancePage::default();
-    let _ = page.show(aether(), PathBuf::new());
+    let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
     let generation = page.generation;
 
     let _ = page.update(Message::Scanned {
@@ -165,9 +165,13 @@ fn a_scan_for_the_current_instance_lands() {
 #[test]
 fn a_scan_for_an_earlier_instance_is_dropped() {
     let mut page = InstancePage::default();
-    let _ = page.show(aether(), PathBuf::from("/instances/aether"));
+    let _ = page.show(aether(), PathBuf::from("/instances/aether"), &LaunchDefaults::default());
     let stale = page.generation;
-    let _ = page.show(fixture("beta", "Beta", Loader::Quilt), PathBuf::from("/instances/beta"));
+    let _ = page.show(
+        fixture("beta", "Beta", Loader::Quilt),
+        PathBuf::from("/instances/beta"),
+        &LaunchDefaults::default(),
+    );
 
     let _ = page.update(Message::Scanned {
         generation: stale,
@@ -179,7 +183,7 @@ fn a_scan_for_an_earlier_instance_is_dropped() {
 #[test]
 fn every_tab_builds_at_narrow_and_wide_widths() {
     let mut page = InstancePage::default();
-    let _ = page.show(aether(), PathBuf::new());
+    let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
     let generation = page.generation;
     let _ = page.update(Message::Scanned {
         generation,
@@ -197,7 +201,7 @@ fn every_tab_builds_at_narrow_and_wide_widths() {
 #[test]
 fn every_tab_builds_before_the_scan_lands() {
     let mut page = InstancePage::default();
-    let _ = page.show(aether(), PathBuf::new());
+    let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
     for tab in Tab::ALL {
         let _ = page.update(Message::TabSelected(tab));
         let _ = page.view(Size::new(1280.0, 800.0), idle_game(), None, &WorldPins::default());

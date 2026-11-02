@@ -86,6 +86,23 @@ pub enum LodestoneAppMessage {
         instance: String,
         result: Result<(), String>,
     },
+    /// An instance's edited row was written, or the write failed.
+    InstanceSaved {
+        instance: String,
+        result: Result<(), String>,
+    },
+    /// The reset alert was answered for `instance`. A reset goes ahead only when it is confirmed.
+    InstanceResetAnswered {
+        instance: String,
+        confirmed: bool,
+    },
+    /// The global defaults were written to the preferences, or the write failed.
+    DefaultsSaved(Result<(), String>),
+    /// A reinstall of a version's game files finished, or failed. `job` is its queue entry.
+    ReinstallFinished {
+        job: u64,
+        result: Result<(), String>,
+    },
     /// An instance folder was opened in the file manager, or could not be.
     FolderOpened(Result<(), String>),
     /// A modpack's page was opened in the browser, or could not be.
