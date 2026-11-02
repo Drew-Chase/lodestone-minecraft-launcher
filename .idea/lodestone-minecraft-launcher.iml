@@ -49,6 +49,10 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/export/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/gui/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/gui/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/updater/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/updater/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/xtask/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/xtask/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/crates/lodestone-gui/src-tauri/gen/schemas" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
