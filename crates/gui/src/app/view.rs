@@ -222,7 +222,10 @@ impl LodestoneLauncher {
         });
         match page {
             Page::Login => self.login.view(None).map(LodestoneAppMessage::Login),
-            Page::Home => self.library.view(self.window_size, &self.art).map(LodestoneAppMessage::Library),
+            Page::Home => self
+                .library
+                .view(self.window_size, &self.art, self.updater.button())
+                .map(LodestoneAppMessage::Library),
             Page::Instance => self
                 .instance_page
                 .view(self.window_size, self.page_game_view(), self.instance_install())

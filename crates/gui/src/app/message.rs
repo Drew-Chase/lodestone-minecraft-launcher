@@ -21,6 +21,7 @@ use crate::app::perf;
 use crate::app::portable::Message as PortableMessage;
 use crate::app::shared_library::{ModSource, SharedRecord};
 use crate::app::titlebar::TitlebarMessage;
+use crate::app::updater::Message as UpdaterMessage;
 use iced::Size;
 use iced::widget::image::Handle;
 use iced::window::{Direction, Id};
@@ -55,6 +56,8 @@ pub enum LodestoneAppMessage {
     Export(ExportMessage),
     /// The portable launcher: its check, its install and its buttons.
     Portable(PortableMessage),
+    /// The update check: the release check's answer, the installer's download, and the update button.
+    Updater(UpdaterMessage),
     /// The launcher database finished opening (schema migrations ran).
     DatabaseReady(Result<Database, String>),
     /// The instance list finished loading, with each mod count read from disk.

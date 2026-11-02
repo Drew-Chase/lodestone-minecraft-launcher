@@ -29,6 +29,7 @@ lodestone_loaders = { path = "../loaders" }
 lodestone_launch = { path = "../launcher" }
 lodestone_platforms = { path = "../platforms" }
 lodestone_export = { path = "../export" }
+lodestone_updater = { path = "../updater" }
 md-5 = "0.10"
 zip = "9"
 sha1 = "0.10"

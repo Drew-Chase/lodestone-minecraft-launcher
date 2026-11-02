@@ -4,6 +4,16 @@ langname = "English"
 application.title = "Lodestone"
 titlebar.tag = "LODESTONE - v{VERSION}"
 
+# --- updater ---
+updater.button.available = "Update available"
+updater.button.downloading = "Downloading the update"
+updater.button.ready = "Update ready"
+updater.button.installing = "Installing the update"
+updater.confirm.title = "Install the update?"
+updater.confirm.message = "A game is running. Installing the update closes the launcher, and it starts again once the update is in."
+updater.download_failed = "The update could not be downloaded: {error}"
+updater.not_started = "The update did not start: {error}"
+
 # --- common ---
 common.cancel = "Cancel"
 common.close = "Close"

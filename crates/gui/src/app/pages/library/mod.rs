@@ -22,6 +22,7 @@ use crate::app::install::InstallRequest;
 use crate::app::lang;
 use crate::app::paths::LauncherPaths;
 use crate::app::theme::fonts;
+use crate::app::updater::Button;
 use iced::widget::{Column, Text, container, svg};
 use iced::{Background, Border, Color, Element, Fill, Padding, Size, Task};
 use tracing::info;
@@ -56,6 +57,8 @@ pub enum Message {
     Hover { instance: String, hovered: bool },
     /// A header/quick action (Import, Join Server, ...) — dummy.
     QuickAction(&'static str),
+    /// The update button in the header was pressed. The root starts the update, or opens its page.
+    UpdatePressed,
     /// The refresh button — the root re-queries the database.
     Reload,
     /// The New Instance button opens the dialog. The root loads its lists.
@@ -224,8 +227,8 @@ impl Library {
             // The root routes these: they need the database, the alerts or the instance page.
             Message::EditInstance(_) | Message::RevealInstance(_) | Message::InstanceMenu { .. } => {}
             Message::QuickAction(action) => info!("Quick action '{action}' (dummy)"),
-            // The root handles the reload and the New Instance messages: they need the database.
-            Message::Reload | Message::OpenNewInstance | Message::NewInstance(_) => {}
+            // The root handles the reload, the update and the New Instance messages: they need the database or the updater.
+            Message::Reload | Message::OpenNewInstance | Message::NewInstance(_) | Message::UpdatePressed => {}
         }
     }
 
@@ -360,8 +363,10 @@ impl Library {
     /// The page: the header stays where it is, and the hero, the quick actions and the instance list
     /// scroll beneath it. `viewport` is the window's inner size, used for the grid's column count and the
     /// windowed row count.
-    pub fn view<'a>(&'a self, viewport: Size, art: &'a ArtCache) -> Element<'a, Message> {
-        let fixed = container(self.header()).padding(Padding::new(0.0).top(24).left(28).right(28)).width(Fill);
+    pub fn view<'a>(&'a self, viewport: Size, art: &'a ArtCache, update: Option<Button>) -> Element<'a, Message> {
+        let fixed = container(self.header(update))
+            .padding(Padding::new(0.0).top(24).left(28).right(28))
+            .width(Fill);
         // The banner is optional, so the column takes its children one at a
         // time: a missing hero must not leave a spacing gap behind.
         let mut page = Column::new();

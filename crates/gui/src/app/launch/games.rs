@@ -307,6 +307,11 @@ impl Games {
         self.is_running(instance) || self.is_preparing(instance)
     }
 
+    /// Whether any game is being prepared or has a run going, in any instance.
+    pub fn any_active(&self) -> bool {
+        !self.running.is_empty() || !self.preparing.is_empty()
+    }
+
     /// The instance a run belongs to.
     pub fn instance_of(&self, serial: u64) -> Option<&str> {
         self.running.get(&serial).map(|running| running.instance.as_str())

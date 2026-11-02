@@ -30,6 +30,7 @@ mod subscription;
 pub mod theme;
 mod titlebar;
 mod update;
+mod updater;
 mod view;
 mod world_actions;
 
@@ -146,6 +147,8 @@ pub struct LodestoneLauncher {
     export: Option<export::Dialog>,
     /// The package this launcher carries, when it is a portable launcher. Its launch replaces the library.
     portable: Option<portable::Portable>,
+    /// The update check: the newest release, and what the update is doing. See `updater`.
+    updater: updater::Updater,
     /// The library's scene art, rendered to pixels in the background.
     art: components::art_cache::ArtCache,
     /// TEMPORARY resize-latency probe counter (env-gated).
@@ -186,6 +189,7 @@ impl Default for LodestoneLauncher {
             downloads: downloads::Downloads::default(),
             export: None,
             portable: portable::launch(),
+            updater: updater::Updater::default(),
             art: components::art_cache::ArtCache::default(),
             perf: perf::Hud::default(),
         }

@@ -1,12 +1,14 @@
 //! The Library header row and the instance-list controls: search, filter
 //! tabs and the view switcher.
 
+use crate::app::components::hint::hint;
 use crate::app::components::icon_button::GHOST_BUTTON_STYLE;
 use crate::app::components::{IconButton, TextButton, input};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
+use crate::app::updater::Button;
 use aurora_leaf::Icon;
-use iced::widget::{Space, Text, column, container, row, stack, text_input};
+use iced::widget::{Row, Space, Text, column, container, row, stack, text_input};
 use iced::{Element, Fill, Length, Padding, alignment};
 
 use super::{Library, LibraryFilter, LibraryView, Message, icon};
@@ -21,36 +23,60 @@ fn summary(instances: usize, total_hours: u32) -> String {
     lang::t_with("library.summary", &[("instances", count.as_str()), ("hours", hours.as_str())])
 }
 
+/// The update button: a download icon, hinted with what the update is doing. It is disabled while the update is
+/// downloading or installing.
+fn update_button(update: Button) -> Element<'static, Message> {
+    hint(
+        IconButton::new(Icon::lucide().download())
+            .size(36)
+            .radius(12.0)
+            .icon_size(16.0)
+            .style(GHOST_BUTTON_STYLE)
+            .disabled(!update.enabled)
+            .on_press(Message::UpdatePressed),
+        update.tooltip,
+    )
+}
+
 impl Library {
-    /// The page header — title, stats, search and actions.
-    pub(super) fn header(&self) -> Element<'_, Message> {
+    /// The page header — title, stats, search and actions. The update button, when an update is showing, sits between
+    /// the refresh button and the notifications bell.
+    pub(super) fn header(&self, update: Option<Button>) -> Element<'_, Message> {
         let total_hours: u32 = self.instances.iter().map(|instance| instance.playtime_seconds / 3600).sum();
-        row![
-            column![
-                Text::new(lang::t("library.title"))
-                    .size(24)
-                    .font(fonts::Inter::EXTRA_BOLD)
-                    .color(color::Text::HEADLINE),
-                Text::new(summary(self.instances.len(), total_hours))
-                    .size(12)
-                    .font(fonts::Inter::REGULAR)
-                    .color(color::Text::MUTED),
-            ]
-            .spacing(2),
-            Space::new().width(Fill),
-            self.search_box(),
+        let title = column![
+            Text::new(lang::t("library.title"))
+                .size(24)
+                .font(fonts::Inter::EXTRA_BOLD)
+                .color(color::Text::HEADLINE),
+            Text::new(summary(self.instances.len(), total_hours))
+                .size(12)
+                .font(fonts::Inter::REGULAR)
+                .color(color::Text::MUTED),
+        ]
+        .spacing(2);
+        let mut children: Vec<Element<'_, Message>> = vec![title.into(), Space::new().width(Fill).into(), self.search_box()];
+        children.push(
             IconButton::new(Icon::lucide().refresh_cw())
                 .size(36)
                 .radius(12.0)
                 .icon_size(16.0)
                 .style(GHOST_BUTTON_STYLE)
-                .on_press(Message::Reload),
+                .on_press(Message::Reload)
+                .into(),
+        );
+        if let Some(update) = update {
+            children.push(update_button(update));
+        }
+        children.push(
             IconButton::new(Icon::lucide().bell())
                 .size(36)
                 .radius(12.0)
                 .icon_size(16.0)
                 .style(GHOST_BUTTON_STYLE)
-                .on_press(Message::QuickAction("notifications")),
+                .on_press(Message::QuickAction("notifications"))
+                .into(),
+        );
+        children.push(
             TextButton::content(
                 row![
                     icon(Icon::lucide().plus(), 14.0, color::Primary::ON, 1.0),
@@ -60,16 +86,18 @@ impl Library {
                         .color(color::Primary::ON),
                 ]
                 .spacing(8)
-                .align_y(alignment::Vertical::Center)
+                .align_y(alignment::Vertical::Center),
             )
             .variant(crate::app::components::button::Variant::Primary)
             .padding(Padding::new(0.0).left(18).right(18).top(12).bottom(12))
-            .on_press(Message::OpenNewInstance),
-        ]
-        .spacing(16)
-        .align_y(alignment::Vertical::Center)
-        .width(Fill)
-        .into()
+            .on_press(Message::OpenNewInstance)
+            .into(),
+        );
+        Row::with_children(children)
+            .spacing(16)
+            .align_y(alignment::Vertical::Center)
+            .width(Fill)
+            .into()
     }
 
     /// The search input with its leading icon, in the `.input` field style.

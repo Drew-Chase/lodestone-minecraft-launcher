@@ -9,7 +9,7 @@ use iced::window::{Level, Position};
 use iced::{Size, Task, window};
 use tracing::{info, warn};
 
-use super::{LodestoneAppMessage, LodestoneLauncher, probe_enabled};
+use super::{LodestoneAppMessage, LodestoneLauncher, probe_enabled, updater};
 
 impl LodestoneLauncher {
     pub fn boot() -> (Self, Task<LodestoneAppMessage>) {
@@ -35,6 +35,10 @@ impl LodestoneLauncher {
         }
         // Open the launcher database — migrations run on connect.
         tasks.push(Task::perform(Database::connect(), |result| LodestoneAppMessage::DatabaseReady(result)));
+        // The update check runs once per launch, in the background. `updater::enabled` says when it is skipped.
+        if updater::enabled(app.portable.is_some()) {
+            tasks.push(updater::check());
+        }
         // TEMPORARY resize-latency probe kick-off — env-gated.
         if probe_enabled() {
             info!("PROBE resize-latency profiling active");
