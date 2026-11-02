@@ -5,6 +5,7 @@
 use chrono::{Local, TimeZone};
 
 use super::*;
+use crate::app::pages::instance::files::{Difficulty, GameMode};
 
 fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Local> {
     Local
@@ -25,6 +26,8 @@ fn world(name: &str) -> WorldFile {
         saved: Some(at(2026, 10, 29, 12, 0)),
         play_time: Some(std::time::Duration::from_secs(48 * 3600 + 12 * 60)),
         icon: None,
+        backdrop: None,
+        backed_up: false,
     }
 }
 
@@ -42,10 +45,7 @@ fn the_saved_caption_is_relative_to_now() {
 #[test]
 fn search_matches_names_ignoring_case() {
     let mut state = State::default();
-    state.set_worlds(
-        vec![world("Aether Hub"), world("Aether Copy"), world("Pixel Town")],
-        at(2026, 10, 29, 12, 0),
-    );
+    state.set_worlds(vec![world("Aether Hub"), world("Aether Copy"), world("Pixel Town")]);
     assert_eq!(state.visible, [0, 1, 2]);
 
     state.update(Message::Search("AETHER".to_string()));
@@ -56,9 +56,20 @@ fn search_matches_names_ignoring_case() {
 }
 
 #[test]
+fn search_matches_seeds_too() {
+    let mut state = State::default();
+    let mut seeded = world("Pixel Town");
+    seeded.seed = Some(-4827);
+    state.set_worlds(vec![world("Aether Hub"), seeded]);
+
+    state.update(Message::Search("4827".to_string()));
+    assert_eq!(state.visible, [1]);
+}
+
+#[test]
 fn the_root_carries_the_intents_so_the_grid_is_left_alone() {
     let mut state = State::default();
-    state.set_worlds(vec![world("Aether Hub")], at(2026, 10, 29, 12, 0));
+    state.set_worlds(vec![world("Aether Hub")]);
     state.update(Message::Import);
     state.update(Message::NewWorld);
     state.update(Message::Menu {
@@ -75,7 +86,7 @@ fn the_root_carries_the_intents_so_the_grid_is_left_alone() {
 #[test]
 fn a_removed_world_leaves_the_list_and_the_search() {
     let mut state = State::default();
-    state.set_worlds(vec![world("Aether Hub"), world("Pixel Town")], at(2026, 10, 29, 12, 0));
+    state.set_worlds(vec![world("Aether Hub"), world("Pixel Town")]);
     state.update(Message::Search("pixel".to_string()));
     state.remove(Path::new("/saves/Pixel Town"));
     assert!(state.visible.is_empty());
@@ -83,4 +94,15 @@ fn a_removed_world_leaves_the_list_and_the_search() {
 
     state.update(Message::Search(String::new()));
     assert_eq!(state.visible, [0]);
+}
+
+#[test]
+fn a_hover_ends_with_the_next_other_message() {
+    let mut state = State::default();
+    state.update(Message::Hovered(Some(PathBuf::from("/saves/Aether Hub"))));
+    assert!(state.hovered.is_some());
+
+    // A card that scrolls away never sends its exit, so any other message ends the hover.
+    state.update(Message::Search(String::new()));
+    assert!(state.hovered.is_none());
 }

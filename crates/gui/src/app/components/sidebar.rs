@@ -5,8 +5,8 @@
 //! the bottom, and the player avatar with its presence dot. The icon groups
 //! reuse [`NavRail`] for the sliding indicator and hover states.
 //!
-//! Only Home navigates today; the remaining items keep their hover
-//! affordances but produce no navigation.
+//! Library, Discover and Worlds navigate; the remaining items keep their
+//! hover affordances but produce no navigation.
 
 use std::sync::OnceLock;
 

@@ -24,6 +24,7 @@ pub mod login;
 pub mod resource;
 pub mod settings;
 pub mod showcase;
+pub mod worlds;
 
 /// Every screen the launcher can display.
 ///
@@ -47,6 +48,8 @@ pub enum Page {
     /// A project's resource page, opened from Discover. The project lives in the root's `ResourcePage`, as the
     /// instance page's does.
     Resource,
+    /// Every saved world across every instance.
+    Worlds,
     /// Launcher preferences.
     Settings,
     /// Style-guide gallery of every core control.
@@ -60,6 +63,7 @@ impl Page {
             Page::Login => "Login",
             Page::Home => "Library",
             Page::Discover => "Discover",
+            Page::Worlds => "Worlds",
             Page::Instance => "Instance",
             Page::Resource => "Resource",
             Page::Settings => "Settings",

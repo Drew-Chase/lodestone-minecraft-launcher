@@ -7,13 +7,54 @@ use std::time::Duration;
 
 use chrono::{DateTime, Local, Utc};
 use flate2::read::GzDecoder;
+use iced::widget::image::Handle;
 use serde::Deserialize;
 
-use super::super::worlds::{Difficulty, GameMode};
-use super::{decode_image, dir_size};
+use super::{decode_world_art, dir_size};
+use crate::app::lang;
 
 /// World ticks per second. `Time` in `level.dat` counts ticks.
 const TICKS_PER_SECOND: u64 = 20;
+
+/// The game mode a world was created in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameMode {
+    Survival,
+    Creative,
+    Adventure,
+    Hardcore,
+}
+
+impl GameMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            GameMode::Survival => lang::t("instance.worlds.mode.survival"),
+            GameMode::Creative => lang::t("instance.worlds.mode.creative"),
+            GameMode::Adventure => lang::t("instance.worlds.mode.adventure"),
+            GameMode::Hardcore => lang::t("instance.worlds.mode.hardcore"),
+        }
+    }
+}
+
+/// The difficulty a world was set to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Difficulty {
+    Peaceful,
+    Easy,
+    Normal,
+    Hard,
+}
+
+impl Difficulty {
+    pub fn label(self) -> &'static str {
+        match self {
+            Difficulty::Peaceful => lang::t("instance.worlds.difficulty.peaceful"),
+            Difficulty::Easy => lang::t("instance.worlds.difficulty.easy"),
+            Difficulty::Normal => lang::t("instance.worlds.difficulty.normal"),
+            Difficulty::Hard => lang::t("instance.worlds.difficulty.hard"),
+        }
+    }
+}
 
 /// One saved world.
 #[derive(Debug, Clone)]
@@ -34,7 +75,23 @@ pub struct WorldFile {
     /// The time spent in the world, from `Time` in `level.dat`.
     pub play_time: Option<Duration>,
     /// The save's `icon.png`, when it has one.
-    pub icon: Option<iced::widget::image::Handle>,
+    pub icon: Option<Handle>,
+    /// The icon blurred into the card's backdrop, when the save has an icon.
+    pub backdrop: Option<Handle>,
+    /// Whether the instance's `backups/` folder holds a zip of this save.
+    pub backed_up: bool,
+}
+
+impl WorldFile {
+    /// The save's folder name, which the pins and the backups name it by.
+    pub fn folder(&self) -> String {
+        self.path.file_name().map_or_else(String::new, |name| name.to_string_lossy().into_owned())
+    }
+
+    /// Whether the world's name or its seed contains `query`, which is lower case. An empty query matches every world.
+    pub fn matches(&self, query: &str) -> bool {
+        query.is_empty() || self.name.to_lowercase().contains(query) || self.seed.is_some_and(|seed| seed.to_string().contains(query))
+    }
 }
 
 /// Every save in `dir`, most recently saved first.
@@ -59,6 +116,8 @@ pub fn read_world(path: &Path) -> Option<WorldFile> {
     // A `level.dat` that will not decode still lists the save, with the folder
     // name and no details.
     let level = read_level(&level_path).unwrap_or_default();
+    let backed_up = has_backup(path, &folder);
+    let art = decode_world_art(&path.join("icon.png"));
 
     let game_mode = match (level.hardcore.unwrap_or(0) != 0, level.game_type) {
         (true, _) => Some(GameMode::Hardcore),
@@ -97,8 +156,42 @@ pub fn read_world(path: &Path) -> Option<WorldFile> {
         size_bytes: dir_size(path),
         saved,
         play_time,
-        icon: decode_image(&path.join("icon.png"), None),
+        icon: art.as_ref().map(|(icon, _)| icon.clone()),
+        backdrop: art.map(|(_, backdrop)| backdrop),
+        backed_up,
     })
+}
+
+/// Whether the instance folder that holds the save `path` has a zip of that save in `backups/`.
+fn has_backup(path: &Path, folder: &str) -> bool {
+    let Some(instance) = path.parent().and_then(Path::parent) else {
+        return false;
+    };
+    let Ok(entries) = std::fs::read_dir(instance.join("backups")) else {
+        return false;
+    };
+    entries
+        .filter_map(Result::ok)
+        .any(|entry| entry.file_name().to_str().is_some_and(|name| is_backup_of(name, folder)))
+}
+
+/// Whether `name` is a zip that `back_up` wrote for the save `folder`: `<folder>-<stamp>.zip`.
+fn is_backup_of(name: &str, folder: &str) -> bool {
+    name.strip_prefix(folder)
+        .and_then(|rest| rest.strip_prefix('-'))
+        .and_then(|rest| rest.strip_suffix(".zip"))
+        .is_some_and(looks_like_stamp)
+}
+
+/// Whether `stamp` has the `%Y-%m-%d_%H.%M.%S` shape that `back_up` writes. The shape keeps a world named
+/// "Hub" from matching a backup of "Hub-2020" and its own folder.
+fn looks_like_stamp(stamp: &str) -> bool {
+    const SHAPE: &[u8] = b"dddd-dd-dd_dd.dd.dd";
+    stamp.len() == SHAPE.len()
+        && stamp.bytes().zip(SHAPE).all(|(byte, shape)| match shape {
+            b'd' => byte.is_ascii_digit(),
+            separator => byte == *separator,
+        })
 }
 
 /// Decodes a `level.dat`, which is gzip-compressed NBT. `None` when the file is

@@ -24,7 +24,6 @@ use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use chrono::Local;
 use iced::widget::image::Handle;
 use iced::widget::{Text, column, container, stack};
 use iced::{Element, Fill, Padding, Size, Subscription, Task, alignment, event, window};
@@ -39,6 +38,7 @@ use crate::app::pages::Page;
 use crate::app::pages::library::instance::{Instance, Loader};
 use crate::app::pages::library::instance_menu;
 use crate::app::theme::{color, fonts};
+use crate::app::world_pins::WorldPins;
 use files::{InstanceFiles, ModFile, WorldFile};
 use watch::{Change, Update};
 
@@ -401,7 +401,7 @@ impl InstancePage {
         if let Some(files) = &mut self.files {
             files.worlds = worlds.clone();
         }
-        self.worlds.set_worlds(worlds, Local::now());
+        self.worlds.set_worlds(worlds);
         Task::none()
     }
 
@@ -426,7 +426,7 @@ impl InstancePage {
     /// Hands a scan's results to the tabs and starts the thumbnails.
     fn apply(&mut self, files: InstanceFiles) -> Task<Message> {
         self.mods.set_mods(files.mods.clone());
-        self.worlds.set_worlds(files.worlds.clone(), Local::now());
+        self.worlds.set_worlds(files.worlds.clone());
         self.screenshots.set_shots(files.screenshots.clone());
         self.logs.set_lines(files.log.clone());
         self.files = Some(files);
@@ -487,7 +487,7 @@ impl InstancePage {
             }
             files.worlds.sort_by_key(|world| std::cmp::Reverse(world.saved));
             files.screenshots.sort_by_key(|shot| std::cmp::Reverse(shot.modified));
-            self.worlds.set_worlds(files.worlds.clone(), Local::now());
+            self.worlds.set_worlds(files.worlds.clone());
             self.screenshots.set_shots(files.screenshots.clone());
             if mods_changed {
                 self.mods.set_mods(files.mods.clone());
@@ -527,7 +527,7 @@ impl InstancePage {
     }
 
     /// The page: fixed masthead, fixed tab row, and the tab body.
-    pub fn view<'a>(&'a self, viewport: Size, game: GameView<'a>, install: Option<&'a Pending>) -> Element<'a, Message> {
+    pub fn view<'a>(&'a self, viewport: Size, game: GameView<'a>, install: Option<&'a Pending>, pins: &'a WorldPins) -> Element<'a, Message> {
         let Some(instance) = &self.instance else {
             return self.empty_state();
         };
@@ -539,7 +539,7 @@ impl InstancePage {
         let page = column![
             hero::hero(instance, self.files.as_ref(), controls, viewport),
             self.tab_bar(),
-            self.tab_body(instance, game.console, install),
+            self.tab_body(instance, game.console, install, pins),
         ]
         .width(Fill)
         .height(Fill);
@@ -599,6 +599,7 @@ impl InstancePage {
         instance: &'a Instance,
         console: Option<&'a VecDeque<logs::LogLine>>,
         install: Option<&'a Pending>,
+        pins: &'a WorldPins,
     ) -> Element<'a, Message> {
         let content: Element<'a, Message> = match self.tab {
             Tab::Overview => overview::view(instance, &self.screenshots, install),
@@ -606,7 +607,7 @@ impl InstancePage {
                 mods::Message::Add => Message::AddMods,
                 other => Message::Mods(other),
             }),
-            Tab::Worlds => self.worlds.view().map(Message::Worlds),
+            Tab::Worlds => self.worlds.view(&instance.id, pins).map(Message::Worlds),
             Tab::Screenshots => screenshots::view(&self.screenshots).map(Message::Screenshots),
             Tab::Logs => self.logs.view(console).map(Message::Logs),
             Tab::Settings => self.settings.view(instance).map(Message::Settings),

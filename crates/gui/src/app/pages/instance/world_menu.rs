@@ -15,6 +15,10 @@ pub enum Action {
     Reveal,
     /// Copies the world's seed to the clipboard.
     CopySeed,
+    /// Pins the world, so the Pinned filter lists it.
+    Pin,
+    /// Unpins the world.
+    Unpin,
     /// Zips the world into the instance's `backups/` folder.
     BackUp,
     /// Moves the world to the trash, once the user has said so.
@@ -28,12 +32,14 @@ pub struct Menu {
     pub actions: Vec<Option<Action>>,
 }
 
-/// The menu for a world. Copy seed is listed only when the world has a seed to copy.
-pub fn menu(has_seed: bool) -> Menu {
+/// The menu for a world. Copy seed is listed only when the world has a seed to copy, and the pin row says what
+/// picking it does: pin, or unpin a pinned world.
+pub fn menu(has_seed: bool, pinned: bool) -> Menu {
     let mut actions = vec![Some(Action::Play), None, Some(Action::Reveal)];
     if has_seed {
         actions.push(Some(Action::CopySeed));
     }
+    actions.push(Some(if pinned { Action::Unpin } else { Action::Pin }));
     actions.push(Some(Action::BackUp));
     actions.push(None);
     actions.push(Some(Action::Delete));
@@ -53,6 +59,8 @@ fn item(action: Action) -> MenuItem {
         Action::Play => (lang::t("common.play"), Icon::lucide().play(), false),
         Action::Reveal => (lang::t("instance.worlds.menu.open_folder"), Icon::lucide().folder(), false),
         Action::CopySeed => (lang::t("instance.worlds.menu.copy_seed"), Icon::lucide().copy(), false),
+        Action::Pin => (lang::t("instance.worlds.menu.pin"), Icon::lucide().pin(), false),
+        Action::Unpin => (lang::t("instance.worlds.menu.unpin"), Icon::lucide().pin_off(), false),
         Action::BackUp => (lang::t("instance.worlds.menu.back_up"), Icon::lucide().archive(), false),
         Action::Delete => (lang::t("instance.worlds.menu.delete"), Icon::lucide().trash(), true),
     };

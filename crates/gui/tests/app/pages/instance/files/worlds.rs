@@ -220,3 +220,47 @@ fn a_zero_last_played_is_not_a_save_time() {
     );
     fs::remove_dir_all(&root).ok();
 }
+
+#[test]
+fn a_backup_is_named_for_its_save_and_a_timestamp() {
+    assert!(is_backup_of("Hub-2026-11-02_13.45.00.zip", "Hub"));
+    assert!(!is_backup_of("Hub-2020.zip", "Hub"), "a name that is not the timestamp shape");
+    assert!(
+        !is_backup_of("HubTown-2026-11-02_13.45.00.zip", "Hub"),
+        "another world with a longer name"
+    );
+    assert!(!is_backup_of("Hub-2026-11-02_13.45.00-extra.zip", "Hub"), "a stamp with more on it");
+    assert!(!is_backup_of("Hub-2026-11-02_13.45.00.tar", "Hub"), "not a zip");
+}
+
+#[test]
+fn a_save_is_backed_up_when_its_instance_holds_a_zip_of_it() {
+    let root = scratch("backup");
+    let instance = root.join("aether");
+    write(&instance.join("saves/Hub/level.dat"), &level_dat(hub()));
+    write(&instance.join("saves/Other/level.dat"), &level_dat(hub()));
+    write(&instance.join("backups/Hub-2026-11-02_13.45.00.zip"), b"zip");
+
+    assert!(read_world(&instance.join("saves/Hub")).is_some_and(|world| world.backed_up));
+    assert!(read_world(&instance.join("saves/Other")).is_some_and(|world| !world.backed_up));
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_save_with_an_icon_has_the_icon_and_a_backdrop() {
+    let root = scratch("icon");
+    write(&root.join("Hub/level.dat"), &level_dat(hub()));
+    let icon = image::RgbaImage::from_fn(64, 64, |x, _| {
+        if x < 32 {
+            image::Rgba([255, 0, 0, 255])
+        } else {
+            image::Rgba([0, 0, 255, 255])
+        }
+    });
+    icon.save(root.join("Hub/icon.png")).expect("the icon writes");
+
+    let world = read_world(&root.join("Hub")).expect("the save lists");
+    assert!(world.icon.is_some(), "the icon is decoded");
+    assert!(world.backdrop.is_some(), "the blurred backdrop is made beside it");
+    fs::remove_dir_all(&root).ok();
+}

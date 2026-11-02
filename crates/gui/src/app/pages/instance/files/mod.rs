@@ -21,7 +21,7 @@ use super::logs::{LogLine, MAX_LINES};
 
 pub use mods::ModFile;
 pub use screenshots::ScreenshotFile;
-pub use worlds::WorldFile;
+pub use worlds::{Difficulty, GameMode, WorldFile};
 
 /// Everything the instance tabs show, read from one instance folder.
 #[derive(Debug, Clone, Default)]
@@ -40,6 +40,7 @@ pub struct InstanceFiles {
 
 /// The saved worlds in the instance folder's `saves/`, most recently saved first.
 pub fn scan_worlds(folder: &Path) -> Vec<WorldFile> {
+    let _scope = perf::scope("io.scan_worlds");
     worlds::scan(&folder.join("saves"))
 }
 
@@ -98,6 +99,24 @@ pub fn decode_image(path: &Path, bounds: Option<(u32, u32)>) -> Option<Handle> {
     }
     let pixels = decoded.to_rgba8();
     Some(Handle::from_rgba(pixels.width(), pixels.height(), pixels.into_raw()))
+}
+
+/// How far the backdrop blur spreads, in pixels of the icon. An icon is 64px, so this turns it into a soft colour
+/// field rather than a second copy of the picture.
+const BACKDROP_BLUR: f32 = 4.0;
+
+/// Decodes a world's `icon.png` at full size, and a blurred copy of it for the card's backdrop. `None` when the
+/// file is missing or is not an image the decoder reads.
+pub fn decode_world_art(path: &Path) -> Option<(Handle, Handle)> {
+    let _scope = perf::scope("io.decode");
+    let icon = image::open(path).ok()?.to_rgba8();
+    let backdrop = image::imageops::blur(&icon, BACKDROP_BLUR);
+    Some((rgba_handle(icon), rgba_handle(backdrop)))
+}
+
+/// A handle over the RGBA pixels of `pixels`.
+fn rgba_handle(pixels: image::RgbaImage) -> Handle {
+    Handle::from_rgba(pixels.width(), pixels.height(), pixels.into_raw())
 }
 
 /// Decodes the image at `path` at full size, as RGBA pixels. The error says why it would not decode.

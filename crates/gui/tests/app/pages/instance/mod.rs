@@ -6,11 +6,12 @@ use std::path::PathBuf;
 
 use chrono::Local;
 
+use super::files::{Difficulty, GameMode};
 use super::logs::{LogLevel, LogLine};
-use super::worlds::{Difficulty, GameMode};
 use super::*;
 use crate::app::launch::games::{GameView, LaunchStatus};
 use crate::app::pages::library::instance::{Loader, fixture};
+use crate::app::world_pins::WorldPins;
 
 fn aether() -> Instance {
     fixture("aether", "Aether Legacy", Loader::Fabric)
@@ -48,6 +49,8 @@ fn sample_files() -> InstanceFiles {
             saved: Some(Local::now()),
             play_time: Some(std::time::Duration::from_secs(48 * 3600 + 12 * 60)),
             icon: None,
+            backdrop: None,
+            backed_up: false,
         }],
         screenshots: vec![files::ScreenshotFile {
             file_name: "2026-10-29_12.00.00.png".to_string(),
@@ -186,7 +189,7 @@ fn every_tab_builds_at_narrow_and_wide_widths() {
     for tab in Tab::ALL {
         let _ = page.update(Message::TabSelected(tab));
         for viewport in [Size::new(900.0, 700.0), Size::new(1400.0, 900.0)] {
-            let _ = page.view(viewport, idle_game(), None);
+            let _ = page.view(viewport, idle_game(), None, &WorldPins::default());
         }
     }
 }
@@ -197,12 +200,12 @@ fn every_tab_builds_before_the_scan_lands() {
     let _ = page.show(aether(), PathBuf::new());
     for tab in Tab::ALL {
         let _ = page.update(Message::TabSelected(tab));
-        let _ = page.view(Size::new(1280.0, 800.0), idle_game(), None);
+        let _ = page.view(Size::new(1280.0, 800.0), idle_game(), None, &WorldPins::default());
     }
 }
 
 #[test]
 fn the_page_builds_without_an_instance() {
     let page = InstancePage::default();
-    let _ = page.view(Size::new(1280.0, 800.0), idle_game(), None);
+    let _ = page.view(Size::new(1280.0, 800.0), idle_game(), None, &WorldPins::default());
 }

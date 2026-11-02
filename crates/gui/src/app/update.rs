@@ -18,8 +18,10 @@ use crate::app::pages::library::instance::Instance;
 use crate::app::pages::login::Message as LoginMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
 use crate::app::pages::showcase::Message as ShowcaseMessage;
+use crate::app::pages::worlds::Message as WorldsMessage;
 use crate::app::perf;
 use crate::app::preferences::Preferences;
+use crate::app::world_actions::WorldMessage;
 use iced::widget::image;
 use iced::{Size, Task, window};
 use iced_borderless_window_resize_handle_widget::drag_resize;
@@ -179,15 +181,26 @@ impl LodestoneLauncher {
             }
             LodestoneAppMessage::Instance(InstanceMessage::Screenshots(screenshots::Message::Copied(result))) => self.screenshot_copied(result),
             LodestoneAppMessage::Instance(InstanceMessage::Screenshots(screenshots::Message::Opened(result))) => self.screenshot_opened(result),
-            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::Menu { path, action })) => self.world_action(path, action),
-            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::Import)) => self.import_world(),
-            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::NewWorld)) => self.new_world(),
-            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::DeleteAnswered { path, confirmed })) => {
-                self.answer_world_delete(path, confirmed)
+            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::Menu { path, action })) => {
+                self.shown_world(|instance| WorldMessage::Menu { instance, path, action })
             }
-            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::Deleted { path, result })) => self.world_deleted(path, result),
-            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::BackedUp(result))) => self.world_backed_up(result),
-            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::Imported(result))) => self.world_imported(result),
+            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::Import)) => {
+                self.shown_world(|instance| WorldMessage::Import { instance })
+            }
+            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::NewWorld)) => {
+                self.shown_world(|instance| WorldMessage::NewWorld { instance })
+            }
+            LodestoneAppMessage::World(message) => self.world_message(message),
+            LodestoneAppMessage::WorldPinsLoaded(rows) => self.world_pins_loaded(rows),
+            LodestoneAppMessage::Worlds(WorldsMessage::World(message)) => self.world_message(message),
+            LodestoneAppMessage::Worlds(WorldsMessage::Pick { menu, instance }) => {
+                self.worlds.update(WorldsMessage::DismissMenu);
+                self.picked_instance(menu, instance)
+            }
+            LodestoneAppMessage::Worlds(message) => {
+                self.worlds.update(message);
+                Task::none()
+            }
             // The Mods tab's folder reads are checked against the platforms here, and its actions are carried out here.
             LodestoneAppMessage::Instance(InstanceMessage::Scanned { generation, files }) if generation == self.instance_page.generation() => {
                 let apply = self
@@ -227,6 +240,7 @@ impl LodestoneLauncher {
                     reattach,
                     self.load_shared(),
                     self.load_mod_sources(),
+                    self.load_world_pins(),
                     self.portable_database_ready(),
                 ])
             }
@@ -340,6 +354,9 @@ impl LodestoneLauncher {
             info!("Navigated: {} → {}", from.title(), page.title());
             if page == Page::Discover {
                 return self.open_discover();
+            }
+            if page == Page::Worlds {
+                return self.open_worlds();
             }
         } else {
             debug!("Navigation ignored: already on {}", page.title());

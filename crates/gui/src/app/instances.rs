@@ -146,6 +146,8 @@ impl LodestoneLauncher {
                 if showing {
                     self.router.replace(Page::Home);
                 }
+                self.world_pins.forget_instance(&id);
+                self.worlds.set_pins(self.world_pins.clone());
                 self.load_instances()
             }
             Err(error) => {

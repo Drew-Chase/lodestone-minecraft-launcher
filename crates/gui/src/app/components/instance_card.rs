@@ -191,7 +191,7 @@ fn card_art<Message: 'static>(instance: &Instance, install: Option<&Pending>, ba
 }
 
 /// The dark fade at the foot of the art, so the title and the Play button read over the picture.
-fn art_shade<Message: 'static>() -> Element<'static, Message> {
+pub fn art_shade<Message: 'static>() -> Element<'static, Message> {
     container(Space::new().width(Fill).height(Fill))
         .width(Fill)
         .height(Fill)
@@ -282,7 +282,7 @@ fn card_panel(border: Color) -> container::Style {
 }
 
 /// A footer figure: a muted glyph and its label.
-fn stat<Message: 'static>(glyph: &'static str, label: String) -> Element<'static, Message> {
+pub fn stat<Message: 'static>(glyph: &'static str, label: String) -> Element<'static, Message> {
     row![
         utility::icon(glyph, 12.0, Some((color::Text::MUTED, color::Text::MUTED))),
         Text::new(label).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),

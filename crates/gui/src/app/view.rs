@@ -170,14 +170,15 @@ impl LodestoneLauncher {
             self.face.clone(),
             self.account.as_ref().map(Account::username).map(str::to_string),
             matches!(self.account, Some(Account::Microsoft { .. })),
-            if matches!(self.router.current(), Page::Discover | Page::Resource) {
-                1
-            } else {
-                0
+            match self.router.current() {
+                Page::Discover | Page::Resource => 1,
+                Page::Worlds => 2,
+                _ => 0,
             },
             |index| match index {
                 0 => LodestoneAppMessage::Navigate(Page::Home),
                 1 => LodestoneAppMessage::Navigate(Page::Discover),
+                2 => LodestoneAppMessage::Navigate(Page::Worlds),
                 _ => {
                     debug!("Sidebar nav item {index} has no page yet");
                     LodestoneAppMessage::SidebarNav { group: NavGroup::Top, index }
@@ -219,6 +220,7 @@ impl LodestoneLauncher {
             Page::Settings => "view.settings",
             Page::Showcase => "view.showcase",
             Page::Discover => "view.discover",
+            Page::Worlds => "view.worlds",
         });
         match page {
             Page::Login => self.login.view(None).map(LodestoneAppMessage::Login),
@@ -228,7 +230,7 @@ impl LodestoneLauncher {
                 .map(LodestoneAppMessage::Library),
             Page::Instance => self
                 .instance_page
-                .view(self.window_size, self.page_game_view(), self.instance_install())
+                .view(self.window_size, self.page_game_view(), self.instance_install(), &self.world_pins)
                 .map(LodestoneAppMessage::Instance),
             Page::Resource => match self.resource_status() {
                 Some(status) => self.resource.view(self.window_size, &status).map(LodestoneAppMessage::Resource),
@@ -237,6 +239,7 @@ impl LodestoneLauncher {
             Page::Settings => self.settings.view().map(LodestoneAppMessage::Settings),
             Page::Showcase => self.showcase.view().map(LodestoneAppMessage::Showcase),
             Page::Discover => self.discover.view(self.window_size).map(LodestoneAppMessage::Discover),
+            Page::Worlds => self.worlds.view(self.window_size).map(LodestoneAppMessage::Worlds),
         }
     }
 }

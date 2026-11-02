@@ -200,6 +200,32 @@ async fn deleting_an_unknown_instance_is_not_a_failure() {
 }
 
 #[tokio::test]
+async fn world_pins_round_trip_and_unpin() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    db.set_world_pin("aether", "Hub", true).await.expect("pin saves");
+    db.set_world_pin("aether", "Hub", true).await.expect("a repeat pin is not an error");
+    db.set_world_pin("aether", "Spawn", true).await.expect("pin saves");
+    db.set_world_pin("aether", "Spawn", false).await.expect("unpin saves");
+
+    let pins = db.world_pins().await.expect("pins load");
+    assert_eq!(pins, [("aether".to_owned(), "Hub".to_owned())]);
+}
+
+#[tokio::test]
+async fn deleting_an_instance_clears_its_world_pins_and_no_others() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    let doomed = fixture("doomed", "Doomed", Loader::Vanilla);
+    db.insert_instance(&doomed, &[]).await.expect("insert succeeds");
+    db.set_world_pin("doomed", "Hub", true).await.expect("pin saves");
+    db.set_world_pin("kept", "Hub", true).await.expect("pin saves");
+
+    db.delete_instance("doomed").await.expect("delete succeeds");
+
+    let pins = db.world_pins().await.expect("pins load");
+    assert_eq!(pins, [("kept".to_owned(), "Hub".to_owned())]);
+}
+
+#[tokio::test]
 async fn migration_0002_removes_the_seeded_demo_rows_only() {
     let db = Database::connect_in_memory().await.expect("in-memory db opens");
     let demo = fixture("seed-000", "Aether Legacy", Loader::Fabric);

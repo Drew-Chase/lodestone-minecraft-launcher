@@ -179,8 +179,8 @@ impl Database {
             .map_err(|error| error.to_string())
     }
 
-    /// Deletes an instance's row, and the mod records and cached hashes it holds. The caller removes its folder;
-    /// nothing else refers to the row.
+    /// Deletes an instance's row, and the mod records, cached hashes and world pins it holds. The caller removes
+    /// its folder; nothing else refers to the row.
     pub async fn delete_instance(&self, id: &str) -> Result<(), String> {
         sqlx::query("DELETE FROM mod_sources WHERE instance_id = ?")
             .bind(id)
@@ -192,8 +192,38 @@ impl Database {
             .execute(&self.pool)
             .await
             .map_err(|error| error.to_string())?;
+        sqlx::query("DELETE FROM world_pins WHERE instance_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
         sqlx::query("DELETE FROM instances WHERE id = ?")
             .bind(id)
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    /// Every pinned world, as (instance id, save folder).
+    pub async fn world_pins(&self) -> Result<Vec<(String, String)>, String> {
+        let rows = sqlx::query("SELECT instance_id, folder FROM world_pins")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(rows.into_iter().map(|row| (row.get("instance_id"), row.get("folder"))).collect())
+    }
+
+    /// Pins or unpins the save `folder` of the instance `instance_id`.
+    pub async fn set_world_pin(&self, instance_id: &str, folder: &str, pinned: bool) -> Result<(), String> {
+        let statement = if pinned {
+            "INSERT OR IGNORE INTO world_pins (instance_id, folder) VALUES (?, ?)"
+        } else {
+            "DELETE FROM world_pins WHERE instance_id = ? AND folder = ?"
+        };
+        sqlx::query(statement)
+            .bind(instance_id)
+            .bind(folder)
             .execute(&self.pool)
             .await
             .map(|_| ())

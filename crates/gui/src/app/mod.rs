@@ -33,6 +33,7 @@ mod update;
 mod updater;
 mod view;
 mod world_actions;
+mod world_pins;
 
 use crate::app::components::Alerts;
 use crate::app::database::Database;
@@ -106,6 +107,10 @@ pub struct LodestoneLauncher {
     discover: Discover,
     /// The resource page: the project it shows, and what it has loaded of it.
     resource: ResourcePage,
+    /// The Worlds page: every instance's saves, as the last scan read them.
+    worlds: crate::app::pages::worlds::State,
+    /// The worlds the player pinned. The database keeps them; the instance and Worlds pages read them.
+    world_pins: world_pins::WorldPins,
     login: Login,
     /// The launcher database — `None` until the boot-time connect lands.
     db: Option<Database>,
@@ -170,6 +175,8 @@ impl Default for LodestoneLauncher {
             showcase: Showcase::default(),
             discover: Discover::new(discover::opening_source()),
             resource: ResourcePage::default(),
+            worlds: crate::app::pages::worlds::State::default(),
+            world_pins: world_pins::WorldPins::default(),
             login: Login::default(),
             db: None,
             paths: LauncherPaths::default(),

@@ -17,11 +17,13 @@ use crate::app::pages::login::Message as LoginMessage;
 use crate::app::pages::resource::Message as ResourceMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
 use crate::app::pages::showcase::Message as ShowcaseMessage;
+use crate::app::pages::worlds::Message as WorldsMessage;
 use crate::app::perf;
 use crate::app::portable::Message as PortableMessage;
 use crate::app::shared_library::{ModSource, SharedRecord};
 use crate::app::titlebar::TitlebarMessage;
 use crate::app::updater::Message as UpdaterMessage;
+use crate::app::world_actions::WorldMessage;
 use iced::Size;
 use iced::widget::image::Handle;
 use iced::window::{Direction, Id};
@@ -45,6 +47,12 @@ pub enum LodestoneAppMessage {
     Library(LibraryMessage),
     /// The Discover page: a search, a filter or a layout change, and the answers the root sends back.
     Discover(DiscoverMessage),
+    /// The Worlds page: its search, filters and menus, and the saves it reads.
+    Worlds(WorldsMessage),
+    /// A world's request or result, from the Worlds page or the instance's Worlds tab.
+    World(WorldMessage),
+    /// The pinned worlds finished loading from the database, as (instance id, save folder) rows.
+    WorldPinsLoaded(Result<Vec<(String, String)>, String>),
     /// The resource page: its tabs, its answers, and its actions.
     Resource(ResourceMessage),
     Instance(InstanceMessage),
@@ -101,8 +109,8 @@ pub enum LodestoneAppMessage {
     AuthProbeTick,
     /// The auth-services probe completed.
     AuthProbeResult(Result<AuthProbe, String>),
-    /// A sidebar nav item was pressed. Only the Library (index 0) navigates
-    /// today; the rest are display-only.
+    /// A sidebar nav item was pressed. The Library, Discover and Worlds (indices 0 to 2) navigate; the
+    /// rest are display-only.
     SidebarNav {
         group: NavGroup,
         index: usize,

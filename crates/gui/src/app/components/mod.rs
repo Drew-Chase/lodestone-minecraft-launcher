@@ -43,6 +43,7 @@ pub mod tabs;
 pub mod tile;
 pub mod toggle;
 pub mod typography;
+pub mod world_card;
 
 pub use alert::Alerts;
 pub use button::TextButton;
