@@ -1,0 +1,21 @@
+[package]
+name = "lodestone_updater"
+version = "0.1.0"
+edition = "2024"
+# Tests mirror src/ under tests/ and are wired in with #[path], so top-level files there are not
+# separate test targets.
+autotests = false
+
+[dependencies]
+reqwest = { workspace = true }
+semver = "1"
+serde = { workspace = true }
+sha2 = "0.10"
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt", "fs", "io-util"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
