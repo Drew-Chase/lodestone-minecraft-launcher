@@ -166,6 +166,20 @@ Lodestone is in early development. The workspace is scaffolded and each crate's 
 - [Rust](https://rustup.rs/) (stable)
 - [`just`](https://github.com/casey/just) (optional, for build tasks)
 
+### Install
+
+Every release on the [Releases page](https://github.com/Drew-Chase/lodestone-minecraft-launcher/releases) has an installer for each system.
+
+- **Windows:** run `Lodestone-vX.Y.Z-setup.exe`. It installs to `Program Files\Lodestone` and asks for administrator rights. SmartScreen may warn about the unsigned installer; choose **More info**, then **Run anyway**. The `-windows-x64.zip` runs without installing.
+- **macOS:** open `Lodestone-vX.Y.Z-macos-universal.dmg` and drag Lodestone to Applications. The build is not signed yet, so the first launch needs a right-click, then **Open**.
+- **Linux (x86_64):** run the installer, which puts `lodestone_launcher` in `~/.local/bin`:
+
+```bash
+curl -fsSL https://github.com/Drew-Chase/lodestone-minecraft-launcher/releases/latest/download/installer.sh | sh
+```
+
+The launcher checks for a newer release each time it starts. An installed Windows build downloads and runs the update itself, after the administrator prompt. Other builds show an update button that opens the release page.
+
 ### Build
 
 ```bash
@@ -179,6 +193,8 @@ cargo build --release
 # Or see the available build tasks
 just --list
 ```
+
+On macOS, `just dmg` builds `Lodestone.app` and a disk image into `dist/`.
 
 ---
 
