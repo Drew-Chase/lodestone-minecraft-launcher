@@ -5,6 +5,7 @@
 //! pass on the blocking pool, and the page applies the result, so nothing here
 //! runs on the UI thread.
 
+mod backups;
 mod log;
 mod mods;
 mod screenshots;
@@ -19,6 +20,7 @@ use crate::app::perf;
 
 use super::logs::{LogLine, MAX_LINES};
 
+pub use backups::BackupFile;
 pub use mods::ModFile;
 pub use screenshots::ScreenshotFile;
 pub use worlds::{Difficulty, GameMode, WorldFile};
@@ -42,6 +44,12 @@ pub struct InstanceFiles {
 pub fn scan_worlds(folder: &Path) -> Vec<WorldFile> {
     let _scope = perf::scope("io.scan_worlds");
     worlds::scan(&folder.join("saves"))
+}
+
+/// The backups in the instance folder's `backups/`, newest first.
+pub fn scan_backups(folder: &Path) -> Vec<BackupFile> {
+    let _scope = perf::scope("io.scan_backups");
+    backups::scan(&folder.join("backups"))
 }
 
 /// The captures in the instance folder's `screenshots/`, most recent first.

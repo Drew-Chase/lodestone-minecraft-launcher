@@ -1,5 +1,5 @@
-//! Backing a save up to a zip, and importing a zipped save into `saves/`. Both
-//! run on the blocking pool: a save can be gigabytes.
+//! Backing a save up to a zip, and importing or restoring a zipped save into `saves/`. Each
+//! runs on the blocking pool: a save can be gigabytes.
 
 use std::ffi::OsStr;
 use std::fs::File;
@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Local};
 use zip::write::SimpleFileOptions;
 
+use super::backups::is_folder_name;
 use crate::app::perf;
 
 /// The lock a running game holds on its save. It is not part of the save, so a backup leaves it out.
@@ -65,6 +66,28 @@ fn write_dir(archive: &mut zip::ZipWriter<File>, dir: &Path, prefix: &str, optio
 /// extraction leaves no folder behind.
 pub fn import(archive_path: &Path, saves: &Path) -> Result<String, String> {
     let _scope = perf::scope("io.import");
+    let stem = archive_path
+        .file_stem()
+        .map(|stem| sanitize(&stem.to_string_lossy()))
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or_else(|| FALLBACK_NAME.to_string());
+    extract_save(archive_path, saves, &stem)
+}
+
+/// Restores the backup zip at `archive_path` into `saves` as the save `folder`, the save it was made from. When a
+/// save already has that name, the restored save takes the next free name after it, and that name is returned.
+/// `folder` must be one folder name, so nothing is written outside `saves`.
+pub fn restore(archive_path: &Path, saves: &Path, folder: &str) -> Result<String, String> {
+    let _scope = perf::scope("io.restore");
+    if !is_folder_name(folder) {
+        return Err(format!("“{folder}” is not a save folder name"));
+    }
+    extract_save(archive_path, saves, folder)
+}
+
+/// Extracts the save in the zip at `archive_path` into a new folder of `saves` named `stem`, or the next free name
+/// after it, and returns that name. The archive must have the layout `import` describes.
+fn extract_save(archive_path: &Path, saves: &Path, stem: &str) -> Result<String, String> {
     let file = File::open(archive_path).map_err(|error| error.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
 
@@ -79,14 +102,8 @@ pub fn import(archive_path: &Path, saves: &Path) -> Result<String, String> {
         .collect::<Result<_, _>>()?;
     let prefix = save_prefix(&names).ok_or_else(|| "the archive holds no level.dat".to_string())?;
 
-    let stem = archive_path
-        .file_stem()
-        .map(|stem| sanitize(&stem.to_string_lossy()))
-        .filter(|stem| !stem.is_empty())
-        .unwrap_or_else(|| FALLBACK_NAME.to_string());
-    let folder = unique_name(saves, &stem);
+    let folder = reserve_name(saves, stem)?;
     let target = saves.join(&folder);
-    std::fs::create_dir_all(&target).map_err(|error| error.to_string())?;
 
     let extracted = extract(&mut archive, &names, &prefix, &target);
     if let Err(error) = extracted {
@@ -131,15 +148,22 @@ fn extract(archive: &mut zip::ZipArchive<File>, names: &[PathBuf], prefix: &Path
     Ok(())
 }
 
-/// `stem` if no folder in `saves` has that name, otherwise `stem (2)`, `stem (3)`, and so on.
-fn unique_name(saves: &Path, stem: &str) -> String {
+/// Creates a folder in `saves` named `stem`, or the next free name after it (`stem (2)`, `stem (3)`, and so on), and
+/// returns that name. `create_dir` fails when a name is taken, so two restores that race never share a folder.
+fn reserve_name(saves: &Path, stem: &str) -> Result<String, String> {
+    std::fs::create_dir_all(saves).map_err(|error| error.to_string())?;
     let mut name = stem.to_string();
     let mut taken = 2;
-    while saves.join(&name).exists() {
-        name = format!("{stem} ({taken})");
-        taken += 1;
+    loop {
+        match std::fs::create_dir(saves.join(&name)) {
+            Ok(()) => return Ok(name),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                name = format!("{stem} ({taken})");
+                taken += 1;
+            }
+            Err(error) => return Err(error.to_string()),
+        }
     }
-    name
 }
 
 /// `name` with the characters a file name cannot hold replaced by underscores, and its ends trimmed.

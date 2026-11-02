@@ -9,6 +9,7 @@ use iced::widget::image::Handle;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
+use super::backups::is_backup_of;
 use super::{decode_world_art, dir_size};
 use crate::app::lang;
 
@@ -196,25 +197,6 @@ fn has_backup(path: &Path, folder: &str) -> bool {
     entries
         .filter_map(Result::ok)
         .any(|entry| entry.file_name().to_str().is_some_and(|name| is_backup_of(name, folder)))
-}
-
-/// Whether `name` is a zip that `back_up` wrote for the save `folder`: `<folder>-<stamp>.zip`.
-fn is_backup_of(name: &str, folder: &str) -> bool {
-    name.strip_prefix(folder)
-        .and_then(|rest| rest.strip_prefix('-'))
-        .and_then(|rest| rest.strip_suffix(".zip"))
-        .is_some_and(looks_like_stamp)
-}
-
-/// Whether `stamp` has the `%Y-%m-%d_%H.%M.%S` shape that `back_up` writes. The shape keeps a world named
-/// "Hub" from matching a backup of "Hub-2020" and its own folder.
-fn looks_like_stamp(stamp: &str) -> bool {
-    const SHAPE: &[u8] = b"dddd-dd-dd_dd.dd.dd";
-    stamp.len() == SHAPE.len()
-        && stamp.bytes().zip(SHAPE).all(|(byte, shape)| match shape {
-            b'd' => byte.is_ascii_digit(),
-            separator => byte == *separator,
-        })
 }
 
 /// The first two bytes of a gzip stream.

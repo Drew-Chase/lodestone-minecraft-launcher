@@ -127,3 +127,89 @@ fn an_entry_that_would_leave_the_save_refuses_the_whole_archive() {
 fn file_names_lose_the_characters_a_file_name_cannot_hold() {
     assert_eq!(sanitize(" My/World: \"1\" "), "My_World_ _1_");
 }
+
+#[test]
+fn a_backup_restores_under_a_free_name_beside_the_save_already_there() {
+    let root = scratch("restore");
+    let saves = root.join("saves");
+    write(&saves.join("Hub/level.dat"), b"existing");
+    let world = save_folder(&root.join("elsewhere"), "Hub");
+    let now = Local.with_ymd_and_hms(2026, 10, 30, 9, 5, 7).single().expect("a valid time");
+    let archive = back_up(&world, &root.join("backups"), now).expect("the backup writes");
+
+    assert_eq!(restore(&archive, &saves, "Hub").expect("the restore extracts"), "Hub (2)");
+    assert_eq!(fs::read(saves.join("Hub (2)/level.dat")).expect("level.dat"), b"level");
+    assert!(saves.join("Hub (2)/region/r.0.0.mca").is_file(), "the region comes across");
+    assert!(!saves.join("Hub (2)/session.lock").exists(), "the lock is not part of the backup");
+    assert_eq!(fs::read(saves.join("Hub/level.dat")).expect("the save already there"), b"existing");
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_backup_restores_under_its_save_name_when_that_name_is_free() {
+    let root = scratch("restore-free");
+    let saves = root.join("saves");
+    let world = save_folder(&root.join("elsewhere"), "Spawn");
+    let now = Local.with_ymd_and_hms(2026, 10, 30, 9, 5, 7).single().expect("a valid time");
+    let archive = back_up(&world, &root.join("backups"), now).expect("the backup writes");
+
+    assert_eq!(restore(&archive, &saves, "Spawn").expect("the restore extracts"), "Spawn");
+    assert_eq!(fs::read(saves.join("Spawn/level.dat")).expect("level.dat"), b"level");
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_damaged_backup_is_refused_and_leaves_no_folder_behind() {
+    let root = scratch("restore-damaged");
+    let saves = root.join("saves");
+    fs::create_dir_all(&saves).expect("saves folder");
+    let archive = root.join("Hub-2026-10-30_09.05.07.zip");
+    write(&archive, b"old zip");
+
+    assert!(restore(&archive, &saves, "Hub").is_err());
+    assert_eq!(fs::read_dir(&saves).expect("saves lists").count(), 0, "no folder is left behind");
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_restore_writes_only_under_a_single_folder_name() {
+    let root = scratch("restore-names");
+    let saves = root.join("saves");
+    fs::create_dir_all(&saves).expect("saves folder");
+    let archive = root.join("Hub.zip");
+    zip_of(&archive, &[("Hub/level.dat", b"level")]);
+
+    for folder in ["", ".", "..", "Hub/../../escape"] {
+        assert!(restore(&archive, &saves, folder).is_err(), "{folder:?} is refused");
+    }
+    assert_eq!(fs::read_dir(&saves).expect("saves lists").count(), 0, "nothing is written");
+    assert!(!root.join("escape").exists(), "nothing lands outside saves");
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn restores_that_run_at_once_never_share_a_folder() {
+    let root = scratch("restore-race");
+    let saves = root.join("saves");
+    let archive = root.join("Hub.zip");
+    zip_of(&archive, &[("Hub/level.dat", b"level")]);
+
+    let restores: Vec<_> = (0..8)
+        .map(|_| {
+            let (archive, saves) = (archive.clone(), saves.clone());
+            std::thread::spawn(move || restore(&archive, &saves, "Hub"))
+        })
+        .collect();
+    let mut names: Vec<String> = restores
+        .into_iter()
+        .map(|thread| thread.join().expect("the restore finishes").expect("the restore extracts"))
+        .collect();
+    names.sort();
+    names.dedup();
+
+    assert_eq!(names.len(), 8, "each restore takes a folder of its own");
+    for name in &names {
+        assert_eq!(fs::read(saves.join(name).join("level.dat")).expect("level.dat"), b"level");
+    }
+    fs::remove_dir_all(&root).ok();
+}
