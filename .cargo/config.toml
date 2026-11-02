@@ -1,5 +1,8 @@
 [env]
 ICONIFY_API_URL="https://iconify.dclabs.app"
+# rustc 1.99 overflows its default stack while it generates aurora_leaf's icon set in release builds. rustc's own
+# advice is a larger compiler stack, which this sets for every rustc that cargo runs.
+RUST_MIN_STACK="67108864"
 
 [alias]
 xtask = "run --package xtask --"
