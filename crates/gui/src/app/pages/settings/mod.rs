@@ -1,8 +1,8 @@
-//! Settings: the launcher's preferences, in six tabs.
+//! Settings: the launcher's preferences, in six sections on one scrolling page.
 //!
-//! The tabs edit a [`Draft`] of [`SettingsValues`]. Save changes commits the draft, and the root applies and saves the
-//! values. Reset throws the edits away. The launch defaults in the draft are the ones every instance inherits until it
-//! overrides one.
+//! The sections edit a [`Draft`] of [`SettingsValues`]. The sidebar lights the section at the top of the page, and presses
+//! scroll to a section. Save changes commits the draft, and the root applies and saves the values. Reset throws the edits
+//! away. The launch defaults in the draft are the ones every instance inherits until it overrides one.
 
 pub mod accounts;
 mod appearance;
@@ -17,7 +17,7 @@ mod privacy;
 use std::path::{MAIN_SEPARATOR, Path, PathBuf};
 
 use aurora_leaf::Icon;
-use iced::widget::{Space, column, container, row, stack, text, text_editor};
+use iced::widget::{Id, Space, column, container, row, stack, text, text_editor};
 use iced::{Element, Fill, Padding, Task, alignment};
 
 use self::accounts::{SkinAction, viewer};
@@ -27,6 +27,8 @@ use self::network::speed::Meter;
 use crate::app::components::button::Variant;
 use crate::app::components::launch_rows::{self, Axis, EnvEdit, JavaOptions, ResolutionDraft, Shown};
 use crate::app::components::panel::{hairline, panel_with_padding};
+use crate::app::components::scroll_spy;
+use crate::app::components::setting_row::section_header;
 use crate::app::components::{TextButton, scrollbar};
 use crate::app::install::catalog::{self, BundledJava};
 use crate::app::install::java;
@@ -51,7 +53,13 @@ pub struct Settings {
     paths: LauncherPaths,
     /// The folder every instance keeps its files in, which the General tab shows.
     instances_dir: PathBuf,
+    /// The section at the top of the page, which the sidebar lights.
     tab: Tab,
+    /// Where each section's top sits, measured on the last scroll or press.
+    offsets: Vec<(Tab, f32)>,
+    /// The page's scroll offset, and whether it is at its bottom with more above.
+    scroll: f32,
+    at_end: bool,
     /// The custom accent's hex as it is typed. It becomes the accent once it is a valid color.
     custom_hex: String,
     java: JavaOptions,
@@ -82,8 +90,15 @@ pub struct Settings {
 pub enum Message {
     /// Opens another page. The root routes it.
     Navigate(Page),
-    /// Shows a tab.
-    SelectTab(Tab),
+    /// A sidebar entry was pressed: the page scrolls to that section.
+    Section(Tab),
+    /// The page scrolled. `at_end` is set when it is at its bottom with more above.
+    Scrolled {
+        offset: f32,
+        at_end: bool,
+    },
+    /// Where each section's top sits on the page.
+    Measured(Vec<(Tab, f32)>),
     /// A launch default changed.
     Change(LaunchChange),
     /// A setting other than a launch default changed.
@@ -173,6 +188,18 @@ impl Tab {
             Tab::Privacy => Icon::lucide().lock(),
         }
     }
+
+    /// The id of the section's container, which the page measures and scrolls to.
+    pub fn anchor_id(self) -> Id {
+        Id::new(match self {
+            Tab::General => "settings-general",
+            Tab::Accounts => "settings-accounts",
+            Tab::JavaMemory => "settings-java-memory",
+            Tab::Appearance => "settings-appearance",
+            Tab::Network => "settings-network",
+            Tab::Privacy => "settings-privacy",
+        })
+    }
 }
 
 /// A bundled runtime that is installed on this machine, as the Installed runtimes list shows it.
@@ -197,6 +224,9 @@ impl Default for Settings {
             paths: LauncherPaths::default(),
             instances_dir: PathBuf::new(),
             tab: Tab::default(),
+            offsets: Vec::new(),
+            scroll: 0.0,
+            at_end: false,
             custom_hex: "#47d9ff".to_owned(),
             java: JavaOptions::default(),
             runtimes: Vec::new(),
@@ -216,13 +246,18 @@ impl Default for Settings {
 }
 
 impl Settings {
-    /// Takes the saved values as the draft's saved copy, and the launcher's folders. Called whenever the page opens.
+    /// Takes the saved values as the draft's saved copy, and the launcher's folders. Called whenever the page opens. The page
+    /// starts at its top, with the first section lit.
     pub fn sync(&mut self, saved: &SettingsValues, paths: &LauncherPaths) {
         self.draft.reload(saved);
         self.paths = paths.clone();
         self.instances_dir = paths.instances();
         let _ = std::fs::create_dir_all(paths.skins());
         self.library = accounts::skins::scan(&paths.skins());
+        self.tab = Tab::default();
+        self.offsets.clear();
+        self.scroll = 0.0;
+        self.at_end = false;
         self.refresh();
     }
 
@@ -267,8 +302,20 @@ impl Settings {
             | Message::Save
             | Message::Account(_) => Task::none(),
             Message::ExportSettings => self.export_settings(),
-            Message::SelectTab(tab) => {
+            Message::Section(tab) => {
                 self.tab = tab;
+                nav::scroll_to(tab)
+            }
+            Message::Scrolled { offset, at_end } => {
+                self.scroll = offset;
+                self.at_end = at_end;
+                nav::measure()
+            }
+            Message::Measured(offsets) => {
+                self.offsets = offsets;
+                if let Some(tab) = scroll_spy::active(&self.offsets, self.scroll, self.at_end) {
+                    self.tab = tab;
+                }
                 Task::none()
             }
             Message::Change(change) => {
@@ -428,7 +475,8 @@ impl Settings {
         Task::none()
     }
 
-    /// The page: the sidebar, then the heading and the open tab. The environment editor covers it while open.
+    /// The page: the sidebar of sections, then the heading and every section in one scrolling column. The environment editor
+    /// covers it while open.
     pub fn view<'a>(
         &'a self,
         connected: Option<bool>,
@@ -443,34 +491,47 @@ impl Settings {
             java: &self.java,
             ceiling_gb: self.ceiling_gb,
         };
-        let body = match self.tab {
-            Tab::General => general::view(shown, &self.resolution, self.draft.current(), &self.instances_dir),
-            Tab::JavaMemory => java_memory::view(shown, &self.jvm, &self.runtimes),
-            Tab::Appearance => appearance::view(self.draft.current(), &self.custom_hex),
-            Tab::Network => network::view(self.draft.current(), meter, connected),
-            Tab::Accounts => accounts::view(
-                accounts,
-                face,
-                accounts::BrowserView {
-                    library: &self.library,
-                    viewing: self.viewing,
-                    staged: self.staged,
-                    preview: self.preview.as_ref(),
-                    current: skin,
-                    pose: self.pose,
-                    layers: self.layers,
-                    slim: self.slim,
-                },
+        let sections = column![
+            block(
+                Tab::General,
+                general::view(shown, &self.resolution, self.draft.current(), &self.instances_dir),
             ),
-            Tab::Privacy => privacy::view(self.draft.current()),
-        };
-        let page = container(body)
+            block(
+                Tab::Accounts,
+                accounts::view(
+                    accounts,
+                    face,
+                    accounts::BrowserView {
+                        library: &self.library,
+                        viewing: self.viewing,
+                        staged: self.staged,
+                        preview: self.preview.as_ref(),
+                        current: skin,
+                        pose: self.pose,
+                        layers: self.layers,
+                        slim: self.slim,
+                    },
+                ),
+            ),
+            block(Tab::JavaMemory, java_memory::view(shown, &self.jvm, &self.runtimes)),
+            block(Tab::Appearance, appearance::view(self.draft.current(), &self.custom_hex)),
+            block(Tab::Network, network::view(self.draft.current(), meter, connected)),
+            block(Tab::Privacy, privacy::view(self.draft.current())),
+        ]
+        .spacing(40)
+        .width(Fill);
+        let content = container(sections)
+            .id(nav::column_id())
             .width(Fill)
             .padding(Padding::new(0.0).left(28.0).right(28.0).top(8.0).bottom(40.0));
         let main = column![
-            header(self.tab, self.draft.dirty() || self.staged.is_some()),
+            header(self.draft.dirty() || self.staged.is_some()),
             hairline(),
-            scrollbar::scroll(page).width(Fill).height(Fill),
+            scrollbar::scroll(content)
+                .id(nav::content_id())
+                .on_scroll(nav::on_scroll)
+                .width(Fill)
+                .height(Fill),
         ]
         .width(Fill)
         .height(Fill);
@@ -513,8 +574,8 @@ pub(super) fn display_path(path: &Path) -> String {
     }
 }
 
-/// The heading: the tab's title and subtitle, then Reset and Save changes, which act on the draft.
-fn header<'a>(tab: Tab, dirty: bool) -> Element<'a, Message> {
+/// The heading: the page's title and subtitle, then Reset and Save changes, which act on the draft.
+fn header<'a>(dirty: bool) -> Element<'a, Message> {
     let reset = TextButton::labeled_icon(Icon::lucide().rotate_ccw(), lang::t("settings.reset"), Variant::Ghost)
         .disabled(!dirty)
         .on_press(Message::Reset);
@@ -522,7 +583,11 @@ fn header<'a>(tab: Tab, dirty: bool) -> Element<'a, Message> {
         .disabled(!dirty)
         .on_press(Message::Save);
     row![
-        column![crate::h2!(lang::t(tab.title_key())), crate::body!(lang::t(tab.subtitle_key())),].spacing(8),
+        column![
+            crate::h2!(lang::t("settings.page.title")),
+            crate::body!(lang::t("settings.page.subtitle")),
+        ]
+        .spacing(8),
         Space::new().width(Fill),
         reset,
         save,
@@ -530,6 +595,21 @@ fn header<'a>(tab: Tab, dirty: bool) -> Element<'a, Message> {
     .spacing(12)
     .align_y(alignment::Vertical::Center)
     .padding(Padding::new(0.0).left(28.0).right(28.0).top(28.0).bottom(24.0))
+    .into()
+}
+
+/// A section of the page: its heading, then its body. The container carries the anchor the sidebar scrolls to.
+fn block<'a>(tab: Tab, body: Element<'a, Message>) -> Element<'a, Message> {
+    container(
+        column![
+            section_header(tab.icon(), color::primary(), lang::t(tab.title_key()), lang::t(tab.subtitle_key())),
+            body,
+        ]
+        .spacing(16)
+        .width(Fill),
+    )
+    .id(tab.anchor_id())
+    .width(Fill)
     .into()
 }
 

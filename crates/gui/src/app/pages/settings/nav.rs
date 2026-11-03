@@ -1,11 +1,13 @@
-//! The Settings sidebar: the six tabs, with the active one lit by a green bar, and a link to the component gallery at its
-//! foot.
+//! The Settings sidebar: the six sections, with the one at the top of the page lit, and a link to the component gallery at its
+//! foot. A press scrolls the page to its section, and the page's scroll lights the section it reaches.
 
-use iced::widget::{Space, button, column, container, row, text};
-use iced::{Background, Border, Element, Fill, Padding, alignment};
+use iced::widget::scrollable::Viewport;
+use iced::widget::{Id, Space, button, column, container, row, text};
+use iced::{Background, Border, Element, Fill, Padding, Task, alignment};
 
 use super::{Message, Tab};
 use crate::app::components::TextButton;
+use crate::app::components::scroll_spy;
 use crate::app::lang;
 use crate::app::pages::Page;
 use crate::app::theme::{color, fonts, utility};
@@ -13,7 +15,38 @@ use crate::app::theme::{color, fonts, utility};
 /// The sidebar's width.
 const WIDTH: f32 = 260.0;
 
-/// The sidebar: an eyebrow, the six tabs, and the component gallery link.
+/// The id of the page's scrollable.
+pub fn content_id() -> Id {
+    Id::new("settings-content")
+}
+
+/// The id of the column of sections inside the scrollable. Its top is the zero the sections are measured from.
+pub fn column_id() -> Id {
+    Id::new("settings-column")
+}
+
+/// Reads a scroll into the page's message: the offset, and whether the page is at its bottom with more above.
+pub fn on_scroll(viewport: Viewport) -> Message {
+    let (offset, at_end) = scroll_spy::position(viewport);
+    Message::Scrolled { offset, at_end }
+}
+
+/// Measures where each section's top sits on the page.
+pub fn measure() -> Task<Message> {
+    scroll_spy::measure(column_id(), anchors()).map(Message::Measured)
+}
+
+/// Scrolls the page so `tab` sits at its top.
+pub fn scroll_to(tab: Tab) -> Task<Message> {
+    scroll_spy::scroll_to(tab, content_id(), column_id(), anchors())
+}
+
+/// Every section with its anchor, in page order.
+fn anchors() -> Vec<(Tab, Id)> {
+    Tab::ALL.into_iter().map(|tab| (tab, tab.anchor_id())).collect()
+}
+
+/// The sidebar: an eyebrow, the six sections, and the component gallery link.
 pub fn view<'a>(active: Tab) -> Element<'a, Message> {
     let tabs = Tab::ALL
         .into_iter()
@@ -31,7 +64,7 @@ pub fn view<'a>(active: Tab) -> Element<'a, Message> {
     .into()
 }
 
-/// One tab: its icon and title, lit when it is the active tab.
+/// One section: its icon and title, lit when it is the section at the top of the page.
 fn item<'a>(tab: Tab, active: bool) -> Element<'a, Message> {
     let ink = if active { color::primary() } else { color::text_muted() };
     let bar = container(Space::new().width(3).height(20)).style(move |_| container::Style {
@@ -43,7 +76,7 @@ fn item<'a>(tab: Tab, active: bool) -> Element<'a, Message> {
         .spacing(12)
         .align_y(alignment::Vertical::Center);
     button(content)
-        .on_press(Message::SelectTab(tab))
+        .on_press(Message::Section(tab))
         .width(Fill)
         .padding(Padding::new(0.0).top(10.0).bottom(10.0).right(12.0))
         .style(move |_, status| {
