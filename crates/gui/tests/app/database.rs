@@ -404,3 +404,48 @@ async fn an_edited_instance_is_saved_with_its_overrides_and_relative_pictures() 
     assert_eq!(stored.art_path, Some(PathBuf::from(".lodestone/banner-1.png")));
     assert_eq!(stored.icon, InstanceIcon::Custom(PathBuf::from(".lodestone/icon-1.png")));
 }
+
+/// An import of `name` queued at `at`, as the Import dialog records it.
+fn import(name: &str, at: DateTime<Local>) -> ImportRecord {
+    ImportRecord {
+        name: name.to_string(),
+        format: ImportFormat::CurseForge,
+        origin: ImportOrigin::Url,
+        source: format!("https://www.curseforge.com/minecraft/modpacks/{name}"),
+        bytes: 512,
+        imported_at: at,
+    }
+}
+
+#[tokio::test]
+async fn recent_imports_are_the_newest_within_the_window() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    let now = Local::now();
+    for (name, days) in [("ten days", 10), ("six days", 6), ("two days", 2), ("one day", 1)] {
+        db.record_import(&import(name, now - chrono::Duration::days(days)))
+            .await
+            .expect("the import records");
+    }
+    let recent = db.recent_imports(now - chrono::Duration::days(7), 3).await.expect("imports load");
+    let names: Vec<&str> = recent.iter().map(|import| import.name.as_str()).collect();
+    assert_eq!(names, ["one day", "two days", "six days"]);
+    assert_eq!(recent[0].format, ImportFormat::CurseForge);
+    assert_eq!(recent[0].origin, ImportOrigin::Url);
+    assert_eq!(recent[0].bytes, 512);
+}
+
+#[tokio::test]
+async fn only_the_newest_imports_are_kept() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    let now = Local::now();
+    for index in 0..25 {
+        let at = now - chrono::Duration::seconds(25 - index);
+        db.record_import(&import(&format!("pack {index:02}"), at))
+            .await
+            .expect("the import records");
+    }
+    let kept = db.recent_imports(now - chrono::Duration::days(365), 100).await.expect("imports load");
+    assert_eq!(kept.len(), 20);
+    assert_eq!(kept[0].name, "pack 24");
+    assert_eq!(kept[19].name, "pack 05");
+}

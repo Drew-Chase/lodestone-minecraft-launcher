@@ -20,6 +20,13 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
                     lift: 0.0,
                     glow: 0.0,
                 },
+                Variant::Cyan => Visual {
+                    background: rgb!(71, 217, 255, 40%),
+                    foreground: anim::fade(color::primary_on(), 0.4),
+                    border: rgb!(71, 217, 255, 12%),
+                    lift: 0.0,
+                    glow: 0.0,
+                },
                 Variant::Ghost => Visual {
                     background: rgb!(255, 255, 255, 2%),
                     foreground: color::text_disabled(),
@@ -73,6 +80,30 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
                     background: color::primary(),
                     foreground: color::primary_on(),
                     border: rgb!(34, 255, 132, 30%),
+                    lift: 0.0,
+                    glow: 0.75,
+                },
+            },
+            Variant::Cyan => match status {
+                // Hover lifts and glows, as the green Primary does, in a lighter cyan.
+                Status::Hovered => Visual {
+                    background: iced::color!(0x8AE8FF),
+                    foreground: color::primary_on(),
+                    border: rgb!(71, 217, 255, 50%),
+                    lift: 1.0,
+                    glow: 1.0,
+                },
+                Status::Pressed => Visual {
+                    background: iced::color!(0x2BC4EA),
+                    foreground: color::primary_on(),
+                    border: rgb!(71, 217, 255, 30%),
+                    lift: 0.0,
+                    glow: 0.4,
+                },
+                _ => Visual {
+                    background: color::cyan(),
+                    foreground: color::primary_on(),
+                    border: rgb!(71, 217, 255, 30%),
                     lift: 0.0,
                     glow: 0.75,
                 },

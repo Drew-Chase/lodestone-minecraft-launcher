@@ -6,6 +6,7 @@ use crate::app::components::art_cache::ArtKey;
 use crate::app::database::Database;
 use crate::app::downloads::Message as DownloadsMessage;
 use crate::app::export::Message as ExportMessage;
+use crate::app::import::Message as ImportMessage;
 use crate::app::launch::GameMessage;
 use crate::app::mod_actions;
 use crate::app::pages::Page;
@@ -64,6 +65,8 @@ pub enum LodestoneAppMessage {
     Downloads(DownloadsMessage),
     /// The export dialog: its fields, its folder listing, and the export it starts.
     Export(ExportMessage),
+    /// The Import Instance dialog: its tabs and fields, the files it is given, and the import it reads and queues.
+    Import(ImportMessage),
     /// The portable launcher: its check, its install and its buttons.
     Portable(PortableMessage),
     /// The update check: the release check's answer, the installer's download, and the update button.

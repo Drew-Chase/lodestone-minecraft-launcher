@@ -8,12 +8,16 @@ use chrono::{DateTime, Local, Utc};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};
 use sqlx::{Row, Sqlite, Transaction};
 
+use crate::app::import::record::{ImportFormat, ImportOrigin, ImportRecord};
 use crate::app::launch_settings::InstanceSettings;
 use crate::app::pages::library::instance::{Biome, Instance, InstanceIcon, InstanceState, Loader};
 use crate::app::shared_library::{JarHash, ModSource, SharedRecord};
 
 /// How many icon recents are kept. The icon editor shows the newest few.
 const RECENT_ICON_LIMIT: i64 = 8;
+
+/// How many imports are kept. The Import dialog lists the newest few of them.
+const IMPORTS_KEPT: i64 = 20;
 
 /// The bytes the launcher downloaded today and over the last seven days, counting today.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -265,6 +269,41 @@ impl Database {
             .await
             .map(|_| ())
             .map_err(|error| error.to_string())
+    }
+
+    /// The imports queued at or after `since`, the newest first, at most `limit` of them.
+    pub async fn recent_imports(&self, since: DateTime<Local>, limit: i64) -> Result<Vec<ImportRecord>, String> {
+        let rows = sqlx::query(
+            "SELECT name, format, origin, source, bytes, imported_at FROM imports \
+             WHERE imported_at >= ? ORDER BY imported_at DESC, id DESC LIMIT ?",
+        )
+        .bind(since.timestamp())
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| error.to_string())?;
+        rows.iter().map(import_from_row).collect()
+    }
+
+    /// Writes an import as it is queued, then keeps only the newest `IMPORTS_KEPT` imports.
+    pub async fn record_import(&self, import: &ImportRecord) -> Result<(), String> {
+        let mut transaction = self.pool.begin().await.map_err(|error| error.to_string())?;
+        sqlx::query("INSERT INTO imports (name, format, origin, source, bytes, imported_at) VALUES (?, ?, ?, ?, ?, ?)")
+            .bind(&import.name)
+            .bind(import.format.to_db())
+            .bind(import.origin.to_db())
+            .bind(&import.source)
+            .bind(import.bytes as i64)
+            .bind(import.imported_at.timestamp())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| error.to_string())?;
+        sqlx::query("DELETE FROM imports WHERE id NOT IN (SELECT id FROM imports ORDER BY id DESC LIMIT ?)")
+            .bind(IMPORTS_KEPT)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| error.to_string())?;
+        transaction.commit().await.map_err(|error| error.to_string())
     }
 
     /// The icon recents, most recently used first.
@@ -532,6 +571,21 @@ async fn delete_jar(transaction: &mut Transaction<'_, Sqlite>, instance: &str, f
         .await
         .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+/// Reads one row of `imports`.
+fn import_from_row(row: &SqliteRow) -> Result<ImportRecord, String> {
+    let format: String = row.get("format");
+    let origin: String = row.get("origin");
+    let imported_at = DateTime::<Utc>::from_timestamp(row.get::<i64, _>("imported_at"), 0).ok_or("an import has a time out of range")?;
+    Ok(ImportRecord {
+        name: row.get("name"),
+        format: ImportFormat::from_db(&format).ok_or_else(|| format!("an import has an unknown format, {format}"))?,
+        origin: ImportOrigin::from_db(&origin).ok_or_else(|| format!("an import has an unknown origin, {origin}"))?,
+        source: row.get("source"),
+        bytes: row.get::<i64, _>("bytes") as u64,
+        imported_at: imported_at.with_timezone(&Local),
+    })
 }
 
 #[cfg(test)]

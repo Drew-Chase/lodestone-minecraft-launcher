@@ -26,6 +26,7 @@ pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
         M::Showcase(_) => "update.Showcase",
         M::Downloads(_) => "update.Downloads",
         M::Export(_) => "update.Export",
+        M::Import(_) => "update.Import",
         M::Portable(_) => "update.Portable",
         M::Updater(_) => "update.Updater",
         M::DatabaseReady(_) => "update.DatabaseReady",
@@ -92,6 +93,7 @@ fn library_kind(message: &LibraryMessage) -> &'static str {
         L::UpdatePressed => "update.Library.UpdatePressed",
         L::Reload => "update.Library.Reload",
         L::OpenNewInstance => "update.Library.OpenNewInstance",
+        L::OpenImport => "update.Library.OpenImport",
         L::NewInstance(_) => "update.Library.NewInstance",
     }
 }

@@ -135,7 +135,7 @@ impl Library {
                 color::cyan_tint(),
                 lang::t("library.quick.import.title"),
                 lang::t("library.quick.import.subtitle"),
-                Message::QuickAction("library.quick.import"),
+                Message::OpenImport,
             ),
             (
                 Icon::lucide().server(),

@@ -50,6 +50,8 @@ fn danger() -> Color {
 pub enum Variant {
     /// `.btn-primary` — green fill, on-green ink, glow shadow.
     Primary,
+    /// The Primary treatment in the cyan accent of the Import dialog: cyan fill, dark ink, cyan glow shadow.
+    Cyan,
     /// `.btn-ghost` — white 4% fill, hairline border, `--ink-1` label.
     Ghost,
     /// Chrome-free tab: no fill, no border, no lift — the label (and an
