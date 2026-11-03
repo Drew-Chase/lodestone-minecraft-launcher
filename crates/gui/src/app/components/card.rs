@@ -107,7 +107,7 @@ impl<'a, Message> Card<'a, Message> {
 
     /// Border color — hairline at rest, Lode Green 25% on hover (§07 spec).
     fn border_color(hover: f32) -> Color {
-        anim::mix(color::Surface::LINE, rgb!(34, 255, 132, 25%), hover)
+        anim::mix(color::surface_line(), rgb!(34, 255, 132, 25%), hover)
     }
 
     /// Shadow — deep and soft; the offset grows slightly on hover.
@@ -115,7 +115,7 @@ impl<'a, Message> Card<'a, Message> {
         Shadow {
             color: rgb!(0, 0, 0, 60%),
             offset: Vector::new(0.0, 20.0 + hover * 4.0),
-            blur_radius: 48.0,
+            blur_radius: crate::app::theme::blur(48.0),
         }
     }
 }

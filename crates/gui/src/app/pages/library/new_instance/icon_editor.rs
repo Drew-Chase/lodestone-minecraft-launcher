@@ -181,8 +181,8 @@ impl IconEditor {
             container(small).width(Fill).align_x(alignment::Horizontal::Center),
             TextButton::content(
                 row![
-                    glyph(Icon::lucide().refresh_cw(), 14.0, color::Text::DEFAULT),
-                    Text::new("Randomize").size(12).font(fonts::Inter::SEMI_BOLD).color(color::Text::DEFAULT),
+                    glyph(Icon::lucide().refresh_cw(), 14.0, color::text_default()),
+                    Text::new("Randomize").size(12).font(fonts::Inter::SEMI_BOLD).color(color::text_default()),
                 ]
                 .spacing(8)
                 .align_y(alignment::Vertical::Center),
@@ -192,11 +192,11 @@ impl IconEditor {
             .on_press(Message::Randomize),
             TextButton::content(
                 row![
-                    glyph(Icon::lucide().upload(), 14.0, color::Text::DEFAULT),
+                    glyph(Icon::lucide().upload(), 14.0, color::text_default()),
                     Text::new(lang::t("icon.upload"))
                         .size(12)
                         .font(fonts::Inter::SEMI_BOLD)
-                        .color(color::Text::DEFAULT),
+                        .color(color::text_default()),
                 ]
                 .spacing(8)
                 .align_y(alignment::Vertical::Center),
@@ -303,14 +303,14 @@ impl IconEditor {
 pub fn modal(editor: &IconEditor) -> Element<'_, Message> {
     Modal::new(lang::t("icon.title"), editor.view())
         .subtitle(lang::t("icon.subtitle"))
-        .icon(Icon::lucide().pencil(), color::Primary::DEFAULT, color::Primary::TINT)
+        .icon(Icon::lucide().pencil(), color::primary(), color::primary_tint())
         .footer(
             row![
                 Space::new().width(Fill),
                 TextButton::content(
                     row![
-                        glyph(Icon::lucide().x(), 13.0, color::Text::DEFAULT),
-                        Text::new("Cancel").size(13).font(fonts::Inter::SEMI_BOLD).color(color::Text::DEFAULT),
+                        glyph(Icon::lucide().x(), 13.0, color::text_default()),
+                        Text::new("Cancel").size(13).font(fonts::Inter::SEMI_BOLD).color(color::text_default()),
                     ]
                     .spacing(8)
                     .align_y(alignment::Vertical::Center),
@@ -320,8 +320,8 @@ pub fn modal(editor: &IconEditor) -> Element<'_, Message> {
                 .on_press(Message::Cancel),
                 TextButton::content(
                     row![
-                        glyph(Icon::lucide().save(), 14.0, color::Primary::ON),
-                        Text::new("Save icon").size(13).font(fonts::Inter::BOLD).color(color::Primary::ON),
+                        glyph(Icon::lucide().save(), 14.0, color::primary_on()),
+                        Text::new("Save icon").size(13).font(fonts::Inter::BOLD).color(color::primary_on()),
                     ]
                     .spacing(8)
                     .align_y(alignment::Vertical::Center),
@@ -343,7 +343,7 @@ fn label(text: &'static str) -> Element<'static, Message> {
     Text::new(text)
         .size(11)
         .font(fonts::JetBrainsMono::REGULAR)
-        .color(color::Text::MUTED)
+        .color(color::text_muted())
         .into()
 }
 

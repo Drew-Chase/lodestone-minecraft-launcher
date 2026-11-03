@@ -85,7 +85,7 @@ pub fn chip<'a>(source: Source) -> Element<'a, Message> {
             Text::new(source.name().to_uppercase())
                 .size(10)
                 .font(fonts::JetBrainsMono::SEMI_BOLD)
-                .color(color::Text::HEADLINE),
+                .color(color::text_headline()),
         ]
         .spacing(6)
         .align_y(alignment::Vertical::Center),
@@ -96,7 +96,7 @@ pub fn chip<'a>(source: Source) -> Element<'a, Message> {
         border: Border {
             radius: 999.0.into(),
             width: 1.0,
-            color: color::Surface::LINE_STRONG,
+            color: color::surface_line_strong(),
         },
         ..container::Style::default()
     })
@@ -115,11 +115,11 @@ pub fn glyph<'a>(markup: &'static str, size: f32, tint: Color) -> Element<'a, Me
 /// The downloads figure, with its icon.
 fn downloads<'a>(hit: &SearchResult) -> Element<'a, Message> {
     row![
-        glyph(Icon::lucide().download(), 12.0, color::Text::MUTED),
+        glyph(Icon::lucide().download(), 12.0, color::text_muted()),
         Text::new(short_count(hit.downloads))
             .size(12)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::MUTED),
+            .color(color::text_muted()),
     ]
     .spacing(6)
     .align_y(alignment::Vertical::Center)
@@ -139,7 +139,7 @@ fn loading_surface<'a>(source: Source, width: f32, height: f32, corners: Radius)
         .align_x(alignment::Horizontal::Center)
         .align_y(alignment::Vertical::Center)
         .style(move |_| container::Style {
-            background: Some(Background::Color(color::Surface::BG3)),
+            background: Some(Background::Color(color::surface_bg3())),
             border: Border {
                 radius: corners,
                 ..Border::default()
@@ -245,11 +245,11 @@ fn cut<'a>(content: Element<'a, Message>, width: f32, height: f32) -> Element<'a
 /// A card's surface: the dark panel with a hairline border.
 pub fn panel(_: &iced::Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(color::Surface::BG2)),
+        background: Some(Background::Color(color::surface_bg2())),
         border: Border {
             radius: CARD_RADIUS.into(),
             width: 1.0,
-            color: color::Surface::LINE,
+            color: color::surface_line(),
         },
         ..container::Style::default()
     }
@@ -287,12 +287,12 @@ pub fn grid_card<'a>(
                 Text::new(hit.name.as_str())
                     .size(15)
                     .font(fonts::Inter::BOLD)
-                    .color(color::Text::HEADLINE),
+                    .color(color::text_headline()),
                 15.0,
                 2.0,
             ),
             lines_box(
-                Text::new(author_of(hit)).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
+                Text::new(author_of(hit)).size(12).font(fonts::Inter::REGULAR).color(color::text_muted()),
                 12.0,
                 1.0,
             ),
@@ -304,7 +304,7 @@ pub fn grid_card<'a>(
     .align_y(alignment::Vertical::Center);
     let body = column![
         heading,
-        summary(hit.description.as_str(), color::Text::DEFAULT),
+        summary(hit.description.as_str(), color::text_default()),
         row![downloads(hit), Space::new().width(Fill), action].align_y(alignment::Vertical::Center),
     ]
     .spacing(8)
@@ -326,7 +326,7 @@ pub fn compact_row<'a>(source: Source, hit: &'a SearchResult, artwork: Artwork<'
                 Text::new(hit.name.as_str())
                     .size(14)
                     .font(fonts::Inter::BOLD)
-                    .color(color::Text::HEADLINE),
+                    .color(color::text_headline()),
                 14.0,
                 1.0,
             ),
@@ -335,11 +335,11 @@ pub fn compact_row<'a>(source: Source, hit: &'a SearchResult, artwork: Artwork<'
         .spacing(8)
         .align_y(alignment::Vertical::Center),
         lines_box(
-            Text::new(author_of(hit)).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
+            Text::new(author_of(hit)).size(12).font(fonts::Inter::REGULAR).color(color::text_muted()),
             12.0,
             1.0,
         ),
-        summary(hit.description.as_str(), color::Text::DEFAULT),
+        summary(hit.description.as_str(), color::text_default()),
         row![downloads(hit), Space::new().width(Fill), action].align_y(alignment::Vertical::Center),
     ]
     .spacing(4)
@@ -364,7 +364,7 @@ pub fn table_header<'a>() -> Element<'a, Message> {
         Text::new(lang::t(text))
             .size(10)
             .font(fonts::JetBrainsMono::SEMI_BOLD)
-            .color(color::Text::PLACEHOLDER)
+            .color(color::text_placeholder())
             .width(width)
     };
     row![
@@ -391,11 +391,11 @@ pub fn table_row<'a>(source: Source, hit: &'a SearchResult, artwork: Artwork<'_>
                 Text::new(hit.name.as_str())
                     .size(14)
                     .font(fonts::Inter::BOLD)
-                    .color(color::Text::HEADLINE),
+                    .color(color::text_headline()),
                 14.0,
                 1.0,
             ),
-            summary(hit.description.as_str(), color::Text::MUTED),
+            summary(hit.description.as_str(), color::text_muted()),
         ]
         .spacing(2)
         .width(Fill)
@@ -409,7 +409,7 @@ pub fn table_row<'a>(source: Source, hit: &'a SearchResult, artwork: Artwork<'_>
         Text::new(text)
             .size(12)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::MUTED)
+            .color(color::text_muted())
             .width(Length::Fixed(TABLE_NUMBER_WIDTH))
     };
     row![
@@ -417,7 +417,7 @@ pub fn table_row<'a>(source: Source, hit: &'a SearchResult, artwork: Artwork<'_>
         Text::new(author_of(hit))
             .size(12)
             .font(fonts::Inter::REGULAR)
-            .color(color::Text::MUTED)
+            .color(color::text_muted())
             .width(Length::Fixed(TABLE_AUTHOR_WIDTH)),
         container(chip(source)).width(Length::Fixed(TABLE_SOURCE_WIDTH)),
         number(short_count(hit.downloads)),

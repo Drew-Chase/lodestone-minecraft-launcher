@@ -29,7 +29,7 @@ impl Login {
                 Text::new(shown)
                     .size(12)
                     .font(fonts::Inter::MEDIUM)
-                    .color(palette::Accents::PINK)
+                    .color(palette::pink())
                     .line_height(1.4),
             );
         }
@@ -74,9 +74,9 @@ impl Login {
                 Text::new(label.to_string())
                     .size(14)
                     .font(fonts::Inter::BOLD)
-                    .color(palette::Text::HEADLINE),
+                    .color(palette::text_headline()),
                 Space::new().width(Fill),
-                icon(Icon::lucide().chevron_right(), 16.0, palette::Text::HEADLINE, 0.45),
+                icon(Icon::lucide().chevron_right(), 16.0, palette::text_headline(), 0.45),
             ]
             .spacing(12)
             .align_y(iced::Alignment::Center)
@@ -95,7 +95,7 @@ impl Login {
                 Text::new(lang::t("common.cancel"))
                     .size(13)
                     .font(fonts::Inter::MEDIUM)
-                    .color(palette::Text::DEFAULT),
+                    .color(palette::text_default()),
                 Space::new().width(Fill),
             ]
             .align_y(iced::Alignment::Center)
@@ -114,7 +114,7 @@ impl Login {
             Text::new(lang::t("login.or"))
                 .size(10)
                 .font(fonts::Inter::SEMI_BOLD)
-                .color(palette::Text::PLACEHOLDER),
+                .color(palette::text_placeholder()),
             rule(),
         ]
         .spacing(12)
@@ -128,11 +128,11 @@ impl Login {
             TextButton::content(
                 container(
                     row![
-                        icon(Icon::lucide().user(), 15.0, palette::Text::MUTED, 0.68),
+                        icon(Icon::lucide().user(), 15.0, palette::text_muted(), 0.68),
                         Text::new(lang::t("login.offline_mode"))
                             .size(13)
                             .font(fonts::Inter::MEDIUM)
-                            .color(palette::Text::DEFAULT),
+                            .color(palette::text_default()),
                     ]
                     .spacing(8)
                     .align_y(iced::Alignment::Center),
@@ -146,11 +146,11 @@ impl Login {
             TextButton::content(
                 container(
                     row![
-                        icon(Icon::lucide().shield(), 15.0, palette::Text::MUTED, 0.68),
+                        icon(Icon::lucide().shield(), 15.0, palette::text_muted(), 0.68),
                         Text::new(lang::t("login.demo_mode"))
                             .size(13)
                             .font(fonts::Inter::MEDIUM)
-                            .color(palette::Text::DEFAULT),
+                            .color(palette::text_default()),
                     ]
                     .spacing(8)
                     .align_y(iced::Alignment::Center),

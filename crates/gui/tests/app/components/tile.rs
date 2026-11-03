@@ -6,7 +6,7 @@ fn a_chosen_tile_rings_in_green_whatever_the_pointer_does() {
     let hover = style(button::Status::Hovered, 8.0, true);
     assert_eq!(rest.border.width, 2.0);
     assert_eq!(hover.border.width, 2.0);
-    assert_eq!(rest.border.color, color::Primary::DEFAULT);
+    assert_eq!(rest.border.color, color::primary());
 }
 
 #[test]

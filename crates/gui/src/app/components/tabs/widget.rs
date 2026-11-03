@@ -210,11 +210,11 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
                         shadow: iced::Shadow {
                             color: rgb!(34, 255, 132, 35%),
                             offset: iced::Vector::new(0.0, 8.0),
-                            blur_radius: 20.0,
+                            blur_radius: crate::app::theme::blur(20.0),
                         },
                         ..renderer::Quad::default()
                     },
-                    color::Primary::DEFAULT,
+                    color::primary(),
                 );
             }
             Style::Underline => {
@@ -224,7 +224,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
                         bounds: Rectangle::new(Point::new(bounds.x, bounds.y + bounds.height - 1.0), Size::new(bounds.width, 1.0)),
                         ..renderer::Quad::default()
                     },
-                    color::Surface::LINE,
+                    color::surface_line(),
                 );
 
                 // …and the active bar sits on the two bottom pixels, over the
@@ -237,7 +237,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Tabs<Message> {
                         ),
                         ..renderer::Quad::default()
                     },
-                    color::Primary::DEFAULT,
+                    color::primary(),
                 );
             }
         }

@@ -8,7 +8,7 @@ use simple_download_utility::MultiDownloadProgress;
 use tokio::sync::mpsc;
 
 use super::COMPLETE;
-use super::download::{PARALLEL, Part, PartReport, relay};
+use super::download::{Part, PartReport, concurrency, relay};
 use crate::app::lang;
 use crate::app::paths::LauncherPaths;
 
@@ -33,6 +33,12 @@ pub(crate) fn binary(home: &Path) -> PathBuf {
     }
 }
 
+/// Where the runtime for `component` is installed, when that install finished. The Settings page lists these.
+pub(crate) fn installed_home(paths: &LauncherPaths, component: &str) -> Option<PathBuf> {
+    let home = paths.java(short_name(component));
+    home.join(COMPLETE).is_file().then_some(home)
+}
+
 /// Makes sure the runtime for `component` is installed and returns its Java program and
 /// its short name. An install that finished earlier is reused. One that did not is run
 /// again.
@@ -53,7 +59,12 @@ pub(super) async fn ensure(paths: &LauncherPaths, component: &str, reports: &mps
     std::fs::create_dir_all(&home).map_err(|error| super::could_not_create(&home, error))?;
 
     let (sender, files) = mpsc::channel::<MultiDownloadProgress>(64);
-    let work = async { runtime.install(&home, PARALLEL, Some(sender)).await.map_err(|error| error.to_string()) };
+    let work = async {
+        runtime
+            .install(&home, concurrency(), Some(sender))
+            .await
+            .map_err(|error| error.to_string())
+    };
     relay(reports, Part::Java, files, work).await?;
 
     apply_manifest_flags(runtime, &home).await?;

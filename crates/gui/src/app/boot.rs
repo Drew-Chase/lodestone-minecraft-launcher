@@ -1,10 +1,12 @@
 //! Startup: the initial state and boot tasks, and the main window settings.
 
 use crate::app::database::Database;
+use crate::app::install::catalog;
 use crate::app::lang;
 use crate::app::pages::library::LibraryView;
 use crate::app::pages::login::Message as LoginMessage;
 use crate::app::preferences::Preferences;
+use crate::app::storage::StoredAccount;
 use iced::window::{Level, Position};
 use iced::{Size, Task, window};
 use tracing::{info, warn};
@@ -20,9 +22,10 @@ impl LodestoneLauncher {
         {
             info!("Saved language {code} is not bundled; using the default");
         }
+        preferences.settings.apply();
         let id = window::latest();
         let mut app = Self {
-            launch_defaults: preferences.instance_defaults,
+            settings_values: preferences.settings,
             ..Self::default()
         };
         let mut tasks = vec![id.map(LodestoneAppMessage::WindowCreation)];
@@ -41,7 +44,13 @@ impl LodestoneLauncher {
         tasks.push(Task::perform(Database::connect(), |result| LodestoneAppMessage::DatabaseReady(result)));
         // The update check runs once per launch, in the background. `updater::enabled` says when it is skipped.
         if updater::enabled(app.portable.is_some()) {
-            tasks.push(updater::check());
+            tasks.push(updater::check(app.settings_values.beta_channel));
+        }
+        // The Minecraft version list loads at launch when Auto-update game versions is on, so New Instance opens with it.
+        if app.settings_values.auto_update_game_versions {
+            tasks.push(Task::perform(catalog::releases(), |result| {
+                LodestoneAppMessage::VersionsPrefetched(result.map(std::sync::Arc::new))
+            }));
         }
         // TEMPORARY resize-latency probe kick-off — env-gated.
         if probe_enabled() {
@@ -89,7 +98,7 @@ impl LodestoneLauncher {
         }
         // Silent re-login when a Microsoft refresh token is on file — the
         // launcher goes straight to Home on success.
-        if let Some(ms) = app.credentials.microsoft.clone() {
+        if let Some(StoredAccount::Microsoft(ms)) = app.credentials.primary_account().cloned() {
             info!("PROBE restoring stored Microsoft sign-in for {}", ms.username);
             tasks.push(Task::perform(
                 async {

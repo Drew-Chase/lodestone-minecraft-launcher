@@ -8,7 +8,7 @@ use lodestone_platforms::ContentType;
 use super::{Action, Message};
 use crate::app::components::button::Variant;
 use crate::app::components::hint::hint;
-use crate::app::components::icon_button::SECONDARY_BUTTON_STYLE;
+use crate::app::components::icon_button::secondary_button_style;
 use crate::app::components::{IconButton, TextButton, panel};
 use crate::app::lang;
 use crate::app::pages::discover::ProjectStatus;
@@ -20,15 +20,15 @@ pub(super) fn chip<'a, M: 'a>(label: impl Into<String>) -> Element<'a, M> {
         Text::new(label.into())
             .size(11)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::MUTED),
+            .color(color::text_muted()),
     )
     .padding(Padding::new(0.0).left(8).right(8).top(3).bottom(3))
     .style(|_| container::Style {
-        background: Some(Background::Color(color::Surface::BG3)),
+        background: Some(Background::Color(color::surface_bg3())),
         border: Border {
             radius: 999.0.into(),
             width: 1.0,
-            color: color::Surface::LINE,
+            color: color::surface_line(),
         },
         ..container::Style::default()
     })
@@ -43,8 +43,8 @@ pub(super) fn glyph<'a, M: 'a>(markup: &'static str, size: f32, tint: Color) -> 
 /// A figure with the glyph that names it, as the header and the version rows show their counts.
 pub(super) fn stat<'a, M: 'a>(markup: &'static str, figure: String) -> Element<'a, M> {
     row![
-        glyph(markup, 12.0, color::Text::MUTED),
-        Text::new(figure).size(12).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),
+        glyph(markup, 12.0, color::text_muted()),
+        Text::new(figure).size(12).font(fonts::JetBrainsMono::REGULAR).color(color::text_muted()),
     ]
     .spacing(6)
     .align_y(alignment::Vertical::Center)
@@ -61,7 +61,7 @@ pub(super) fn heading<'a, M: 'a>(label: &'static str) -> Element<'a, M> {
     Text::new(label)
         .size(10)
         .font(fonts::JetBrainsMono::SEMI_BOLD)
-        .color(color::Text::PLACEHOLDER)
+        .color(color::text_placeholder())
         .into()
 }
 
@@ -69,17 +69,17 @@ pub(super) fn heading<'a, M: 'a>(label: &'static str) -> Element<'a, M> {
 pub(super) fn picture<'a, M: 'a>(handle: Option<&image::Handle>, size: f32) -> Element<'a, M> {
     match handle {
         Some(handle) => image(handle.clone()).width(size).height(size).into(),
-        None => container(glyph(Icon::lucide().package(), size * 0.4, color::Text::MUTED))
+        None => container(glyph(Icon::lucide().package(), size * 0.4, color::text_muted()))
             .width(size)
             .height(size)
             .align_x(alignment::Horizontal::Center)
             .align_y(alignment::Vertical::Center)
             .style(|_| container::Style {
-                background: Some(Background::Color(color::Surface::BG3)),
+                background: Some(Background::Color(color::surface_bg3())),
                 border: Border {
                     radius: 12.0.into(),
                     width: 0.0,
-                    color: color::Surface::LINE,
+                    color: color::surface_line(),
                 },
                 ..container::Style::default()
             })
@@ -91,8 +91,8 @@ pub(super) fn picture<'a, M: 'a>(handle: Option<&image::Handle>, size: f32) -> E
 pub(super) fn primary<'a>(label: &'static str, markup: &'static str, action: Action) -> Element<'a, Message> {
     TextButton::content(
         row![
-            glyph(markup, 12.0, color::Primary::ON),
-            Text::new(label).size(12).font(fonts::Inter::BOLD).color(color::Primary::ON),
+            glyph(markup, 12.0, color::primary_on()),
+            Text::new(label).size(12).font(fonts::Inter::BOLD).color(color::primary_on()),
         ]
         .spacing(6)
         .align_y(alignment::Vertical::Center),
@@ -105,7 +105,7 @@ pub(super) fn primary<'a>(label: &'static str, markup: &'static str, action: Act
 
 /// A dimmed label standing in for an action that cannot be taken now.
 pub(super) fn dimmed<'a>(label: &'static str) -> Element<'a, Message> {
-    TextButton::content(Text::new(label).size(12).font(fonts::Inter::MEDIUM).color(color::Text::MUTED))
+    TextButton::content(Text::new(label).size(12).font(fonts::Inter::MEDIUM).color(color::text_muted()))
         .variant(Variant::Ghost)
         .padding(Padding::new(0.0).left(14).right(14).top(8).bottom(8))
         .disabled(true)
@@ -150,7 +150,7 @@ pub(super) fn row_action<'a>(content: ContentType, version_id: &str) -> Element<
             .size(32.0)
             .radius(10.0)
             .icon_size(14.0)
-            .style(SECONDARY_BUTTON_STYLE)
+            .style(secondary_button_style())
             .on_press(Message::Act(action)),
         label,
     )
@@ -199,7 +199,7 @@ pub(super) fn mod_row_action<'a>(state: ModState, version_id: &str) -> Element<'
             .size(32.0)
             .radius(10.0)
             .icon_size(14.0)
-            .style(SECONDARY_BUTTON_STYLE)
+            .style(secondary_button_style())
     };
     match state {
         ModState::Installed | ModState::Added => hint(button(Icon::lucide().check()).disabled(true), lang::t("resource.action.added")),
@@ -223,7 +223,7 @@ pub(super) fn pager<'a>(current: usize, pages: usize, on_page: fn(usize) -> Mess
         .size(32.0)
         .radius(10.0)
         .icon_size(14.0)
-        .style(SECONDARY_BUTTON_STYLE);
+        .style(secondary_button_style());
     let previous = if current > 0 {
         previous.on_press(on_page(current - 1))
     } else {
@@ -233,7 +233,7 @@ pub(super) fn pager<'a>(current: usize, pages: usize, on_page: fn(usize) -> Mess
         .size(32.0)
         .radius(10.0)
         .icon_size(14.0)
-        .style(SECONDARY_BUTTON_STYLE);
+        .style(secondary_button_style());
     let next = if current + 1 < pages {
         next.on_press(on_page(current + 1))
     } else {
@@ -245,7 +245,10 @@ pub(super) fn pager<'a>(current: usize, pages: usize, on_page: fn(usize) -> Mess
     );
     row![
         hint(previous, lang::t("resource.pager.previous")),
-        Text::new(position).size(12).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),
+        Text::new(position)
+            .size(12)
+            .font(fonts::JetBrainsMono::REGULAR)
+            .color(color::text_muted()),
         hint(next, lang::t("resource.pager.next")),
     ]
     .spacing(12)

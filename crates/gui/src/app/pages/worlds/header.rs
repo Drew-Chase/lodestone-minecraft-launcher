@@ -22,8 +22,8 @@ pub fn view(state: &State) -> Element<'_, Message> {
         Text::new(lang::t("worlds.title"))
             .size(24)
             .font(fonts::Inter::EXTRA_BOLD)
-            .color(color::Text::HEADLINE),
-        Text::new(state.summary()).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
+            .color(color::text_headline()),
+        Text::new(state.summary()).size(12).font(fonts::Inter::REGULAR).color(color::text_muted()),
     ]
     .spacing(2);
     row![
@@ -51,7 +51,7 @@ fn search_box(query: &str) -> Element<'_, Message> {
         container(utility::icon(
             Icon::lucide().search(),
             14.0,
-            Some((color::Text::PLACEHOLDER, color::Text::PLACEHOLDER))
+            Some((color::text_placeholder(), color::text_placeholder()))
         ))
         .width(Length::Fixed(SEARCH_WIDTH))
         .height(Fill)
@@ -72,7 +72,7 @@ fn menu_button<'a>(state: &'a State, menu: Menu, label: &'static str, glyph: &'s
             Text::new(lang::t("worlds.picker.none"))
                 .size(12)
                 .font(fonts::Inter::REGULAR)
-                .color(color::Text::MUTED),
+                .color(color::text_muted()),
             Padding::new(12.0),
         )
     } else {
@@ -97,9 +97,9 @@ fn menu_button<'a>(state: &'a State, menu: Menu, label: &'static str, glyph: &'s
 /// The look of a header button, drawn as a plain box so the popover receives its press. The primary one is green.
 fn face(label: &'static str, glyph: &'static str, primary: bool) -> Element<'static, Message> {
     let (ink, fill, line) = if primary {
-        (color::Primary::ON, color::Primary::DEFAULT, color::Primary::DEFAULT)
+        (color::primary_on(), color::primary(), color::primary())
     } else {
-        (color::Text::DEFAULT, rgb!(255, 255, 255, 4%), color::Surface::LINE)
+        (color::text_default(), rgb!(255, 255, 255, 4%), color::surface_line())
     };
     container(
         row![

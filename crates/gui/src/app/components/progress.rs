@@ -82,8 +82,8 @@ impl ProgressBar {
     fn fill_gradient() -> Gradient {
         Gradient::Linear(
             gradient::Linear::new(0.0)
-                .add_stop(0.0, color::Primary::DIM)
-                .add_stop(1.0, color::Primary::DEFAULT),
+                .add_stop(0.0, color::primary_dim())
+                .add_stop(1.0, color::primary()),
         )
     }
 
@@ -150,6 +150,9 @@ impl<Message> Widget<Message, Theme, BaseRenderer> for ProgressBar {
         let state = tree.state.downcast_mut::<State>();
 
         if self.indeterminate {
+            if !crate::app::theme::effects::ambient() {
+                return;
+            }
             // Advance the sweep; loop forever while the mode is active.
             let dt = state.last_tick.map(|last| now.saturating_duration_since(last)).unwrap_or_default();
             state.last_tick = Some(*now);

@@ -156,21 +156,21 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for TextButton<'_, Mes
                     Shadow {
                         color: Color {
                             a: PRIMARY_GLOW_ALPHA * strength,
-                            ..color::Primary::GLOW
+                            ..color::primary_glow()
                         },
                         offset: Vector::new(0.0, 2.0 + 4.0 * strength),
-                        blur_radius: 4.0 + 12.0 * strength,
+                        blur_radius: crate::app::theme::blur(4.0 + 12.0 * strength),
                     }
                 }
                 Variant::Ghost | Variant::Danger | Variant::Destructive => Shadow {
                     color: rgb!(0, 0, 0, 30%),
                     offset: Vector::new(0.0, 4.0 + visual.lift * 4.0),
-                    blur_radius: 12.0 + visual.lift * 8.0,
+                    blur_radius: crate::app::theme::blur(12.0 + visual.lift * 8.0),
                 },
                 Variant::Tab => Shadow {
                     color: Color::TRANSPARENT,
                     offset: Vector::ZERO,
-                    blur_radius: 0.0,
+                    blur_radius: crate::app::theme::blur(0.0),
                 },
             };
 

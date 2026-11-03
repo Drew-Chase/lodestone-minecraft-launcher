@@ -34,7 +34,7 @@ fn hover_brightens_and_press_dims() {
     let hovered = Toggle::<()>::new(true).visual(Status::OnHovered);
     let pressed = Toggle::<()>::new(true).visual(Status::OnPressed);
     assert_eq!(hovered.track, iced::color!(0x2AFF8C));
-    assert_eq!(pressed.track, color::Primary::DIM);
+    assert_eq!(pressed.track, color::primary_dim());
 }
 
 #[test]

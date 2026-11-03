@@ -46,6 +46,6 @@ fn danger_is_a_tint_at_rest_and_solid_on_hover() {
     let idle = TextButton::<()>::primary("Delete").variant(Variant::Danger).visual(Status::Idle);
     let hovered = TextButton::<()>::primary("Delete").variant(Variant::Danger).visual(Status::Hovered);
     assert!(idle.background.a < 0.5, "a resting danger button is a tint, not a solid fill");
-    assert_eq!(hovered.background, DANGER);
+    assert_eq!(hovered.background, danger());
     assert_eq!(hovered.lift, 1.0);
 }

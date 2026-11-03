@@ -37,15 +37,15 @@ pub fn tile<'a, M: Clone + 'a>(
 fn style(status: button::Status, radius: f32, selected: bool) -> button::Style {
     let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
     let (width, edge, fill) = if selected {
-        (2.0, color::Primary::DEFAULT, None)
+        (2.0, color::primary(), None)
     } else if hovered {
         (1.0, rgb!(255, 255, 255, 30%), Some(rgb!(255, 255, 255, 4%)))
     } else {
-        (1.0, color::Surface::LINE, None)
+        (1.0, color::surface_line(), None)
     };
     button::Style {
         background: fill.map(Background::Color),
-        text_color: color::Text::DEFAULT,
+        text_color: color::text_default(),
         border: Border {
             radius: radius.into(),
             width,

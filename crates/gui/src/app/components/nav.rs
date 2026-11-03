@@ -141,14 +141,14 @@ impl<Message> NavRail<Message> {
     /// Idle icon color — `--ink-3`; hovered brightens; active is Lode Green.
     fn icon_color(&self, index: usize, hovered: Option<usize>) -> Color {
         if self.disabled {
-            return color::Text::DISABLED;
+            return color::text_disabled();
         }
         if index == self.active {
-            color::Primary::DEFAULT
+            color::primary()
         } else if hovered == Some(index) {
-            color::Text::HEADLINE
+            color::text_headline()
         } else {
-            color::Text::PLACEHOLDER
+            color::text_placeholder()
         }
     }
 
@@ -392,13 +392,13 @@ where
                     ..Border::default()
                 },
                 shadow: iced::Shadow {
-                    color: color::Primary::GLOW,
+                    color: color::primary_glow(),
                     offset: iced::Vector::new(0.0, 0.0),
-                    blur_radius: 12.0,
+                    blur_radius: crate::app::theme::blur(12.0),
                 },
                 ..renderer::Quad::default()
             },
-            color::Primary::DEFAULT,
+            color::primary(),
         );
     }
 

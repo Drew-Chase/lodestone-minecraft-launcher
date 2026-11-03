@@ -287,7 +287,7 @@ impl State {
             } else {
                 lang::t("instance.mods.no_match")
             };
-            panel(Text::new(message).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED))
+            panel(Text::new(message).size(12).font(fonts::Inter::REGULAR).color(color::text_muted()))
         } else {
             list::view(self, height)
         };

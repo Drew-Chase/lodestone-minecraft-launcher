@@ -11,14 +11,14 @@ use crate::app::theme::{color, fonts};
 pub fn hint<'a, Message: 'a>(control: impl Into<Element<'a, Message>>, text: &'static str) -> Element<'a, Message> {
     tooltip(
         control,
-        container(Text::new(text).size(12).font(fonts::Inter::MEDIUM).color(color::Text::HEADLINE))
+        container(Text::new(text).size(12).font(fonts::Inter::MEDIUM).color(color::text_headline()))
             .padding(Padding::new(6.0).left(10.0).right(10.0))
             .style(|_| container::Style {
-                background: Some(Background::Color(color::Surface::BG3)),
+                background: Some(Background::Color(color::surface_bg3())),
                 border: Border {
                     radius: 8.0.into(),
                     width: 1.0,
-                    color: color::Surface::LINE_STRONG,
+                    color: color::surface_line_strong(),
                 },
                 ..container::Style::default()
             }),

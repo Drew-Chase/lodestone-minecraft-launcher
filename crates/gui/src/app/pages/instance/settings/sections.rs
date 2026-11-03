@@ -82,7 +82,7 @@ fn error_row<'a>(error: &'a str) -> Element<'a, Message> {
     Text::new(error)
         .size(11)
         .font(fonts::Inter::REGULAR)
-        .color(color::buttons::Danger::BACKGROUND_HOVER)
+        .color(color::buttons::danger_background_hover())
         .into()
 }
 
@@ -92,7 +92,7 @@ pub fn paths_files(folder: &Path) -> Element<'_, Message> {
     let path = Text::new(folder.display().to_string())
         .size(11)
         .font(fonts::JetBrainsMono::REGULAR)
-        .color(color::Text::MUTED)
+        .color(color::text_muted())
         .width(Fill);
     let row = row![
         column![setting_row::label(lang::t("instance.settings.instance_folder")), path]
@@ -109,7 +109,7 @@ pub fn paths_files(folder: &Path) -> Element<'_, Message> {
 /// The destructive actions in a red-bordered panel: reinstall the game's files, reset the launch settings, and delete
 /// the instance. Each one is answered by the root.
 pub fn danger_zone() -> Element<'static, Message> {
-    let red = color::buttons::Danger::BACKGROUND_HOVER;
+    let red = color::buttons::danger_background_hover();
     let delete = row![
         column![
             Text::new(lang::t("instance.settings.delete_title"))
@@ -119,7 +119,7 @@ pub fn danger_zone() -> Element<'static, Message> {
             Text::new(lang::t("instance.settings.delete_hint"))
                 .size(11)
                 .font(fonts::Inter::REGULAR)
-                .color(color::Text::MUTED),
+                .color(color::text_muted()),
         ]
         .spacing(3),
         Space::new().width(Fill),

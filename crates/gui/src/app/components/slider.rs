@@ -20,7 +20,7 @@ pub fn style(_theme: &Theme, status: slider::Status) -> slider::Style {
 
     slider::Style {
         rail: slider::Rail {
-            backgrounds: (Background::Color(color::Primary::DEFAULT), Background::Color(rgb!(255, 255, 255, 8%))),
+            backgrounds: (Background::Color(color::primary()), Background::Color(rgb!(255, 255, 255, 8%))),
             width: 4.0,
             border: Border {
                 radius: 2.0.into(),
@@ -29,9 +29,9 @@ pub fn style(_theme: &Theme, status: slider::Status) -> slider::Style {
         },
         handle: slider::Handle {
             shape: slider::HandleShape::Circle { radius },
-            background: Background::Color(color::Primary::DEFAULT),
+            background: Background::Color(color::primary()),
             border_width: 3.0,
-            border_color: color::Surface::APPLICATION,
+            border_color: color::surface_application(),
         },
     }
 }

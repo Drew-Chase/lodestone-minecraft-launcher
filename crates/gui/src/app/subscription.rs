@@ -15,6 +15,7 @@ impl LodestoneLauncher {
             event::listen_with(Self::mouse_navigation),
             // The auth-services probe — keeps the login status bar honest.
             iced::time::every(std::time::Duration::from_secs(15)).map(|_| LodestoneAppMessage::AuthProbeTick),
+            iced::time::every(std::time::Duration::from_secs(1)).map(|_| LodestoneAppMessage::SpeedTick),
             self.instance_subscription(),
             self.discover_shortcut(),
             perf::subscription(&self.perf).map(LodestoneAppMessage::Perf),

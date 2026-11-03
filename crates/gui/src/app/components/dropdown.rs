@@ -221,9 +221,9 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Dropdown<Message
             rgb!(255, 255, 255, 4%)
         };
         let border = if is_open || (state.hovered && self.interactive()) {
-            color::Surface::LINE_STRONG
+            color::surface_line_strong()
         } else {
-            color::Surface::LINE
+            color::surface_line()
         };
         renderer.fill_quad(
             renderer::Quad {
@@ -240,9 +240,9 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Dropdown<Message
 
         // Trigger icon.
         let ink = if self.interactive() && (is_open || state.hovered) {
-            color::Text::HEADLINE
+            color::text_headline()
         } else {
-            color::Text::MUTED
+            color::text_muted()
         };
         let icon_svg = Svg {
             handle: Handle::from_memory(self.icon.as_bytes()),

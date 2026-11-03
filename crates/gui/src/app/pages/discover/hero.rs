@@ -46,11 +46,11 @@ pub(super) fn view(page: &Discover, window: Size) -> Option<Element<'_, Message>
 
     let open = TextButton::content(
         row![
-            glyph(Icon::lucide().book_open(), 14.0, color::Primary::ON),
+            glyph(Icon::lucide().book_open(), 14.0, color::primary_on()),
             Text::new(super::card::view_label())
                 .size(13)
                 .font(fonts::Inter::BOLD)
-                .color(color::Primary::ON),
+                .color(color::primary_on()),
         ]
         .spacing(8)
         .align_y(alignment::Vertical::Center),
@@ -65,25 +65,25 @@ pub(super) fn view(page: &Discover, window: Size) -> Option<Element<'_, Message>
             Text::new(lang::t("discover.hero.most_downloaded"))
                 .size(11)
                 .font(fonts::JetBrainsMono::SEMI_BOLD)
-                .color(color::Primary::DEFAULT),
+                .color(color::primary()),
         ]
         .spacing(12)
         .align_y(alignment::Vertical::Center),
         Text::new(hit.name.as_str())
             .size(30)
             .font(fonts::Inter::EXTRA_BOLD)
-            .color(color::Text::HEADLINE),
+            .color(color::text_headline()),
         Text::new(hit.description.as_str())
             .size(14)
             .font(fonts::Inter::REGULAR)
-            .color(color::Text::DEFAULT)
+            .color(color::text_default())
             .width(Length::Fixed(560.0)),
         row![
             open,
             Text::new(lang::t_with("discover.hero.downloads", &[("count", short_count(hit.downloads).as_str())]))
                 .size(12)
                 .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::Text::MUTED),
+                .color(color::text_muted()),
         ]
         .spacing(16)
         .align_y(alignment::Vertical::Center),
@@ -104,7 +104,7 @@ pub(super) fn view(page: &Discover, window: Size) -> Option<Element<'_, Message>
                 border: iced::Border {
                     radius: 18.0.into(),
                     width: 1.0,
-                    color: color::Surface::LINE,
+                    color: color::surface_line(),
                 },
                 ..container::Style::default()
             })

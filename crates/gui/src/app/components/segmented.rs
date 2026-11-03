@@ -22,7 +22,7 @@ where
         .iter()
         .map(|&(value, label)| {
             let active = value == selected;
-            let ink = if active { color::Text::HEADLINE } else { color::Text::MUTED };
+            let ink = if active { color::text_headline() } else { color::text_muted() };
             let button = TextButton::content(Text::new(label).size(12).font(fonts::Inter::MEDIUM).color(ink))
                 .variant(Variant::Tab)
                 .padding(Padding::new(0.0).left(12).right(12).top(6).bottom(6))
@@ -48,7 +48,7 @@ where
             border: Border {
                 radius: 10.0.into(),
                 width: 1.0,
-                color: color::Surface::LINE,
+                color: color::surface_line(),
             },
             ..container::Style::default()
         })

@@ -21,16 +21,8 @@ impl Login {
     /// fixed-height card never overflows. Clicking the code copies it;
     /// clicking the link opens the browser.
     pub(super) fn code_panel(&self, user_code: &str, verification_uri: &str, copied: bool) -> Element<'_, Message> {
-        let code_ink = if self.code_hover {
-            palette::Text::HEADLINE
-        } else {
-            palette::Primary::DEFAULT
-        };
-        let link_ink = if self.link_hover {
-            palette::Text::HEADLINE
-        } else {
-            palette::Primary::DEFAULT
-        };
+        let code_ink = if self.code_hover { palette::text_headline() } else { palette::primary() };
+        let link_ink = if self.link_hover { palette::text_headline() } else { palette::primary() };
         container(
             column![
                 row![
@@ -44,7 +36,7 @@ impl Login {
                                 icon(
                                     Icon::lucide().copy(),
                                     14.0,
-                                    palette::Text::HEADLINE,
+                                    palette::text_headline(),
                                     if self.code_hover { 1.0 } else { 0.0 },
                                 ),
                             ]
@@ -79,7 +71,7 @@ impl Login {
                                 icon(
                                     Icon::lucide().external_link(),
                                     12.0,
-                                    palette::Text::HEADLINE,
+                                    palette::text_headline(),
                                     if self.link_hover { 1.0 } else { 0.0 },
                                 ),
                             ]
@@ -105,7 +97,7 @@ impl Login {
                 })
                 .size(11)
                 .font(fonts::Inter::REGULAR)
-                .color(palette::Text::MUTED),
+                .color(palette::text_muted()),
             ]
             .spacing(6),
         )
@@ -139,7 +131,7 @@ impl Login {
                     .style(input::style)
                     .size(14)
                     .padding(Padding::new(0.0).left(38).right(12).top(12).bottom(12)),
-                container(icon(Icon::lucide().user(), 16.0, palette::Text::MUTED, 0.68,))
+                container(icon(Icon::lucide().user(), 16.0, palette::text_muted(), 0.68,))
                     .width(Fill)
                     .height(Fill)
                     .align_x(iced::alignment::Horizontal::Left)
@@ -150,11 +142,11 @@ impl Login {
                 TextButton::content(
                     row![
                         Space::new().width(Fill),
-                        icon(Icon::material_symbols().play_arrow(), 14.0, palette::Primary::ON, 1.0),
+                        icon(Icon::material_symbols().play_arrow(), 14.0, palette::primary_on(), 1.0),
                         Text::new(lang::t("login.play_offline"))
                             .size(13)
                             .font(fonts::Inter::MEDIUM)
-                            .color(palette::Primary::ON),
+                            .color(palette::primary_on()),
                         Space::new().width(Fill),
                     ]
                     .spacing(8)
@@ -195,7 +187,7 @@ impl Login {
                 Text::new(lang::t_with("login.restoring", &[("name", username)]))
                     .size(13)
                     .font(fonts::Inter::MEDIUM)
-                    .color(palette::Text::MUTED),
+                    .color(palette::text_muted()),
                 ProgressBar::new(0.0).indeterminate(true).height(3.0).width(Fill),
             ]
             .spacing(8),

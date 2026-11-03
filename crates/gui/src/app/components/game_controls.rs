@@ -52,14 +52,14 @@ pub fn runs_popover<Message: Clone + 'static>(bar: &GameBar, open: bool, actions
 fn indicator<Message: 'static>(count: usize) -> Element<'static, Message> {
     let running = count > 0;
     let dot = if running {
-        PulseDot::with_color(color::Primary::DEFAULT)
+        PulseDot::with_color(color::primary())
     } else {
-        PulseDot::with_color(color::Text::DISABLED).pulsing(false)
+        PulseDot::with_color(color::text_disabled()).pulsing(false)
     };
     let number = Text::new(count.to_string())
         .size(12)
         .font(fonts::JetBrainsMono::SEMI_BOLD)
-        .color(if running { color::Text::HEADLINE } else { color::Text::MUTED });
+        .color(if running { color::text_headline() } else { color::text_muted() });
     container(row![dot, number].spacing(6).align_y(alignment::Vertical::Center))
         .width(CHIP_WIDTH)
         .height(CHIP_HEIGHT)
@@ -70,7 +70,7 @@ fn indicator<Message: 'static>(count: usize) -> Element<'static, Message> {
             border: Border {
                 radius: 12.0.into(),
                 width: 1.0,
-                color: color::Surface::LINE,
+                color: color::surface_line(),
             },
             ..container::Style::default()
         })
@@ -83,7 +83,7 @@ fn runs_panel<Message: Clone + 'static>(runs: &[Run], actions: &Actions<Message>
         Text::new(lang::t("game.none_running"))
             .size(12)
             .font(fonts::Inter::REGULAR)
-            .color(color::Text::MUTED)
+            .color(color::text_muted())
             .into()
     } else {
         Column::with_children(runs.iter().map(|run| run_row(run, actions)))
@@ -95,16 +95,16 @@ fn runs_panel<Message: Clone + 'static>(runs: &[Run], actions: &Actions<Message>
         .padding(8)
         .width(PANEL_WIDTH)
         .style(|_| container::Style {
-            background: Some(Background::Color(color::Surface::BG3)),
+            background: Some(Background::Color(color::surface_bg3())),
             border: Border {
                 radius: 12.0.into(),
                 width: 1.0,
-                color: color::Surface::LINE_STRONG,
+                color: color::surface_line_strong(),
             },
             shadow: Shadow {
                 color: rgb!(0, 0, 0, 45%),
                 offset: Vector::new(0.0, 10.0),
-                blur_radius: 28.0,
+                blur_radius: crate::app::theme::blur(28.0),
             },
             ..container::Style::default()
         })
@@ -118,7 +118,7 @@ fn run_row<Message: Clone + 'static>(run: &Run, actions: &Actions<Message>) -> E
         Text::new(run.name.clone())
             .size(13)
             .font(fonts::Inter::MEDIUM)
-            .color(color::Text::HEADLINE)
+            .color(color::text_headline())
             .width(Fill)
             .into(),
         hint(
@@ -126,7 +126,7 @@ fn run_row<Message: Clone + 'static>(run: &Run, actions: &Actions<Message>) -> E
                 .width(28)
                 .height(28)
                 .icon_size(12.0)
-                .style(icon_button::SECONDARY_BUTTON_STYLE)
+                .style(icon_button::secondary_button_style())
                 .on_press((actions.launch)(run.instance.clone())),
             lang::t("game.new_process"),
         ),
@@ -134,14 +134,14 @@ fn run_row<Message: Clone + 'static>(run: &Run, actions: &Actions<Message>) -> E
             .width(28)
             .height(28)
             .icon_size(12.0)
-            .style(icon_button::SECONDARY_BUTTON_STYLE)
+            .style(icon_button::secondary_button_style())
             .on_press((actions.console)(run.serial))
             .into(),
         IconButton::new(Icon::lucide().square())
             .width(28)
             .height(28)
             .icon_size(11.0)
-            .style(icon_button::DANGER_BUTTON_STYLE)
+            .style(icon_button::danger_button_style())
             .on_press((actions.kill)(run.serial))
             .into(),
     ];

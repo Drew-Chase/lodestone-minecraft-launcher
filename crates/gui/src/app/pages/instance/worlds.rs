@@ -141,7 +141,7 @@ impl State {
             } else {
                 lang::t("instance.worlds.no_match")
             };
-            panel(Text::new(message).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED))
+            panel(Text::new(message).size(12).font(fonts::Inter::REGULAR).color(color::text_muted()))
         } else {
             grid(cards, 2, 14.0)
         };
@@ -152,7 +152,11 @@ impl State {
     fn toolbar(&self) -> Element<'_, Message> {
         let search = container(
             row![
-                utility::icon(Icon::lucide().search(), 14.0, Some((color::Text::PLACEHOLDER, color::Text::PLACEHOLDER))),
+                utility::icon(
+                    Icon::lucide().search(),
+                    14.0,
+                    Some((color::text_placeholder(), color::text_placeholder()))
+                ),
                 text_input(lang::t("instance.worlds.search_placeholder"), &self.query)
                     .on_input(Message::Search)
                     .style(bare_input)
@@ -172,7 +176,7 @@ impl State {
             border: Border {
                 radius: 12.0.into(),
                 width: 1.0,
-                color: color::Surface::LINE,
+                color: color::surface_line(),
             },
             ..container::Style::default()
         });
@@ -212,9 +216,9 @@ fn bare_input(_theme: &Theme, _status: text_input::Status) -> text_input::Style 
     text_input::Style {
         background: Background::Color(Color::TRANSPARENT),
         border: Border::default(),
-        icon: color::Text::PLACEHOLDER,
-        placeholder: color::Text::PLACEHOLDER,
-        value: color::Text::DEFAULT,
+        icon: color::text_placeholder(),
+        placeholder: color::text_placeholder(),
+        value: color::text_default(),
         selection: input::selection_color(),
     }
 }

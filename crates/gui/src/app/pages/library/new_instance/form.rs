@@ -53,7 +53,7 @@ pub fn modal(dialog: &NewInstance) -> Element<'_, Message> {
     // The modal scrolls its own body once the form outgrows the window, so the form adds none.
     Modal::new(lang::t("new_instance.title"), body)
         .subtitle(lang::t("new_instance.subtitle"))
-        .icon(Icon::lucide().plus(), color::Primary::DEFAULT, color::Primary::TINT)
+        .icon(Icon::lucide().plus(), color::primary(), color::primary_tint())
         .footer(footer(dialog))
         .on_close(Message::Close)
         .close_on_scrim(true)
@@ -85,7 +85,7 @@ fn name_row(dialog: &NewInstance) -> Element<'_, Message> {
             .padding(Padding::new(0.0).left(14).right(14).top(11).bottom(11))
             .style(input::style)
             .width(Fill),
-        Text::new(hint).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),
+        Text::new(hint).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::text_muted()),
     ]
     .spacing(6)
     .width(Fill);
@@ -172,8 +172,8 @@ const CAPTION_HEIGHT: f32 = 2.0 * 11.0 * 1.3;
 fn loader_card(loader: Loader, name: &'static str, caption: &'static str, chosen: bool) -> Element<'static, Message> {
     let content = column![
         loader_tile(loader, 32.0),
-        Text::new(name).size(13).font(fonts::Inter::SEMI_BOLD).color(color::Text::HEADLINE),
-        container(Text::new(caption).size(11).font(fonts::Inter::REGULAR).color(color::Text::MUTED)).height(CAPTION_HEIGHT),
+        Text::new(name).size(13).font(fonts::Inter::SEMI_BOLD).color(color::text_headline()),
+        container(Text::new(caption).size(11).font(fonts::Inter::REGULAR).color(color::text_muted())).height(CAPTION_HEIGHT),
     ]
     .spacing(8)
     .padding(Padding::new(12.0))
@@ -182,12 +182,12 @@ fn loader_card(loader: Loader, name: &'static str, caption: &'static str, chosen
         .width(Fill)
         .padding(0)
         .style(move |_: &Theme, _| button::Style {
-            background: Some(Background::Color(if chosen { color::Primary::TINT } else { rgb!(255, 255, 255, 4%) })),
-            text_color: color::Text::DEFAULT,
+            background: Some(Background::Color(if chosen { color::primary_tint() } else { rgb!(255, 255, 255, 4%) })),
+            text_color: color::text_default(),
             border: Border {
                 radius: 12.0.into(),
                 width: 1.0,
-                color: if chosen { color::Primary::DEFAULT } else { color::Surface::LINE },
+                color: if chosen { color::primary() } else { color::surface_line() },
             },
             ..button::Style::default()
         })
@@ -195,7 +195,7 @@ fn loader_card(loader: Loader, name: &'static str, caption: &'static str, chosen
     if !chosen {
         return card.into();
     }
-    let tick = container(icon(Icon::lucide().check(), 12.0, color::Primary::DEFAULT))
+    let tick = container(icon(Icon::lucide().check(), 12.0, color::primary()))
         .width(Fill)
         .height(Fill)
         .padding(Padding::new(10.0))
@@ -257,7 +257,7 @@ fn banner_section(dialog: &NewInstance) -> Element<'_, Message> {
         Text::new(lang::t("new_instance.change_banner"))
             .size(11)
             .font(fonts::Inter::SEMI_BOLD)
-            .color(color::Text::HEADLINE),
+            .color(color::text_headline()),
     )
     .padding(banner::pill_padding())
     .style(|_| banner::pill_style());
@@ -300,7 +300,7 @@ fn footer(dialog: &NewInstance) -> Element<'_, Message> {
         Text::new(lang::t("new_instance.create"))
             .size(13)
             .font(fonts::Inter::BOLD)
-            .color(color::Primary::ON),
+            .color(color::primary_on()),
     )
     .variant(Variant::Primary)
     .padding(Padding::new(0.0).left(18).right(18).top(9).bottom(9));
@@ -313,7 +313,7 @@ fn footer(dialog: &NewInstance) -> Element<'_, Message> {
             Text::new(lang::t("common.cancel"))
                 .size(13)
                 .font(fonts::Inter::SEMI_BOLD)
-                .color(color::Text::DEFAULT),
+                .color(color::text_default()),
         )
         .variant(Variant::Ghost)
         .padding(Padding::new(0.0).left(18).right(18).top(9).bottom(9))
@@ -335,13 +335,13 @@ fn label(text: &'static str) -> Element<'static, Message> {
     Text::new(text)
         .size(11)
         .font(fonts::JetBrainsMono::REGULAR)
-        .color(color::Text::MUTED)
+        .color(color::text_muted())
         .into()
 }
 
 /// A line of error text.
 fn error_line(error: &str) -> Element<'_, Message> {
-    Text::new(error).size(12).font(fonts::Inter::MEDIUM).color(color::Accents::PINK).into()
+    Text::new(error).size(12).font(fonts::Inter::MEDIUM).color(color::pink()).into()
 }
 
 /// A lucide glyph in `ink`.

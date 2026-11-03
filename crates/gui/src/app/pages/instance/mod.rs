@@ -567,11 +567,11 @@ impl InstancePage {
                 Text::new(lang::t("instance.none_selected"))
                     .size(18)
                     .font(fonts::Inter::EXTRA_BOLD)
-                    .color(color::Text::HEADLINE),
+                    .color(color::text_headline()),
                 Text::new(lang::t("instance.none_selected_hint"))
                     .size(12)
                     .font(fonts::Inter::REGULAR)
-                    .color(color::Text::MUTED),
+                    .color(color::text_muted()),
                 crate::app::components::TextButton::ghost(lang::t("instance.back_to_library")).on_press(Message::Back),
             ]
             .spacing(12)

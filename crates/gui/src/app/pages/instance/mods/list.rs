@@ -84,9 +84,9 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
     let Menu { items, actions } = menu::menu(entry, state.busy.contains(&file.file_name));
     let busy = state.busy.contains(&file.file_name);
     let (ink, fill) = if file.enabled {
-        (color::Primary::DEFAULT, color::Primary::TINT)
+        (color::primary(), color::primary_tint())
     } else {
-        (color::Text::MUTED, rgb!(255, 255, 255, 6%))
+        (color::text_muted(), rgb!(255, 255, 255, 6%))
     };
     // The jar's own icon fills the tile when the jar declares one. Otherwise the tile holds the package glyph.
     let tile: Element<'_, Message> = match &file.icon {
@@ -104,12 +104,12 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
         Text::new(file.name.as_str())
             .size(13)
             .font(fonts::Inter::SEMI_BOLD)
-            .color(color::Text::HEADLINE),
+            .color(color::text_headline()),
     ]
     .spacing(8)
     .align_y(alignment::Vertical::Center);
     if !file.enabled {
-        title = title.push(Badge::new(lang::t("instance.mods.disabled"), color::Text::MUTED, rgb!(255, 255, 255, 6%)).compact());
+        title = title.push(Badge::new(lang::t("instance.mods.disabled"), color::text_muted(), rgb!(255, 255, 255, 6%)).compact());
     }
 
     let details = column![
@@ -117,7 +117,7 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
         Text::new(subtitle(entry))
             .size(11)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::PLACEHOLDER),
+            .color(color::text_placeholder()),
     ]
     .spacing(4);
 
@@ -170,7 +170,7 @@ fn tile_style(fill: Color) -> container::Style {
         border: Border {
             radius: 8.0.into(),
             width: 1.0,
-            color: color::Surface::LINE,
+            color: color::surface_line(),
         },
         ..container::Style::default()
     }

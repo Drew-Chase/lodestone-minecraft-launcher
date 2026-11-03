@@ -72,7 +72,7 @@ impl Login {
             shadow: Shadow {
                 color: rgb!(0, 0, 0, 60%),
                 offset: Vector::new(0.0, 30.0),
-                blur_radius: 80.0,
+                blur_radius: crate::app::theme::blur(80.0),
             },
             ..container::Style::default()
         })
@@ -89,7 +89,7 @@ impl Login {
             Text::new(lang::t("login.subtitle"))
                 .size(13)
                 .font(fonts::Inter::REGULAR)
-                .color(palette::Text::MUTED)
+                .color(palette::text_muted())
                 .line_height(1.5),
             Space::new().height(22),
             self.sign_in_area(),
@@ -120,7 +120,7 @@ impl Login {
                 Text::new(lang::t("application.title"))
                     .size(22)
                     .font(fonts::Inter::EXTRA_BOLD)
-                    .color(palette::Text::HEADLINE),
+                    .color(palette::text_headline()),
                 mono(lang::t_with("login.brand_subtitle", &[("VERSION", LodestoneLauncher::VERSION)]), 11.0),
             ]
             .spacing(2),
@@ -135,11 +135,7 @@ impl Login {
         let spans: Vec<_> = lang::rich_segments("login.title")
             .into_iter()
             .map(|segment| {
-                let ink = if segment.primary {
-                    palette::Primary::DEFAULT
-                } else {
-                    palette::Text::HEADLINE
-                };
+                let ink = if segment.primary { palette::primary() } else { palette::text_headline() };
                 span::<(), iced::Font>(segment.text).font(fonts::Inter::EXTRA_BOLD).size(26).color(ink)
             })
             .collect();
@@ -152,13 +148,13 @@ impl Login {
             Text::new(lang::t("login.not_affiliated"))
                 .size(11)
                 .font(fonts::Inter::REGULAR)
-                .color(palette::Text::PLACEHOLDER),
+                .color(palette::text_placeholder()),
             Space::new().width(Fill),
             mouse_area(
                 Text::new(lang::t("login.learn_more"))
                     .size(11)
                     .font(fonts::Inter::MEDIUM)
-                    .color(palette::Primary::DEFAULT)
+                    .color(palette::primary())
             )
             .on_press(Message::LearnMore)
             .interaction(iced::mouse::Interaction::Pointer),
@@ -181,13 +177,13 @@ impl Login {
             ),
             Some(_) => (
                 lang::t("login.status_unreachable"),
-                PulseDot::with_color(palette::Accents::AMBER).size(6.0).pulsing(true),
+                PulseDot::with_color(palette::amber()).size(6.0).pulsing(true),
                 None,
                 None,
             ),
             None => (
                 lang::t("login.status_checking"),
-                PulseDot::with_color(palette::Text::DISABLED).size(6.0).pulsing(false),
+                PulseDot::with_color(palette::text_disabled()).size(6.0).pulsing(false),
                 None,
                 None,
             ),

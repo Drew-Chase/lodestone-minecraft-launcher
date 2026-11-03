@@ -13,6 +13,6 @@ pub fn brand_tag<'a, Message: 'a>() -> Element<'a, Message> {
     Text::new(t_with("titlebar.tag", &[("VERSION", LodestoneLauncher::VERSION)]))
         .font(fonts::JetBrainsMono::REGULAR)
         .size(11)
-        .color(color::Text::PLACEHOLDER)
+        .color(color::text_placeholder())
         .into()
 }

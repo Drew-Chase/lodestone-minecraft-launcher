@@ -142,11 +142,11 @@ impl State {
             "latest.log"
         };
         let header = row![
-            utility::icon(Icon::lucide().terminal(), 14.0, Some((color::Primary::DEFAULT, color::Primary::DEFAULT))),
+            utility::icon(Icon::lucide().terminal(), 14.0, Some((color::primary(), color::primary()))),
             Text::new(title)
                 .size(13)
                 .font(fonts::JetBrainsMono::SEMI_BOLD)
-                .color(color::Text::HEADLINE),
+                .color(color::text_headline()),
             Space::new().width(Fill),
             live_pill(self.follow),
             TextButton::labeled_icon(Icon::lucide().download(), lang::t("instance.logs.export"), Variant::Ghost).on_press(Message::Export),
@@ -162,7 +162,7 @@ impl State {
             Text::new(lang::t("instance.logs.empty"))
                 .size(12)
                 .font(fonts::Inter::REGULAR)
-                .color(color::Text::MUTED)
+                .color(color::text_muted())
                 .into()
         } else {
             let lines: Vec<Element<'_, Message>> = rows.into_iter().map(log_row).chain(std::iter::once(caret())).collect();
@@ -183,9 +183,9 @@ impl State {
 /// The LIVE/PAUSED pill; pressing it toggles following.
 fn live_pill<'a>(following: bool) -> Element<'a, Message> {
     let (label, ink, fill) = if following {
-        (lang::t("instance.logs.live"), color::Primary::DEFAULT, color::Primary::TINT)
+        (lang::t("instance.logs.live"), color::primary(), color::primary_tint())
     } else {
-        (lang::t("instance.logs.paused"), color::Text::MUTED, rgb!(255, 255, 255, 6%))
+        (lang::t("instance.logs.paused"), color::text_muted(), rgb!(255, 255, 255, 6%))
     };
 
     TextButton::content(Badge::new(label, ink, fill).with_pulse(following))
@@ -202,7 +202,7 @@ fn log_row(line: &LogLine) -> Element<'_, Message> {
             Text::new(line.time.as_str())
                 .size(12)
                 .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::Text::PLACEHOLDER),
+                .color(color::text_placeholder()),
         )
         .width(TIME_WIDTH),
         container(
@@ -215,7 +215,7 @@ fn log_row(line: &LogLine) -> Element<'_, Message> {
         Text::new(line.message.as_str())
             .size(12)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::DEFAULT),
+            .color(color::text_default()),
     ]
     .spacing(14)
     .into()
@@ -226,7 +226,7 @@ fn caret() -> Element<'static, Message> {
     row![
         Space::new().width(CARET_OFFSET),
         container(Space::new().width(7).height(14)).style(|_| container::Style {
-            background: Some(Background::Color(color::Primary::DEFAULT)),
+            background: Some(Background::Color(color::primary())),
             ..container::Style::default()
         }),
     ]
@@ -235,10 +235,10 @@ fn caret() -> Element<'static, Message> {
 
 fn level_ink(level: LogLevel) -> Color {
     match level {
-        LogLevel::Debug => color::Text::PLACEHOLDER,
-        LogLevel::Info => color::Primary::DEFAULT,
-        LogLevel::Warn => color::Accents::AMBER,
-        LogLevel::Error => color::Accents::PINK,
+        LogLevel::Debug => color::text_placeholder(),
+        LogLevel::Info => color::primary(),
+        LogLevel::Warn => color::amber(),
+        LogLevel::Error => color::pink(),
     }
 }
 

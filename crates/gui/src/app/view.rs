@@ -10,7 +10,7 @@ use crate::app::launch::games::{GameBar, RunsPlace};
 use crate::app::pages::Page;
 use crate::app::pages::login::AuthStatus;
 use crate::app::perf;
-use crate::app::theme::color::Surface;
+use crate::app::theme::color;
 use iced::widget::{Space, column, container, row, stack};
 use iced::{Element, Fill, alignment};
 use iced_borderless_window_resize_handle_widget::ResizeHandles;
@@ -201,7 +201,7 @@ impl LodestoneLauncher {
             .height(Fill)
             .align_x(alignment::Horizontal::Center)
             .style(|_| container::Style {
-                background: Some(iced::Background::Color(Surface::APPLICATION)),
+                background: Some(iced::Background::Color(color::surface_application())),
                 ..Default::default()
             })
             .into()
@@ -236,7 +236,16 @@ impl LodestoneLauncher {
                 Some(status) => self.resource.view(self.window_size, &status).map(LodestoneAppMessage::Resource),
                 None => Space::new().into(),
             },
-            Page::Settings => self.settings.view().map(LodestoneAppMessage::Settings),
+            Page::Settings => self
+                .settings
+                .view(
+                    self.auth_status.as_ref().map(Result::is_ok),
+                    &self.speed,
+                    &self.credentials,
+                    self.face.as_ref(),
+                    self.skin.as_ref(),
+                )
+                .map(LodestoneAppMessage::Settings),
             Page::Showcase => self.showcase.view().map(LodestoneAppMessage::Showcase),
             Page::Discover => self.discover.view(self.window_size).map(LodestoneAppMessage::Discover),
             Page::Worlds => self.worlds.view(self.window_size).map(LodestoneAppMessage::Worlds),

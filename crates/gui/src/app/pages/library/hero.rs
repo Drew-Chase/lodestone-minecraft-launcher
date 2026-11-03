@@ -60,7 +60,7 @@ impl Library {
             )
             .compact()
             .with_loader(hero.loader),
-            chip(format!("MC {}", hero.mc_version), color::Text::MUTED, rgb!(255, 255, 255, 6%)),
+            chip(format!("MC {}", hero.mc_version), color::text_muted(), rgb!(255, 255, 255, 6%)),
         ]
         .spacing(8);
 
@@ -85,8 +85,8 @@ impl Library {
                                     Text::new(hero.name.clone())
                                         .size(34)
                                         .font(fonts::Inter::EXTRA_BOLD)
-                                        .color(color::Text::HEADLINE),
-                                    Text::new(meta).size(13).font(fonts::Inter::REGULAR).color(color::Text::DEFAULT),
+                                        .color(color::text_headline()),
+                                    Text::new(meta).size(13).font(fonts::Inter::REGULAR).color(color::text_default()),
                                 ]
                                 .spacing(14),
                             )
@@ -109,7 +109,7 @@ impl Library {
                 border: Border {
                     radius: HERO_RADIUS.into(),
                     width: 1.0,
-                    color: color::Surface::LINE,
+                    color: color::surface_line(),
                 },
                 ..container::Style::default()
             })
@@ -123,32 +123,32 @@ impl Library {
         let cards: [(&'static str, Color, Color, &'static str, &'static str, Message); 4] = [
             (
                 Icon::lucide().plus(),
-                color::Primary::DEFAULT,
-                color::Primary::TINT,
+                color::primary(),
+                color::primary_tint(),
                 lang::t("library.quick.new_instance.title"),
                 lang::t("library.quick.new_instance.subtitle"),
                 Message::OpenNewInstance,
             ),
             (
                 Icon::lucide().download(),
-                color::Accents::CYAN,
-                color::Accents::CYAN_TINT,
+                color::cyan(),
+                color::cyan_tint(),
                 lang::t("library.quick.import.title"),
                 lang::t("library.quick.import.subtitle"),
                 Message::QuickAction("library.quick.import"),
             ),
             (
                 Icon::lucide().server(),
-                color::Accents::AMBER,
-                color::Accents::AMBER_TINT,
+                color::amber(),
+                color::amber_tint(),
                 lang::t("library.quick.join_server.title"),
                 lang::t("library.quick.join_server.subtitle"),
                 Message::QuickAction("library.quick.join_server"),
             ),
             (
                 Icon::lucide().users(),
-                color::Accents::VIOLET_LIGHT,
-                color::Accents::VIOLET_TINT,
+                color::violet_light(),
+                color::violet_tint(),
                 lang::t("library.quick.co_op.title"),
                 lang::t("library.quick.co_op.subtitle"),
                 Message::QuickAction("library.quick.co_op"),
@@ -179,7 +179,7 @@ fn hero_actions(instance: &str, playing: bool) -> Element<'static, Message> {
     let id = instance.to_owned();
     let resume = TextButton::content(
         row![
-            icon(Icon::lucide().play(), 14.0, color::Primary::ON, 1.0),
+            icon(Icon::lucide().play(), 14.0, color::primary_on(), 1.0),
             Text::new(if playing {
                 lang::t("library.hero.resume")
             } else {
@@ -187,7 +187,7 @@ fn hero_actions(instance: &str, playing: bool) -> Element<'static, Message> {
             })
             .size(13)
             .font(fonts::Inter::BOLD)
-            .color(color::Primary::ON),
+            .color(color::primary_on()),
         ]
         .spacing(8)
         .align_y(alignment::Vertical::Center),
@@ -253,8 +253,8 @@ fn quick_action_card(
                     ..container::Style::default()
                 }),
             column![
-                Text::new(title).size(13).font(fonts::Inter::SEMI_BOLD).color(color::Text::HEADLINE),
-                Text::new(subtitle).size(11).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
+                Text::new(title).size(13).font(fonts::Inter::SEMI_BOLD).color(color::text_headline()),
+                Text::new(subtitle).size(11).font(fonts::Inter::REGULAR).color(color::text_muted()),
             ]
             .spacing(2),
         ]

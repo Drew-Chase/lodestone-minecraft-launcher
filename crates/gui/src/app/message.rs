@@ -66,6 +66,18 @@ pub enum LodestoneAppMessage {
     Portable(PortableMessage),
     /// The update check: the release check's answer, the installer's download, and the update button.
     Updater(UpdaterMessage),
+    /// One second has passed, so the Network tab takes a speed sample.
+    SpeedTick,
+    /// A switch to another account, which signed in again, finished.
+    AccountSwitched(usize, Result<Session, String>),
+    /// The answer to the question whether to upload the staged skin.
+    SkinUploadConfirmed(bool),
+    /// A skin upload finished, with the skin's picture when it was uploaded.
+    SkinUploaded(Result<Vec<u8>, String>),
+    /// The answer to the question whether to clear the saved settings and the sign-ins.
+    LocalDataAnswered(bool),
+    /// The Minecraft version list fetched at launch, when Auto-update game versions is on.
+    VersionsPrefetched(Result<std::sync::Arc<crate::app::install::catalog::Releases>, String>),
     /// The launcher database finished opening (schema migrations ran).
     DatabaseReady(Result<Database, String>),
     /// The instance list finished loading, with each mod count read from disk.
@@ -97,7 +109,7 @@ pub enum LodestoneAppMessage {
         confirmed: bool,
     },
     /// The global defaults were written to the preferences, or the write failed.
-    DefaultsSaved(Result<(), String>),
+    SettingsSaved(Result<(), String>),
     /// A reinstall of a version's game files finished, or failed. `job` is its queue entry.
     ReinstallFinished {
         job: u64,

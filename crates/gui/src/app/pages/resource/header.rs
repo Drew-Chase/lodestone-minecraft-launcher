@@ -7,7 +7,7 @@ use iced::{Element, Length, alignment};
 use super::parts::{ModState, chip, dimmed, mod_state, picture, primary, stat};
 use super::{Action, Listing, Message, ResourcePage};
 use crate::app::components::hint::hint;
-use crate::app::components::icon_button::GHOST_BUTTON_STYLE;
+use crate::app::components::icon_button::ghost_button_style;
 use crate::app::components::{IconButton, Select};
 use crate::app::lang;
 use crate::app::pages::discover::{InstallState, ProjectStatus, date_only, short_count};
@@ -39,7 +39,7 @@ pub(super) fn view<'a>(page: &'a ResourcePage, status: &ProjectStatus) -> Elemen
         Text::new(listing.name.as_str())
             .size(24)
             .font(fonts::Inter::EXTRA_BOLD)
-            .color(color::Text::HEADLINE)
+            .color(color::text_headline())
             .into(),
     ];
     if let Some(author) = author {
@@ -47,7 +47,7 @@ pub(super) fn view<'a>(page: &'a ResourcePage, status: &ProjectStatus) -> Elemen
             Text::new(lang::t_with("resource.by", &[("author", author.as_str())]))
                 .size(12)
                 .font(fonts::Inter::REGULAR)
-                .color(color::Text::MUTED)
+                .color(color::text_muted())
                 .into(),
         );
     }
@@ -55,7 +55,7 @@ pub(super) fn view<'a>(page: &'a ResourcePage, status: &ProjectStatus) -> Elemen
         Text::new(summary)
             .size(14)
             .font(fonts::Inter::REGULAR)
-            .color(color::Text::DEFAULT)
+            .color(color::text_default())
             .width(Length::Fixed(560.0))
             .into(),
     );
@@ -97,7 +97,7 @@ fn actions<'a>(listing: &'a Listing, status: &ProjectStatus) -> Element<'a, Mess
         .size(36.0)
         .radius(10.0)
         .icon_size(14.0)
-        .style(GHOST_BUTTON_STYLE);
+        .style(ghost_button_style());
     let web = match listing.web_url {
         Some(_) => web.on_press(Message::Act(Action::OpenWeb)),
         None => web.disabled(true),

@@ -54,7 +54,7 @@ pub(super) fn pinned(page: &Discover) -> Element<'_, Message> {
         .padding(Padding::new(GAP).left(SIDE).right(SIDE - scrollbar::TRACK_WIDTH).bottom(GAP))
         .width(Fill)
         .style(|_| container::Style {
-            background: Some(Background::Color(color::Surface::APPLICATION)),
+            background: Some(Background::Color(color::surface_application())),
             ..container::Style::default()
         });
     container(opaque(bar))
@@ -183,7 +183,7 @@ fn count(page: &Discover) -> Element<'_, Message> {
     Text::new(text)
         .size(12)
         .font(fonts::JetBrainsMono::REGULAR)
-        .color(color::Text::MUTED)
+        .color(color::text_muted())
         .into()
 }
 

@@ -7,57 +7,51 @@ use iced::border::Radius;
 use iced::mouse::{Cursor, Interaction};
 use iced::{Border, Color, Element, Event, Length, Point, Radians, Rectangle, Renderer as BaseRenderer, Size, Theme, mouse};
 
-pub const PRIMARY_BUTTON_STYLE: IconButtonStyle = IconButtonStyle {
-    foreground: color::buttons::Primary::FOREGROUND,
-    foreground_hover: color::buttons::Primary::FOREGROUND,
-    background: color::buttons::Primary::BACKGROUND,
-    border: Color::TRANSPARENT,
-    background_hover: color::buttons::Primary::BACKGROUND_HOVER,
-    border_hover: Color::TRANSPARENT,
-    foreground_disabled: color::buttons::Primary::FOREGROUND,
-    background_disabled: color::buttons::Primary::BACKGROUND_DISABLED,
-    foreground_pressed: color::buttons::Primary::FOREGROUND,
-    background_pressed: color::buttons::Primary::BACKGROUND_DISABLED,
-};
-pub const SECONDARY_BUTTON_STYLE: IconButtonStyle = IconButtonStyle {
-    foreground: color::buttons::Secondary::FOREGROUND,
-    foreground_hover: color::buttons::Secondary::FOREGROUND,
-    background: color::buttons::Secondary::BACKGROUND,
-    border: Color::TRANSPARENT,
-    background_hover: color::buttons::Secondary::BACKGROUND_HOVER,
-    border_hover: Color::TRANSPARENT,
-    // Disabled — the chip vanishes; only a dimmed icon remains.
-    foreground_disabled: color::Text::DISABLED,
-    background_disabled: Color::TRANSPARENT,
-    foreground_pressed: color::buttons::Secondary::FOREGROUND,
-    background_pressed: color::buttons::Secondary::BACKGROUND_HOVER,
-};
-pub const DANGER_BUTTON_STYLE: IconButtonStyle = IconButtonStyle {
-    foreground: color::buttons::Danger::FOREGROUND,
-    foreground_hover: color::buttons::Danger::FOREGROUND_HOVER,
-    background: color::buttons::Danger::BACKGROUND,
-    border: Color::TRANSPARENT,
-    background_hover: color::buttons::Danger::BACKGROUND_HOVER,
-    border_hover: Color::TRANSPARENT,
-    background_disabled: color::buttons::Danger::BACKGROUND_HOVER,
-    foreground_disabled: color::buttons::Danger::FOREGROUND_HOVER,
-    background_pressed: color::buttons::Danger::BACKGROUND_HOVER,
-    foreground_pressed: color::buttons::Danger::FOREGROUND_HOVER,
-};
+pub fn secondary_button_style() -> IconButtonStyle {
+    IconButtonStyle {
+        foreground: color::buttons::secondary_foreground(),
+        foreground_hover: color::buttons::secondary_foreground(),
+        background: color::buttons::secondary_background(),
+        border: Color::TRANSPARENT,
+        background_hover: color::buttons::secondary_background_hover(),
+        border_hover: Color::TRANSPARENT,
+        // Disabled — the chip vanishes; only a dimmed icon remains.
+        foreground_disabled: color::text_disabled(),
+        background_disabled: Color::TRANSPARENT,
+        foreground_pressed: color::buttons::secondary_foreground(),
+        background_pressed: color::buttons::secondary_background_hover(),
+    }
+}
+pub fn danger_button_style() -> IconButtonStyle {
+    IconButtonStyle {
+        foreground: color::buttons::danger_foreground(),
+        foreground_hover: color::buttons::danger_foreground_hover(),
+        background: color::buttons::danger_background(),
+        border: Color::TRANSPARENT,
+        background_hover: color::buttons::danger_background_hover(),
+        border_hover: Color::TRANSPARENT,
+        background_disabled: color::buttons::danger_background_hover(),
+        foreground_disabled: color::buttons::danger_foreground_hover(),
+        background_pressed: color::buttons::danger_background_hover(),
+        foreground_pressed: color::buttons::danger_foreground_hover(),
+    }
+}
 /// `.btn-icon` — white 4% fill inside a hairline ring, `--ink-2` icon. Hover
 /// raises the fill to white 8%, the ring to `--line-strong` and the icon to `--ink-0`.
-pub const GHOST_BUTTON_STYLE: IconButtonStyle = IconButtonStyle {
-    foreground: color::Text::MUTED,
-    foreground_hover: color::Text::HEADLINE,
-    background: color::buttons::Secondary::BACKGROUND,
-    border: color::Surface::LINE,
-    background_hover: color::buttons::Secondary::BACKGROUND_HOVER,
-    border_hover: color::Surface::LINE_STRONG,
-    foreground_disabled: color::Text::DISABLED,
-    background_disabled: Color::TRANSPARENT,
-    foreground_pressed: color::Text::HEADLINE,
-    background_pressed: color::buttons::Secondary::BACKGROUND_HOVER,
-};
+pub fn ghost_button_style() -> IconButtonStyle {
+    IconButtonStyle {
+        foreground: color::text_muted(),
+        foreground_hover: color::text_headline(),
+        background: color::buttons::secondary_background(),
+        border: color::surface_line(),
+        background_hover: color::buttons::secondary_background_hover(),
+        border_hover: color::surface_line_strong(),
+        foreground_disabled: color::text_disabled(),
+        background_disabled: Color::TRANSPARENT,
+        foreground_pressed: color::text_headline(),
+        background_pressed: color::buttons::secondary_background_hover(),
+    }
+}
 
 pub struct IconButton<Message> {
     icon: &'static str,
@@ -107,7 +101,7 @@ impl<Message> Default for IconButton<Message> {
 
 impl Default for IconButtonStyle {
     fn default() -> Self {
-        SECONDARY_BUTTON_STYLE
+        secondary_button_style()
     }
 }
 

@@ -1,6 +1,7 @@
 //! The update check. At launch the launcher asks GitHub for a newer release. An installed Windows build downloads the
 //! installer, checks it against the release's checksums, and runs it silently. Other builds show a button that opens
-//! the release page.
+//! the release page. The Settings page decides whether an installed build updates on its own, and whether prereleases
+//! count.
 
 use std::path::PathBuf;
 
@@ -43,7 +44,7 @@ pub enum Status {
     /// Nothing to show: no newer release, or the check could not answer.
     #[default]
     Idle,
-    /// A newer release is out. The button opens its page.
+    /// A newer release is out. The button opens its page, or downloads it on an installed build that updates by hand.
     Available(Release),
     /// The installer is downloading, and its checksum is not yet checked.
     Downloading(Release),
@@ -92,14 +93,14 @@ pub fn enabled(portable: bool) -> bool {
     !portable && (!cfg!(debug_assertions) || std::env::var_os("LODESTONE_UPDATE_CHECK").is_some())
 }
 
-/// Asks GitHub for the newest release, once, in the background.
-pub fn check() -> Task<LodestoneAppMessage> {
-    Task::perform(ask_github(), |result| LodestoneAppMessage::Updater(Message::Checked(result)))
+/// Asks GitHub for the newest release, once, in the background. The beta channel counts prereleases too.
+pub fn check(beta: bool) -> Task<LodestoneAppMessage> {
+    Task::perform(ask_github(beta), |result| LodestoneAppMessage::Updater(Message::Checked(result)))
 }
 
-async fn ask_github() -> Result<Option<Release>, String> {
+async fn ask_github(beta: bool) -> Result<Option<Release>, String> {
     let client = lodestone_updater::client(USER_AGENT).map_err(|error| error.to_string())?;
-    lodestone_updater::latest(&client, env!("CARGO_PKG_VERSION"))
+    lodestone_updater::latest_for(&client, env!("CARGO_PKG_VERSION"), beta)
         .await
         .map_err(|error| error.to_string())
 }
@@ -150,13 +151,19 @@ impl LodestoneLauncher {
         }
     }
 
-    /// A newer release is out. An installed Windows build downloads it now, and any other build shows the button.
+    /// A newer release is out. An installed Windows build downloads it now when Auto-update Lodestone is on. Any other
+    /// build, or one with Auto-update off, shows the button, and a press on an installed build downloads it then.
     fn newer_release(&mut self, release: Release) -> Task<LodestoneAppMessage> {
-        if !installer_build() {
+        if !installer_build() || !self.settings_values.auto_update {
             info!("Update {} is available", release.tag);
             self.updater.status = Status::Available(release);
             return Task::none();
         }
+        self.download(release)
+    }
+
+    /// Downloads the installer of `release` and checks it. The button shows the download until it is done.
+    fn download(&mut self, release: Release) -> Task<LodestoneAppMessage> {
         info!("Downloading update {}", release.tag);
         self.updater.status = Status::Downloading(release.clone());
         Task::perform(fetch(release), |result| LodestoneAppMessage::Updater(Message::Downloaded(result)))
@@ -178,10 +185,11 @@ impl LodestoneLauncher {
         self.start_install()
     }
 
-    /// The button was pressed. A newer release opens its page. A verified installer runs, after a question when a game
-    /// is running.
+    /// The button was pressed. A newer release opens its page, or downloads on an installed build that updates by hand.
+    /// A verified installer runs, after a question when a game is running.
     fn pressed(&mut self) -> Task<LodestoneAppMessage> {
         match self.updater.status.clone() {
+            Status::Available(release) if installer_build() => self.download(release),
             Status::Available(release) => super::instances::open_source(release.html_url),
             Status::Held(_) | Status::Ready(_) if self.games.any_active() => self
                 .alerts

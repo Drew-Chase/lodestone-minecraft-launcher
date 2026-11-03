@@ -2,7 +2,7 @@
 //! tabs and the view switcher.
 
 use crate::app::components::hint::hint;
-use crate::app::components::icon_button::GHOST_BUTTON_STYLE;
+use crate::app::components::icon_button::ghost_button_style;
 use crate::app::components::{IconButton, TextButton, input};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
@@ -31,7 +31,7 @@ fn update_button(update: Button) -> Element<'static, Message> {
             .size(36)
             .radius(12.0)
             .icon_size(16.0)
-            .style(GHOST_BUTTON_STYLE)
+            .style(ghost_button_style())
             .disabled(!update.enabled)
             .on_press(Message::UpdatePressed),
         update.tooltip,
@@ -47,11 +47,11 @@ impl Library {
             Text::new(lang::t("library.title"))
                 .size(24)
                 .font(fonts::Inter::EXTRA_BOLD)
-                .color(color::Text::HEADLINE),
+                .color(color::text_headline()),
             Text::new(summary(self.instances.len(), total_hours))
                 .size(12)
                 .font(fonts::Inter::REGULAR)
-                .color(color::Text::MUTED),
+                .color(color::text_muted()),
         ]
         .spacing(2);
         let mut children: Vec<Element<'_, Message>> = vec![title.into(), Space::new().width(Fill).into(), self.search_box()];
@@ -60,7 +60,7 @@ impl Library {
                 .size(36)
                 .radius(12.0)
                 .icon_size(16.0)
-                .style(GHOST_BUTTON_STYLE)
+                .style(ghost_button_style())
                 .on_press(Message::Reload)
                 .into(),
         );
@@ -72,18 +72,18 @@ impl Library {
                 .size(36)
                 .radius(12.0)
                 .icon_size(16.0)
-                .style(GHOST_BUTTON_STYLE)
+                .style(ghost_button_style())
                 .on_press(Message::QuickAction("notifications"))
                 .into(),
         );
         children.push(
             TextButton::content(
                 row![
-                    icon(Icon::lucide().plus(), 14.0, color::Primary::ON, 1.0),
+                    icon(Icon::lucide().plus(), 14.0, color::primary_on(), 1.0),
                     Text::new(lang::t("library.new_instance"))
                         .size(13)
                         .font(fonts::Inter::BOLD)
-                        .color(color::Primary::ON),
+                        .color(color::primary_on()),
                 ]
                 .spacing(8)
                 .align_y(alignment::Vertical::Center),
@@ -109,7 +109,7 @@ impl Library {
                 .size(13)
                 .padding(Padding::new(0.0).left(34).right(14).top(10).bottom(10))
                 .width(Length::Fixed(SEARCH_WIDTH)),
-            container(icon(Icon::lucide().search(), 14.0, color::Text::PLACEHOLDER, 1.0))
+            container(icon(Icon::lucide().search(), 14.0, color::text_placeholder(), 1.0))
                 .width(Length::Fixed(SEARCH_WIDTH))
                 .height(Fill)
                 .align_x(alignment::Horizontal::Left)
@@ -132,9 +132,9 @@ impl Library {
         .map(|filter| {
             let label = filter.label();
             let content = if self.filter == filter {
-                Text::new(label).size(12).font(fonts::Inter::SEMI_BOLD).color(color::Primary::DEFAULT)
+                Text::new(label).size(12).font(fonts::Inter::SEMI_BOLD).color(color::primary())
             } else {
-                Text::new(label).size(12).font(fonts::Inter::MEDIUM).color(color::Text::MUTED)
+                Text::new(label).size(12).font(fonts::Inter::MEDIUM).color(color::text_muted())
             };
             TextButton::content(content)
                 .padding(Padding::new(0.0).left(14).right(14).top(8).bottom(8))
@@ -155,9 +155,9 @@ impl Library {
         row(entries.into_iter().map(|(view, icon_markup)| {
             let active = self.view == view;
             let (ink, weight) = if active {
-                (color::Primary::DEFAULT, fonts::Inter::SEMI_BOLD)
+                (color::primary(), fonts::Inter::SEMI_BOLD)
             } else {
-                (color::Text::MUTED, fonts::Inter::MEDIUM)
+                (color::text_muted(), fonts::Inter::MEDIUM)
             };
             TextButton::content(
                 row![

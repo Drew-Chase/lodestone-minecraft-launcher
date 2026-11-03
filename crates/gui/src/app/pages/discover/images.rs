@@ -13,7 +13,7 @@ use iced::widget::image;
 
 /// The client pictures are fetched with. Platform CDNs expect a user agent.
 static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
-    reqwest::Client::builder()
+    lodestone_net::builder()
         .user_agent(concat!("lodestone_launcher/", env!("CARGO_PKG_VERSION")))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())

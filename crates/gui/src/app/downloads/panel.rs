@@ -58,11 +58,11 @@ fn count_chip(count: usize) -> Element<'static, Message> {
         Text::new(count.to_string())
             .size(10)
             .font(fonts::JetBrainsMono::SEMI_BOLD)
-            .color(color::Primary::ON),
+            .color(color::primary_on()),
     )
     .padding(Padding::new(0.0).left(5).right(5).top(1).bottom(1))
     .style(|_| container::Style {
-        background: Some(Background::Color(color::Primary::DEFAULT)),
+        background: Some(Background::Color(color::primary())),
         border: Border {
             radius: 999.0.into(),
             ..Border::default()
@@ -79,16 +79,16 @@ fn count_chip(count: usize) -> Element<'static, Message> {
 
 /// The trigger's look: primary ink on a primary tint while installs run, muted otherwise.
 fn trigger_style(active: bool) -> IconButtonStyle {
-    let ink = if active { color::Primary::DEFAULT } else { color::Text::MUTED };
+    let ink = if active { color::primary() } else { color::text_muted() };
     IconButtonStyle {
         foreground: ink,
-        foreground_hover: if active { color::Primary::DEFAULT } else { color::Text::HEADLINE },
-        background: if active { color::Primary::TINT } else { Color::TRANSPARENT },
+        foreground_hover: if active { color::primary() } else { color::text_headline() },
+        background: if active { color::primary_tint() } else { Color::TRANSPARENT },
         border: Color::TRANSPARENT,
         background_hover: rgb!(255, 255, 255, 8%),
         border_hover: Color::TRANSPARENT,
         background_disabled: Color::TRANSPARENT,
-        foreground_disabled: color::Text::DISABLED,
+        foreground_disabled: color::text_disabled(),
         background_pressed: rgb!(255, 255, 255, 12%),
         foreground_pressed: ink,
     }
@@ -105,16 +105,16 @@ pub fn view(downloads: &Downloads) -> Element<'static, Message> {
         .padding(14)
         .width(WIDTH)
         .style(|_| container::Style {
-            background: Some(Background::Color(color::Surface::BG3)),
+            background: Some(Background::Color(color::surface_bg3())),
             border: Border {
                 radius: 14.0.into(),
                 width: 1.0,
-                color: color::Surface::LINE_STRONG,
+                color: color::surface_line_strong(),
             },
             shadow: Shadow {
                 color: rgb!(0, 0, 0, 45%),
                 offset: Vector::new(0.0, 10.0),
-                blur_radius: 28.0,
+                blur_radius: crate::app::theme::blur(28.0),
             },
             ..container::Style::default()
         })
@@ -125,7 +125,7 @@ pub fn view(downloads: &Downloads) -> Element<'static, Message> {
 fn rule() -> Element<'static, Message> {
     container(Space::new().width(Fill).height(1))
         .style(|_| container::Style {
-            background: Some(Background::Color(color::Surface::LINE)),
+            background: Some(Background::Color(color::surface_line())),
             ..container::Style::default()
         })
         .into()
@@ -141,21 +141,21 @@ fn header(downloads: &Downloads) -> Element<'static, Message> {
         } else {
             (Icon::lucide().play(), lang::t("downloads.resume_all"))
         };
-        actions = actions.push(small_button(icon, Message::TogglePauseAll, label, icon_button::SECONDARY_BUTTON_STYLE));
+        actions = actions.push(small_button(icon, Message::TogglePauseAll, label, icon_button::secondary_button_style()));
     }
     actions = actions.push(small_button(
         Icon::lucide().settings(),
         Message::OpenSettings,
         lang::t("downloads.settings"),
-        icon_button::SECONDARY_BUTTON_STYLE,
+        icon_button::secondary_button_style(),
     ));
 
     let mut title = row![
-        utility::icon(Icon::lucide().download(), 14.0, Some((color::Primary::DEFAULT, color::Primary::DEFAULT))),
+        utility::icon(Icon::lucide().download(), 14.0, Some((color::primary(), color::primary()))),
         Text::new(lang::t("downloads.title"))
             .size(14)
             .font(fonts::Inter::BOLD)
-            .color(color::Text::HEADLINE),
+            .color(color::text_headline()),
     ]
     .spacing(8)
     .align_y(alignment::Vertical::Center);
@@ -163,8 +163,8 @@ fn header(downloads: &Downloads) -> Element<'static, Message> {
     if running > 0 {
         title = title.push(Badge::new(
             lang::t_with("downloads.active", &[("count", running.to_string().as_str())]),
-            color::Primary::DEFAULT,
-            color::Primary::TINT,
+            color::primary(),
+            color::primary_tint(),
         ));
     }
     row![title, Space::new().width(Fill), actions].align_y(alignment::Vertical::Center).into()
@@ -178,12 +178,12 @@ fn overall(summary: Summary) -> Element<'static, Message> {
             Text::new(percent)
                 .size(12)
                 .font(fonts::JetBrainsMono::SEMI_BOLD)
-                .color(color::Text::HEADLINE),
+                .color(color::text_headline()),
             Space::new().width(Fill),
             Text::new(rate_line(summary.per_second, summary.eta_seconds()))
                 .size(11)
                 .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::Primary::DEFAULT),
+                .color(color::primary()),
         ]
         .align_y(alignment::Vertical::Center),
         ProgressBar::new(summary.fraction.unwrap_or(0.0))
@@ -202,7 +202,7 @@ fn jobs_list(downloads: &Downloads) -> Element<'static, Message> {
             Text::new(lang::t("downloads.empty"))
                 .size(12)
                 .font(fonts::Inter::REGULAR)
-                .color(color::Text::MUTED),
+                .color(color::text_muted()),
         )
         .padding(8)
         .into();
@@ -304,7 +304,7 @@ fn running_export(job: &Job, export: &ExportJob) -> Element<'static, Message> {
                     Icon::lucide().x(),
                     Message::Cancel(job.id),
                     lang::t("downloads.cancel"),
-                    icon_button::DANGER_BUTTON_STYLE,
+                    icon_button::danger_button_style(),
                 ),
             ]
             .spacing(10)
@@ -314,7 +314,7 @@ fn running_export(job: &Job, export: &ExportJob) -> Element<'static, Message> {
                 Text::new(fraction.map_or_else(String::new, percent_label))
                     .size(11)
                     .font(fonts::JetBrainsMono::SEMI_BOLD)
-                    .color(color::Text::HEADLINE),
+                    .color(color::text_headline()),
             ]
             .spacing(10)
             .align_y(alignment::Vertical::Center),
@@ -339,13 +339,13 @@ fn running_job(job: &Job, request: &InstallRequest) -> Element<'static, Message>
                     Icon::lucide().pause(),
                     Message::Pause(job.id),
                     lang::t("downloads.pause"),
-                    icon_button::SECONDARY_BUTTON_STYLE,
+                    icon_button::secondary_button_style(),
                 ),
                 small_button(
                     Icon::lucide().x(),
                     Message::Cancel(job.id),
                     lang::t("downloads.cancel"),
-                    icon_button::DANGER_BUTTON_STYLE,
+                    icon_button::danger_button_style(),
                 ),
             ]
             .spacing(10)
@@ -355,14 +355,14 @@ fn running_job(job: &Job, request: &InstallRequest) -> Element<'static, Message>
                 Text::new(fraction.map_or_else(String::new, percent_label))
                     .size(11)
                     .font(fonts::JetBrainsMono::SEMI_BOLD)
-                    .color(color::Text::HEADLINE),
+                    .color(color::text_headline()),
             ]
             .spacing(10)
             .align_y(alignment::Vertical::Center),
             Text::new(rate_line(transfer.per_second, transfer_eta(transfer)))
                 .size(11)
                 .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::Primary::DEFAULT),
+                .color(color::primary()),
         ]
         .spacing(8),
     )
@@ -402,10 +402,7 @@ fn running_card(content: impl Into<Element<'static, Message>>) -> Element<'stati
             border: Border {
                 radius: 12.0.into(),
                 width: 1.0,
-                color: Color {
-                    a: 0.35,
-                    ..color::Primary::DEFAULT
-                },
+                color: Color { a: 0.35, ..color::primary() },
             },
             ..container::Style::default()
         })
@@ -433,7 +430,7 @@ fn glyph_mark(glyph_svg: &'static str, size: f32) -> Element<'static, Message> {
         .width(size * 0.5)
         .height(size * 0.5)
         .style(|_, _| svg::Style {
-            color: Some(color::Primary::DEFAULT),
+            color: Some(color::primary()),
         });
     container(glyph)
         .width(size)
@@ -441,7 +438,7 @@ fn glyph_mark(glyph_svg: &'static str, size: f32) -> Element<'static, Message> {
         .align_x(alignment::Horizontal::Center)
         .align_y(alignment::Vertical::Center)
         .style(move |_| container::Style {
-            background: Some(Background::Color(color::Primary::TINT)),
+            background: Some(Background::Color(color::primary_tint())),
             border: Border {
                 radius: (size * 0.25).into(),
                 ..Border::default()
@@ -458,7 +455,7 @@ fn running_subtitle(request: &InstallRequest, stage: &str) -> Text<'static> {
 
 /// A line of mono text under a job's name.
 fn mono_line(line: String) -> Text<'static> {
-    Text::new(line).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED)
+    Text::new(line).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::text_muted())
 }
 
 /// One queued or paused install. A queued one shows its place in the queue; a paused one can resume.
@@ -470,7 +467,7 @@ fn waiting_job(job: &Job, place: Option<usize>) -> Element<'static, Message> {
                 Icon::lucide().play(),
                 Message::Resume(job.id),
                 lang::t("downloads.resume"),
-                icon_button::SECONDARY_BUTTON_STYLE,
+                icon_button::secondary_button_style(),
             )),
         ),
         _ => (format!("#{}", place.unwrap_or_default()), None),
@@ -478,7 +475,7 @@ fn waiting_job(job: &Job, place: Option<usize>) -> Element<'static, Message> {
     let mut items = row![
         art(job, 36.0),
         column![title(job.name()), subtitle(job)].spacing(2).width(Fill),
-        Text::new(status).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),
+        Text::new(status).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::text_muted()),
     ]
     .spacing(10)
     .align_y(alignment::Vertical::Center);
@@ -490,7 +487,7 @@ fn waiting_job(job: &Job, place: Option<usize>) -> Element<'static, Message> {
             Icon::lucide().x(),
             Message::Cancel(job.id),
             lang::t("downloads.cancel"),
-            icon_button::DANGER_BUTTON_STYLE,
+            icon_button::danger_button_style(),
         ))
         .into()
 }
@@ -498,8 +495,8 @@ fn waiting_job(job: &Job, place: Option<usize>) -> Element<'static, Message> {
 /// One install that has ended: its name, and whether it is done or why it failed.
 fn ended_job(job: &Job) -> Element<'static, Message> {
     let (status, ink) = match &job.state {
-        JobState::Failed(error) => (lang::t_with("downloads.failed", &[("error", error.as_str())]), color::Accents::PINK),
-        _ => (lang::t("downloads.done").to_owned(), color::Text::MUTED),
+        JobState::Failed(error) => (lang::t_with("downloads.failed", &[("error", error.as_str())]), color::pink()),
+        _ => (lang::t("downloads.done").to_owned(), color::text_muted()),
     };
     let mut items = row![
         art(job, 36.0),
@@ -513,7 +510,7 @@ fn ended_job(job: &Job) -> Element<'static, Message> {
             Icon::lucide().folder(),
             Message::RevealExport(job.id),
             lang::t("export.show"),
-            icon_button::SECONDARY_BUTTON_STYLE,
+            icon_button::secondary_button_style(),
         ));
     }
     items.into()
@@ -543,7 +540,7 @@ fn footer(downloads: &Downloads) -> Element<'static, Message> {
         ))
         .size(11)
         .font(fonts::JetBrainsMono::REGULAR)
-        .color(color::Text::MUTED),
+        .color(color::text_muted()),
         Space::new().width(Fill),
         clear,
     ]
@@ -554,9 +551,9 @@ fn footer(downloads: &Downloads) -> Element<'static, Message> {
 /// A section's heading: its label, and a hairline after it.
 fn section(label: String) -> Element<'static, Message> {
     row![
-        Text::new(label).size(10).font(fonts::JetBrainsMono::SEMI_BOLD).color(color::Text::MUTED),
+        Text::new(label).size(10).font(fonts::JetBrainsMono::SEMI_BOLD).color(color::text_muted()),
         container(Space::new().width(Fill).height(1)).style(|_| container::Style {
-            background: Some(Background::Color(color::Surface::LINE)),
+            background: Some(Background::Color(color::surface_line())),
             ..container::Style::default()
         }),
     ]
@@ -567,7 +564,7 @@ fn section(label: String) -> Element<'static, Message> {
 
 /// A job's name, in the popover's row title style.
 fn title(name: &str) -> Text<'static> {
-    Text::new(name.to_owned()).size(13).font(fonts::Inter::BOLD).color(color::Text::HEADLINE)
+    Text::new(name.to_owned()).size(13).font(fonts::Inter::BOLD).color(color::text_headline())
 }
 
 /// A job's line under its name: an install's loader and Minecraft version, or the instance a mod goes into.

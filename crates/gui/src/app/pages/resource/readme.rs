@@ -13,7 +13,7 @@ use crate::app::theme::color;
 /// The settings the markdown draws with: body text at 14 px, and the platform's link colour.
 pub fn settings() -> markdown::Settings {
     let style = markdown::Style {
-        link_color: color::Primary::DEFAULT,
+        link_color: color::primary(),
         ..markdown::Style::from(&Theme::Dark)
     };
     markdown::Settings::with_text_size(14, style)

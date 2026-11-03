@@ -236,17 +236,17 @@ impl<Message> Tabs<Message> {
     /// green, hover brightens.
     fn ink(&self, index: usize, hovered: Option<usize>) -> Color {
         if self.disabled {
-            return color::Text::DISABLED;
+            return color::text_disabled();
         }
         if index == self.active {
             match self.style {
-                Style::Pill => color::Primary::ON,
-                Style::Underline => color::Primary::DEFAULT,
+                Style::Pill => color::primary_on(),
+                Style::Underline => color::primary(),
             }
         } else if hovered == Some(index) {
-            color::Text::HEADLINE
+            color::text_headline()
         } else {
-            color::Text::MUTED
+            color::text_muted()
         }
     }
 

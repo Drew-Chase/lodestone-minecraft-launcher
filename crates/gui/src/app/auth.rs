@@ -1,12 +1,17 @@
 //! Sign-in and account handling for the root: the Microsoft device-code flow,
-//! the silent restore of a stored sign-in, offline and demo entry, and saving
-//! the stored credentials off the UI thread.
+//! the silent restore of a stored sign-in, offline and demo entry, switching and
+//! signing out of the accounts the launcher keeps, and saving the stored
+//! credentials off the UI thread.
 
 use iced::Task;
+use lodestone_minecraft_authentication::Session;
 use tracing::{debug, info, warn};
 
+use crate::app::components::alert::Alert;
+use crate::app::lang;
+use crate::app::pages::Page;
 use crate::app::pages::login::Message as LoginMessage;
-use crate::app::storage::StoredMicrosoft;
+use crate::app::storage::{StoredAccount, StoredMicrosoft};
 
 use super::{Account, LodestoneAppMessage, LodestoneLauncher};
 
@@ -48,14 +53,14 @@ impl LodestoneLauncher {
             }
             LoginMessage::SignInFinished(generation, Ok(session)) if generation == self.auth_generation => {
                 info!("Signed in as {}", session.profile.name);
-                // Persist the refresh token so the next boot restores this
-                // sign-in silently.
+                self.restoring = None;
+                // Keep the refresh token so the next boot restores this sign-in silently. The new account plays by default.
                 let save = match &session.refresh_token {
                     Some(refresh_token) => {
-                        self.credentials.microsoft = Some(StoredMicrosoft {
+                        self.credentials.add_and_make_primary(StoredAccount::Microsoft(StoredMicrosoft {
                             refresh_token: refresh_token.clone(),
                             username: session.profile.name.clone(),
-                        });
+                        }));
                         self.save_credentials()
                     }
                     None => {
@@ -65,34 +70,18 @@ impl LodestoneLauncher {
                 };
                 self.account = Some(Account::Microsoft { session });
                 self.login.update(LoginMessage::Reset);
-                // Fetch the player's face for the sidebar avatar — the
-                // ACTIVE skin's texture, or the vanilla Steve when the
-                // profile reports none (default-skin accounts).
-                let auth = self.auth.clone();
-                let skin_url = self.account.as_ref().and_then(|account| match account {
-                    Account::Microsoft { session } => session.profile.skin_url.clone(),
-                    Account::Offline { .. } => None,
-                });
-                let face_task = match skin_url {
-                    Some(url) => Task::perform(async move { auth.fetch_skin(&url).await.map_err(|error| error.to_string()) }, |result| {
-                        LodestoneAppMessage::FaceReady(result)
-                    }),
-                    None => Task::perform(
-                        async move { auth.fetch_default_steve_face().await.map_err(|error| error.to_string()) },
-                        |result| LodestoneAppMessage::FaceReady(result),
-                    ),
-                };
-                let entered = self.enter_launcher();
-                Task::batch([save, face_task, entered])
+                // The face for the sidebar avatar comes from the account's skin.
+                let face_task = self.face_task();
+                let destination = self.signed_in_destination();
+                Task::batch([save, face_task, destination])
             }
             LoginMessage::SignInFinished(generation, Err(error)) if generation == self.auth_generation => {
                 warn!("Sign-in failed: {error}");
-                // A failed sign-in also invalidates whatever refresh token
-                // was on file — it could not have produced this attempt.
-                let save = if self.credentials.microsoft.take().is_some() {
-                    self.save_credentials()
-                } else {
-                    Task::none()
+                // A restore that fails means its refresh token was spent or revoked, so that account leaves the list.
+                // A new sign-in that fails leaves the list as it is.
+                let save = match self.restoring.take() {
+                    Some(username) if self.credentials.remove_microsoft(&username) => self.save_credentials(),
+                    _ => Task::none(),
                 };
                 self.login.update(LoginMessage::SignInFailed(error));
                 save
@@ -118,12 +107,14 @@ impl LodestoneLauncher {
                 info!("Sign-in cancelled");
                 self.auth_generation = self.auth_generation.wrapping_add(1);
                 self.login.update(LoginMessage::Reset);
+                if std::mem::take(&mut self.adding_account) {
+                    return self.navigate(Page::Settings);
+                }
                 Task::none()
             }
             LoginMessage::OfflineMode => {
-                // Open the offline prompt, pre-filled with the stored
-                // username when there is one.
-                let username = self.credentials.offline_username.clone().unwrap_or_default();
+                // Open the offline prompt, pre-filled with the last offline name kept, when there is one.
+                let username = self.credentials.last_offline_name().unwrap_or_default().to_owned();
                 self.login.update(LoginMessage::OfflinePrompt { username });
                 Task::none()
             }
@@ -137,29 +128,27 @@ impl LodestoneLauncher {
                     return Task::none();
                 }
                 info!("Entering offline mode as {username}");
-                self.credentials.offline_username = Some(username.clone());
+                self.credentials
+                    .add_and_make_primary(StoredAccount::Offline { username: username.clone() });
                 let save = self.save_credentials();
                 self.account = Some(Account::Offline { username });
                 self.login.update(LoginMessage::Reset);
                 // The canonical Steve face — fetched from Mojang's own
                 // profile service for the "Steve" account.
-                let auth = self.auth.clone();
-                let face_task = Task::perform(
-                    async move { auth.fetch_default_steve_face().await.map_err(|error| error.to_string()) },
-                    |result| LodestoneAppMessage::FaceReady(result),
-                );
-                let entered = self.enter_launcher();
-                Task::batch([save, face_task, entered])
+                let face_task = self.face_task();
+                let destination = self.signed_in_destination();
+                Task::batch([save, face_task, destination])
             }
             LoginMessage::DemoMode => {
                 info!("Entering offline mode as Demo Player");
                 let username = "Demo Player".to_string();
-                self.credentials.offline_username = Some(username.clone());
+                self.credentials
+                    .add_and_make_primary(StoredAccount::Offline { username: username.clone() });
                 let save = self.save_credentials();
                 self.account = Some(Account::Offline { username });
                 self.login.update(LoginMessage::Reset);
-                let entered = self.enter_launcher();
-                Task::batch([save, entered])
+                let destination = self.signed_in_destination();
+                Task::batch([save, destination])
             }
             LoginMessage::LearnMore => {
                 info!("'Learn more' requested — opening a browser is not wired yet");
@@ -183,18 +172,123 @@ impl LodestoneLauncher {
         }
     }
 
-    /// Boot-time restore: silently re-login a stored Microsoft refresh token
+    /// Boot-time restore: silently re-login the stored Microsoft refresh token of the account that plays by default,
     /// before showing the sign-in card.
     pub(super) fn restore_sign_in(&mut self, username: String, refresh_token: String) -> Task<LodestoneAppMessage> {
         self.auth_generation = self.auth_generation.wrapping_add(1);
         let generation = self.auth_generation;
         info!("Restoring Microsoft sign-in for {username} (generation {generation})");
+        self.restoring = Some(username.clone());
         self.login.update(LoginMessage::Restoring { username });
         let auth = self.auth.clone();
         Task::perform(
             async move { auth.login_with_refresh_token(&refresh_token).await.map_err(|error| error.to_string()) },
             move |result| LodestoneAppMessage::Login(LoginMessage::SignInFinished(generation, result)),
         )
+    }
+
+    /// The page a successful sign-in leads to: the launcher, or the Settings page when the sign-in added an account.
+    fn signed_in_destination(&mut self) -> Task<LodestoneAppMessage> {
+        if std::mem::take(&mut self.adding_account) {
+            self.navigate(Page::Settings)
+        } else {
+            self.enter_launcher()
+        }
+    }
+
+    /// The task that fetches the face of the account in use: its skin, or the vanilla Steve when the profile has none.
+    pub(super) fn face_task(&self) -> Task<LodestoneAppMessage> {
+        let auth = self.auth.clone();
+        let skin_url = match self.account.as_ref() {
+            Some(Account::Microsoft { session }) => session.profile.skin_url.clone(),
+            Some(Account::Offline { .. }) | None => None,
+        };
+        match skin_url {
+            Some(url) => Task::perform(
+                async move { auth.fetch_skin(&url).await.map_err(|error| error.to_string()) },
+                LodestoneAppMessage::FaceReady,
+            ),
+            None => Task::perform(
+                async move { auth.fetch_default_steve_face().await.map_err(|error| error.to_string()) },
+                LodestoneAppMessage::FaceReady,
+            ),
+        }
+    }
+
+    /// Makes the account at `index` the one that plays. An offline profile takes over at once. A Microsoft account logs in
+    /// again with its refresh token first, and takes over once that succeeds.
+    pub(super) fn switch_account(&mut self, index: usize) -> Task<LodestoneAppMessage> {
+        if self.credentials.primary_index() == Some(index) {
+            return Task::none();
+        }
+        let Some(account) = self.credentials.accounts.get(index).cloned() else {
+            return Task::none();
+        };
+        match account {
+            StoredAccount::Offline { username } => {
+                info!("Switching to the offline profile {username}");
+                self.credentials.make_primary(index);
+                self.account = Some(Account::Offline { username });
+                let save = self.save_credentials();
+                Task::batch([save, self.face_task()])
+            }
+            StoredAccount::Microsoft(microsoft) => {
+                info!("Switching to {} (signing in again)", microsoft.username);
+                let auth = self.auth.clone();
+                Task::perform(
+                    async move {
+                        auth.login_with_refresh_token(&microsoft.refresh_token)
+                            .await
+                            .map_err(|error| error.to_string())
+                    },
+                    move |result| LodestoneAppMessage::AccountSwitched(index, result),
+                )
+            }
+        }
+    }
+
+    /// The login a switch started finished. Its refresh token is the one the login produced, and the account plays once
+    /// it is kept. A failed switch says so, and the account that played stays.
+    pub(super) fn account_switched(&mut self, index: usize, result: Result<Session, String>) -> Task<LodestoneAppMessage> {
+        match result {
+            Ok(session) => {
+                info!("Switched to {}", session.profile.name);
+                if let Some(token) = session.refresh_token.clone() {
+                    self.credentials.replace_refresh_token(&session.profile.name, token);
+                }
+                self.credentials.make_primary(index);
+                let save = self.save_credentials();
+                self.account = Some(Account::Microsoft { session });
+                Task::batch([save, self.face_task()])
+            }
+            Err(error) => {
+                warn!("Switching accounts failed: {error}");
+                self.alerts
+                    .show(Alert::warn(lang::t_with("settings.accounts.switch_failed", &[("error", error.as_str())])))
+                    .discard()
+            }
+        }
+    }
+
+    /// Signs the account at `index` out, so it leaves the list. Removing the account that plays hands the launcher to the
+    /// next one, or to the sign-in page when none is left.
+    pub(super) fn remove_account(&mut self, index: usize) -> Task<LodestoneAppMessage> {
+        let was_playing = self.credentials.primary_index() == Some(index);
+        let Some(removed) = self.credentials.remove(index) else {
+            return Task::none();
+        };
+        info!("Signed {} out", removed.username());
+        let save = self.save_credentials();
+        if self.credentials.accounts.is_empty() {
+            self.account = None;
+            self.face = None;
+            return Task::batch([save, self.navigate(Page::Login)]);
+        }
+        if !was_playing {
+            return save;
+        }
+        let next = self.credentials.primary_index().unwrap_or(0);
+        Task::batch([save, self.switch_account(next)])
     }
 
     /// Saves the current credentials without blocking the UI thread. Writes
@@ -231,6 +325,69 @@ impl LodestoneLauncher {
             self.write_credentials()
         } else {
             Task::none()
+        }
+    }
+}
+
+impl LodestoneLauncher {
+    /// Signs a Microsoft account in for the account list: the sign-in page opens, and the sign-in returns to Settings.
+    pub(super) fn add_account(&mut self) -> Task<LodestoneAppMessage> {
+        self.adding_account = true;
+        self.navigate(Page::Login)
+    }
+}
+
+impl LodestoneLauncher {
+    /// Asks before a staged skin is uploaded to the account in use. The answer returns as `SkinUploadConfirmed`.
+    pub(super) fn confirm_skin_upload(&mut self, pending: crate::app::pages::settings::accounts::skins::PendingSkin) -> Task<LodestoneAppMessage> {
+        let message = lang::t_with("settings.skins.upload_message", &[("name", pending.name.as_str())]);
+        self.skin_pending = Some(pending);
+        self.alerts
+            .show(Alert::warn(message).title(lang::t("settings.skins.upload_title")).yes_no())
+            .map(LodestoneAppMessage::SkinUploadConfirmed)
+    }
+
+    /// The answer to the upload question. A yes uploads the staged skin with the Microsoft account's token.
+    pub(super) fn skin_upload_confirmed(&mut self, confirmed: bool) -> Task<LodestoneAppMessage> {
+        let Some(pending) = self.skin_pending.take() else {
+            return Task::none();
+        };
+        if !confirmed {
+            return Task::none();
+        }
+        let Some(Account::Microsoft { session }) = self.account.as_ref() else {
+            return self.alerts.show(Alert::warn(lang::t("settings.skins.needs_microsoft"))).discard();
+        };
+        let token = session.minecraft_token.clone();
+        info!("Uploading the skin {}", pending.name);
+        let png = pending.png.clone();
+        let slim = pending.slim;
+        Task::perform(
+            async move {
+                crate::app::pages::settings::accounts::skins::upload(token, slim, pending.png)
+                    .await
+                    .map(|()| png)
+            },
+            LodestoneAppMessage::SkinUploaded,
+        )
+    }
+
+    /// The upload finished. A new skin takes over the viewer, the sidebar's face, and the account's skin. A failure is
+    /// shown to the player.
+    pub(super) fn skin_uploaded(&mut self, result: Result<Vec<u8>, String>) -> Task<LodestoneAppMessage> {
+        match result {
+            Ok(png) => {
+                info!("The skin was uploaded");
+                self.skin = crate::app::pages::settings::accounts::viewer::Skin::decode(&png).map(std::sync::Arc::new);
+                self.face = crate::app::face::face_from_skin_png(&png).map(iced::widget::image::Handle::from_bytes);
+                Task::none()
+            }
+            Err(error) => {
+                warn!("Uploading the skin failed: {error}");
+                self.alerts
+                    .show(Alert::warn(lang::t_with("settings.skins.upload_failed", &[("error", error.as_str())])))
+                    .discard()
+            }
         }
     }
 }

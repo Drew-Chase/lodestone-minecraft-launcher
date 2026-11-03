@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! PulseDot::new()                       // online
-//! PulseDot::with_color(color::Accents::AMBER).pulsing(false)
+//! PulseDot::with_color(color::amber()).pulsing(false)
 //! ```
 
 use std::time::{Duration, Instant};
@@ -47,7 +47,7 @@ struct State {
 impl PulseDot {
     /// Creates a Lode Green status dot — "online".
     pub fn new() -> Self {
-        Self::with_color(color::Primary::DEFAULT)
+        Self::with_color(color::primary())
     }
 
     /// Creates a status dot in an arbitrary color.
@@ -113,7 +113,7 @@ impl<Message> Widget<Message, Theme, BaseRenderer> for PulseDot {
             return;
         };
 
-        if !self.pulsing {
+        if !self.pulsing || !crate::app::theme::effects::ambient() {
             return;
         }
 
@@ -172,7 +172,7 @@ impl<Message> Widget<Message, Theme, BaseRenderer> for PulseDot {
                 shadow: iced::Shadow {
                     color: anim::fade(self.color, 0.35),
                     offset: iced::Vector::new(0.0, 0.0),
-                    blur_radius: 8.0,
+                    blur_radius: crate::app::theme::blur(8.0),
                 },
                 ..renderer::Quad::default()
             },

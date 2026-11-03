@@ -25,8 +25,8 @@ pub(super) fn view(page: &Discover) -> Element<'_, Message> {
             Text::new(lang::t("discover.title"))
                 .size(24)
                 .font(fonts::Inter::EXTRA_BOLD)
-                .color(color::Text::HEADLINE),
-            Text::new(subtitle).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
+                .color(color::text_headline()),
+            Text::new(subtitle).size(12).font(fonts::Inter::REGULAR).color(color::text_muted()),
         ]
         .spacing(2),
         Space::new().width(Fill),
@@ -54,18 +54,23 @@ fn search_box(page: &Discover) -> Element<'_, Message> {
             .size(13)
             .padding(Padding::new(0.0).left(38).right(84).top(10).bottom(10))
             .width(Length::Fixed(SEARCH_WIDTH)),
-        container(glyph(Icon::lucide().search(), 14.0, color::Text::PLACEHOLDER))
+        container(glyph(Icon::lucide().search(), 14.0, color::text_placeholder()))
             .width(Length::Fixed(SEARCH_WIDTH))
             .height(Fill)
             .align_x(alignment::Horizontal::Left)
             .align_y(alignment::Vertical::Center)
             .padding(Padding::new(0.0).left(14)),
-        container(Text::new(shortcut).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),)
-            .width(Length::Fixed(SEARCH_WIDTH))
-            .height(Fill)
-            .align_x(alignment::Horizontal::Right)
-            .align_y(alignment::Vertical::Center)
-            .padding(Padding::new(0.0).right(12)),
+        container(
+            Text::new(shortcut)
+                .size(11)
+                .font(fonts::JetBrainsMono::REGULAR)
+                .color(color::text_muted()),
+        )
+        .width(Length::Fixed(SEARCH_WIDTH))
+        .height(Fill)
+        .align_x(alignment::Horizontal::Right)
+        .align_y(alignment::Vertical::Center)
+        .padding(Padding::new(0.0).right(12)),
     ]
     .width(Length::Fixed(SEARCH_WIDTH))
     .into()
@@ -79,7 +84,7 @@ pub(super) fn source_row(page: &Discover) -> Element<'_, Message> {
         Text::new(lang::t("discover.source"))
             .size(10)
             .font(fonts::JetBrainsMono::SEMI_BOLD)
-            .color(color::Text::PLACEHOLDER),
+            .color(color::text_placeholder()),
         row(chips).spacing(8).align_y(alignment::Vertical::Center),
         Space::new().width(Fill),
         status(page),
@@ -95,11 +100,11 @@ fn source_chip(page: &Discover, source: Source) -> Element<'_, Message> {
     let active = page.source == source;
     let enabled = source.enabled();
     let ink = if !enabled {
-        color::Text::DISABLED
+        color::text_disabled()
     } else if active {
-        color::Primary::DEFAULT
+        color::primary()
     } else {
-        color::Text::MUTED
+        color::text_muted()
     };
     let content = row![
         platform_logo::logo(source.logo(), 14.0),
@@ -117,11 +122,11 @@ fn source_chip(page: &Discover, source: Source) -> Element<'_, Message> {
         .on_press(Message::SourceSelected(source));
     container(button)
         .style(move |_| container::Style {
-            background: if active { Some(Background::Color(color::Primary::TINT)) } else { None },
+            background: if active { Some(Background::Color(color::primary_tint())) } else { None },
             border: iced::Border {
                 radius: 999.0.into(),
                 width: 1.0,
-                color: if active { color::Primary::GLOW } else { color::Surface::LINE },
+                color: if active { color::primary_glow() } else { color::surface_line() },
             },
             ..container::Style::default()
         })
@@ -138,7 +143,7 @@ fn status(page: &Discover) -> Element<'_, Message> {
     Text::new(text)
         .size(11)
         .font(fonts::JetBrainsMono::REGULAR)
-        .color(color::Text::PLACEHOLDER)
+        .color(color::text_placeholder())
         .into()
 }
 
@@ -156,11 +161,11 @@ fn tab(page: &Discover, content: ContentType) -> Element<'_, Message> {
     let supported = page.source.supports(content);
     let active = page.content == content;
     let ink = if !supported {
-        color::Text::DISABLED
+        color::text_disabled()
     } else if active {
-        color::Primary::DEFAULT
+        color::primary()
     } else {
-        color::Text::MUTED
+        color::text_muted()
     };
     let label = container(
         Text::new(tab_label(content))
@@ -177,11 +182,7 @@ fn tab(page: &Discover, content: ContentType) -> Element<'_, Message> {
         .disabled(!supported)
         .on_press(Message::ContentSelected(content));
     let underline = container(Space::new().width(Fill).height(2)).style(move |_| container::Style {
-        background: if active {
-            Some(Background::Color(color::Primary::DEFAULT))
-        } else {
-            None
-        },
+        background: if active { Some(Background::Color(color::primary())) } else { None },
         ..container::Style::default()
     });
     let bar = container(underline).width(Fill).height(Fill).align_y(alignment::Vertical::Bottom);

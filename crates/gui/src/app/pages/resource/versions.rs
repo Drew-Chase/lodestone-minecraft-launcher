@@ -41,7 +41,7 @@ pub(super) fn view<'a>(page: &'a ResourcePage, status: &ProjectStatus) -> Elemen
             Text::new(lang::t("resource.versions.none"))
                 .size(13)
                 .font(fonts::Inter::REGULAR)
-                .color(color::Text::MUTED)
+                .color(color::text_muted())
                 .into(),
         );
     }
@@ -99,7 +99,7 @@ fn filters<'a>(page: &'a ResourcePage, count: usize) -> Element<'a, Message> {
         Text::new(lang::t_with("resource.versions.count", &[("count", count.to_string().as_str())]))
             .size(12)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::MUTED)
+            .color(color::text_muted())
             .into(),
     );
     row(controls).spacing(8).align_y(alignment::Vertical::Center).width(Fill).into()
@@ -111,7 +111,7 @@ fn table_header<'a>() -> Element<'a, Message> {
         Text::new(lang::t(text))
             .size(10)
             .font(fonts::JetBrainsMono::SEMI_BOLD)
-            .color(color::Text::PLACEHOLDER)
+            .color(color::text_placeholder())
             .width(width)
     };
     row![
@@ -150,11 +150,11 @@ fn table_row<'a>(page: &'a ResourcePage, status: &ProjectStatus, index: usize, v
     };
     let line = row![
         column![
-            Text::new(name).size(14).font(fonts::Inter::SEMI_BOLD).color(color::Text::HEADLINE),
+            Text::new(name).size(14).font(fonts::Inter::SEMI_BOLD).color(color::text_headline()),
             Text::new(version.version_number.as_str())
                 .size(11)
                 .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::Text::PLACEHOLDER),
+                .color(color::text_placeholder()),
         ]
         .spacing(2)
         .width(Fill),
@@ -163,12 +163,12 @@ fn table_row<'a>(page: &'a ResourcePage, status: &ProjectStatus, index: usize, v
         Text::new(date_only(version.date.as_deref()))
             .size(12)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::MUTED)
+            .color(color::text_muted())
             .width(Length::Fixed(DATE_WIDTH)),
         Text::new(short_count(version.downloads))
             .size(12)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::MUTED)
+            .color(color::text_muted())
             .width(Length::Fixed(COUNT_WIDTH)),
         container(action).width(Length::Fixed(ACTION_WIDTH)).align_x(alignment::Horizontal::Right),
     ]

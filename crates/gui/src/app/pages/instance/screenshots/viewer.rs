@@ -15,7 +15,7 @@ use super::strip;
 use super::{Action, Key, Message, State, menu};
 use crate::app::components::IconButton;
 use crate::app::components::hint::hint;
-use crate::app::components::icon_button::SECONDARY_BUTTON_STYLE;
+use crate::app::components::icon_button::secondary_button_style;
 use crate::app::components::screenshot_tile::placeholder_art;
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
@@ -144,12 +144,12 @@ fn top_bar(state: &State, index: usize) -> Element<'_, Message> {
     let path = shot.path.clone();
     let caption = format!("{} · {}", shot.file_name, shot.size_label);
     row![
-        Text::new(caption).size(12).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),
+        Text::new(caption).size(12).font(fonts::JetBrainsMono::REGULAR).color(color::text_muted()),
         Space::new().width(Fill),
         Text::new(counter(index, state.shots().len()))
             .size(12)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::PLACEHOLDER),
+            .color(color::text_placeholder()),
         tool(
             Icon::lucide().copy(),
             lang::t("instance.screenshots.viewer.copy"),
@@ -196,7 +196,7 @@ fn tool(glyph: &'static str, label: &'static str, message: Message) -> Element<'
             .size(32.0)
             .icon_size(14.0)
             .radius(9.0)
-            .style(SECONDARY_BUTTON_STYLE)
+            .style(secondary_button_style())
             .on_press(message),
         label,
     )
@@ -208,7 +208,7 @@ fn step(index: usize, total: usize, movement: Move, glyph: &'static str) -> Elem
         .size(44.0)
         .icon_size(18.0)
         .radius(14.0)
-        .style(SECONDARY_BUTTON_STYLE)
+        .style(secondary_button_style())
         .disabled(!can_move(index, total, movement))
         .on_press(Message::Move(movement))
         .into()

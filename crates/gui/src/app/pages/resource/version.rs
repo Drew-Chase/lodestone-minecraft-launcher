@@ -29,14 +29,14 @@ pub(super) fn view<'a>(page: &'a ResourcePage, index: usize, version: &'a Conten
         Text::new(name)
             .size(24)
             .font(fonts::Inter::EXTRA_BOLD)
-            .color(color::Text::HEADLINE)
+            .color(color::text_headline())
             .into(),
     ];
     let mut numbers = vec![
         Text::new(version.version_number.as_str())
             .size(12)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::MUTED)
+            .color(color::text_muted())
             .into(),
     ];
     if let Some(channel) = version.channel {
@@ -89,7 +89,7 @@ fn changes<'a>(page: &'a ResourcePage, index: usize) -> Element<'a, Message> {
         None => text(lang::t("resource.changes_none"))
             .size(13)
             .font(fonts::Inter::REGULAR)
-            .color(color::Text::MUTED)
+            .color(color::text_muted())
             .into(),
     }
 }
@@ -98,12 +98,12 @@ fn changes<'a>(page: &'a ResourcePage, index: usize) -> Element<'a, Message> {
 /// load or when there are none.
 fn contents<'a>(page: &'a ResourcePage) -> Element<'a, Message> {
     match &page.contents {
-        Load::Loading => text(lang::t("resource.loading")).size(13).color(color::Text::MUTED).into(),
+        Load::Loading => text(lang::t("resource.loading")).size(13).color(color::text_muted()).into(),
         Load::Failed(error) => text(lang::t_with("resource.error", &[("error", error.as_str())]))
             .size(13)
-            .color(color::Text::MUTED)
+            .color(color::text_muted())
             .into(),
-        Load::Loaded(projects) if projects.is_empty() => text(lang::t("resource.contents_none")).size(13).color(color::Text::MUTED).into(),
+        Load::Loaded(projects) if projects.is_empty() => text(lang::t("resource.contents_none")).size(13).color(color::text_muted()).into(),
         Load::Loaded(projects) => column(projects.iter().map(|project| {
             let number = project.version_number.clone().unwrap_or_default();
             row![
@@ -112,8 +112,8 @@ fn contents<'a>(page: &'a ResourcePage) -> Element<'a, Message> {
                     Text::new(project.name.as_str())
                         .size(13)
                         .font(fonts::Inter::SEMI_BOLD)
-                        .color(color::Text::HEADLINE),
-                    Text::new(number).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),
+                        .color(color::text_headline()),
+                    Text::new(number).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::text_muted()),
                 ]
                 .spacing(2),
             ]
@@ -133,7 +133,7 @@ fn files<'a>(version: &'a ContentVersion) -> Element<'a, Message> {
             Text::new(file.name.as_str())
                 .size(12)
                 .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::Text::DEFAULT)
+                .color(color::text_default())
                 .width(Fill)
                 .into(),
         ];
@@ -141,13 +141,13 @@ fn files<'a>(version: &'a ContentVersion) -> Element<'a, Message> {
             Text::new(file.size.map(size_label).unwrap_or_default())
                 .size(12)
                 .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::Text::MUTED)
+                .color(color::text_muted())
                 .width(Length::Fixed(SIZE_WIDTH))
                 .into(),
         );
         if file.primary {
             line.push(
-                Badge::new(lang::t("resource.files_primary"), color::Primary::DEFAULT, color::Primary::TINT)
+                Badge::new(lang::t("resource.files_primary"), color::primary(), color::primary_tint())
                     .compact()
                     .into(),
             );
@@ -161,9 +161,9 @@ fn files<'a>(version: &'a ContentVersion) -> Element<'a, Message> {
 /// A channel's badge. A release is lit, and the others are dimmed.
 fn channel_badge<'a>(channel: Channel) -> Element<'a, Message> {
     let (label, ink, fill) = match channel {
-        Channel::Release => (lang::t("resource.channel.release"), color::Primary::DEFAULT, color::Primary::TINT),
-        Channel::Beta => (lang::t("resource.channel.beta"), color::Text::MUTED, color::Surface::BG3),
-        Channel::Alpha => (lang::t("resource.channel.alpha"), color::Text::MUTED, color::Surface::BG3),
+        Channel::Release => (lang::t("resource.channel.release"), color::primary(), color::primary_tint()),
+        Channel::Beta => (lang::t("resource.channel.beta"), color::text_muted(), color::surface_bg3()),
+        Channel::Alpha => (lang::t("resource.channel.alpha"), color::text_muted(), color::surface_bg3()),
     };
     Badge::new(label, ink, fill).compact().into()
 }

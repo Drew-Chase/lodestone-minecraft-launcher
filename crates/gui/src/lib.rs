@@ -26,8 +26,8 @@ pub fn run() -> Result<()> {
         .font(FontFamily::jetbrains_mono().semi_bold())
         .subscription(LodestoneLauncher::subscription)
         .style(|_app, _theme| iced::theme::Style {
-            text_color: color::Text::DEFAULT,
-            background_color: color::Surface::APPLICATION,
+            text_color: color::text_default(),
+            background_color: color::surface_application(),
         })
         .run()?;
     Ok(())

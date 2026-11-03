@@ -59,11 +59,11 @@ impl Badge {
 /// The ink and tinted fill a mod loader is drawn with.
 pub fn loader_palette(loader: Loader) -> (Color, Color) {
     match loader {
-        Loader::Vanilla => (color::Primary::DEFAULT, color::Primary::TINT),
-        Loader::Fabric => (color::Accents::VIOLET_LIGHT, color::Accents::VIOLET_TINT),
-        Loader::Forge => (color::Accents::AMBER, color::Accents::AMBER_TINT),
-        Loader::Quilt => (color::Accents::CYAN, color::Accents::CYAN_TINT),
-        Loader::NeoForge => (color::Accents::PINK, color::Accents::PINK_TINT),
+        Loader::Vanilla => (color::primary(), color::primary_tint()),
+        Loader::Fabric => (color::violet_light(), color::violet_tint()),
+        Loader::Forge => (color::amber(), color::amber_tint()),
+        Loader::Quilt => (color::cyan(), color::cyan_tint()),
+        Loader::NeoForge => (color::pink(), color::pink_tint()),
     }
 }
 

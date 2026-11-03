@@ -14,7 +14,7 @@ use crate::app::components::anim;
 use crate::app::components::badge::Badge;
 use crate::app::components::context_menu::ContextMenu;
 use crate::app::components::hover_scale::HoverScale;
-use crate::app::components::icon_button::SECONDARY_BUTTON_STYLE;
+use crate::app::components::icon_button::secondary_button_style;
 use crate::app::components::instance_card::{art_shade, stat};
 use crate::app::components::screenshot_tile::placeholder_art;
 use crate::app::components::{Dropdown, IconButton, TextButton};
@@ -77,9 +77,9 @@ pub struct WorldLabels {
 /// The dot and label colour a game mode is drawn in.
 fn mode_ink(mode: GameMode) -> Color {
     match mode {
-        GameMode::Survival => color::Primary::DEFAULT,
-        GameMode::Creative => color::Accents::CYAN,
-        GameMode::Adventure => color::Accents::VIOLET_LIGHT,
+        GameMode::Survival => color::primary(),
+        GameMode::Creative => color::cyan(),
+        GameMode::Adventure => color::violet_light(),
         GameMode::Hardcore => HARDCORE,
     }
 }
@@ -109,14 +109,14 @@ pub fn world_card<Message: Clone + 'static>(
     let body = container(column![
         banner(world, &labels),
         container(Space::new().width(Fill).height(1)).style(|_| container::Style {
-            background: Some(Background::Color(color::Surface::LINE)),
+            background: Some(Background::Color(color::surface_line())),
             ..container::Style::default()
         }),
         footer(world, &menu, Rc::clone(&messages.menu), messages.play),
     ])
     .width(Fill)
     .height(Length::Fixed(CARD_HEIGHT))
-    .style(|_| card_panel(color::Surface::LINE));
+    .style(|_| card_panel(color::surface_line()));
 
     // The hover grows the press area, so hit-testing follows the grown card. The menu wraps the growth, so the
     // menu itself does not grow.
@@ -124,7 +124,7 @@ pub fn world_card<Message: Clone + 'static>(
         .on_enter(messages.enter)
         .on_exit(messages.exit)
         .interaction(mouse::Interaction::Pointer);
-    let grown = HoverScale::new(pressable, hovered).ring(CARD_CORNER, anim::fade(color::Primary::DEFAULT, 0.6));
+    let grown = HoverScale::new(pressable, hovered).ring(CARD_CORNER, anim::fade(color::primary(), 0.6));
     context(grown, world, menu, messages.menu)
 }
 
@@ -135,7 +135,7 @@ pub fn table_header<Message: 'static>() -> Element<'static, Message> {
             Text::new(label)
                 .size(10)
                 .font(fonts::JetBrainsMono::SEMI_BOLD)
-                .color(color::Text::PLACEHOLDER),
+                .color(color::text_placeholder()),
         )
         .width(width)
     };
@@ -166,14 +166,10 @@ pub fn table_row<Message: Clone + 'static>(
     let title = Text::new(world.name.clone())
         .size(14)
         .font(fonts::Inter::SEMI_BOLD)
-        .color(color::Text::HEADLINE);
+        .color(color::text_headline());
     let mut name_line: Row<'static, Message> = Row::new().spacing(6).align_y(alignment::Vertical::Center).push(title);
     if labels.pinned {
-        name_line = name_line.push(utility::icon(
-            Icon::lucide().pin(),
-            11.0,
-            Some((color::Primary::DEFAULT, color::Primary::DEFAULT)),
-        ));
+        name_line = name_line.push(utility::icon(Icon::lucide().pin(), 11.0, Some((color::primary(), color::primary()))));
     }
     if world.backed_up {
         name_line = name_line.push(backed_up_badge());
@@ -186,14 +182,14 @@ pub fn table_row<Message: Clone + 'static>(
                 Text::new(labels.subtitle)
                     .size(10)
                     .font(fonts::JetBrainsMono::REGULAR)
-                    .color(color::Text::PLACEHOLDER),
+                    .color(color::text_placeholder()),
             ]
             .spacing(2)
             .width(Fill),
             container(mode_line(world)).width(Length::Fixed(COL_MODE)),
             container(seed_and_version(world)).width(Length::Fixed(COL_SEED)),
             container(stats_line(world)).width(Length::Fixed(COL_STATS)),
-            Text::new(last_played).size(12).color(color::Text::MUTED).width(Length::Fixed(COL_LAST)),
+            Text::new(last_played).size(12).color(color::text_muted()).width(Length::Fixed(COL_LAST)),
             container(
                 row![kebab(&menu, Rc::clone(&messages.menu)), load_button(messages.play),]
                     .spacing(6)
@@ -260,7 +256,7 @@ fn badges<Message: 'static>(world: &WorldFile, pinned: bool) -> Element<'static,
     let mut items: Vec<Element<'static, Message>> = Vec::new();
     if pinned {
         items.push(
-            Badge::new(lang::t("worlds.badge.pinned"), color::Primary::DEFAULT, color::Primary::TINT)
+            Badge::new(lang::t("worlds.badge.pinned"), color::primary(), color::primary_tint())
                 .compact()
                 .into(),
         );
@@ -274,7 +270,7 @@ fn badges<Message: 'static>(world: &WorldFile, pinned: bool) -> Element<'static,
 
 /// The BACKED UP badge, shown while a zip of the save is in the instance's `backups/`.
 pub fn backed_up_badge<Message: 'static>() -> Element<'static, Message> {
-    Badge::new(lang::t("worlds.badge.backed_up"), color::Accents::CYAN, color::Accents::CYAN_TINT)
+    Badge::new(lang::t("worlds.badge.backed_up"), color::cyan(), color::cyan_tint())
         .compact()
         .into()
 }
@@ -285,11 +281,11 @@ fn name_block<Message: 'static>(world: &WorldFile, labels: &WorldLabels) -> Elem
         Text::new(world.name.clone())
             .size(15)
             .font(fonts::Inter::EXTRA_BOLD)
-            .color(color::Text::HEADLINE),
+            .color(color::text_headline()),
         Text::new(labels.subtitle.clone())
             .size(11)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::MUTED),
+            .color(color::text_muted()),
     ]
     .spacing(2)
     .into()
@@ -306,7 +302,7 @@ fn footer<Message: Clone + 'static>(
         .size(BUTTON_SIZE)
         .radius(9.0)
         .icon_size(13.0)
-        .style(SECONDARY_BUTTON_STYLE)
+        .style(secondary_button_style())
         .disabled(world.seed.is_none())
         .on_press(on_select(Some(Action::CopySeed)));
     column![
@@ -330,7 +326,7 @@ fn mode_line<Message: 'static>(world: &WorldFile) -> Element<'static, Message> {
             Text::new(mode.label())
                 .size(10)
                 .font(fonts::JetBrainsMono::SEMI_BOLD)
-                .color(color::Text::HEADLINE),
+                .color(color::text_headline()),
         );
     }
     if let Some(label) = world.difficulty.map(Difficulty::label) {
@@ -338,7 +334,7 @@ fn mode_line<Message: 'static>(world: &WorldFile) -> Element<'static, Message> {
             Text::new(format!("· {label}"))
                 .size(10)
                 .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::Text::PLACEHOLDER),
+                .color(color::text_placeholder()),
         );
     }
     line.into()
@@ -383,7 +379,7 @@ fn seed_field<Message: 'static>(world: &WorldFile) -> Element<'static, Message> 
         Text::new(seed)
             .size(11)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::PLACEHOLDER),
+            .color(color::text_placeholder()),
     )
     .width(Fill)
     .height(BUTTON_SIZE)
@@ -394,7 +390,7 @@ fn seed_field<Message: 'static>(world: &WorldFile) -> Element<'static, Message> 
         border: Border {
             radius: 9.0.into(),
             width: 1.0,
-            color: color::Surface::LINE,
+            color: color::surface_line(),
         },
         ..container::Style::default()
     })
@@ -408,11 +404,11 @@ fn seed_and_version<Message: 'static>(world: &WorldFile) -> Element<'static, Mes
         None => lang::t("worlds.seed_none").to_owned(),
     };
     column![
-        Text::new(seed).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),
+        Text::new(seed).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::text_muted()),
         Text::new(world.version.clone().unwrap_or_default())
             .size(10)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::PLACEHOLDER),
+            .color(color::text_placeholder()),
     ]
     .spacing(2)
     .into()

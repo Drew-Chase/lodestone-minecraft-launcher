@@ -91,7 +91,9 @@ where
     ) {
         // Ambient loops never settle — keep the frame loop alive while the
         // backdrop is mounted. It unmounts with the login page.
-        shell.request_redraw();
+        if crate::app::theme::effects::ambient() {
+            shell.request_redraw();
+        }
     }
 
     fn draw(
@@ -109,7 +111,11 @@ where
         if bounds.width <= 0.0 || bounds.height <= 0.0 {
             return;
         }
-        let t = state.start.elapsed().as_secs_f32();
+        let t = if crate::app::theme::effects::ambient() {
+            state.start.elapsed().as_secs_f32()
+        } else {
+            0.0
+        };
 
         // TEMPORARY resize-latency probe — log the first draw at each size.
         let size_key = (bounds.width as u32, bounds.height as u32);
@@ -195,6 +201,9 @@ impl<'a, Message: 'static> From<LoginBackdrop> for Element<'a, Message, Theme, B
 /// Draws one aurora blob at its cycle position. The drawn size is fixed
 /// (quantized); the cycle animates position and opacity only.
 fn draw_blob(renderer: &mut BaseRenderer, bounds: Rectangle, sprite: &Handle, center: Point, size: f32, phase: f32) {
+    if !crate::app::theme::effects::aurora() {
+        return;
+    }
     let (dx, dy, _scale) = aurora_offset(phase);
     let center = center + Vector::new(dx * size / 1300.0, dy * size / 1300.0);
     // Opacity breathes with the cycle — the CSS `scale(1 → 1.1 → 0.95)`
@@ -238,6 +247,9 @@ use iced::Vector;
 /// Draws one ember (`Particles` + CSS `drift`) — a sprite, so it layers
 /// above the scene and wash textures.
 fn draw_ember(renderer: &mut BaseRenderer, bounds: Rectangle, i: usize, t: f32, factor: f32) {
+    if !crate::app::theme::effects::particles() {
+        return;
+    }
     let (left_pct, base_size, delay, dur) = ember_layout(i);
     let p = ((t + delay) / dur) % 1.0;
 

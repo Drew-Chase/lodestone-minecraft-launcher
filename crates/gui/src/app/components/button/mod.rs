@@ -41,7 +41,9 @@ const GHOST_PADDING: Padding = Padding {
 };
 
 /// The destructive red — the danger palette's hover fill.
-const DANGER: Color = color::buttons::Danger::BACKGROUND_HOVER;
+fn danger() -> Color {
+    color::buttons::danger_background_hover()
+}
 
 /// The visual treatment of a text button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -141,8 +143,8 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
     /// An icon followed by a label — the Import and New world style buttons.
     pub fn labeled_icon(icon: &'static str, label: impl Into<String>, variant: Variant) -> Self {
         let (ink, padding) = match variant {
-            Variant::Primary => (color::Primary::ON, PRIMARY_PADDING),
-            _ => (color::Text::DEFAULT, GHOST_PADDING),
+            Variant::Primary => (color::primary_on(), PRIMARY_PADDING),
+            _ => (color::text_default(), GHOST_PADDING),
         };
         Self::content(
             iced::widget::row![

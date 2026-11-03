@@ -49,7 +49,7 @@ pub fn photo_tile<'a, M: 'a>(thumbnail: Option<&Handle>, caption: Caption<'a>, h
             border: Border {
                 radius: RADIUS.into(),
                 width: if framed { 1.0 } else { 0.0 },
-                color: color::Surface::LINE,
+                color: color::surface_line(),
             },
             ..container::Style::default()
         })
@@ -62,7 +62,7 @@ pub fn placeholder_art<'a, M: 'a>(radius: f32) -> Element<'a, M> {
     container(utility::icon(
         Icon::lucide().image(),
         18.0,
-        Some((color::Text::PLACEHOLDER, color::Text::PLACEHOLDER)),
+        Some((color::text_placeholder(), color::text_placeholder())),
     ))
     .width(Fill)
     .height(Fill)
@@ -107,13 +107,13 @@ fn caption_layer<'a, M: 'a>(caption: Caption<'a>) -> Element<'a, M> {
 fn footer_bar<'a, M: 'a>(name: &'a str, size: &'a str) -> Element<'a, M> {
     container(
         row![
-            utility::icon(Icon::lucide().image(), 11.0, Some((color::Text::PLACEHOLDER, color::Text::PLACEHOLDER))),
-            Text::new(name).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),
+            utility::icon(Icon::lucide().image(), 11.0, Some((color::text_placeholder(), color::text_placeholder()))),
+            Text::new(name).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::text_muted()),
             Space::new().width(Fill),
             Text::new(size)
                 .size(11)
                 .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::Text::PLACEHOLDER),
+                .color(color::text_placeholder()),
         ]
         .spacing(8)
         .align_y(alignment::Vertical::Center),

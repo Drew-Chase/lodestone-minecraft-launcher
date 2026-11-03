@@ -23,7 +23,7 @@ pub fn panel<'a, M: 'a>(content: impl Into<Element<'a, M>>) -> Element<'a, M> {
 
 /// A panel with the given padding and the hairline border.
 pub fn panel_with_padding<'a, M: 'a>(content: impl Into<Element<'a, M>>, padding: impl Into<Padding>) -> Element<'a, M> {
-    bordered_panel(content, padding, color::Surface::LINE)
+    bordered_panel(content, padding, color::surface_line())
 }
 
 /// A panel whose border is `border` — the danger zone draws a red one.
@@ -69,7 +69,7 @@ pub fn hairline<'a, M: 'a>() -> Element<'a, M> {
     container(Space::new().width(Fill).height(1))
         .width(Fill)
         .style(|_| container::Style {
-            background: Some(Background::Color(color::Surface::LINE)),
+            background: Some(Background::Color(color::surface_line())),
             ..container::Style::default()
         })
         .into()

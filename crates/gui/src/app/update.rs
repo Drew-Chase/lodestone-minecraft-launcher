@@ -7,7 +7,6 @@ use crate::app::face;
 use crate::app::lang;
 use crate::app::launch::GameMessage;
 use crate::app::launch::pidfile;
-use crate::app::launch_settings::{LaunchChange, LaunchDefaults};
 use crate::app::pages::Page;
 use crate::app::pages::instance::Message as InstanceMessage;
 use crate::app::pages::instance::Tab;
@@ -18,10 +17,12 @@ use crate::app::pages::library::Message as LibraryMessage;
 use crate::app::pages::library::instance::Instance;
 use crate::app::pages::login::Message as LoginMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
+use crate::app::pages::settings::accounts::AccountAction;
+use crate::app::pages::settings::accounts::SkinAction;
 use crate::app::pages::showcase::Message as ShowcaseMessage;
 use crate::app::pages::worlds::Message as WorldsMessage;
 use crate::app::perf;
-use crate::app::preferences::Preferences;
+use crate::app::preferences::{Preferences, SettingsValues};
 use crate::app::world_actions::WorldMessage;
 use iced::widget::image;
 use iced::{Size, Task, window};
@@ -171,7 +172,16 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::Reinstall)) => self.reinstall_instance(),
             LodestoneAppMessage::InstanceSaved { instance, result } => self.instance_saved(instance, result),
             LodestoneAppMessage::InstanceResetAnswered { instance, confirmed } => self.instance_reset_answered(instance, confirmed),
-            LodestoneAppMessage::DefaultsSaved(result) => self.defaults_saved(result),
+            LodestoneAppMessage::SettingsSaved(result) => self.settings_saved(result),
+            LodestoneAppMessage::VersionsPrefetched(result) => self.versions_prefetched(result),
+            LodestoneAppMessage::AccountSwitched(index, result) => self.account_switched(index, result),
+            LodestoneAppMessage::SkinUploadConfirmed(confirmed) => self.skin_upload_confirmed(confirmed),
+            LodestoneAppMessage::LocalDataAnswered(confirmed) => self.local_data_answered(confirmed),
+            LodestoneAppMessage::SkinUploaded(result) => self.skin_uploaded(result),
+            LodestoneAppMessage::SpeedTick => {
+                self.speed.tick(lodestone_net::bytes_received());
+                Task::none()
+            }
             LodestoneAppMessage::ReinstallFinished { job, result } => self.reinstall_finished(job, result),
             // The page's game controls act on the instance it shows.
             LodestoneAppMessage::Instance(InstanceMessage::Launch) => self.current_game(GameMessage::Launch),
@@ -273,7 +283,16 @@ impl LodestoneLauncher {
             // Only `Navigate` exists today; when the page grows more
             // variants, add the delegation arm per the `pages` contract.
             LodestoneAppMessage::Settings(SettingsMessage::Navigate(page)) => self.navigate(page),
-            LodestoneAppMessage::Settings(SettingsMessage::Change(change)) => self.change_defaults(change),
+            LodestoneAppMessage::Settings(SettingsMessage::Save) => self.save_settings(),
+            LodestoneAppMessage::Settings(SettingsMessage::OpenInstancesFolder) => super::instances::reveal_folder(self.paths.instances()),
+            LodestoneAppMessage::Settings(SettingsMessage::OpenDataFolder) => super::instances::reveal_folder(self.paths.root()),
+            LodestoneAppMessage::Settings(SettingsMessage::ClearLocalData) => self.ask_clear_local_data(),
+            LodestoneAppMessage::Settings(SettingsMessage::Skin(SkinAction::OpenFolder)) => super::instances::reveal_folder(self.paths.skins()),
+            LodestoneAppMessage::Settings(SettingsMessage::Account(action)) => match action {
+                AccountAction::MakePrimary(index) => self.switch_account(index),
+                AccountAction::SignOut(index) => self.remove_account(index),
+                AccountAction::Add => self.add_account(),
+            },
             LodestoneAppMessage::Settings(message) => self.settings.update(message).map(LodestoneAppMessage::Settings),
             LodestoneAppMessage::Showcase(ShowcaseMessage::Navigate(page)) => self.navigate(page),
             // Every page's language picker routes through the same handler.
@@ -287,14 +306,19 @@ impl LodestoneLauncher {
                 group: NavGroup::Top,
                 index: 0,
             } => self.navigate(Page::Home),
+            LodestoneAppMessage::SidebarNav {
+                group: NavGroup::Bottom,
+                index: 0,
+            } => self.navigate(Page::Settings),
             LodestoneAppMessage::SidebarNav { group, index } => {
                 debug!("Sidebar nav item {group:?}#{index} has no page yet");
                 Task::none()
             }
             LodestoneAppMessage::FaceReady(Ok(skin_png)) => {
+                self.skin = crate::app::pages::settings::accounts::viewer::Skin::decode(&skin_png).map(std::sync::Arc::new);
                 self.face = face::face_from_skin_png(&skin_png)
                     .and_then(|face| face::expanded_avatar(&face))
-                    .and_then(|expanded| Some(image::Handle::from_rgba(face::AVATAR_SIZE as u32, face::AVATAR_SIZE as u32, expanded)));
+                    .map(|expanded| image::Handle::from_rgba(face::AVATAR_SIZE as u32, face::AVATAR_SIZE as u32, expanded));
                 Task::none()
             }
             LodestoneAppMessage::FaceReady(Err(error)) => {
@@ -386,43 +410,49 @@ impl LodestoneLauncher {
         Task::perform(read_instances(db, self.paths.instances()), LodestoneAppMessage::InstancesLoaded)
     }
 
-    /// Opens the Settings page: its lists load, and it shows the launch defaults as they are now.
+    /// Opens the Settings page: its lists load, and its draft starts from the saved values.
     pub(super) fn open_settings(&mut self) -> Task<LodestoneAppMessage> {
-        self.settings.sync(&self.launch_defaults);
+        self.settings.sync(&self.settings_values, &self.paths);
         self.settings.open().map(LodestoneAppMessage::Settings)
     }
 
-    /// Applies a change to a global default, saves the defaults, and shows them on the instance page, which inherits them.
-    pub(super) fn change_defaults(&mut self, change: LaunchChange) -> Task<LodestoneAppMessage> {
-        self.launch_defaults.apply(change);
-        self.settings.sync(&self.launch_defaults);
+    /// Commits the Settings page's draft. The values become the saved ones, the palette and the instance pages follow
+    /// them, and the write runs in the background.
+    pub(super) fn save_settings(&mut self) -> Task<LodestoneAppMessage> {
+        let values = self.settings.commit();
+        values.apply();
+        self.settings_values = values.clone();
         self.refresh_instance_page();
-        match self.defaults_saves.request(DEFAULTS_KEY, self.launch_defaults.clone()) {
-            Some(defaults) => write_defaults(defaults),
+        let save = match self.settings_saves.request(SETTINGS_KEY, values) {
+            Some(values) => write_settings(values),
             None => Task::none(),
+        };
+        match self.settings.take_staged() {
+            Some(skin) => Task::batch([save, self.confirm_skin_upload(skin)]),
+            None => save,
         }
     }
 
-    /// Finishes a write of the defaults. The newest defaults that arrived during it are written next. A failed write is
-    /// logged, and the defaults stay as the page shows them.
-    pub(super) fn defaults_saved(&mut self, result: Result<(), String>) -> Task<LodestoneAppMessage> {
+    /// Finishes a write of the settings. The newest values that arrived during it are written next. A failed write is
+    /// logged, and the values stay as the page shows them.
+    pub(super) fn settings_saved(&mut self, result: Result<(), String>) -> Task<LodestoneAppMessage> {
         if let Err(error) = &result {
-            warn!("Saving the instance defaults failed: {error}");
+            warn!("Saving the settings failed: {error}");
         }
-        self.defaults_saves.complete(&DEFAULTS_KEY).map_or_else(Task::none, write_defaults)
+        self.settings_saves.complete(&SETTINGS_KEY).map_or_else(Task::none, write_settings)
     }
 }
 
-/// The key the instance defaults are saved under. There is one set of defaults, so one write at a time.
-const DEFAULTS_KEY: &str = "defaults";
+/// The key the settings are saved under. There is one set of values, so one write at a time.
+const SETTINGS_KEY: &str = "settings";
 
-/// Writes the instance defaults into the preferences, keeping the rest of the file as it is.
-fn write_defaults(defaults: LaunchDefaults) -> Task<LodestoneAppMessage> {
+/// Writes the settings into the preferences, keeping the language and the Discover platform as the file has them.
+fn write_settings(values: SettingsValues) -> Task<LodestoneAppMessage> {
     Task::perform(
         async move {
             match tokio::task::spawn_blocking(move || {
                 let mut preferences = Preferences::load();
-                preferences.instance_defaults = defaults;
+                preferences.settings = values;
                 preferences.store()
             })
             .await
@@ -431,7 +461,7 @@ fn write_defaults(defaults: LaunchDefaults) -> Task<LodestoneAppMessage> {
                 Err(error) => Err(error.to_string()),
             }
         },
-        LodestoneAppMessage::DefaultsSaved,
+        LodestoneAppMessage::SettingsSaved,
     )
 }
 

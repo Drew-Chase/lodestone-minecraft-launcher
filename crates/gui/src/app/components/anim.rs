@@ -20,6 +20,9 @@
 //! | [`micro`] | §08 Micro · 120ms ease                 | toggles, hover tints, chevrons   |
 //! | [`lift`]  | §08 Lift · 200ms cubic-bezier(.2,.7,.3,1) | buttons, cards, menus        |
 //! | [`glide`] | §08 lift family, longer travel         | tab pills, nav indicator, fills  |
+//!
+//! The Appearance tab can turn animations off, or set reduce motion. A preset then
+//! runs in one millisecond, so a change lands on the next frame.
 
 use std::time::Duration;
 
@@ -27,26 +30,37 @@ use iced::Color;
 use iced_anim::transition::bezier::Bezier;
 use iced_anim::transition::{Curve, Easing};
 
+use crate::app::theme::effects;
+
+/// How long a preset runs: its own length while animations run, and one millisecond when they are off.
+fn timing(millis: u64) -> Duration {
+    if effects::animations() {
+        Duration::from_millis(millis)
+    } else {
+        Duration::from_millis(1)
+    }
+}
+
 /// Micro interactions — near-instant response, tiny travel (§08 "Micro").
 pub fn micro() -> Easing {
-    Easing::EASE_OUT.with_duration(Duration::from_millis(120))
+    Easing::EASE_OUT.with_duration(timing(120))
 }
 
 /// Lift — hover elevation and popover entrances (§08 "Lift · 200ms
 /// cubic-bezier(.2,.7,.3,1)"). The guide's exact curve.
 pub fn lift() -> Easing {
-    Easing::new(Curve::Bezier(Bezier::new(0.2, 0.7, 0.3, 1.0))).with_duration(Duration::from_millis(200))
+    Easing::new(Curve::Bezier(Bezier::new(0.2, 0.7, 0.3, 1.0))).with_duration(timing(200))
 }
 
 /// Glide — longer travels: the tab pill, nav indicator and progress fill.
 pub fn glide() -> Easing {
-    Easing::EASE_IN_OUT.with_duration(Duration::from_millis(300))
+    Easing::EASE_IN_OUT.with_duration(timing(300))
 }
 
 /// Menus — dropdown/select open and close (§08 Lift family). Fast fade and
 /// slide; time-based so a popover always lands exactly, at any frame rate.
 pub fn menu() -> Easing {
-    Easing::EASE_OUT.with_duration(Duration::from_millis(180))
+    Easing::EASE_OUT.with_duration(timing(180))
 }
 
 /// Multiplies a color's alpha — used for fades (menu open/close, pulse rings).

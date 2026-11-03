@@ -86,7 +86,7 @@ pub fn modal(editor: &BannerEditor) -> Element<'_, Message> {
     let caption = Text::new(caption_text(editor))
         .size(12)
         .font(fonts::Inter::MEDIUM)
-        .color(color::Text::MUTED);
+        .color(color::text_muted());
 
     let rows: Vec<Element<'_, Message>> = (0..=banner::SCENE_COUNT)
         .step_by(COLUMNS)
@@ -101,7 +101,7 @@ pub fn modal(editor: &BannerEditor) -> Element<'_, Message> {
     let body = column![preview, caption, grid].spacing(12);
     Modal::new(lang::t("banner.title"), body)
         .subtitle(lang::t("banner.subtitle"))
-        .icon(Icon::lucide().image(), color::Primary::DEFAULT, color::Primary::TINT)
+        .icon(Icon::lucide().image(), color::primary(), color::primary_tint())
         .footer(footer())
         .on_close(Message::Cancel)
         .width(WIDTH)
@@ -156,11 +156,11 @@ fn upload_cell(editor: &BannerEditor) -> Element<'_, Message> {
 /// The face of the upload tile before an image is chosen.
 fn placeholder<'a>() -> Element<'a, Message> {
     let face = column![
-        glyph(Icon::lucide().upload(), 16.0, color::Text::MUTED),
+        glyph(Icon::lucide().upload(), 16.0, color::text_muted()),
         Text::new(lang::t("banner.upload"))
             .size(11)
             .font(fonts::Inter::SEMI_BOLD)
-            .color(color::Text::MUTED),
+            .color(color::text_muted()),
     ]
     .spacing(6)
     .align_x(alignment::Horizontal::Center);
@@ -182,11 +182,11 @@ fn footer<'a>() -> Element<'a, Message> {
         Space::new().width(Fill),
         TextButton::content(
             row![
-                glyph(Icon::lucide().x(), 13.0, color::Text::DEFAULT),
+                glyph(Icon::lucide().x(), 13.0, color::text_default()),
                 Text::new(lang::t("common.cancel"))
                     .size(13)
                     .font(fonts::Inter::SEMI_BOLD)
-                    .color(color::Text::DEFAULT),
+                    .color(color::text_default()),
             ]
             .spacing(8)
             .align_y(alignment::Vertical::Center),
@@ -196,11 +196,11 @@ fn footer<'a>() -> Element<'a, Message> {
         .on_press(Message::Cancel),
         TextButton::content(
             row![
-                glyph(Icon::lucide().save(), 14.0, color::Primary::ON),
+                glyph(Icon::lucide().save(), 14.0, color::primary_on()),
                 Text::new(lang::t("banner.save"))
                     .size(13)
                     .font(fonts::Inter::BOLD)
-                    .color(color::Primary::ON),
+                    .color(color::primary_on()),
             ]
             .spacing(8)
             .align_y(alignment::Vertical::Center),

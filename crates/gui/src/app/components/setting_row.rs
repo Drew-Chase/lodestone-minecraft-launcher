@@ -11,7 +11,7 @@ use iced_color_extension::rgb;
 
 /// A row label in the default ink.
 pub fn label<'a>(text: impl Into<String>) -> Text<'a> {
-    Text::new(text.into()).size(13).font(fonts::Inter::MEDIUM).color(color::Text::DEFAULT)
+    Text::new(text.into()).size(13).font(fonts::Inter::MEDIUM).color(color::text_default())
 }
 
 /// A row with only a label on the left and its control on the right.
@@ -30,7 +30,7 @@ pub fn described_setting<'a, M: 'a>(name: impl Into<String>, description: impl I
             Text::new(description.into())
                 .size(11)
                 .font(fonts::Inter::REGULAR)
-                .color(color::Text::MUTED),
+                .color(color::text_muted()),
         ]
         .spacing(3),
         Space::new().width(Fill),
@@ -55,13 +55,13 @@ pub fn section_header<'a, M: 'a>(icon: &'static str, tint: Color, title: &'stati
                 border: Border {
                     radius: 6.0.into(),
                     width: 1.0,
-                    color: color::Surface::LINE,
+                    color: color::surface_line(),
                 },
                 ..container::Style::default()
             }),
         column![
-            Text::new(title).size(13).font(fonts::Inter::SEMI_BOLD).color(color::Text::HEADLINE),
-            Text::new(subtitle).size(11).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
+            Text::new(title).size(13).font(fonts::Inter::SEMI_BOLD).color(color::text_headline()),
+            Text::new(subtitle).size(11).font(fonts::Inter::REGULAR).color(color::text_muted()),
         ]
         .spacing(2),
     ]

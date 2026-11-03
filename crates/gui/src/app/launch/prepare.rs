@@ -87,7 +87,7 @@ pub fn prepare(request: Request) -> impl Sipper<Result<Prepared, String>, Progre
 /// The stages, in order.
 async fn run(request: Request, progress: &mut ProgressSender<Progress>) -> Result<Prepared, String> {
     let Request { paths, target, account } = request;
-    let client = reqwest::Client::new();
+    let client = lodestone_net::client();
     let identity = identity_for(&account);
     let mc = target.mc_version.as_str();
     let settings = &target.settings;

@@ -27,7 +27,7 @@ pub(super) fn mono(content: impl Into<String>, size: f32) -> Text<'static> {
     Text::new(content.into())
         .font(fonts::JetBrainsMono::REGULAR)
         .size(size)
-        .color(palette::Text::PLACEHOLDER)
+        .color(palette::text_placeholder())
 }
 
 /// An SVG icon from a lucide markup string. The tint supplies the color
@@ -54,7 +54,7 @@ pub(super) fn rule() -> Element<'static, Message> {
     container(Space::new().height(1).width(Fill))
         .width(Fill)
         .style(|_| container::Style {
-            background: Some(Background::Color(palette::Surface::LINE)),
+            background: Some(Background::Color(palette::surface_line())),
             ..container::Style::default()
         })
         .into()
@@ -67,7 +67,7 @@ pub(super) fn rule_under_link(visible: bool) -> Element<'static, Message> {
     container(Space::new().height(1).width(119))
         .width(119)
         .style(move |_| container::Style {
-            background: Some(Background::Color(if visible { palette::Text::HEADLINE } else { Color::TRANSPARENT })),
+            background: Some(Background::Color(if visible { palette::text_headline() } else { Color::TRANSPARENT })),
             ..container::Style::default()
         })
         .into()

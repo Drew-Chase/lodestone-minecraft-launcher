@@ -321,11 +321,11 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
             };
             (fill, Color::TRANSPARENT, 0.0)
         } else if !self.interactive() {
-            (rgb!(255, 255, 255, 2%), color::Surface::LINE, 1.0)
+            (rgb!(255, 255, 255, 2%), color::surface_line(), 1.0)
         } else if lifted {
-            (rgb!(255, 255, 255, 6%), color::Surface::LINE_STRONG, 1.0)
+            (rgb!(255, 255, 255, 6%), color::surface_line_strong(), 1.0)
         } else {
-            (rgb!(255, 255, 255, 4%), color::Surface::LINE, 1.0)
+            (rgb!(255, 255, 255, 4%), color::surface_line(), 1.0)
         };
         renderer.fill_quad(
             renderer::Quad {
@@ -356,7 +356,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
                 handle: Handle::from_memory(markup.as_bytes()),
                 opacity: 0.68,
                 rotation: Radians(0.0),
-                color: Some(color::Text::MUTED),
+                color: Some(color::text_muted()),
             };
             let icon_bounds = Rectangle::new(
                 Point::new(bounds.x + left, bounds.center_y() - LEADING_SIZE / 2.0),
@@ -388,9 +388,9 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
             },
             Point::new(bounds.x + left + leading, label_y),
             if self.has_value() {
-                color::Text::DEFAULT
+                color::text_default()
             } else {
-                color::Text::PLACEHOLDER
+                color::text_placeholder()
             },
             *viewport,
         );
@@ -408,7 +408,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
                     },
                     ..renderer::Quad::default()
                 },
-                color::Primary::TINT,
+                color::primary_tint(),
             );
             // iced centres aligned text on its anchor point, so the badge text starts at its inset rather than
             // being centred on the pill's left edge, where it drew over the number.
@@ -425,7 +425,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
                     wrapping: text::Wrapping::None,
                 },
                 Point::new(x + BADGE_PADDING, label_y),
-                color::Primary::DEFAULT,
+                color::primary(),
                 *viewport,
             );
         }
@@ -444,7 +444,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
                     wrapping: text::Wrapping::default(),
                 },
                 Point::new(bounds.x + left + leading, bounds.center_y() + CAPTION_OFFSET),
-                color::Text::MUTED,
+                color::text_muted(),
                 *viewport,
             );
         }
@@ -454,7 +454,7 @@ impl<Message: 'static> Widget<Message, Theme, BaseRenderer> for Select<'_, Messa
             handle: Handle::from_memory(Icon::lucide().chevron_down().as_bytes()),
             opacity: 1.0,
             rotation: Radians(*state.chevron.value()),
-            color: Some(color::Text::MUTED),
+            color: Some(color::text_muted()),
         };
         let chevron_bounds = Rectangle::new(
             Point::new(bounds.x + bounds.width - right - chevron_size, bounds.center_y() - chevron_size / 2.0),

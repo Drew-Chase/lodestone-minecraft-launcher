@@ -116,7 +116,7 @@ pub fn sidebar<'a>(active: Section, inherited: usize) -> Element<'a, Message> {
 
 /// One sidebar entry: its glyph and label, lit green when its section is the active one.
 fn entry<'a>(section: Section, active: bool) -> Element<'a, Message> {
-    let ink = if active { color::Primary::DEFAULT } else { color::Text::MUTED };
+    let ink = if active { color::primary() } else { color::text_muted() };
     container(
         TextButton::content(
             row![
@@ -133,7 +133,7 @@ fn entry<'a>(section: Section, active: bool) -> Element<'a, Message> {
     )
     .width(Fill)
     .style(move |_| container::Style {
-        background: active.then_some(Background::Color(color::Primary::TINT)),
+        background: active.then_some(Background::Color(color::primary_tint())),
         border: Border {
             radius: 10.0.into(),
             ..Border::default()
@@ -150,14 +150,14 @@ fn note<'a>(count: usize) -> Element<'a, Message> {
             Text::new(lang::t("instance.settings.inherited_label"))
                 .size(10)
                 .font(fonts::JetBrainsMono::SEMI_BOLD)
-                .color(color::Text::PLACEHOLDER),
+                .color(color::text_placeholder()),
             Text::new(lang::t_with(
                 "instance.settings.inherited",
                 &[("settings", lang::t_count("instance.settings_count", count).as_str())],
             ))
             .size(11)
             .font(fonts::Inter::REGULAR)
-            .color(color::Text::MUTED)
+            .color(color::text_muted())
             .line_height(1.5),
         ]
         .spacing(8),
@@ -169,7 +169,7 @@ fn note<'a>(count: usize) -> Element<'a, Message> {
         border: Border {
             radius: 12.0.into(),
             width: 1.0,
-            color: color::Surface::LINE,
+            color: color::surface_line(),
         },
         ..container::Style::default()
     })

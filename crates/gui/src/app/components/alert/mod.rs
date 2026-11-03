@@ -65,11 +65,11 @@ impl Kind {
     /// The glyph ink and the tile fill.
     pub fn palette(self) -> (Color, Color) {
         match self {
-            Kind::Info => (color::Accents::CYAN, color::Accents::CYAN_TINT),
-            Kind::Warning => (color::Accents::AMBER, color::Accents::AMBER_TINT),
-            Kind::Error => (color::Accents::PINK, color::Accents::PINK_TINT),
+            Kind::Info => (color::cyan(), color::cyan_tint()),
+            Kind::Warning => (color::amber(), color::amber_tint()),
+            Kind::Error => (color::pink(), color::pink_tint()),
             Kind::Danger => {
-                let red = color::buttons::Danger::BACKGROUND_HOVER;
+                let red = color::buttons::danger_background_hover();
                 (red, Color { a: 0.14, ..red })
             }
         }

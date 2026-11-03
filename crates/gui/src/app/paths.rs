@@ -19,6 +19,16 @@ impl LauncherPaths {
         Self { root: root.into() }
     }
 
+    /// The launcher's data root, which holds the folders below.
+    pub fn root(&self) -> PathBuf {
+        self.root.clone()
+    }
+
+    /// The folder saved skins live in: `<root>/skins`.
+    pub fn skins(&self) -> PathBuf {
+        self.root.join("skins")
+    }
+
     /// Every instance folder: `<root>/instances`.
     pub fn instances(&self) -> PathBuf {
         self.root.join("instances")

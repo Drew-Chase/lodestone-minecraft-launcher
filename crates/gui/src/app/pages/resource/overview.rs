@@ -61,7 +61,7 @@ fn text_line<'a>(line: impl Into<String>) -> Element<'a, Message> {
     text(line.into())
         .size(14)
         .font(fonts::Inter::REGULAR)
-        .color(color::Text::DEFAULT)
+        .color(color::text_default())
         .width(Fill)
         .into()
 }

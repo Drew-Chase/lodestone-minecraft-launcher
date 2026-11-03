@@ -36,24 +36,24 @@ fn state_with(text_bounds: Vec<Rectangle>) -> State {
 #[test]
 fn ink_follows_active_and_hover() {
     let tabs = tabs();
-    assert_eq!(tabs.ink(0, None), color::Primary::ON);
-    assert_eq!(tabs.ink(1, None), color::Text::MUTED);
-    assert_eq!(tabs.ink(1, Some(1)), color::Text::HEADLINE);
+    assert_eq!(tabs.ink(0, None), color::primary_on());
+    assert_eq!(tabs.ink(1, None), color::text_muted());
+    assert_eq!(tabs.ink(1, Some(1)), color::text_headline());
 }
 
 #[test]
 fn underline_ink_is_green_on_the_active_tab_only() {
     let tabs = Tabs::<()>::new(["Overview", "Mods"]).underline().on_select(|_| ());
-    assert_eq!(tabs.ink(0, None), color::Primary::DEFAULT);
-    assert_eq!(tabs.ink(1, None), color::Text::MUTED);
-    assert_eq!(tabs.ink(1, Some(1)), color::Text::HEADLINE);
+    assert_eq!(tabs.ink(0, None), color::primary());
+    assert_eq!(tabs.ink(1, None), color::text_muted());
+    assert_eq!(tabs.ink(1, Some(1)), color::text_headline());
 }
 
 #[test]
 fn disabled_overrides_everything() {
     let tabs = tabs().disabled(true);
     for index in 0..3 {
-        assert_eq!(tabs.ink(index, Some(index)), color::Text::DISABLED);
+        assert_eq!(tabs.ink(index, Some(index)), color::text_disabled());
     }
 }
 

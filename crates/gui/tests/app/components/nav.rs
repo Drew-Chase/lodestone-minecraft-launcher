@@ -7,9 +7,9 @@ fn rail() -> NavRail<()> {
 #[test]
 fn icon_colors_follow_state() {
     let rail = rail();
-    assert_eq!(rail.icon_color(0, None), color::Primary::DEFAULT);
-    assert_eq!(rail.icon_color(1, None), color::Text::PLACEHOLDER);
-    assert_eq!(rail.icon_color(1, Some(1)), color::Text::HEADLINE);
+    assert_eq!(rail.icon_color(0, None), color::primary());
+    assert_eq!(rail.icon_color(1, None), color::text_placeholder());
+    assert_eq!(rail.icon_color(1, Some(1)), color::text_headline());
 }
 
 #[test]

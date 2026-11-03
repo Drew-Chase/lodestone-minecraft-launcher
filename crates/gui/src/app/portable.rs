@@ -21,7 +21,6 @@ use crate::app::install::modpack::Payload;
 use crate::app::install::{IconSource, InstallRequest};
 use crate::app::lang;
 use crate::app::mod_sources::stem;
-use crate::app::pages::Page;
 use crate::app::pages::discover::Source;
 use crate::app::pages::library::instance::{Biome, Instance, Loader};
 use crate::app::pages::library::new_instance::naming;
@@ -156,7 +155,8 @@ impl LodestoneLauncher {
     /// Enters the launcher after a sign-in. A portable launcher starts its launch; the others open the library.
     pub(super) fn enter_launcher(&mut self) -> Task<LodestoneAppMessage> {
         // Every launcher leaves the sign-in page. A portable one then shows its own page rather than the library.
-        self.router.replace(Page::Home);
+        self.router
+            .replace(crate::app::pages::settings::startup_page(self.settings_values.startup_page));
         if self.portable.is_some() {
             return self.start_portable();
         }
@@ -313,7 +313,7 @@ impl LodestoneLauncher {
             Text::new(portable.manifest.name.clone())
                 .size(26)
                 .font(fonts::Inter::BOLD)
-                .color(color::Text::HEADLINE),
+                .color(color::text_headline()),
             Text::new(format!(
                 "{} · {}",
                 portable.manifest.minecraft,
@@ -321,9 +321,9 @@ impl LodestoneLauncher {
             ))
             .size(11)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::MUTED),
+            .color(color::text_muted()),
             ProgressBar::new(bar.unwrap_or(0.0)).indeterminate(bar.is_none()).width(Fill),
-            Text::new(status).size(13).font(fonts::Inter::REGULAR).color(color::Text::DEFAULT),
+            Text::new(status).size(13).font(fonts::Inter::REGULAR).color(color::text_default()),
         ]
         .spacing(14)
         .align_x(alignment::Horizontal::Center)

@@ -13,6 +13,7 @@ mod instances;
 mod lang;
 mod launch;
 pub mod launch_settings;
+mod local_data;
 mod message;
 mod mod_actions;
 mod mod_sources;
@@ -40,7 +41,6 @@ pub mod writes;
 use crate::app::components::Alerts;
 use crate::app::database::Database;
 use crate::app::instances::InstanceSave;
-use crate::app::launch_settings::LaunchDefaults;
 use crate::app::pages::discover::Discover;
 use crate::app::pages::instance::InstancePage;
 use crate::app::pages::library::Library;
@@ -49,6 +49,7 @@ use crate::app::pages::resource::ResourcePage;
 use crate::app::pages::settings::Settings;
 use crate::app::pages::showcase::Showcase;
 use crate::app::paths::LauncherPaths;
+use crate::app::preferences::SettingsValues;
 use crate::app::router::Router;
 use crate::app::storage::{CredentialWriter, StoredCredentials};
 use crate::app::titlebar::Titlebar;
@@ -132,12 +133,24 @@ pub struct LodestoneLauncher {
     credentials: StoredCredentials,
     /// Keeps the background credential writes in order (see `auth.rs`).
     credential_writer: CredentialWriter,
-    /// The launch settings every instance inherits until it overrides one. Loaded with the preferences at boot.
-    launch_defaults: LaunchDefaults,
+    /// The values the Settings page saved: the launch defaults every instance inherits, and the rest of the page. Loaded with the preferences at boot.
+    settings_values: SettingsValues,
     /// Keeps the saves of each instance's row in order, one write in flight per instance.
     instance_saves: KeyedWriter<String, InstanceSave>,
-    /// Keeps the saves of the global defaults in order.
-    defaults_saves: KeyedWriter<&'static str, LaunchDefaults>,
+    /// Keeps the saves of the Settings page in order.
+    settings_saves: KeyedWriter<&'static str, SettingsValues>,
+    /// The Minecraft version list fetched at launch, which New Instance opens with. `None` until the fetch lands.
+    game_versions: Option<std::sync::Arc<crate::app::install::catalog::Releases>>,
+    /// The download speed the Network tab shows, sampled once a second.
+    speed: crate::app::pages::settings::network::speed::Meter,
+    /// The Microsoft account a restore at launch is signing in, so a failed restore drops it.
+    restoring: Option<String>,
+    /// Whether the sign-in page was opened to add an account, so a sign-in returns to Settings.
+    adding_account: bool,
+    /// The skin in use, decoded for the viewer, which the Accounts tab shows.
+    skin: Option<std::sync::Arc<crate::app::pages::settings::accounts::viewer::Skin>>,
+    /// The skin staged for upload while the upload is confirmed.
+    skin_pending: Option<crate::app::pages::settings::accounts::skins::PendingSkin>,
     auth: Authentication,
     /// Bumped on every new/abandoned sign-in so results from stale polls
     /// (cancelled or superseded) are dropped when they arrive.
@@ -195,9 +208,15 @@ impl Default for LodestoneLauncher {
             account: None,
             credentials: StoredCredentials::load(),
             credential_writer: CredentialWriter::default(),
-            launch_defaults: LaunchDefaults::default(),
+            settings_values: SettingsValues::default(),
             instance_saves: KeyedWriter::default(),
-            defaults_saves: KeyedWriter::default(),
+            settings_saves: KeyedWriter::default(),
+            game_versions: None,
+            speed: Default::default(),
+            restoring: None,
+            adding_account: false,
+            skin: None,
+            skin_pending: None,
             auth: Authentication::new(AZURE_CLIENT_ID),
             auth_generation: 0,
             face: None,

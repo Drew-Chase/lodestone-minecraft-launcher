@@ -181,7 +181,7 @@ fn row_of<'a, M: 'a>(name: impl Into<String>, hint: Option<String>, control: imp
     }
     let mut text = column![title].spacing(3);
     if let Some(hint) = hint {
-        text = text.push(Text::new(hint).size(11).font(fonts::Inter::REGULAR).color(color::Text::MUTED));
+        text = text.push(Text::new(hint).size(11).font(fonts::Inter::REGULAR).color(color::text_muted()));
     }
     row![text, Space::new().width(Fill), control.into()]
         .spacing(16)
@@ -196,7 +196,7 @@ fn inherited_tag<'a, M: 'a>() -> Element<'a, M> {
         Text::new(lang::t("instance.settings.inherited_label"))
             .size(9)
             .font(fonts::JetBrainsMono::SEMI_BOLD)
-            .color(color::Text::MUTED),
+            .color(color::text_muted()),
     )
     .padding(Padding::new(0.0).left(6).right(6).top(2).bottom(2))
     .style(|_| container::Style {
@@ -204,7 +204,7 @@ fn inherited_tag<'a, M: 'a>() -> Element<'a, M> {
         border: Border {
             radius: 6.0.into(),
             width: 1.0,
-            color: color::Surface::LINE,
+            color: color::surface_line(),
         },
         ..container::Style::default()
     })
@@ -235,6 +235,20 @@ pub fn machine_memory_gb() -> u32 {
     u32::try_from(gb).unwrap_or(u32::MAX).max(MIN_MEMORY_GB)
 }
 
+/// The garbage collector row, which the Java & Memory tab shows under its memory.
+pub fn collector_row<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(LaunchChange) -> M + Clone + 'a) -> Element<'a, M> {
+    let collector_index = Collector::ALL.iter().position(|collector| *collector == shown.values.collector);
+    let collector = Select::new(COLLECTOR_LABELS, collector_index)
+        .on_select(move |index| on(LaunchChange::Collector(Collector::ALL[index])))
+        .width(200);
+    row_of(
+        lang::t("instance.settings.garbage_collector"),
+        Some(lang::t("instance.settings.garbage_collector_hint").to_owned()),
+        collector,
+        shown.inherits(Field::Collector),
+    )
+}
+
 /// The Java runtime, memory, collector and JVM argument rows.
 pub fn java_memory<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(LaunchChange) -> M + Clone + 'a) -> Element<'a, M> {
     let choices = shown.java.choices();
@@ -260,7 +274,7 @@ pub fn java_memory<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(LaunchC
         Text::new(lang::t_with("instance.settings.gigabytes", &[("gb", gb.to_string().as_str())]))
             .size(12)
             .font(fonts::JetBrainsMono::SEMI_BOLD)
-            .color(color::Primary::DEFAULT),
+            .color(color::primary()),
     ]
     .spacing(14)
     .align_y(alignment::Vertical::Center);
@@ -315,13 +329,13 @@ pub fn java_memory<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(LaunchC
     )
 }
 
-/// The launch mode, resolution, and the two window toggles.
-pub fn window<'a, M: Clone + 'static>(
+/// The launch mode and the resolution rows. General shows them, and it keeps the window toggles as selects of its own.
+pub fn display_rows<'a, M: Clone + 'static>(
     shown: Shown<'a>,
     draft: &ResolutionDraft,
     on: impl Fn(LaunchChange) -> M + Clone + 'a,
     on_resolution: impl Fn(Axis, String) -> M + Clone + 'a,
-) -> Element<'a, M> {
+) -> Vec<Element<'a, M>> {
     let on_mode = on.clone();
     let mode = segmented(
         &[
@@ -336,43 +350,51 @@ pub fn window<'a, M: Clone + 'static>(
     let valid = parse_dimension(&width).is_some() && parse_dimension(&height).is_some();
     let resolution = row![
         dimension_input(width, valid, on_resolution.clone(), Axis::Width),
-        Text::new("×").size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
+        Text::new("×").size(12).font(fonts::Inter::REGULAR).color(color::text_muted()),
         dimension_input(height, valid, on_resolution, Axis::Height),
     ]
     .spacing(10)
     .align_y(alignment::Vertical::Center);
 
+    vec![
+        row_of(
+            lang::t("instance.settings.launch_mode_label"),
+            None,
+            mode,
+            shown.inherits(Field::LaunchMode),
+        ),
+        row_of(
+            lang::t("instance.settings.resolution"),
+            None,
+            resolution,
+            shown.inherits(Field::Resolution),
+        ),
+    ]
+}
+
+/// The launch mode, resolution, and the two window toggles.
+pub fn window<'a, M: Clone + 'static>(
+    shown: Shown<'a>,
+    draft: &ResolutionDraft,
+    on: impl Fn(LaunchChange) -> M + Clone + 'a,
+    on_resolution: impl Fn(Axis, String) -> M + Clone + 'a,
+) -> Element<'a, M> {
     let hide = shown.values.hide_launcher;
     let quit = shown.values.quit_after_exit;
-    divided_panel(
-        vec![
-            row_of(
-                lang::t("instance.settings.launch_mode_label"),
-                None,
-                mode,
-                shown.inherits(Field::LaunchMode),
-            ),
-            row_of(
-                lang::t("instance.settings.resolution"),
-                None,
-                resolution,
-                shown.inherits(Field::Resolution),
-            ),
-            row_of(
-                lang::t("instance.settings.hide_launcher"),
-                Some(lang::t("instance.settings.hide_launcher_hint").to_owned()),
-                toggle(hide, on.clone(), LaunchChange::HideLauncher),
-                shown.inherits(Field::HideLauncher),
-            ),
-            row_of(
-                lang::t("instance.settings.quit_after_exit"),
-                None,
-                toggle(quit, on, LaunchChange::QuitAfterExit),
-                shown.inherits(Field::QuitAfterExit),
-            ),
-        ],
-        panel_padding(),
-    )
+    let mut rows = display_rows(shown, draft, on.clone(), on_resolution);
+    rows.push(row_of(
+        lang::t("instance.settings.hide_launcher"),
+        Some(lang::t("instance.settings.hide_launcher_hint").to_owned()),
+        toggle(hide, on.clone(), LaunchChange::HideLauncher),
+        shown.inherits(Field::HideLauncher),
+    ));
+    rows.push(row_of(
+        lang::t("instance.settings.quit_after_exit"),
+        None,
+        toggle(quit, on, LaunchChange::QuitAfterExit),
+        shown.inherits(Field::QuitAfterExit),
+    ));
+    divided_panel(rows, panel_padding())
 }
 
 /// A width or height field: digits only, outlined red while the pair is not a valid resolution.
@@ -382,7 +404,7 @@ fn dimension_input<'a, M: Clone + 'static>(value: String, valid: bool, on: impl 
         .style(move |theme, status| {
             let mut style = input::style(theme, status);
             if !valid {
-                style.border.color = color::buttons::Danger::BACKGROUND_HOVER;
+                style.border.color = color::buttons::danger_background_hover();
             }
             style
         })
@@ -393,8 +415,13 @@ fn dimension_input<'a, M: Clone + 'static>(value: String, valid: bool, on: impl 
         .into()
 }
 
-/// The game-arguments row.
+/// The game-arguments row, in a panel of its own.
 pub fn launch_args<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(LaunchChange) -> M + Clone + 'a) -> Element<'a, M> {
+    divided_panel(launch_arg_rows(shown, on), panel_padding())
+}
+
+/// The game-arguments row.
+pub fn launch_arg_rows<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(LaunchChange) -> M + Clone + 'a) -> Vec<Element<'a, M>> {
     let arguments = text_input(lang::t("instance.settings.game_arguments_placeholder"), &shown.values.game_args)
         .on_input(move |text| on(LaunchChange::GameArgs(text)))
         .style(input::style)
@@ -402,19 +429,22 @@ pub fn launch_args<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(LaunchC
         .size(13)
         .padding(Padding::new(0.0).left(12).right(12).top(8).bottom(8))
         .width(360);
-    divided_panel(
-        vec![row_of(
-            lang::t("instance.settings.game_arguments"),
-            Some(lang::t("instance.settings.game_arguments_hint").to_owned()),
-            arguments,
-            shown.inherits(Field::GameArgs),
-        )],
-        panel_padding(),
-    )
+    vec![row_of(
+        lang::t("instance.settings.game_arguments"),
+        Some(lang::t("instance.settings.game_arguments_hint").to_owned()),
+        arguments,
+        shown.inherits(Field::GameArgs),
+    )]
+}
+
+/// The environment, pre-launch hook, logging and integrity rows, in a panel of their own. The environment opens its
+/// editor with `open_env`.
+pub fn advanced<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(LaunchChange) -> M + Clone + 'a, open_env: M) -> Element<'a, M> {
+    divided_panel(advanced_rows(shown, on, open_env), panel_padding())
 }
 
 /// The environment, pre-launch hook, logging and integrity rows. The environment opens its editor with `open_env`.
-pub fn advanced<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(LaunchChange) -> M + Clone + 'a, open_env: M) -> Element<'a, M> {
+pub fn advanced_rows<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(LaunchChange) -> M + Clone + 'a, open_env: M) -> Vec<Element<'a, M>> {
     let count = shown.values.env.len().to_string();
     let environment = TextButton::ghost(lang::t_with("instance.settings.env_set", &[("count", count.as_str())])).on_press(open_env);
     let on_hook = on.clone();
@@ -427,35 +457,32 @@ pub fn advanced<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(LaunchChan
         .width(360);
     let verbose = shown.values.verbose_logging;
     let integrity = shown.values.skip_integrity;
-    divided_panel(
-        vec![
-            row_of(
-                lang::t("instance.settings.env_vars"),
-                Some(lang::t("instance.settings.env_vars_hint").to_owned()),
-                environment,
-                shown.inherits(Field::Env),
-            ),
-            row_of(
-                lang::t("instance.settings.pre_launch_hook"),
-                Some(lang::t("instance.settings.pre_launch_hook_hint").to_owned()),
-                hook,
-                shown.inherits(Field::PreLaunchHook),
-            ),
-            row_of(
-                lang::t("instance.settings.verbose_logging"),
-                Some(lang::t("instance.settings.verbose_logging_hint").to_owned()),
-                toggle(verbose, on.clone(), LaunchChange::VerboseLogging),
-                shown.inherits(Field::VerboseLogging),
-            ),
-            row_of(
-                lang::t("instance.settings.skip_integrity"),
-                Some(lang::t("instance.settings.skip_integrity_hint").to_owned()),
-                toggle(integrity, on, LaunchChange::SkipIntegrity),
-                shown.inherits(Field::SkipIntegrity),
-            ),
-        ],
-        panel_padding(),
-    )
+    vec![
+        row_of(
+            lang::t("instance.settings.env_vars"),
+            Some(lang::t("instance.settings.env_vars_hint").to_owned()),
+            environment,
+            shown.inherits(Field::Env),
+        ),
+        row_of(
+            lang::t("instance.settings.pre_launch_hook"),
+            Some(lang::t("instance.settings.pre_launch_hook_hint").to_owned()),
+            hook,
+            shown.inherits(Field::PreLaunchHook),
+        ),
+        row_of(
+            lang::t("instance.settings.verbose_logging"),
+            Some(lang::t("instance.settings.verbose_logging_hint").to_owned()),
+            toggle(verbose, on.clone(), LaunchChange::VerboseLogging),
+            shown.inherits(Field::VerboseLogging),
+        ),
+        row_of(
+            lang::t("instance.settings.skip_integrity"),
+            Some(lang::t("instance.settings.skip_integrity_hint").to_owned()),
+            toggle(integrity, on, LaunchChange::SkipIntegrity),
+            shown.inherits(Field::SkipIntegrity),
+        ),
+    ]
 }
 
 /// The environment variables editor: one row per variable, a name and a value, with a remove button, and an Add
@@ -472,7 +499,7 @@ pub fn environment_modal<'a, M: Clone + 'static>(vars: &'a [EnvVar], on_edit: im
             .style(move |theme, status| {
                 let mut style = input::style(theme, status);
                 if !name_valid {
-                    style.border.color = color::buttons::Danger::BACKGROUND_HOVER;
+                    style.border.color = color::buttons::danger_background_hover();
                 }
                 style
             })

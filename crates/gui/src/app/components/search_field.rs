@@ -198,7 +198,7 @@ pub(crate) fn draw(renderer: &mut BaseRenderer, field: Rectangle, query: &Query,
             handle: Handle::from_memory(Icon::lucide().search().as_bytes()),
             opacity: 1.0,
             rotation: Radians(0.0),
-            color: Some(anim::fade(color::Text::MUTED, alpha)),
+            color: Some(anim::fade(color::text_muted(), alpha)),
         },
         glyph_bounds,
         field,
@@ -215,9 +215,9 @@ pub(crate) fn draw(renderer: &mut BaseRenderer, field: Rectangle, query: &Query,
     let scroll = (caret_x + CARET_WIDTH - area.width).max(0.0);
     let origin = Point::new(area.x - scroll, field.center_y());
     let (content, ink) = if query.is_empty() {
-        (lang::t("common.search"), color::Text::PLACEHOLDER)
+        (lang::t("common.search"), color::text_placeholder())
     } else {
-        (query.text(), color::Text::DEFAULT)
+        (query.text(), color::text_default())
     };
 
     renderer.with_layer(area, |renderer| {
@@ -247,7 +247,7 @@ pub(crate) fn draw(renderer: &mut BaseRenderer, field: Rectangle, query: &Query,
                     ),
                     ..renderer::Quad::default()
                 },
-                Background::Color(anim::fade(color::Text::DEFAULT, alpha)),
+                Background::Color(anim::fade(color::text_default(), alpha)),
             );
         }
     });

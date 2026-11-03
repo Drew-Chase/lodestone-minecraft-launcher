@@ -70,7 +70,7 @@ fn title_block(instance: &Instance) -> Text<'static> {
     Text::new(instance.name.clone())
         .size(15)
         .font(fonts::Inter::EXTRA_BOLD)
-        .color(color::Text::HEADLINE)
+        .color(color::text_headline())
 }
 
 /// The version · loader line under the name.
@@ -83,7 +83,7 @@ fn version_line(instance: &Instance) -> Text<'static> {
     ))
     .size(11)
     .font(fonts::JetBrainsMono::REGULAR)
-    .color(color::Text::MUTED)
+    .color(color::text_muted())
 }
 
 /// Whole hours of playtime, as the `{hours}h` unit.
@@ -174,7 +174,7 @@ fn install_progress<Message: 'static>(pending: &Pending) -> Element<'static, Mes
         Text::new(install_status(pending))
             .size(11)
             .font(fonts::Inter::SEMI_BOLD)
-            .color(color::Text::HEADLINE),
+            .color(color::text_headline()),
         ProgressBar::new(fraction.unwrap_or(0.0)).indeterminate(fraction.is_none()).width(Fill),
     ]
     .spacing(4)
@@ -210,8 +210,8 @@ pub fn art_shade<Message: 'static>() -> Element<'static, Message> {
 /// share it.
 pub fn status_chip<Message: 'static>(state: InstanceState) -> Element<'static, Message> {
     let (label, ink, fill, pulsing) = match state {
-        InstanceState::Playing => (lang::t("library.status.playing"), color::Primary::DEFAULT, color::Primary::TINT, true),
-        InstanceState::Idle => (lang::t("library.status.idle"), color::Text::MUTED, rgb!(255, 255, 255, 6%), false),
+        InstanceState::Playing => (lang::t("library.status.playing"), color::primary(), color::primary_tint(), true),
+        InstanceState::Idle => (lang::t("library.status.idle"), color::text_muted(), rgb!(255, 255, 255, 6%), false),
     };
     container(
         row![
@@ -284,8 +284,8 @@ fn card_panel(border: Color) -> container::Style {
 /// A footer figure: a muted glyph and its label.
 pub fn stat<Message: 'static>(glyph: &'static str, label: String) -> Element<'static, Message> {
     row![
-        utility::icon(glyph, 12.0, Some((color::Text::MUTED, color::Text::MUTED))),
-        Text::new(label).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),
+        utility::icon(glyph, 12.0, Some((color::text_muted(), color::text_muted()))),
+        Text::new(label).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::text_muted()),
     ]
     .spacing(6)
     .align_y(alignment::Vertical::Center)
@@ -360,14 +360,14 @@ pub fn instance_card<Message: Clone + 'static>(
     let body = container(column![
         art,
         container(Space::new().width(Fill).height(1)).style(|_| container::Style {
-            background: Some(Background::Color(color::Surface::LINE)),
+            background: Some(Background::Color(color::surface_line())),
             ..container::Style::default()
         }),
         card_footer(instance, install),
     ])
     .width(Fill)
     .height(Length::Fixed(CARD_HEIGHT))
-    .style(|_| card_panel(color::Surface::LINE));
+    .style(|_| card_panel(color::surface_line()));
 
     // The hover grows the press area, so hit-testing follows the grown card. The menu wraps the
     // growth, so the menu itself does not grow.
@@ -376,7 +376,7 @@ pub fn instance_card<Message: Clone + 'static>(
         .on_enter(messages.enter)
         .on_exit(messages.exit)
         .interaction(mouse::Interaction::Pointer);
-    let grown = HoverScale::new(pressable, hovered).ring(CARD_CORNER, anim::fade(color::Primary::DEFAULT, 0.6));
+    let grown = HoverScale::new(pressable, hovered).ring(CARD_CORNER, anim::fade(color::primary(), 0.6));
     with_menu(grown, instance, menu, messages.menu)
 }
 
@@ -396,7 +396,7 @@ pub fn compact_row<Message: Clone + 'static>(
                 Text::new(compact_stats(instance))
                     .size(11)
                     .font(fonts::JetBrainsMono::REGULAR)
-                    .color(color::Text::MUTED),
+                    .color(color::text_muted()),
             ]
             .spacing(2),
             Space::new().width(Fill),
@@ -411,7 +411,7 @@ pub fn compact_row<Message: Clone + 'static>(
     .height(Length::Fixed(COMPACT_ROW_HEIGHT))
     .align_y(alignment::Vertical::Center)
     .padding(Padding::new(0.0).left(12).right(12))
-    .style(|_| card_panel(color::Surface::LINE));
+    .style(|_| card_panel(color::surface_line()));
 
     with_menu(
         mouse_area(body).on_press(messages.open).interaction(mouse::Interaction::Pointer),
@@ -436,7 +436,7 @@ pub fn table_header<Message: 'static>() -> Element<'static, Message> {
             Text::new(label)
                 .size(10)
                 .font(fonts::JetBrainsMono::SEMI_BOLD)
-                .color(color::Text::PLACEHOLDER),
+                .color(color::text_placeholder()),
         )
         .width(width)
     };
@@ -469,22 +469,22 @@ pub fn table_row<Message: Clone + 'static>(
                 Text::new(instance.directory_name.clone())
                     .size(10)
                     .font(fonts::JetBrainsMono::REGULAR)
-                    .color(color::Text::PLACEHOLDER),
+                    .color(color::text_placeholder()),
             ]
             .spacing(2)
             .width(Fill),
             Text::new(instance.mc_version.clone())
                 .size(12)
-                .color(color::Text::MUTED)
+                .color(color::text_muted())
                 .width(Length::Fixed(COL_VERSION)),
             container(loader_chip(instance.loader)).width(Length::Fixed(COL_LOADER)),
             Text::new(format!("{}", instance.mod_count))
                 .size(12)
-                .color(color::Text::MUTED)
+                .color(color::text_muted())
                 .width(Length::Fixed(COL_MODS)),
             Text::new(playtime_hours(instance.playtime_seconds))
                 .size(12)
-                .color(color::Text::MUTED)
+                .color(color::text_muted())
                 .width(Length::Fixed(COL_PLAYTIME)),
             container(play_slot(messages.play, install)).width(Length::Fixed(COL_ACTIONS)),
         ]

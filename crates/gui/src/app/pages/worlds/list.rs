@@ -12,7 +12,7 @@ use super::filters::{WorldFilter, WorldView};
 use super::format::format_ago;
 use super::{BackupEntry, Message, State, WorldEntry};
 use crate::app::components::hint::hint;
-use crate::app::components::icon_button::SECONDARY_BUTTON_STYLE;
+use crate::app::components::icon_button::secondary_button_style;
 use crate::app::components::page::content_width;
 use crate::app::components::world_card::{
     BUTTON_SIZE, CARD_HEIGHT, TABLE_ROW_HEIGHT, THUMB_SIZE, WorldLabels, WorldMessages, table_header, table_row, thumbnail, world_card,
@@ -171,7 +171,7 @@ fn backup_row(index: usize, entry: &BackupEntry, state: &State) -> Element<'stat
         .size(BUTTON_SIZE)
         .radius(9.0)
         .icon_size(13.0)
-        .style(SECONDARY_BUTTON_STYLE)
+        .style(secondary_button_style())
         .on_press(Message::World(WorldMessage::Menu {
             instance: entry.instance_id.clone(),
             path: backup.path.parent().unwrap_or(backup.path.as_path()).to_path_buf(),
@@ -192,22 +192,22 @@ fn backup_row(index: usize, entry: &BackupEntry, state: &State) -> Element<'stat
                 Text::new(backup.folder.clone())
                     .size(14)
                     .font(fonts::Inter::SEMI_BOLD)
-                    .color(color::Text::HEADLINE),
+                    .color(color::text_headline()),
                 Text::new(entry.instance_name.clone())
                     .size(10)
                     .font(fonts::JetBrainsMono::REGULAR)
-                    .color(color::Text::PLACEHOLDER),
+                    .color(color::text_placeholder()),
             ]
             .spacing(2)
             .width(Fill),
             Text::new(format_bytes(backup.size_bytes))
                 .size(12)
                 .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::Text::MUTED)
+                .color(color::text_muted())
                 .width(Length::Fixed(BACKUP_COL_SIZE)),
             Text::new(format_ago(backup.taken, state.now.unwrap_or(backup.taken)))
                 .size(12)
-                .color(color::Text::MUTED)
+                .color(color::text_muted())
                 .width(Length::Fixed(BACKUP_COL_WHEN)),
             container(
                 row![restore, hint(open, lang::t("worlds.backups.open_folder"))]
@@ -237,7 +237,7 @@ fn backups_header() -> Element<'static, Message> {
             Text::new(text)
                 .size(10)
                 .font(fonts::JetBrainsMono::SEMI_BOLD)
-                .color(color::Text::PLACEHOLDER),
+                .color(color::text_placeholder()),
         )
         .width(width)
     };
@@ -299,7 +299,7 @@ fn spacer(height: f32) -> Element<'static, Message> {
 
 /// A line of text in place of the list: the loading and the empty states.
 fn note(text: &'static str) -> Element<'static, Message> {
-    container(Text::new(text).size(13).font(fonts::Inter::REGULAR).color(color::Text::MUTED))
+    container(Text::new(text).size(13).font(fonts::Inter::REGULAR).color(color::text_muted()))
         .width(Fill)
         .height(Length::Fixed(NOTE_HEIGHT))
         .align_x(alignment::Horizontal::Center)

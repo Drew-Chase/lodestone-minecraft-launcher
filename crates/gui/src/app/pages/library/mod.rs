@@ -316,9 +316,13 @@ impl Library {
     }
 
     /// Opens the New Instance dialog at `paths`. The task loads the lists it offers.
-    pub fn open_new_instance(&mut self, paths: LauncherPaths) -> Task<Message> {
+    pub fn open_new_instance(
+        &mut self,
+        paths: LauncherPaths,
+        cached: Option<std::sync::Arc<crate::app::install::catalog::Releases>>,
+    ) -> Task<Message> {
         let dialog = NewInstance::new(paths);
-        let load = dialog.load().map(Message::NewInstance);
+        let load = dialog.load(cached).map(Message::NewInstance);
         self.new_instance = Some(dialog);
         load
     }

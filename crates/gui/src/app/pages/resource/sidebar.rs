@@ -128,7 +128,7 @@ fn creators<'a>(page: &'a ResourcePage, creators: &'a [Creator]) -> Element<'a, 
             Text::new(creator.name.as_str())
                 .size(13)
                 .font(fonts::Inter::SEMI_BOLD)
-                .color(color::Text::HEADLINE)
+                .color(color::text_headline())
                 .into(),
         ];
         if let Some(role) = &creator.role {
@@ -136,7 +136,7 @@ fn creators<'a>(page: &'a ResourcePage, creators: &'a [Creator]) -> Element<'a, 
                 Text::new(role.as_str())
                     .size(11)
                     .font(fonts::Inter::REGULAR)
-                    .color(color::Text::MUTED)
+                    .color(color::text_muted())
                     .into(),
             );
         }
@@ -170,12 +170,12 @@ fn facts<'a>(details: &'a ContentDetails) -> Element<'a, Message> {
 /// One fact: its label on the left, and its value on the right.
 fn fact_row<'a>(label: &'static str, value: &str) -> Element<'a, Message> {
     row![
-        Text::new(label).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
+        Text::new(label).size(12).font(fonts::Inter::REGULAR).color(color::text_muted()),
         Space::new().width(Fill),
         Text::new(value.to_string())
             .size(12)
             .font(fonts::Inter::MEDIUM)
-            .color(color::Text::DEFAULT),
+            .color(color::text_default()),
     ]
     .align_y(alignment::Vertical::Center)
     .into()

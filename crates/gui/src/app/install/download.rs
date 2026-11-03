@@ -2,15 +2,30 @@
 //! fetching them in parallel, and reporting how far each part of an install has got.
 
 use std::future::Future;
+use std::sync::atomic::{AtomicU16, Ordering};
 
 use simple_download_utility::{FileDownloadArguments, MultiDownloadProgress, download_multiple_files_with_client};
 use tokio::sync::mpsc;
 
 use crate::app::lang;
 use crate::app::launch::libraries::Item;
+use crate::app::preferences::MAX_CONCURRENT_DOWNLOADS;
 
-/// How many files one download fetches at once.
-pub const PARALLEL: u16 = 64;
+/// The default number of files a download fetches at once.
+pub const PARALLEL: u16 = MAX_CONCURRENT_DOWNLOADS;
+
+/// How many files a download fetches at once. The Settings page sets it, and each download reads it when it starts.
+static CONCURRENCY: AtomicU16 = AtomicU16::new(PARALLEL);
+
+/// Sets how many files a download fetches at once.
+pub fn set_concurrency(count: u16) {
+    CONCURRENCY.store(count, Ordering::Relaxed);
+}
+
+/// How many files a download fetches at once.
+pub fn concurrency() -> u16 {
+    CONCURRENCY.load(Ordering::Relaxed)
+}
 
 /// The parts of an install that run side by side. Each reports its own count of files, and
 /// the install adds them up.
@@ -145,7 +160,7 @@ pub async fn fetch(
                 .await;
         }
     });
-    let result = download_multiple_files_with_client(client.clone(), downloads, PARALLEL, Some(sender)).await;
+    let result = download_multiple_files_with_client(client.clone(), downloads, concurrency(), Some(sender)).await;
     let _ = forward.await;
     result.map_err(|error| error.to_string())
 }
@@ -160,10 +175,13 @@ pub async fn relay<T>(
 ) -> T {
     tokio::pin!(work);
     let mut open = true;
+    let mut received = 0usize;
     loop {
         tokio::select! {
             report = files.recv(), if open => match report {
                 Some(report) => {
+                    lodestone_net::record_bytes(report.bytes_downloaded.saturating_sub(received) as u64);
+                    received = report.bytes_downloaded;
                     let transfer = Transfer::of(&report);
                     let _ = reports
                         .send(PartReport {
@@ -198,7 +216,7 @@ pub async fn fetch_quiet(client: &reqwest::Client, items: Vec<Item>) -> Result<(
             path: item.path.to_string_lossy().into_owned(),
         });
     }
-    download_multiple_files_with_client(client.clone(), downloads, PARALLEL, None)
+    download_multiple_files_with_client(client.clone(), downloads, concurrency(), None)
         .await
         .map_err(|error| error.to_string())
 }

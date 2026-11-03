@@ -42,7 +42,7 @@ impl LodestoneLauncher {
             return Task::none();
         };
         let folder = self.paths.instance(&instance.directory_name);
-        let scan = self.instance_page.show(instance, folder, &self.launch_defaults);
+        let scan = self.instance_page.show(instance, folder, &self.settings_values.instance_defaults);
         let select = self.instance_page.update(InstanceMessage::TabSelected(tab));
         Task::batch([
             self.navigate(Page::Instance),
@@ -114,7 +114,7 @@ impl LodestoneLauncher {
             return;
         };
         if let Some(instance) = self.library.instance(&id) {
-            self.instance_page.refresh(instance, &self.launch_defaults);
+            self.instance_page.refresh(instance, &self.settings_values.instance_defaults);
         }
     }
 

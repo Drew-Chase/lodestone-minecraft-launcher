@@ -27,11 +27,13 @@ const RADIUS: f32 = 24.0;
 /// The dimming over the app behind the modal.
 const SCRIM: Color = rgb!(0, 0, 0, 55%);
 /// The style guide's popover/modal shadow: `0 30px 80px -20px rgba(0,0,0,.8)`.
-const SHADOW: Shadow = Shadow {
-    color: rgb!(0, 0, 0, 80%),
-    offset: Vector::new(0.0, 30.0),
-    blur_radius: 80.0,
-};
+fn shadow() -> Shadow {
+    Shadow {
+        color: rgb!(0, 0, 0, 80%),
+        offset: Vector::new(0.0, 30.0),
+        blur_radius: crate::app::theme::blur(80.0),
+    }
+}
 /// The hairline between the header, body and footer.
 const RULE: f32 = 1.0;
 
@@ -217,10 +219,10 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for Layer<'_, Message>
                     radius: RADIUS.into(),
                     ..Border::default()
                 },
-                shadow: SHADOW,
+                shadow: shadow(),
                 ..renderer::Quad::default()
             },
-            color::Surface::BG3,
+            color::surface_bg3(),
         );
 
         for ((child, state), layout) in self.children.iter().zip(&tree.children).zip(layout.children()) {
@@ -242,7 +244,7 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for Layer<'_, Message>
                     bounds: Rectangle::new(Point::new(card.x, y), Size::new(card.width, RULE)),
                     ..renderer::Quad::default()
                 },
-                color::Surface::LINE,
+                color::surface_line(),
             );
         }
 
@@ -253,7 +255,7 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for Layer<'_, Message>
                 border: Border {
                     radius: RADIUS.into(),
                     width: 1.0,
-                    color: color::Surface::LINE_STRONG,
+                    color: color::surface_line_strong(),
                 },
                 ..renderer::Quad::default()
             },

@@ -166,7 +166,7 @@ impl Showcase {
                 Toggle::new(self.toggle_snapshots).on_toggle_with(Message::ToggleSnapshots),
             ),
             labeled(lang::t("showcase.online"), PulseDot::new()),
-            labeled(lang::t("showcase.stale"), PulseDot::with_color(color::Accents::AMBER).pulsing(false),),
+            labeled(lang::t("showcase.stale"), PulseDot::with_color(color::amber()).pulsing(false),),
         ]
         .spacing(32)
         .align_y(Alignment::Center)
@@ -303,7 +303,7 @@ fn panel<'a>(content: impl Into<Element<'a, Message, Theme, iced::Renderer>>) ->
             border: iced::Border {
                 radius: 18.0.into(),
                 width: 1.0,
-                color: color::Surface::LINE,
+                color: color::surface_line(),
             },
             ..Style::default()
         })

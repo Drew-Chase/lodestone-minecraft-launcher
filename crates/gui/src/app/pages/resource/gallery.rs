@@ -9,7 +9,7 @@ use super::parts::pager;
 use super::{GALLERY_PER_PAGE, Message, ResourcePage};
 use crate::app::components::IconButton;
 use crate::app::components::hint::hint;
-use crate::app::components::icon_button::SECONDARY_BUTTON_STYLE;
+use crate::app::components::icon_button::secondary_button_style;
 use crate::app::components::page::content_width;
 use crate::app::components::tile::tile;
 use crate::app::lang;
@@ -54,7 +54,7 @@ fn cell<'a>(page: &'a ResourcePage, index: usize, picture: &'a GalleryImage, wid
     let caption = Text::new(picture.title.clone().unwrap_or_default())
         .size(12)
         .font(fonts::Inter::MEDIUM)
-        .color(color::Text::DEFAULT)
+        .color(color::text_default())
         .width(Length::Fixed(width));
     tile(
         column![thumbnail, caption].spacing(8).width(Length::Fixed(width)),
@@ -74,7 +74,7 @@ fn thumbnail<'a>(handle: Option<&image::Handle>, width: f32, height: f32) -> Ele
             .width(width)
             .height(height)
             .style(|_| container::Style {
-                background: Some(Background::Color(color::Surface::BG3)),
+                background: Some(Background::Color(color::surface_bg3())),
                 ..container::Style::default()
             })
             .into(),
@@ -103,12 +103,12 @@ pub(super) fn viewer<'a>(page: &'a ResourcePage, index: usize, picture: &'a Gall
     ))
     .size(12)
     .font(fonts::Inter::MEDIUM)
-    .color(color::Text::MUTED);
+    .color(color::text_muted());
     let close = IconButton::new(Icon::lucide().x())
         .size(36.0)
         .radius(10.0)
         .icon_size(16.0)
-        .style(SECONDARY_BUTTON_STYLE)
+        .style(secondary_button_style())
         .on_press(Message::ClosePicture);
     let previous = step_button(
         Icon::lucide().chevron_left(),
@@ -143,7 +143,7 @@ fn step_button<'a>(markup: &'static str, enabled: bool, message: Message, label:
         .size(40.0)
         .radius(10.0)
         .icon_size(18.0)
-        .style(SECONDARY_BUTTON_STYLE);
+        .style(secondary_button_style());
     let button = if enabled { button.on_press(message) } else { button.disabled(true) };
     hint(button, label)
 }

@@ -98,20 +98,20 @@ impl Titlebar {
             IconButton::new(Icon::material_symbols().minimize_rounded())
                 .width(47)
                 .height(Fill)
-                .style(icon_button::SECONDARY_BUTTON_STYLE)
+                .style(icon_button::secondary_button_style())
                 .radius(0.0)
                 .on_press(TitlebarMessage::ToggleMinimize),
             IconButton::new(Icon::material_symbols().square_outline_rounded())
                 .width(47)
                 .icon_size(11.5)
                 .height(Fill)
-                .style(icon_button::SECONDARY_BUTTON_STYLE)
+                .style(icon_button::secondary_button_style())
                 .radius(0.0)
                 .on_press(TitlebarMessage::ToggleMaximized),
             IconButton::new(Icon::material_symbols().close_rounded())
                 .width(47)
                 .height(Fill)
-                .style(icon_button::DANGER_BUTTON_STYLE)
+                .style(icon_button::danger_button_style())
                 .radius(0.0)
                 .on_press(TitlebarMessage::Close),
         ]
@@ -142,7 +142,7 @@ impl Titlebar {
                     .width(34)
                     .height(Fill)
                     .icon_size(13.0)
-                    .style(icon_button::SECONDARY_BUTTON_STYLE)
+                    .style(icon_button::secondary_button_style())
                     .disabled(!can_go_back)
                     .radius(0.0)
                     .on_press(TitlebarMessage::NavBack),
@@ -150,7 +150,7 @@ impl Titlebar {
                     .width(34)
                     .height(Fill)
                     .icon_size(13.0)
-                    .style(icon_button::SECONDARY_BUTTON_STYLE)
+                    .style(icon_button::secondary_button_style())
                     .disabled(!can_go_forward)
                     .radius(0.0)
                     .on_press(TitlebarMessage::NavForward),
@@ -182,7 +182,7 @@ impl Titlebar {
                     container::Style::default()
                 } else {
                     container::Style {
-                        background: Some(Background::from(color::Surface::TITLEBAR)),
+                        background: Some(Background::from(color::surface_titlebar())),
                         ..Default::default()
                     }
                 }

@@ -37,7 +37,7 @@ impl Library {
                 Text::new(lang::t("library.your_instances"))
                     .size(18)
                     .font(fonts::Inter::EXTRA_BOLD)
-                    .color(color::Text::HEADLINE),
+                    .color(color::text_headline()),
                 Space::new().width(Fill),
                 self.filter_tabs(),
                 Space::new().width(12),
@@ -68,7 +68,7 @@ impl Library {
                 })
                 .size(13)
                 .font(fonts::Inter::REGULAR)
-                .color(color::Text::MUTED),
+                .color(color::text_muted()),
             )
             .width(Fill)
             .height(Length::Fixed((viewport.height - HEADER_BLOCK - LIST_TOP).max(160.0)))

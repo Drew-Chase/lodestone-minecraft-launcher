@@ -145,16 +145,16 @@ pub fn view(state: &State) -> Element<'_, Message> {
 /// One filter chip: its name and its count, on a faint fill with a hairline when it is the active one.
 fn chip(filter: WorldFilter, count: usize, active: bool) -> Element<'static, Message> {
     let (ink, weight) = if active {
-        (color::Text::HEADLINE, fonts::Inter::SEMI_BOLD)
+        (color::text_headline(), fonts::Inter::SEMI_BOLD)
     } else {
-        (color::Text::MUTED, fonts::Inter::MEDIUM)
+        (color::text_muted(), fonts::Inter::MEDIUM)
     };
     let content = row![
         Text::new(filter.label()).size(12).font(weight).color(ink),
         Text::new(count.to_string())
             .size(11)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::PLACEHOLDER),
+            .color(color::text_placeholder()),
     ]
     .spacing(8)
     .align_y(alignment::Vertical::Center);
@@ -168,7 +168,7 @@ fn chip(filter: WorldFilter, count: usize, active: bool) -> Element<'static, Mes
         border: Border {
             radius: 999.0.into(),
             width: if active { 1.0 } else { 0.0 },
-            color: color::Surface::LINE_STRONG,
+            color: color::surface_line_strong(),
         },
         ..container::Style::default()
     })
@@ -182,8 +182,8 @@ fn sort_menu(state: &State) -> Element<'_, Message> {
         Text::new(state.sort.label().to_uppercase())
             .size(11)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::MUTED),
-        utility::icon(Icon::lucide().arrow_down(), 12.0, Some((color::Text::MUTED, color::Text::MUTED))),
+            .color(color::text_muted()),
+        utility::icon(Icon::lucide().arrow_down(), 12.0, Some((color::text_muted(), color::text_muted()))),
     ]
     .spacing(6)
     .align_y(alignment::Vertical::Center);
@@ -215,14 +215,14 @@ fn view_switch(state: &State) -> Element<'static, Message> {
 
 /// One cell of the switch.
 fn view_cell(view: WorldView, glyph: &'static str, active: bool) -> Element<'static, Message> {
-    let ink = if active { color::Primary::DEFAULT } else { color::Text::MUTED };
+    let ink = if active { color::primary() } else { color::text_muted() };
     container(
         TextButton::content(utility::icon(glyph, 14.0, Some((ink, ink))))
             .padding(Padding::new(0.0).left(10.0).right(10.0).top(7.0).bottom(7.0))
             .on_press(Message::View(view)),
     )
     .style(move |_| container::Style {
-        background: active.then_some(Background::Color(color::Primary::TINT)),
+        background: active.then_some(Background::Color(color::primary_tint())),
         border: Border {
             radius: 8.0.into(),
             ..Border::default()

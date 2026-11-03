@@ -82,7 +82,7 @@ pub fn sidebar<Message: Clone + 'static>(
         .width(WIDTH)
         .height(Fill)
         .style(|_| container::Style {
-            background: Some(Background::Color(color::Surface::BG1)),
+            background: Some(Background::Color(color::surface_bg1())),
             ..container::Style::default()
         })
         .into()
@@ -124,7 +124,7 @@ fn divider<Message: Clone + 'static>() -> Element<'static, Message> {
     container(Space::new().height(1).width(32))
         .width(Fill)
         .style(|_| container::Style {
-            background: Some(Background::Color(color::Surface::LINE)),
+            background: Some(Background::Color(color::surface_line())),
             ..container::Style::default()
         })
         .into()
@@ -142,7 +142,7 @@ fn avatar<Message: Clone + 'static>(face: Option<Handle>, username: Option<Strin
                 .and_then(|name| name.chars().next())
                 .map(|initial| initial.to_uppercase().to_string())
                 .unwrap_or_default();
-            container(Text::new(initial).size(16).font(fonts::Inter::EXTRA_BOLD).color(color::Primary::ON))
+            container(Text::new(initial).size(16).font(fonts::Inter::EXTRA_BOLD).color(color::primary_on()))
                 .width(Fill)
                 .height(Fill)
                 .center(Length::Fill)
@@ -150,7 +150,7 @@ fn avatar<Message: Clone + 'static>(face: Option<Handle>, username: Option<Strin
         }
     };
 
-    let dot_ink = if online { color::Primary::DEFAULT } else { color::Text::DISABLED };
+    let dot_ink = if online { color::primary() } else { color::text_disabled() };
 
     container(
         stack![
@@ -170,7 +170,7 @@ fn avatar<Message: Clone + 'static>(face: Option<Handle>, username: Option<Strin
                 border: Border {
                     radius: 5.0.into(),
                     width: 2.0,
-                    color: color::Surface::BG1,
+                    color: color::surface_bg1(),
                 },
                 ..container::Style::default()
             }))

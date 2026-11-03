@@ -42,11 +42,11 @@ fn install_panel<M: 'static>(pending: &Pending) -> Element<'static, M> {
     panel(
         column![
             row![
-                utility::icon(Icon::lucide().download(), 14.0, Some((color::Primary::DEFAULT, color::Primary::DEFAULT))),
+                utility::icon(Icon::lucide().download(), 14.0, Some((color::primary(), color::primary()))),
                 Text::new(install_status(pending))
                     .size(13)
                     .font(fonts::Inter::SEMI_BOLD)
-                    .color(color::Text::HEADLINE),
+                    .color(color::text_headline()),
             ]
             .spacing(8)
             .align_y(alignment::Vertical::Center),
@@ -54,7 +54,7 @@ fn install_panel<M: 'static>(pending: &Pending) -> Element<'static, M> {
             Text::new(progress_detail(pending.progress.as_ref()))
                 .size(11)
                 .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::Text::MUTED),
+                .color(color::text_muted()),
         ]
         .spacing(10),
     )
@@ -66,12 +66,12 @@ fn about_panel<M: 'static>(instance: &Instance) -> Element<'static, M> {
             Text::new(lang::t("instance.overview.about"))
                 .size(13)
                 .font(fonts::Inter::SEMI_BOLD)
-                .color(color::Text::HEADLINE),
+                .color(color::text_headline()),
             Text::new(about_text(instance))
                 .size(12)
                 .line_height(1.6)
                 .font(fonts::Inter::REGULAR)
-                .color(color::Text::MUTED)
+                .color(color::text_muted())
                 .width(Fill),
         ]
         .spacing(10),
@@ -106,7 +106,7 @@ fn screenshot_strip<'a>(screenshots: &'a screenshots::State) -> Element<'a, Mess
         Text::new(lang::t("instance.overview.no_screenshots"))
             .size(12)
             .font(fonts::Inter::REGULAR)
-            .color(color::Text::MUTED)
+            .color(color::text_muted())
             .into()
     } else {
         let tiles = screenshots
@@ -123,7 +123,7 @@ fn screenshot_strip<'a>(screenshots: &'a screenshots::State) -> Element<'a, Mess
         Text::new(lang::t("instance.overview.screenshots"))
             .size(13)
             .font(fonts::Inter::SEMI_BOLD)
-            .color(color::Text::HEADLINE),
+            .color(color::text_headline()),
         body,
     ]
     .spacing(10)
@@ -140,7 +140,7 @@ fn session_panel<M: 'static>(instance: &Instance) -> Element<'static, M> {
             session_row(
                 lang::t("instance.overview.total"),
                 format_playtime(instance.playtime_seconds),
-                color::Text::HEADLINE
+                color::text_headline()
             ),
         ]
         .spacing(0),
@@ -151,7 +151,7 @@ fn session_row<M: 'static>(label: &'static str, value: String, ink: Color) -> El
     column![
         container(
             row![
-                Text::new(label).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
+                Text::new(label).size(12).font(fonts::Inter::REGULAR).color(color::text_muted()),
                 Space::new().width(Fill),
                 Text::new(value).size(12).font(fonts::JetBrainsMono::SEMI_BOLD).color(ink),
             ]
@@ -160,7 +160,7 @@ fn session_row<M: 'static>(label: &'static str, value: String, ink: Color) -> El
         .width(Fill)
         .padding(Padding::new(0.0).top(8).bottom(8)),
         container(Space::new().width(Fill).height(1)).width(Fill).style(|_| container::Style {
-            background: Some(Background::Color(color::Surface::LINE)),
+            background: Some(Background::Color(color::surface_line())),
             ..container::Style::default()
         }),
     ]
@@ -171,6 +171,6 @@ fn section_label<M: 'static>(label: &'static str) -> Element<'static, M> {
     Text::new(label)
         .size(12)
         .font(fonts::JetBrainsMono::SEMI_BOLD)
-        .color(color::Text::PLACEHOLDER)
+        .color(color::text_placeholder())
         .into()
 }

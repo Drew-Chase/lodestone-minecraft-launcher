@@ -52,7 +52,7 @@ fn mods_note(page: &Discover) -> Option<Element<'_, Message>> {
         Text::new(lang::t("discover.mods.vanilla"))
             .size(13)
             .font(fonts::Inter::REGULAR)
-            .color(color::Text::MUTED)
+            .color(color::text_muted())
             .into(),
     )
 }
@@ -70,7 +70,7 @@ fn state_line(page: &Discover) -> Option<Element<'_, Message>> {
     } else {
         lang::t("discover.empty").to_string()
     };
-    Some(Text::new(text).size(13).font(fonts::Inter::REGULAR).color(color::Text::MUTED).into())
+    Some(Text::new(text).size(13).font(fonts::Inter::REGULAR).color(color::text_muted()).into())
 }
 
 /// The explanation for a platform that cannot be searched here, with a way to its website.
@@ -83,12 +83,12 @@ fn unavailable(source: Source) -> Element<'static, Message> {
         Text::new(lang::t("discover.action.open_site"))
             .size(12)
             .font(fonts::Inter::MEDIUM)
-            .color(color::Text::DEFAULT),
+            .color(color::text_default()),
     )
     .variant(Variant::Ghost)
     .padding(Padding::new(0.0).left(12).right(12).top(7).bottom(7))
     .on_press(Message::Open(source.home_url().to_string()));
-    row![Text::new(text).size(13).font(fonts::Inter::REGULAR).color(color::Text::MUTED), open,]
+    row![Text::new(text).size(13).font(fonts::Inter::REGULAR).color(color::text_muted()), open,]
         .spacing(14)
         .align_y(alignment::Vertical::Center)
         .into()
@@ -170,7 +170,7 @@ fn hoverable<'a>(card: Element<'a, Message>, page: &Discover, project_id: &str) 
         })
         .interaction(mouse::Interaction::Pointer);
     HoverScale::new(pressable, page.is_hovered(project_id))
-        .ring(CARD_RADIUS, anim::fade(color::Primary::DEFAULT, 0.6))
+        .ring(CARD_RADIUS, anim::fade(color::primary(), 0.6))
         .into()
 }
 
@@ -229,8 +229,8 @@ fn mod_action<'a>(page: &Discover, hit: &'a SearchResult) -> Element<'a, Message
 fn primary<'a>(label: &'static str, markup: &'static str, message: Message) -> Element<'a, Message> {
     TextButton::content(
         row![
-            glyph(markup, 12.0, color::Primary::ON),
-            Text::new(label).size(12).font(fonts::Inter::BOLD).color(color::Primary::ON),
+            glyph(markup, 12.0, color::primary_on()),
+            Text::new(label).size(12).font(fonts::Inter::BOLD).color(color::primary_on()),
         ]
         .spacing(6)
         .align_y(alignment::Vertical::Center),
@@ -243,7 +243,7 @@ fn primary<'a>(label: &'static str, markup: &'static str, message: Message) -> E
 
 /// A dimmed label standing in for a button that cannot be pressed now.
 fn disabled<'a>(label: &'static str) -> Element<'a, Message> {
-    TextButton::content(Text::new(label).size(12).font(fonts::Inter::MEDIUM).color(color::Text::MUTED))
+    TextButton::content(Text::new(label).size(12).font(fonts::Inter::MEDIUM).color(color::text_muted()))
         .variant(Variant::Ghost)
         .padding(Padding::new(0.0).left(12).right(12).top(7).bottom(7))
         .disabled(true)

@@ -71,7 +71,7 @@ pub fn hero<'a>(instance: &'a Instance, files: Option<&InstanceFiles>, controls:
                 gradient::Linear::new(std::f32::consts::PI)
                     .add_stop(0.0, rgb!(8, 9, 10, 30%))
                     .add_stop(0.85, rgb!(8, 9, 10, 85%))
-                    .add_stop(1.0, color::Surface::APPLICATION),
+                    .add_stop(1.0, color::surface_application()),
             ))),
             ..container::Style::default()
         });
@@ -105,20 +105,20 @@ pub fn hero<'a>(instance: &'a Instance, files: Option<&InstanceFiles>, controls:
         row![
             status_badge(controls.status),
             loader_badge(instance),
-            Badge::new(format!("MC {}", instance.mc_version), color::Text::MUTED, rgb!(255, 255, 255, 6%)),
-            Badge::new(mods_label(files), color::Accents::AMBER, color::Accents::AMBER_TINT),
+            Badge::new(format!("MC {}", instance.mc_version), color::text_muted(), rgb!(255, 255, 255, 6%)),
+            Badge::new(mods_label(files), color::amber(), color::amber_tint()),
         ]
         .spacing(6),
         Text::new(instance.name.clone())
             .size(32)
             .line_height(1.0)
             .font(fonts::Inter::EXTRA_BOLD)
-            .color(color::Text::HEADLINE),
+            .color(color::text_headline()),
         Text::new(meta_line(instance, files))
             .size(12)
             .line_height(1.2)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::PLACEHOLDER),
+            .color(color::text_placeholder()),
     ]
     .spacing(7);
 
@@ -161,16 +161,16 @@ pub fn hero_icon(instance: &Instance) -> Element<'static, Message> {
         .width(ICON_SIZE)
         .height(ICON_SIZE)
         .style(|_| container::Style {
-            background: Some(Background::Color(color::Surface::APPLICATION)),
+            background: Some(Background::Color(color::surface_application())),
             border: Border {
                 radius: 18.0.into(),
                 width: 3.0,
-                color: color::Surface::APPLICATION,
+                color: color::surface_application(),
             },
             shadow: Shadow {
                 color: rgb!(0, 0, 0, 80%),
                 offset: iced::Vector::new(0.0, 20.0),
-                blur_radius: 40.0,
+                blur_radius: crate::app::theme::blur(40.0),
             },
             ..container::Style::default()
         });
@@ -254,11 +254,11 @@ fn console_button() -> Element<'static, Message> {
 fn kill_button() -> Element<'static, Message> {
     TextButton::content(
         row![
-            utility::icon(Icon::lucide().square(), 11.0, Some((color::Text::HEADLINE, color::Text::HEADLINE))),
+            utility::icon(Icon::lucide().square(), 11.0, Some((color::text_headline(), color::text_headline()))),
             Text::new(lang::t("instance.hero.kill"))
                 .size(13)
                 .font(fonts::Inter::BOLD)
-                .color(color::Text::HEADLINE),
+                .color(color::text_headline()),
         ]
         .spacing(8)
         .align_y(alignment::Vertical::Center),
@@ -272,15 +272,15 @@ fn kill_button() -> Element<'static, Message> {
 /// Restart in warning amber: amber ink on an amber tint, with a faint amber ring.
 fn restart_style() -> IconButtonStyle {
     IconButtonStyle {
-        foreground: color::Accents::AMBER,
-        foreground_hover: color::Accents::AMBER,
-        background: color::Accents::AMBER_TINT,
+        foreground: color::amber(),
+        foreground_hover: color::amber(),
+        background: color::amber_tint(),
         border: rgb!(255, 181, 69, 30%),
         background_hover: rgb!(255, 181, 69, 22%),
         border_hover: rgb!(255, 181, 69, 55%),
-        foreground_disabled: color::Text::DISABLED,
+        foreground_disabled: color::text_disabled(),
         background_disabled: Color::TRANSPARENT,
-        foreground_pressed: color::Accents::AMBER,
+        foreground_pressed: color::amber(),
         background_pressed: rgb!(255, 181, 69, 26%),
     }
 }
@@ -289,15 +289,15 @@ fn restart_style() -> IconButtonStyle {
 /// the icon's colour.
 fn ghost_style() -> IconButtonStyle {
     IconButtonStyle {
-        foreground: color::Text::MUTED,
-        foreground_hover: color::Text::HEADLINE,
+        foreground: color::text_muted(),
+        foreground_hover: color::text_headline(),
         background: Color::TRANSPARENT,
         border: Color::TRANSPARENT,
         background_hover: Color::TRANSPARENT,
         border_hover: Color::TRANSPARENT,
-        foreground_disabled: color::Text::DISABLED,
+        foreground_disabled: color::text_disabled(),
         background_disabled: Color::TRANSPARENT,
-        foreground_pressed: color::Text::HEADLINE,
+        foreground_pressed: color::text_headline(),
         background_pressed: Color::TRANSPARENT,
     }
 }
@@ -306,8 +306,8 @@ fn ghost_style() -> IconButtonStyle {
 fn launch_button(label: String, on_press: Option<Message>) -> Element<'static, Message> {
     let button = TextButton::content(
         row![
-            utility::icon(Icon::lucide().play(), 12.0, Some((color::Primary::ON, color::Primary::ON))),
-            Text::new(label).size(14).font(fonts::Inter::BOLD).color(color::Primary::ON),
+            utility::icon(Icon::lucide().play(), 12.0, Some((color::primary_on(), color::primary_on()))),
+            Text::new(label).size(14).font(fonts::Inter::BOLD).color(color::primary_on()),
         ]
         .spacing(8)
         .align_y(alignment::Vertical::Center),
@@ -355,7 +355,7 @@ fn glass<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
             border: Border {
                 radius: 12.0.into(),
                 width: 1.0,
-                color: color::Surface::LINE,
+                color: color::surface_line(),
             },
             ..container::Style::default()
         })
@@ -364,30 +364,25 @@ fn glass<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
 
 fn glass_style() -> IconButtonStyle {
     IconButtonStyle {
-        foreground: color::Text::MUTED,
-        foreground_hover: color::Text::HEADLINE,
+        foreground: color::text_muted(),
+        foreground_hover: color::text_headline(),
         background: Color::TRANSPARENT,
         border: Color::TRANSPARENT,
         background_hover: rgb!(255, 255, 255, 8%),
         border_hover: Color::TRANSPARENT,
         background_disabled: Color::TRANSPARENT,
-        foreground_disabled: color::Text::DISABLED,
+        foreground_disabled: color::text_disabled(),
         background_pressed: rgb!(255, 255, 255, 12%),
-        foreground_pressed: color::Text::HEADLINE,
+        foreground_pressed: color::text_headline(),
     }
 }
 
 /// The status badge: launched while the game runs, preparing while it is prepared, idle otherwise.
 fn status_badge(status: LaunchStatus) -> Element<'static, Message> {
     let (label, ink, fill, pulsing) = match status {
-        LaunchStatus::Running => (lang::t("instance.status.launched"), color::Primary::DEFAULT, color::Primary::TINT, true),
-        LaunchStatus::Preparing(_) => (
-            lang::t("instance.status.preparing"),
-            color::Accents::AMBER,
-            color::Accents::AMBER_TINT,
-            true,
-        ),
-        LaunchStatus::Idle => (lang::t("instance.status.idle"), color::Text::MUTED, rgb!(255, 255, 255, 6%), false),
+        LaunchStatus::Running => (lang::t("instance.status.launched"), color::primary(), color::primary_tint(), true),
+        LaunchStatus::Preparing(_) => (lang::t("instance.status.preparing"), color::amber(), color::amber_tint(), true),
+        LaunchStatus::Idle => (lang::t("instance.status.idle"), color::text_muted(), rgb!(255, 255, 255, 6%), false),
     };
     Badge::new(label, ink, fill).with_pulse(pulsing).into()
 }

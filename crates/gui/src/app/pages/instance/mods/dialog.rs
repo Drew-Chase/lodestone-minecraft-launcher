@@ -191,7 +191,7 @@ fn associate_view(dialog: &Associate) -> Element<'_, Message> {
         body,
     )
     .subtitle(lang::t("instance.mods.associate.subtitle"))
-    .icon(Icon::lucide().link(), color::Primary::DEFAULT, color::Primary::TINT)
+    .icon(Icon::lucide().link(), color::primary(), color::primary_tint())
     .footer(footer)
     .on_close(Message::Close)
     .close_on_scrim(true)
@@ -238,7 +238,7 @@ fn picked_body(picked: &Picked) -> Element<'_, Message> {
         Text::new(picked.project.name.as_str())
             .size(14)
             .font(fonts::Inter::SEMI_BOLD)
-            .color(color::Text::HEADLINE),
+            .color(color::text_headline()),
     ]
     .spacing(12)
     .align_y(alignment::Vertical::Center);
@@ -278,7 +278,7 @@ fn switch_view(dialog: &Switch) -> Element<'_, Message> {
     };
     Modal::new(lang::t_with("instance.mods.switch.title", &[("name", dialog.name.as_str())]), body)
         .subtitle(lang::t("instance.mods.switch.subtitle"))
-        .icon(Icon::lucide().repeat(), color::Primary::DEFAULT, color::Primary::TINT)
+        .icon(Icon::lucide().repeat(), color::primary(), color::primary_tint())
         .footer(close_footer())
         .on_close(Message::Close)
         .close_on_scrim(true)
@@ -304,7 +304,7 @@ fn dependencies_view(dialog: &Dependencies) -> Element<'_, Message> {
     };
     Modal::new(lang::t_with("instance.mods.deps.title", &[("name", dialog.name.as_str())]), body)
         .subtitle(lang::t("instance.mods.deps.subtitle"))
-        .icon(Icon::lucide().layers(), color::Primary::DEFAULT, color::Primary::TINT)
+        .icon(Icon::lucide().layers(), color::primary(), color::primary_tint())
         .footer(close_footer())
         .on_close(Message::Close)
         .close_on_scrim(true)
@@ -328,18 +328,18 @@ fn hit_row<'a>(index: usize, hit: &'a SearchResult, icon: Option<&'a image::Hand
         Text::new(hit.name.as_str())
             .size(13)
             .font(fonts::Inter::SEMI_BOLD)
-            .color(color::Text::HEADLINE),
+            .color(color::text_headline()),
         Text::new(hit.description.as_str())
             .size(12)
             .font(fonts::Inter::REGULAR)
-            .color(color::Text::MUTED),
+            .color(color::text_muted()),
     ]
     .spacing(2)
     .width(Fill);
     let author = Text::new(hit.author.clone().unwrap_or_default())
         .size(11)
         .font(fonts::JetBrainsMono::REGULAR)
-        .color(color::Text::PLACEHOLDER);
+        .color(color::text_placeholder());
     let content = row![hit_icon(icon), text, author].spacing(14).align_y(alignment::Vertical::Center);
     TextButton::content(content)
         .variant(Variant::Ghost)
@@ -355,7 +355,7 @@ fn hit_icon(icon: Option<&image::Handle>) -> Element<'_, Message> {
         None => container(utility::icon(
             Icon::lucide().package(),
             15.0,
-            Some((color::Text::MUTED, color::Text::MUTED)),
+            Some((color::text_muted(), color::text_muted())),
         ))
         .width(32)
         .height(32)
@@ -371,12 +371,12 @@ fn release_choice(index: usize, release: &ContentVersion, chosen: bool) -> Eleme
     let label = release.name.clone().unwrap_or_else(|| release.version_number.clone());
     let versions = release.minecraft_versions.join(", ");
     let content = row![
-        Text::new(label).size(13).font(fonts::Inter::SEMI_BOLD).color(color::Text::HEADLINE),
+        Text::new(label).size(13).font(fonts::Inter::SEMI_BOLD).color(color::text_headline()),
         Space::new().width(Fill),
         Text::new(versions)
             .size(11)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::PLACEHOLDER),
+            .color(color::text_placeholder()),
     ]
     .spacing(14)
     .align_y(alignment::Vertical::Center);
@@ -391,13 +391,13 @@ fn release_choice(index: usize, release: &ContentVersion, chosen: bool) -> Eleme
 fn switch_choice(index: usize, release: &ContentVersion, installed: bool) -> Element<'_, Message> {
     let label = release.name.clone().unwrap_or_else(|| release.version_number.clone());
     let mut content = row![
-        Text::new(label).size(13).font(fonts::Inter::SEMI_BOLD).color(color::Text::HEADLINE),
+        Text::new(label).size(13).font(fonts::Inter::SEMI_BOLD).color(color::text_headline()),
         Space::new().width(Fill),
     ]
     .spacing(14)
     .align_y(alignment::Vertical::Center);
     if installed {
-        content = content.push(Badge::new(lang::t("instance.mods.switch.installed"), color::Primary::DEFAULT, color::Primary::TINT).compact());
+        content = content.push(Badge::new(lang::t("instance.mods.switch.installed"), color::primary(), color::primary_tint()).compact());
     }
     let button = TextButton::content(content).variant(Variant::Ghost).width(Fill).disabled(installed);
     if installed {
@@ -411,21 +411,21 @@ fn switch_choice(index: usize, release: &ContentVersion, installed: bool) -> Ele
 fn dependency_line(index: usize, line: &Line) -> Element<'_, Message> {
     let (ink, fill) = match line.kind {
         DependencyKind::Incompatible => (rgb!(255, 110, 110, 100%), rgb!(255, 110, 110, 12%)),
-        _ => (color::Text::MUTED, rgb!(255, 255, 255, 6%)),
+        _ => (color::text_muted(), rgb!(255, 255, 255, 6%)),
     };
     let mut content = row![
         Text::new(line.name.as_str())
             .size(13)
             .font(fonts::Inter::SEMI_BOLD)
-            .color(color::Text::HEADLINE),
+            .color(color::text_headline()),
         Badge::new(kind_label(line.kind), ink, fill).compact(),
         Space::new().width(Fill),
     ]
     .spacing(10)
     .align_y(alignment::Vertical::Center);
     content = content.push(match line.installed {
-        Some(_) => Badge::new(lang::t("instance.mods.deps.installed"), color::Primary::DEFAULT, color::Primary::TINT).compact(),
-        None => Badge::new(lang::t("instance.mods.deps.missing"), color::Text::MUTED, rgb!(255, 255, 255, 6%)).compact(),
+        Some(_) => Badge::new(lang::t("instance.mods.deps.installed"), color::primary(), color::primary_tint()).compact(),
+        None => Badge::new(lang::t("instance.mods.deps.missing"), color::text_muted(), rgb!(255, 255, 255, 6%)).compact(),
     });
     let open = TextButton::ghost(lang::t("instance.mods.deps.open")).on_press(Message::Open(index));
     row![content, open].spacing(12).align_y(alignment::Vertical::Center).width(Fill).into()
@@ -458,7 +458,7 @@ fn muted(text: impl Into<String>) -> Element<'static, Message> {
     Text::new(text.into())
         .size(12)
         .font(fonts::Inter::REGULAR)
-        .color(color::Text::MUTED)
+        .color(color::text_muted())
         .into()
 }
 

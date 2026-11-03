@@ -13,7 +13,6 @@ use sipper::Sender as ProgressSender;
 use sipper::{Sipper, sipper};
 use tracing::{info, warn};
 
-use super::storage::StoredMicrosoft;
 use super::{Account, LodestoneAppMessage, LodestoneLauncher};
 use crate::app::components::alert::Alert;
 use crate::app::lang;
@@ -148,7 +147,7 @@ impl LodestoneLauncher {
                 version_id: instance.version_id.clone(),
                 directory: self.paths.instance(&instance.directory_name),
                 quick_play,
-                settings: instance.settings.resolve(&self.launch_defaults),
+                settings: instance.settings.resolve(&self.settings_values.instance_defaults),
             },
             account,
         };
@@ -321,7 +320,9 @@ impl LodestoneLauncher {
 
     /// The launch settings the instance `id` resolves to now, when the library lists it.
     fn launch_of(&self, id: &str) -> Option<LaunchSettings> {
-        self.library.instance(id).map(|instance| instance.settings.resolve(&self.launch_defaults))
+        self.library
+            .instance(id)
+            .map(|instance| instance.settings.resolve(&self.settings_values.instance_defaults))
     }
 
     /// Records that the run `serial` ended. Its playtime is added and its pid file removed. The
@@ -512,10 +513,11 @@ impl LodestoneLauncher {
     fn keep_session(&mut self, session: Session) -> Task<LodestoneAppMessage> {
         let save = match &session.refresh_token {
             Some(refresh_token) => {
-                self.credentials.microsoft = Some(StoredMicrosoft {
-                    refresh_token: refresh_token.clone(),
-                    username: session.profile.name.clone(),
-                });
+                self.credentials
+                    .add_and_make_primary(crate::app::storage::StoredAccount::Microsoft(crate::app::storage::StoredMicrosoft {
+                        refresh_token: refresh_token.clone(),
+                        username: session.profile.name.clone(),
+                    }));
                 self.save_credentials()
             }
             None => Task::none(),

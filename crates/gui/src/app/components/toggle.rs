@@ -166,12 +166,12 @@ impl<Message> Toggle<Message> {
 
         let (track, knob_color) = match status {
             // The guide fades the whole control when disabled.
-            Status::Disabled(_) if self.is_on => (anim::fade(color::Primary::DEFAULT, 0.4), anim::fade(color::Primary::ON, 0.7)),
-            Status::Disabled(_) => (rgb!(255, 255, 255, 5%), color::Text::DISABLED),
-            Status::OnPressed => (color::Primary::DIM, color::Primary::ON),
+            Status::Disabled(_) if self.is_on => (anim::fade(color::primary(), 0.4), anim::fade(color::primary_on(), 0.7)),
+            Status::Disabled(_) => (rgb!(255, 255, 255, 5%), color::text_disabled()),
+            Status::OnPressed => (color::primary_dim(), color::primary_on()),
             // `.btn-primary:hover` — brightness(1.06) ≈ `#2aff8c`.
-            Status::OnHovered => (iced::color!(0x2AFF8C), color::Primary::ON),
-            Status::OnIdle => (color::Primary::DEFAULT, color::Primary::ON),
+            Status::OnHovered => (iced::color!(0x2AFF8C), color::primary_on()),
+            Status::OnIdle => (color::primary(), color::primary_on()),
             Status::OffPressed => (rgb!(255, 255, 255, 6%), rgb!(255, 255, 255, 80%)),
             Status::OffHovered => (rgb!(255, 255, 255, 14%), Color::WHITE),
             Status::OffIdle => (rgb!(255, 255, 255, 10%), Color::WHITE),

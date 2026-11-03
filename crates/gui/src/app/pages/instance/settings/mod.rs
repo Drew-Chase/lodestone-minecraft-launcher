@@ -98,8 +98,8 @@ impl Section {
     /// The accent the section's tile is drawn in.
     pub fn tint(self) -> Color {
         match self {
-            Section::DangerZone => color::buttons::Danger::BACKGROUND_HOVER,
-            _ => color::Primary::DEFAULT,
+            Section::DangerZone => color::buttons::danger_background_hover(),
+            _ => color::primary(),
         }
     }
 

@@ -256,7 +256,7 @@ pub fn view(state: &State) -> Element<'_, Message> {
             Text::new(lang::t("instance.screenshots.empty"))
                 .size(12)
                 .font(fonts::Inter::REGULAR)
-                .color(color::Text::MUTED),
+                .color(color::text_muted()),
         );
     }
 

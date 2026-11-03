@@ -45,3 +45,29 @@ fn a_file_without_the_discover_platform_still_loads() {
     assert_eq!(preferences.language.as_deref(), Some("en_us"));
     assert_eq!(preferences.discover_source, None);
 }
+
+#[test]
+fn the_settings_values_sit_beside_the_language_in_the_file() {
+    let json = serde_json::to_string(&Preferences::default()).expect("serializes");
+    assert!(json.contains("\"startup_page\":\"library\""), "{json}");
+    assert!(json.contains("\"auto_update\":true"), "{json}");
+}
+
+#[test]
+fn a_file_from_before_the_settings_page_keeps_its_launch_defaults() {
+    let preferences: Preferences = serde_json::from_str(r#"{"language":"en_us","instance_defaults":{"memory_mb":8192}}"#).expect("older files parse");
+    assert_eq!(preferences.language.as_deref(), Some("en_us"));
+    assert_eq!(preferences.settings.instance_defaults.memory_mb, 8192);
+    assert!(preferences.settings.auto_update);
+    assert_eq!(preferences.settings.concurrent_downloads, 64);
+    assert_eq!(preferences.settings.network.timeout_secs, 30);
+}
+
+#[test]
+fn removing_the_file_deletes_it_and_a_missing_file_is_not_an_error() {
+    let path = temp_path("remove");
+    Preferences::store_to(&path, &Preferences::default()).expect("store succeeds");
+    Preferences::remove_from(&path).expect("removal succeeds");
+    assert!(!path.exists());
+    Preferences::remove_from(&path).expect("a missing file is not an error");
+}

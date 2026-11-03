@@ -61,7 +61,7 @@ pub fn overlay<'a, M: 'a>(hud: &Hud) -> Element<'a, M> {
         None => text(lang::t("perf.hud.waiting"))
             .size(12)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::Text::MUTED)
+            .color(color::text_muted())
             .into(),
     };
     container(panel)
@@ -83,7 +83,7 @@ fn figures_panel<'a, M: 'a>(figures: &Figures) -> Element<'a, M> {
         text(lang::t("perf.hud.title"))
             .size(13)
             .font(fonts::Inter::SEMI_BOLD)
-            .color(color::Text::HEADLINE)
+            .color(color::text_headline())
             .into(),
         line(lang::t("perf.hud.frames"), rate(figures.frames_per_s)),
         line(lang::t("perf.hud.draw"), mean_and_max(figures.draw)),
@@ -149,9 +149,9 @@ fn figures_panel<'a, M: 'a>(figures: &Figures) -> Element<'a, M> {
 /// One labelled row: the label on the left, its value on the right.
 fn line<'a, M: 'a>(label: &'static str, value: String) -> Element<'a, M> {
     row![
-        text(label).size(12).font(fonts::Inter::REGULAR).color(color::Text::MUTED),
+        text(label).size(12).font(fonts::Inter::REGULAR).color(color::text_muted()),
         Space::new().width(Fill),
-        text(value).size(12).font(fonts::JetBrainsMono::REGULAR).color(color::Text::HEADLINE),
+        text(value).size(12).font(fonts::JetBrainsMono::REGULAR).color(color::text_headline()),
     ]
     .width(Fill)
     .align_y(alignment::Vertical::Center)

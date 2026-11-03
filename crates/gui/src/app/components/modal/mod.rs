@@ -10,7 +10,7 @@
 //! ```text
 //! Modal::new("New Instance", body_column)
 //!     .subtitle("Spin up a fresh Minecraft profile.")
-//!     .icon(Icon::lucide().plus(), color::Primary::DEFAULT, color::Primary::TINT)
+//!     .icon(Icon::lucide().plus(), color::primary(), color::primary_tint())
 //!     .footer(row![Space::new().width(Fill), cancel, create].spacing(12))
 //!     .on_close(Message::CloseModal)
 //! ```
@@ -218,7 +218,7 @@ impl<'a, Message: Clone + 'a> Modal<'a, Message> {
                     .size(32)
                     .icon_size(14.0)
                     .radius(10.0)
-                    .style(icon_button::SECONDARY_BUTTON_STYLE)
+                    .style(icon_button::secondary_button_style())
                     .on_press(message),
             );
         }

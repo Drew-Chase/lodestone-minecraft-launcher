@@ -10,8 +10,8 @@ fn focus_ring_is_green() {
 #[test]
 fn disabled_uses_disabled_ink() {
     let disabled = style(&Theme::Dark, text_input::Status::Disabled);
-    assert_eq!(disabled.value, color::Text::DISABLED);
-    assert_eq!(disabled.placeholder, color::Text::DISABLED);
+    assert_eq!(disabled.value, color::text_disabled());
+    assert_eq!(disabled.placeholder, color::text_disabled());
 }
 
 #[test]

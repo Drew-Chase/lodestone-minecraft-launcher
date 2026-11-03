@@ -109,7 +109,10 @@ async fn an_installed_runtime_runs_once_its_flags_are_applied() {
     let runtime = runtime(runtimes, "java-runtime-gamma").expect("gamma is published here");
     let home = scratch("e2e");
 
-    runtime.install(&home, PARALLEL, None).await.expect("the runtime downloads");
+    runtime
+        .install(&home, crate::app::install::download::PARALLEL, None)
+        .await
+        .expect("the runtime downloads");
     apply_manifest_flags(runtime, &home).await.expect("the flags apply");
 
     let output = std::process::Command::new(binary(&home))

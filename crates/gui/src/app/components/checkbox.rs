@@ -34,7 +34,7 @@ pub fn checkbox<'a, Message: Clone + 'a>(state: State, on_press: Message) -> Ele
             .width(GLYPH)
             .height(GLYPH)
             .style(|_, _| svg::Style {
-                color: Some(color::Primary::ON),
+                color: Some(color::primary_on()),
             })
     });
     let inner = container(mark)
@@ -47,11 +47,11 @@ pub fn checkbox<'a, Message: Clone + 'a>(state: State, on_press: Message) -> Ele
         .height(Length::Fixed(SIZE))
         .padding(0)
         .style(move |_, _| button::Style {
-            background: Some(Background::Color(if filled { color::Primary::DEFAULT } else { rgb!(255, 255, 255, 4%) })),
+            background: Some(Background::Color(if filled { color::primary() } else { rgb!(255, 255, 255, 4%) })),
             border: Border {
                 radius: 4.0.into(),
                 width: 1.0,
-                color: if filled { color::Primary::DEFAULT } else { color::Surface::LINE_STRONG },
+                color: if filled { color::primary() } else { color::surface_line_strong() },
             },
             ..button::Style::default()
         })

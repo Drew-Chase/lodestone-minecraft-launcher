@@ -37,22 +37,22 @@ fn text<'a>(content: impl IntoFragment<'a>, size: f32, font: Font, ink: Option<C
 
 /// Display — 72 / 0.95 · 800. Hero moments.
 pub fn display<'a>(content: impl IntoFragment<'a>) -> Text<'a> {
-    text(content, 72.0, fonts::Inter::EXTRA_BOLD, Some(color::Text::HEADLINE)).line_height(0.95)
+    text(content, 72.0, fonts::Inter::EXTRA_BOLD, Some(color::text_headline())).line_height(0.95)
 }
 
 /// H1 — 40 / 1.1 · 700.
 pub fn h1<'a>(content: impl IntoFragment<'a>) -> Text<'a> {
-    text(content, 40.0, fonts::Inter::BOLD, Some(color::Text::HEADLINE)).line_height(1.1)
+    text(content, 40.0, fonts::Inter::BOLD, Some(color::text_headline())).line_height(1.1)
 }
 
 /// H2 — 28 / 1.2 · 700.
 pub fn h2<'a>(content: impl IntoFragment<'a>) -> Text<'a> {
-    text(content, 28.0, fonts::Inter::BOLD, Some(color::Text::HEADLINE)).line_height(1.2)
+    text(content, 28.0, fonts::Inter::BOLD, Some(color::text_headline())).line_height(1.2)
 }
 
 /// H3 — 18 / 1.3 · 600.
 pub fn h3<'a>(content: impl IntoFragment<'a>) -> Text<'a> {
-    text(content, 18.0, fonts::Inter::SEMI_BOLD, Some(color::Text::HEADLINE)).line_height(1.3)
+    text(content, 18.0, fonts::Inter::SEMI_BOLD, Some(color::text_headline())).line_height(1.3)
 }
 
 /// Body — 14 / 1.55 · 400. Inherits the app-wide default ink (`--ink-1`).
@@ -62,7 +62,7 @@ pub fn body<'a>(content: impl IntoFragment<'a>) -> Text<'a> {
 
 /// Small / UI — 13 / 1.4 · 500 · `--ink-2`.
 pub fn small<'a>(content: impl IntoFragment<'a>) -> Text<'a> {
-    text(content, 13.0, fonts::Inter::MEDIUM, Some(color::Text::MUTED)).line_height(1.4)
+    text(content, 13.0, fonts::Inter::MEDIUM, Some(color::text_muted())).line_height(1.4)
 }
 
 /// Eyebrow — 11 · mono 600 · caps · `--ink-3`. The content is uppercased at
@@ -72,13 +72,13 @@ pub fn eyebrow<'a>(content: impl IntoFragment<'a>) -> Text<'a> {
         content.into_fragment().to_uppercase(),
         11.0,
         fonts::JetBrainsMono::SEMI_BOLD,
-        Some(color::Text::PLACEHOLDER),
+        Some(color::text_placeholder()),
     )
 }
 
 /// Code / Log — 12 / 1.6 · mono 400 · `--ink-2`.
 pub fn code<'a>(content: impl IntoFragment<'a>) -> Text<'a> {
-    text(content, 12.0, fonts::JetBrainsMono::REGULAR, Some(color::Text::MUTED)).line_height(1.6)
+    text(content, 12.0, fonts::JetBrainsMono::REGULAR, Some(color::text_muted())).line_height(1.6)
 }
 
 /// Display — 72 / 0.95 · 800.

@@ -37,7 +37,7 @@ pub(super) fn view<'a>(page: &'a ResourcePage) -> Element<'a, Message> {
 /// One version: its name, channel, date and counts, its actions, and its notes.
 fn entry<'a>(page: &'a ResourcePage, index: usize, version: &'a ContentVersion) -> Element<'a, Message> {
     let name = version.name.as_deref().unwrap_or(version.version_number.as_str());
-    let mut head = vec![Text::new(name).size(15).font(fonts::Inter::BOLD).color(color::Text::HEADLINE).into()];
+    let mut head = vec![Text::new(name).size(15).font(fonts::Inter::BOLD).color(color::text_headline()).into()];
     if let Some(channel) = version.channel {
         head.push(channel_badge(channel));
     }
@@ -55,7 +55,7 @@ fn entry<'a>(page: &'a ResourcePage, index: usize, version: &'a ContentVersion) 
         None => text(lang::t("resource.changelog.none"))
             .size(13)
             .font(fonts::Inter::REGULAR)
-            .color(color::Text::MUTED)
+            .color(color::text_muted())
             .into(),
     };
     section(column![row(head).spacing(12).align_y(alignment::Vertical::Center), notes,].spacing(12))
@@ -64,9 +64,9 @@ fn entry<'a>(page: &'a ResourcePage, index: usize, version: &'a ContentVersion) 
 /// The channel's badge. A release is lit, and the others are dimmed.
 fn channel_badge<'a>(channel: Channel) -> Element<'a, Message> {
     let (label, ink, fill) = match channel {
-        Channel::Release => (lang::t("resource.channel.release"), color::Primary::DEFAULT, color::Primary::TINT),
-        Channel::Beta => (lang::t("resource.channel.beta"), color::Text::MUTED, color::Surface::BG3),
-        Channel::Alpha => (lang::t("resource.channel.alpha"), color::Text::MUTED, color::Surface::BG3),
+        Channel::Release => (lang::t("resource.channel.release"), color::primary(), color::primary_tint()),
+        Channel::Beta => (lang::t("resource.channel.beta"), color::text_muted(), color::surface_bg3()),
+        Channel::Alpha => (lang::t("resource.channel.alpha"), color::text_muted(), color::surface_bg3()),
     };
     Badge::new(label, ink, fill).compact().into()
 }

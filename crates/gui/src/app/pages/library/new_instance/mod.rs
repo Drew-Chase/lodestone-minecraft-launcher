@@ -151,12 +151,13 @@ impl NewInstance {
         }
     }
 
-    /// The tasks a freshly opened dialog starts: Mojang's versions and the bundled runtimes.
-    pub fn load(&self) -> Task<Message> {
-        Task::batch([
-            Task::perform(catalog::releases(), |result| Message::ReleasesLoaded(result.map(Arc::new))),
-            Task::perform(catalog::bundled_java(), Message::BundledLoaded),
-        ])
+    /// The tasks a freshly opened dialog starts: Mojang's versions (from the launch fetch when there is one) and the bundled runtimes.
+    pub fn load(&self, cached: Option<std::sync::Arc<catalog::Releases>>) -> Task<Message> {
+        let releases = match cached {
+            Some(releases) => Task::done(Message::ReleasesLoaded(Ok(releases))),
+            None => Task::perform(catalog::releases(), |result| Message::ReleasesLoaded(result.map(Arc::new))),
+        };
+        Task::batch([releases, Task::perform(catalog::bundled_java(), Message::BundledLoaded)])
     }
 
     /// Whether the form has what it needs to create an instance. The check does no disk

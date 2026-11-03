@@ -213,7 +213,7 @@ impl Dialog {
         body = body.push(self.tree_field());
         Modal::new(lang::t("export.title"), body)
             .subtitle(lang::t("export.subtitle"))
-            .icon(Icon::lucide().package(), color::Primary::DEFAULT, color::Primary::TINT)
+            .icon(Icon::lucide().package(), color::primary(), color::primary_tint())
             .footer(self.footer())
             .on_close(Message::Close)
             .close_on_scrim(true)
@@ -276,7 +276,7 @@ impl Dialog {
             Text::new(lang::t("export.mods.hint"))
                 .size(11)
                 .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::Text::MUTED),
+                .color(color::text_muted()),
         ]
         .spacing(6)
         .width(Fill)
@@ -310,7 +310,7 @@ impl Dialog {
             } else {
                 format!("{folder}/{segment}")
             };
-            crumbs = crumbs.push(Text::new("/").size(12).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED));
+            crumbs = crumbs.push(Text::new("/").size(12).font(fonts::JetBrainsMono::REGULAR).color(color::text_muted()));
             crumbs = crumbs.push(
                 TextButton::ghost(segment.to_string())
                     .on_press(Message::Open(folder.clone()))
@@ -365,7 +365,7 @@ impl Dialog {
             .width(14.0)
             .height(14.0)
             .style(|_, _| svg::Style {
-                color: Some(color::Text::MUTED),
+                color: Some(color::text_muted()),
             });
         let name: Element<'_, Message> = if row.is_folder {
             TextButton::ghost(row.name.clone())
@@ -376,7 +376,7 @@ impl Dialog {
             Text::new(row.name.clone())
                 .size(13)
                 .font(fonts::Inter::REGULAR)
-                .color(color::Text::DEFAULT)
+                .color(color::text_default())
                 .into()
         };
         let size = if row.is_folder { String::new() } else { format_bytes(row.size) };
@@ -388,7 +388,7 @@ impl Dialog {
             IconButton::new(Icon::lucide().chevron_right())
                 .size(24)
                 .icon_size(12.0)
-                .style(icon_button::GHOST_BUTTON_STYLE)
+                .style(icon_button::ghost_button_style())
                 .on_press(Message::Open(row.path.clone()))
                 .into()
         } else {
@@ -413,7 +413,7 @@ impl Dialog {
             Text::new(lang::t("export.submit"))
                 .size(13)
                 .font(fonts::Inter::BOLD)
-                .color(color::Primary::ON),
+                .color(color::primary_on()),
         )
         .variant(Variant::Primary)
         .padding(Padding::new(0.0).left(18).right(18).top(9).bottom(9));
@@ -426,7 +426,7 @@ impl Dialog {
                 Text::new(lang::t("common.cancel"))
                     .size(13)
                     .font(fonts::Inter::SEMI_BOLD)
-                    .color(color::Text::DEFAULT),
+                    .color(color::text_default()),
             )
             .variant(Variant::Ghost)
             .padding(Padding::new(0.0).left(18).right(18).top(9).bottom(9))
@@ -457,13 +457,13 @@ fn sort_heading(text: &'static str, column: SortColumn, tree: &Tree) -> button::
         (true, true) => Some(Icon::lucide().chevron_down()),
     };
     let content = row![
-        Text::new(text).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED),
+        Text::new(text).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::text_muted()),
         arrow.map(|markup| {
             svg(svg::Handle::from_memory(markup.as_bytes()))
                 .width(10.0)
                 .height(10.0)
                 .style(|_, _| svg::Style {
-                    color: Some(color::Text::MUTED),
+                    color: Some(color::text_muted()),
                 })
         })
     ]
@@ -480,7 +480,7 @@ fn sort_heading(text: &'static str, column: SortColumn, tree: &Tree) -> button::
 
 /// A plain cell of the listing, in the mono type the columns use.
 fn cell(text: String) -> container::Container<'static, Message> {
-    container(Text::new(text).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::Text::MUTED))
+    container(Text::new(text).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::text_muted()))
 }
 
 /// A line of muted text where the listing has no rows to show.
@@ -488,7 +488,7 @@ fn status_line(text: &str) -> Element<'static, Message> {
     Text::new(text.to_owned())
         .size(12)
         .font(fonts::Inter::REGULAR)
-        .color(color::Text::MUTED)
+        .color(color::text_muted())
         .into()
 }
 
@@ -502,7 +502,7 @@ fn label(text: &'static str) -> Element<'static, Message> {
     Text::new(text)
         .size(11)
         .font(fonts::JetBrainsMono::REGULAR)
-        .color(color::Text::MUTED)
+        .color(color::text_muted())
         .into()
 }
 
@@ -514,10 +514,14 @@ fn description_style(_: &Theme, status: text_editor::Status) -> text_editor::Sty
         border: Border {
             radius: 12.0.into(),
             width: 1.0,
-            color: if focused { rgb!(34, 255, 132, 50%) } else { color::Surface::LINE_STRONG },
+            color: if focused {
+                rgb!(34, 255, 132, 50%)
+            } else {
+                color::surface_line_strong()
+            },
         },
-        placeholder: color::Text::PLACEHOLDER,
-        value: color::Text::DEFAULT,
+        placeholder: color::text_placeholder(),
+        value: color::text_default(),
         selection: input::selection_color(),
     }
 }

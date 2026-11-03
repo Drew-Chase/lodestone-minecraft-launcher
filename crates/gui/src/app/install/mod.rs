@@ -213,7 +213,7 @@ impl Drop for Folder {
 async fn run(request: &InstallRequest, progress: &mut ProgressSender<InstallProgress>, game_dir: &Path, db: &Database) -> Result<Instance, String> {
     let mc = request.mc_version.as_str();
     let paths = &request.paths;
-    let client = reqwest::Client::new();
+    let client = lodestone_net::client();
     report(progress, Stage::Resolve, None, format!("Minecraft {mc}")).await;
     let vanilla = {
         let _version = ensure::lock(format!("version:{mc}")).await;
@@ -316,7 +316,7 @@ pub(crate) async fn shared_files(
 /// Every instance on the version shares them, and each fetches them again at its next launch if they are gone. The
 /// libraries and assets stay where they are, and the instance folders are never touched.
 pub(crate) async fn reinstall_version(paths: LauncherPaths, mc: String) -> Result<(), String> {
-    let client = reqwest::Client::new();
+    let client = lodestone_net::client();
     let _version = ensure::lock(format!("version:{mc}")).await;
     let folder = paths.version_dir(&mc);
     tokio::task::spawn_blocking(move || match std::fs::remove_dir_all(&folder) {

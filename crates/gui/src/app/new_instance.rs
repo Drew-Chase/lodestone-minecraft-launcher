@@ -1,16 +1,21 @@
 //! The New Instance dialog's root side. Opening it loads its lists, and submitting it queues the install
 //! with the downloads, which start, pause and finish it.
 
+use std::sync::Arc;
+
 use iced::Task;
+use tracing::warn;
 
 use super::{LodestoneAppMessage, LodestoneLauncher};
+use crate::app::install::catalog::Releases;
 use crate::app::pages::library::Message as LibraryMessage;
 use crate::app::pages::library::new_instance::{Message as DialogMessage, NewInstance};
 
 impl LodestoneLauncher {
-    /// Opens the dialog and loads the versions, runtimes and icon recents it offers.
+    /// Opens the dialog and loads the versions, runtimes and icon recents it offers. The versions come from the launch
+    /// fetch when there is one.
     pub(super) fn open_new_instance(&mut self) -> Task<LodestoneAppMessage> {
-        let mut tasks = vec![self.library.open_new_instance(self.paths.clone())];
+        let mut tasks = vec![self.library.open_new_instance(self.paths.clone(), self.game_versions.clone())];
         if let Some(db) = self.db.clone() {
             tasks.push(NewInstance::recents(db).map(LibraryMessage::NewInstance));
         }
@@ -23,5 +28,15 @@ impl LodestoneLauncher {
             DialogMessage::Submit => self.submit_new_instance(),
             message => self.library.new_instance_update(message).map(LodestoneAppMessage::Library),
         }
+    }
+
+    /// The version list fetched at launch. It stays for the session, so New Instance opens with it. A failed fetch is
+    /// logged, and New Instance fetches the list itself when it opens.
+    pub(super) fn versions_prefetched(&mut self, result: Result<Arc<Releases>, String>) -> Task<LodestoneAppMessage> {
+        match result {
+            Ok(releases) => self.game_versions = Some(releases),
+            Err(error) => warn!("Fetching the Minecraft versions failed: {error}"),
+        }
+        Task::none()
     }
 }

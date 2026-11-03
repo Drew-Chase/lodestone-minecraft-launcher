@@ -534,16 +534,16 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
                 border: Border {
                     radius: Radius::from(12.0),
                     width: 1.0,
-                    color: anim::fade(color::Surface::LINE_STRONG, alpha),
+                    color: anim::fade(color::surface_line_strong(), alpha),
                 },
                 shadow: Shadow {
                     color: rgb!(0, 0, 0, 80%),
                     offset: Vector::new(0.0, 30.0),
-                    blur_radius: 80.0,
+                    blur_radius: crate::app::theme::blur(80.0),
                 },
                 ..renderer::Quad::default()
             },
-            Background::Color(anim::fade(color::Surface::BG3, alpha)),
+            Background::Color(anim::fade(color::surface_bg3(), alpha)),
         );
 
         let rows = self.rows_area(menu_bounds);
@@ -575,7 +575,7 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
                                     bounds: line,
                                     ..renderer::Quad::default()
                                 },
-                                Background::Color(anim::fade(color::Surface::LINE, alpha)),
+                                Background::Color(anim::fade(color::surface_line(), alpha)),
                             );
                         }
                         MenuItem::Action { label, icon, danger } => {
@@ -584,9 +584,9 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
 
                             // Row highlight — hover bg-4, selected green tint.
                             let highlight = if is_selected {
-                                Some(color::Primary::TINT)
+                                Some(color::primary_tint())
                             } else if is_hovered {
-                                Some(color::Surface::BG4)
+                                Some(color::surface_bg4())
                             } else {
                                 None
                             };
@@ -609,11 +609,11 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
 
                             // Ink — danger rows are red; selected rows read green.
                             let ink = if *danger {
-                                color::buttons::Danger::BACKGROUND_HOVER
+                                color::buttons::danger_background_hover()
                             } else if is_selected {
-                                color::Primary::DEFAULT
+                                color::primary()
                             } else {
-                                color::Text::DEFAULT
+                                color::text_default()
                             };
 
                             // Leading icon.
@@ -674,7 +674,7 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
                             wrapping: text::Wrapping::default(),
                         },
                         Point::new(rows.center_x(), rows.center_y()),
-                        anim::fade(color::Text::MUTED, alpha),
+                        anim::fade(color::text_muted(), alpha),
                         rows,
                     );
                 }
