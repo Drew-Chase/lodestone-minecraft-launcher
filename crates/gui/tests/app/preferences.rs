@@ -71,3 +71,17 @@ fn removing_the_file_deletes_it_and_a_missing_file_is_not_an_error() {
     assert!(!path.exists());
     Preferences::remove_from(&path).expect("a missing file is not an error");
 }
+
+#[test]
+fn located_launcher_folders_round_trip_and_an_older_file_loads_without_them() {
+    let path = temp_path("launcher-folders");
+    let mut preferences = Preferences::default();
+    preferences
+        .launcher_folders
+        .insert("atlauncher".to_string(), PathBuf::from("D:/Games/ATLauncher"));
+    Preferences::store_to(&path, &preferences).expect("store succeeds");
+    assert_eq!(Preferences::load_from(&path).launcher_folders, preferences.launcher_folders);
+    std::fs::write(&path, r#"{"language":"en_us"}"#).expect("write succeeds");
+    assert!(Preferences::load_from(&path).launcher_folders.is_empty());
+    std::fs::remove_file(&path).ok();
+}

@@ -65,6 +65,7 @@ mod ftb;
 mod http;
 mod meta;
 mod modpack;
+pub use modpack::combined_forge;
 mod modrinth;
 mod technic;
 

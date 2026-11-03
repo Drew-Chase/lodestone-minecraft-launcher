@@ -23,6 +23,10 @@ pub struct Preferences {
     pub language: Option<String>,
     /// The content platform the Discover page opened on last, by its key such as `modrinth`.
     pub discover_source: Option<String>,
+    /// The folder each launcher was located in by hand, keyed by the launcher's key such as `prism`. The Import dialog
+    /// scans these before the standard folders.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub launcher_folders: std::collections::BTreeMap<String, PathBuf>,
     /// The values the Settings page saves. They are flattened into the file's top level.
     #[serde(flatten)]
     pub settings: SettingsValues,
