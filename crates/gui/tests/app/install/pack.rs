@@ -23,7 +23,7 @@ fn paths() -> LauncherPaths {
 
 #[tokio::test]
 async fn a_pack_read_from_a_file_records_no_page() {
-    let install = request(&paths(), &[], pack("Better MC", Some("fabric")), None, None, None)
+    let install = request(&paths(), &[], pack("Better MC", Some("fabric")), None, None, None, None)
         .await
         .expect("a pack with no files needs no network");
     assert_eq!(install.name, "Better MC");
@@ -42,7 +42,7 @@ async fn a_pack_taken_from_a_page_records_the_page_and_its_project() {
         url: Some("https://www.curseforge.com/minecraft/modpacks/better-mc".to_string()),
         icon_url: None,
     };
-    let install = request(&paths(), &[], pack("Better MC", None), None, Some(Source::CurseForge), Some(page))
+    let install = request(&paths(), &[], pack("Better MC", None), None, Some(Source::CurseForge), Some(page), None)
         .await
         .expect("a pack with no files needs no network");
     assert_eq!(install.source_platform.as_deref(), Some("curseforge"));
@@ -57,7 +57,7 @@ async fn a_pack_taken_from_a_page_records_the_page_and_its_project() {
 #[tokio::test]
 async fn the_folder_avoids_the_names_already_taken() {
     let base = naming::clean_directory_name("Better MC");
-    let install = request(&paths(), std::slice::from_ref(&base), pack("Better MC", None), None, None, None)
+    let install = request(&paths(), std::slice::from_ref(&base), pack("Better MC", None), None, None, None, None)
         .await
         .expect("a pack with no files needs no network");
     assert_ne!(install.directory_name, base);

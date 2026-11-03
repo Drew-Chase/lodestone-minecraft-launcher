@@ -191,9 +191,16 @@ fn one_session_refresh_runs_at_a_time_and_its_waiters_come_back_with_it() {
 #[test]
 fn a_launch_waiting_for_a_session_keeps_the_world_it_quick_plays_into() {
     let mut games = Games::default();
-    games.wait_for_session("aether", 5, Some("Aether Hub".to_string()));
+    games.wait_for_session("aether", 5, Some(crate::app::launch::prepare::QuickPlay::World("Aether Hub".to_string())));
     let (_, waiting) = games.finish_refresh();
-    assert_eq!(waiting, vec![("aether".to_string(), 5, Some("Aether Hub".to_string()))]);
+    assert_eq!(
+        waiting,
+        vec![(
+            "aether".to_string(),
+            5,
+            Some(crate::app::launch::prepare::QuickPlay::World("Aether Hub".to_string()))
+        )]
+    );
 }
 
 #[test]

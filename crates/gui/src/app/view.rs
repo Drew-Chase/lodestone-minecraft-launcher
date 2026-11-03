@@ -2,15 +2,21 @@
 
 use crate::app::components::backdrop::LoginBackdrop;
 use crate::app::components::game_controls::Actions;
+use crate::app::components::hint;
 use crate::app::components::page::{MAX_CONTENT_WIDTH, content_width};
 use crate::app::components::sidebar::{game_block, sidebar as sidebar_view};
+use crate::app::coop_sync;
 use crate::app::downloads::{self, Pending};
+use crate::app::lang;
 use crate::app::launch::GameMessage;
 use crate::app::launch::games::{GameBar, RunsPlace};
 use crate::app::pages::Page;
+use crate::app::pages::friends;
 use crate::app::pages::login::AuthStatus;
 use crate::app::perf;
+use crate::app::servers;
 use crate::app::theme::color;
+use iced::widget::tooltip::Position;
 use iced::widget::{Space, column, container, row, stack};
 use iced::{Element, Fill, alignment};
 use iced_borderless_window_resize_handle_widget::ResizeHandles;
@@ -18,8 +24,9 @@ use tracing::debug;
 
 use super::{Account, LodestoneAppMessage, LodestoneLauncher, NavGroup};
 
-/// The pages the top nav group opens, in the order the rail lists them: Library, Discover, Worlds and Skins.
-const TOP_NAV: [Page; 4] = [Page::Home, Page::Discover, Page::Worlds, Page::Skins];
+/// The pages the top nav group opens, in the order the rail lists them: Library, Discover, Worlds, Skins, Servers and
+/// Friends.
+const TOP_NAV: [Page; 6] = [Page::Library, Page::Discover, Page::Worlds, Page::Skins, Page::Servers, Page::Friends];
 
 /// The top nav item a page highlights. Discover and its resource pages share one, and a page outside the group highlights
 /// Library.
@@ -123,6 +130,22 @@ impl LodestoneLauncher {
             Some(dialog) => dialog.view().map(LodestoneAppMessage::Import),
             None => Space::new().into(),
         };
+        // The Servers dialogs cover the page the same way, above the import dialog. The Join Server dialog sits under the Add
+        // server one it can open.
+        let join: Element<'_, LodestoneAppMessage> = match self.join_dialog.as_ref() {
+            Some(dialog) => self.join_dialog_view(dialog).map(LodestoneAppMessage::JoinDialog),
+            None => Space::new().into(),
+        };
+        let servers_dialog: Element<'_, LodestoneAppMessage> = match self.servers_dialog.as_ref() {
+            Some(dialog) => servers::dialog::view(dialog).map(LodestoneAppMessage::ServersDialog),
+            None => Space::new().into(),
+        };
+        // The Co-op Sync dialog covers the page the same way, above the Servers dialogs.
+        let coop: Element<'_, LodestoneAppMessage> = if self.coop_sync_open {
+            coop_sync::view().map(LodestoneAppMessage::CoopSync)
+        } else {
+            Space::new().into()
+        };
         // The screenshot viewer covers the whole window, under the alerts. It is open only on the instance page.
         let viewer: Element<'_, LodestoneAppMessage> = match self.router.current() {
             Page::Instance => match self.instance_page.viewer(self.window_size) {
@@ -145,6 +168,9 @@ impl LodestoneLauncher {
                 dialog,
                 export,
                 import,
+                join,
+                servers_dialog,
+                coop,
                 viewer,
                 alert,
                 hud,
@@ -181,7 +207,11 @@ impl LodestoneLauncher {
                     launch: |id: String| LodestoneAppMessage::Game(GameMessage::LaunchNew(id)),
                 },
             ),
-            downloads::trigger(&self.downloads).map(LodestoneAppMessage::Downloads),
+            hint::at(
+                downloads::trigger(&self.downloads).map(LodestoneAppMessage::Downloads),
+                lang::t("nav.downloads"),
+                Position::Right,
+            ),
         ]
         .spacing(6);
         sidebar_view(
@@ -200,6 +230,7 @@ impl LodestoneLauncher {
                 group: NavGroup::Bottom,
                 index,
             },
+            LodestoneAppMessage::Navigate(Page::News),
             above_bottom.into(),
         )
     }
@@ -226,7 +257,8 @@ impl LodestoneLauncher {
         let page = self.router.current();
         let _scope = perf::scope(match page {
             Page::Login => "view.login",
-            Page::Home => "view.library",
+            Page::Library => "view.library",
+            Page::News => "view.news",
             Page::Instance => "view.instance",
             Page::Resource => "view.resource",
             Page::Settings => "view.settings",
@@ -234,13 +266,19 @@ impl LodestoneLauncher {
             Page::Discover => "view.discover",
             Page::Worlds => "view.worlds",
             Page::Skins => "view.skins",
+            Page::Servers => "view.servers",
+            Page::Friends => "view.friends",
         });
         match page {
             Page::Login => self.login.view(None).map(LodestoneAppMessage::Login),
-            Page::Home => self
+            Page::Library => self
                 .library
-                .view(self.window_size, &self.art, self.updater.button())
+                .view(self.window_size, &self.art, self.updater.button(), &self.notifications)
                 .map(LodestoneAppMessage::Library),
+            Page::News => self.news.view(self.window_size).map(LodestoneAppMessage::News),
+            // The Servers and Friends pages are filled in by their own phases.
+            Page::Servers => self.servers.view().map(LodestoneAppMessage::Servers),
+            Page::Friends => friends::view(),
             Page::Instance => self
                 .instance_page
                 .view(self.window_size, self.page_game_view(), self.instance_install(), &self.world_pins)

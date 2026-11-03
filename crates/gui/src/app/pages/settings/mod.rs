@@ -547,7 +547,8 @@ pub(super) fn plain_card<'a>(body: Element<'a, Message>) -> Element<'a, Message>
 /// The page the launcher opens on for a startup choice.
 pub fn startup_page(page: StartupPage) -> Page {
     match page {
-        StartupPage::Library => Page::Home,
+        StartupPage::Library => Page::Library,
+        StartupPage::News => Page::News,
         StartupPage::Discover => Page::Discover,
         StartupPage::Worlds => Page::Worlds,
     }

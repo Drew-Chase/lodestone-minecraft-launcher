@@ -19,7 +19,7 @@ use crate::app::lang;
 use crate::app::launch::GameMessage;
 use crate::app::launch::games::{GameBar, GameView, LaunchStatus, Run, RunsPlace, pump};
 use crate::app::launch::pidfile::{self, Record};
-use crate::app::launch::prepare::{self, Prepared, Progress, Request, SessionCheck, Target};
+use crate::app::launch::prepare::{self, Prepared, Progress, QuickPlay, Request, SessionCheck, Target};
 use crate::app::launch_settings::LaunchSettings;
 use crate::app::pages::instance::Tab;
 use crate::app::pages::library::instance::InstanceState;
@@ -82,12 +82,12 @@ impl LodestoneLauncher {
             .library
             .instance(id)
             .filter(|instance| prepare::supports_quick_play(&instance.mc_version))
-            .map(|_| folder.to_string());
+            .map(|_| QuickPlay::World(folder.to_string()));
         self.launch_run(id, quick_play)
     }
 
     /// Starts a run of `id`, quick playing into `quick_play` when it is set. See [`Self::launch_new_game`].
-    fn launch_run(&mut self, id: &str, quick_play: Option<String>) -> Task<LodestoneAppMessage> {
+    pub(super) fn launch_run(&mut self, id: &str, quick_play: Option<QuickPlay>) -> Task<LodestoneAppMessage> {
         if self.games.is_preparing(id) {
             return Task::none();
         }
@@ -101,7 +101,7 @@ impl LodestoneLauncher {
 
     /// Starts the launch `serial` of `id` once its session is fresh. A Microsoft session close to
     /// expiry is refreshed first, one refresh at a time, and the launch waits for that refresh.
-    fn begin_launch(&mut self, id: &str, serial: u64, quick_play: Option<String>) -> Task<LodestoneAppMessage> {
+    fn begin_launch(&mut self, id: &str, serial: u64, quick_play: Option<QuickPlay>) -> Task<LodestoneAppMessage> {
         let Some(account) = self.account.clone() else {
             self.games.finish_preparing(id, serial);
             return Task::none();
@@ -132,7 +132,7 @@ impl LodestoneLauncher {
     }
 
     /// Starts preparing the launch `serial` of `id` with the account signed in now.
-    fn start_preparing(&mut self, id: &str, serial: u64, quick_play: Option<String>) -> Task<LodestoneAppMessage> {
+    fn start_preparing(&mut self, id: &str, serial: u64, quick_play: Option<QuickPlay>) -> Task<LodestoneAppMessage> {
         let (Some(instance), Some(account)) = (self.library.instance(id), self.account.clone()) else {
             warn!("Launch of {id} ignored: the instance is not loaded or nobody is signed in");
             self.games.finish_preparing(id, serial);
@@ -374,6 +374,8 @@ impl LodestoneLauncher {
                     .show(Alert::error(lang::t_with("launch.exited_with_error", &[("code", code.as_str())])))
                     .discard(),
             );
+            // The crash is kept in the bell as well, with the crash report the run left, when there is one.
+            tasks.push(self.record_crash(&id, run.started, code));
         }
         if restart {
             tasks.push(Task::done(LodestoneAppMessage::Game(GameMessage::LaunchNew(id))));

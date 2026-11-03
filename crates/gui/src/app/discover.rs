@@ -232,7 +232,7 @@ pub(crate) async fn prepare_modpack(project: Project, paths: LauncherPaths, take
         url: project.web_url,
         icon_url: project.icon_url,
     };
-    let request = pack::request(&paths, &taken, modpack, archive, source, Some(page)).await?;
+    let request = pack::request(&paths, &taken, modpack, archive, source, Some(page), Some(version.version_number.clone())).await?;
     Ok((request, bytes))
 }
 

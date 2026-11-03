@@ -6,8 +6,10 @@ use iced::window::Id;
 use iced::{Subscription, event, keyboard, mouse, window};
 
 use super::import;
+use super::notifications;
 use super::pages::Page;
 use super::pages::skins::{Message as SkinsMessage, PREVIEW_FRAME};
+use super::servers;
 use super::{LodestoneAppMessage, LodestoneLauncher, perf};
 
 impl LodestoneLauncher {
@@ -22,8 +24,20 @@ impl LodestoneLauncher {
             self.instance_subscription(),
             self.skins_subscription(),
             self.discover_shortcut(),
+            self.servers_subscription(),
+            // The update checks are due every few hours, so the clock wakes once an hour to see whether one is.
+            iced::time::every(std::time::Duration::from_secs(60 * 60)).map(|_| LodestoneAppMessage::Notifications(notifications::Message::CheckDue)),
             perf::subscription(&self.perf).map(LodestoneAppMessage::Perf),
         ])
+    }
+
+    /// The Servers page's clocks: its round of pings every few seconds, and the games announced on the local network. They
+    /// run only while the page is on screen.
+    fn servers_subscription(&self) -> Subscription<LodestoneAppMessage> {
+        match self.router.current() {
+            Page::Servers => servers::subscription(),
+            _ => Subscription::none(),
+        }
     }
 
     /// The file events the Import dialog listens for: a file dragged over the window, leaving it, or dropped on it. They are

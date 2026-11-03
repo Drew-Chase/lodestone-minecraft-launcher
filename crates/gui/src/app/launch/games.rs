@@ -15,6 +15,7 @@ use sipper::{Sipper, sipper};
 
 use super::GameMessage;
 use super::pidfile::Record;
+use super::prepare::QuickPlay;
 use crate::app::pages::instance::logs::{LogLevel, LogLine, MAX_LINES};
 
 /// What an instance's controls show for its game.
@@ -122,7 +123,7 @@ impl RunsOpen {
 }
 
 /// A launch waiting for a session refresh: its instance id, its serial, and the world it quick plays into.
-type WaitingLaunch = (String, u64, Option<String>);
+type WaitingLaunch = (String, u64, Option<QuickPlay>);
 
 /// The Microsoft session refresh in flight: the refresh token it spends, and the launches waiting
 /// for it. A refresh token is good for one use, so every launch that needs the refresh shares one.
@@ -174,7 +175,7 @@ impl Games {
 
     /// Records a launch that waits for a Microsoft session refresh before it prepares. It shows as
     /// preparing, so a second press does not start it again, and it has nothing to abort until then.
-    pub fn wait_for_session(&mut self, instance: &str, serial: u64, quick_play: Option<String>) {
+    pub fn wait_for_session(&mut self, instance: &str, serial: u64, quick_play: Option<QuickPlay>) {
         let (_task, abort) = Task::<()>::none().abortable();
         self.begin(instance, serial, abort);
         self.refresh.waiting.push((instance.to_string(), serial, quick_play));

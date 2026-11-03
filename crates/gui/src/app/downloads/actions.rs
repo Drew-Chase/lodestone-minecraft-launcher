@@ -14,6 +14,7 @@ use crate::app::components::alert::Alert;
 use crate::app::database::Database;
 use crate::app::install;
 use crate::app::lang;
+use crate::app::notifications;
 use crate::app::pages::Page;
 use crate::app::pages::library::instance::Instance;
 use crate::app::{LodestoneAppMessage, LodestoneLauncher};
@@ -169,15 +170,20 @@ impl LodestoneLauncher {
             return Task::none();
         }
         match result {
-            Ok(_) => {
+            Ok(path) => {
+                let notice = self.record_notification(notifications::export_done(job, &path));
                 self.downloads.finish(job, Ok(()));
-                Task::none()
+                notice
             }
             Err(error) => {
+                let name = self.downloads.job(job).map(notifications::job_name).unwrap_or_default();
                 self.downloads.finish(job, Err(error.clone()));
-                self.alerts
+                let notice = self.record_notification(notifications::export_failed(job, name, &error));
+                let alert = self
+                    .alerts
                     .show(Alert::error(lang::t_with("export.failed", &[("error", error.as_str())])))
-                    .discard()
+                    .discard();
+                Task::batch([notice, alert])
             }
         }
     }
@@ -190,12 +196,15 @@ impl LodestoneLauncher {
         match result {
             Ok(instance) => {
                 info!("Installed instance {}", instance.name);
+                tasks.push(self.record_notification(notifications::install_done(job, &instance)));
                 self.downloads.finish(job, Ok(()));
                 self.library.add_instance(*instance);
                 tasks.push(self.load_instances());
                 tasks.push(self.portable_install_ended(job, Ok(())));
             }
             Err(error) => {
+                let name = self.downloads.job(job).map(notifications::job_name).unwrap_or_default();
+                tasks.push(self.record_notification(notifications::install_failed(job, name, &error)));
                 self.downloads.finish(job, Err(error.clone()));
                 tasks.push(self.portable_install_ended(job, Err(error.clone())));
                 tasks.push(

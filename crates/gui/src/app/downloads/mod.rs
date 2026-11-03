@@ -174,6 +174,7 @@ impl Job {
             source_url: request.source_url.clone(),
             source_platform: request.source_platform.clone(),
             source_project_id: request.source_project_id.clone(),
+            source_version: request.source_version.clone(),
             settings: request.settings.clone(),
         })
     }

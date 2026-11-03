@@ -18,7 +18,7 @@ use crate::app::preferences::{CONCURRENT_DOWNLOADS, SettingsValues, StartupPage}
 use crate::app::theme::{color, fonts};
 
 /// The pages the launcher can open on, in the order the select offers them.
-const STARTUP_PAGES: [StartupPage; 3] = [StartupPage::Library, StartupPage::Discover, StartupPage::Worlds];
+const STARTUP_PAGES: [StartupPage; 4] = [StartupPage::Library, StartupPage::News, StartupPage::Discover, StartupPage::Worlds];
 
 /// The width of the selects on this tab.
 const SELECT_WIDTH: f32 = 240.0;
@@ -75,6 +75,7 @@ fn startup_row<'a>(page: StartupPage) -> Element<'a, Message> {
     let select = Select::new(
         [
             lang::t("settings.general.startup_library"),
+            lang::t("settings.general.startup_news"),
             lang::t("settings.general.startup_discover"),
             lang::t("settings.general.startup_worlds"),
         ],

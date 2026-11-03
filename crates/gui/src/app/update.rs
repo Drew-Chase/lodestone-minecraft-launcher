@@ -40,7 +40,7 @@ impl LodestoneLauncher {
     /// Keeps the library's scene art rendered for the rows and the hero it shows, and starts the renders it
     /// lacks. The library is on show only on Home, so the art is only kept up to date there.
     fn sync_art(&mut self) -> Task<LodestoneAppMessage> {
-        if self.router.current() != Page::Home {
+        if self.router.current() != Page::Library {
             return Task::none();
         }
         let keys = self.library.art_keys(self.window_size);
@@ -104,6 +104,12 @@ impl LodestoneLauncher {
             }
             // The reload button re-queries the database through the root;
             // every other Library message is pure display state.
+            LodestoneAppMessage::Notifications(message) => self.notifications_message(message),
+            LodestoneAppMessage::News(message) => self.news_message(message),
+            LodestoneAppMessage::Servers(message) => self.servers_message(message),
+            LodestoneAppMessage::ServersDialog(message) => self.servers_dialog_message(message),
+            LodestoneAppMessage::JoinDialog(message) => self.join_dialog_message(message),
+            LodestoneAppMessage::Library(LibraryMessage::Notifications(message)) => self.notifications_message(message),
             LodestoneAppMessage::Library(LibraryMessage::Reload) => self.load_instances(),
             // Play starts the game, or opens the console of one already running.
             LodestoneAppMessage::Library(LibraryMessage::Play(id)) => self.launch_game(&id),
@@ -116,6 +122,15 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Library(LibraryMessage::InstanceMenu { instance, action }) => self.instance_menu_action(&instance, action),
             LodestoneAppMessage::Library(LibraryMessage::OpenNewInstance) => self.open_new_instance(),
             LodestoneAppMessage::Library(LibraryMessage::OpenImport) => self.open_import(),
+            LodestoneAppMessage::Library(LibraryMessage::OpenJoinServer) => self.open_join_dialog(String::new()),
+            LodestoneAppMessage::Library(LibraryMessage::OpenCoopSync) => {
+                self.coop_sync_open = true;
+                Task::none()
+            }
+            LodestoneAppMessage::CoopSync(crate::app::coop_sync::Message::Close) => {
+                self.coop_sync_open = false;
+                Task::none()
+            }
             LodestoneAppMessage::Library(LibraryMessage::NewInstance(message)) => self.new_instance_message(message),
             // The update button in the header is the updater's to handle.
             LodestoneAppMessage::Library(LibraryMessage::UpdatePressed) => self.updater_message(updater::Message::Pressed),
@@ -275,6 +290,7 @@ impl LodestoneLauncher {
                     self.load_shared(),
                     self.load_mod_sources(),
                     self.load_world_pins(),
+                    self.load_notifications(),
                     self.portable_database_ready(),
                 ])
             }
@@ -286,7 +302,8 @@ impl LodestoneLauncher {
                 info!("Loaded {} instance(s)", instances.len());
                 self.library.set_instances(instances);
                 self.refresh_instance_page();
-                Task::none()
+                // The update checks run once the library is known, and then on their clock.
+                self.check_updates_if_due()
             }
             LodestoneAppMessage::InstancesLoaded(Err(error)) => {
                 warn!("Loading instances failed: {error}");
@@ -319,7 +336,7 @@ impl LodestoneLauncher {
             LodestoneAppMessage::SidebarNav {
                 group: NavGroup::Top,
                 index: 0,
-            } => self.navigate(Page::Home),
+            } => self.navigate(Page::Library),
             LodestoneAppMessage::SidebarNav {
                 group: NavGroup::Bottom,
                 index: 0,
@@ -400,6 +417,12 @@ impl LodestoneLauncher {
             }
             if page == Page::Worlds {
                 return self.open_worlds();
+            }
+            if page == Page::News {
+                return self.open_news();
+            }
+            if page == Page::Servers {
+                return self.open_servers();
             }
             if page == Page::Skins {
                 return self.open_skins();

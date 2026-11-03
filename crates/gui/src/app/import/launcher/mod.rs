@@ -324,6 +324,7 @@ fn request(paths: &LauncherPaths, meta: &Meta, directory_name: String) -> Instal
         source_url: None,
         source_platform: None,
         source_project_id: None,
+        source_version: None,
         modpack: Some(Payload {
             files: Vec::new(),
             unpacks: vec![Unpack {

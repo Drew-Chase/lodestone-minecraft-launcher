@@ -11,7 +11,7 @@ mod card;
 mod header;
 mod hero;
 mod hover;
-mod images;
+pub(crate) mod images;
 mod query;
 mod results;
 mod source;

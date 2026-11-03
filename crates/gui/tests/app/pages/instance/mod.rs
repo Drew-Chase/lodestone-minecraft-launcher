@@ -144,7 +144,7 @@ fn back_and_navigation_are_left_to_the_root() {
     let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
     let _ = page.update(Message::TabSelected(Tab::Mods));
     let _ = page.update(Message::Back);
-    let _ = page.update(Message::Navigate(Page::Home));
+    let _ = page.update(Message::Navigate(Page::Library));
     assert_eq!(page.tab, Tab::Mods, "the root handles Back and Navigate, so the page keeps its tab");
 }
 

@@ -64,6 +64,6 @@ fn actions_are_the_roots_to_handle() {
         login.update(message.clone());
         assert_eq!(login.flow, Flow::Idle);
     }
-    login.update(Message::Navigate(Page::Home));
+    login.update(Message::Navigate(Page::Library));
     assert_eq!(login.flow, Flow::Idle);
 }

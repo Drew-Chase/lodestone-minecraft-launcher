@@ -31,6 +31,7 @@ fn request(name: &str) -> InstallRequest {
         source_url: None,
         source_platform: None,
         source_project_id: None,
+        source_version: None,
         modpack: None,
         settings: Default::default(),
     }

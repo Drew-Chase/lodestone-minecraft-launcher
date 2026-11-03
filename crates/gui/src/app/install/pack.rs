@@ -39,6 +39,7 @@ pub(crate) async fn request(
     archive: Option<PathBuf>,
     source: Option<Source>,
     page: Option<Page>,
+    version: Option<String>,
 ) -> Result<InstallRequest, String> {
     let mut payload = Payload::from_modpack(&modpack, archive);
     match source {
@@ -85,6 +86,7 @@ pub(crate) async fn request(
         source_url: page.as_ref().and_then(|page| page.url.clone()),
         source_platform: page.as_ref().map(|page| page.source.key().to_string()),
         source_project_id: page.map(|page| page.project_id),
+        source_version: version,
         modpack: Some(payload),
         settings: Default::default(),
     })

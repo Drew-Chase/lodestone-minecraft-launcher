@@ -2,6 +2,7 @@ mod auth;
 mod boot;
 mod clipboard;
 pub mod components;
+mod coop_sync;
 pub mod database;
 mod discover;
 mod downloads;
@@ -19,6 +20,8 @@ mod message;
 mod mod_actions;
 mod mod_sources;
 mod new_instance;
+mod news;
+mod notifications;
 pub mod pages;
 pub mod paths;
 pub mod perf;
@@ -27,6 +30,7 @@ mod preferences;
 mod resource;
 pub mod router;
 mod screenshot_actions;
+mod servers;
 mod shared_library;
 mod skin_actions;
 pub mod storage;
@@ -177,6 +181,18 @@ pub struct LodestoneLauncher {
     runs_open: launch::games::RunsOpen,
     /// The installs queued, running, paused and finished, which the Downloads popover lists.
     downloads: downloads::Downloads,
+    /// The bell's notifications: the ones the database keeps, and whether the bell's panel is open.
+    notifications: notifications::Notifications,
+    /// The News page: the launcher feed, the pictures the page shows, and what it shows of them.
+    news: pages::news::State,
+    /// The Servers page: the saved servers, their pings, and the games heard on the network.
+    servers: pages::servers::State,
+    /// The Add server or Edit server dialog, while it is open.
+    servers_dialog: Option<servers::dialog::Dialog>,
+    /// The Join Server dialog, while it is open.
+    join_dialog: Option<servers::join::JoinDialog>,
+    /// Whether the Co-op Sync dialog is open.
+    coop_sync_open: bool,
     /// The export dialog, while it is open. It sits above the page, beside the alerts.
     export: Option<export::Dialog>,
     /// The Import Instance dialog, while it is open. It sits above the page, beside the export dialog.
@@ -235,6 +251,12 @@ impl Default for LodestoneLauncher {
             games: launch::games::Games::default(),
             runs_open: launch::games::RunsOpen::default(),
             downloads: downloads::Downloads::default(),
+            notifications: notifications::Notifications::default(),
+            news: pages::news::State::default(),
+            servers: pages::servers::State::default(),
+            servers_dialog: None,
+            join_dialog: None,
+            coop_sync_open: false,
             export: None,
             import: None,
             portable: portable::launch(),

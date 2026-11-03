@@ -191,6 +191,9 @@ pub struct Instance {
     pub source_platform: Option<String>,
     /// The project's id on that platform, which the Discover page matches against.
     pub source_project_id: Option<String>,
+    /// The release of that project the instance was installed with, as the platform names it. `None` for an instance
+    /// installed before this was recorded, until the update check records one.
+    pub source_version: Option<String>,
     /// The launch settings this instance overrides. Each one it does not override inherits the global default.
     pub settings: InstanceSettings,
 }
@@ -241,6 +244,7 @@ pub(crate) fn fixture(id: &str, name: &str, loader: Loader) -> Instance {
         source_url: None,
         source_platform: None,
         source_project_id: None,
+        source_version: None,
         settings: InstanceSettings::default(),
     }
 }

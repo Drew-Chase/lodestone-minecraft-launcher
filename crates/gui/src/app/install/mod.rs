@@ -96,6 +96,8 @@ pub struct InstallRequest {
     /// The content platform and the project there, when the instance comes from one (see `Instance`).
     pub source_platform: Option<String>,
     pub source_project_id: Option<String>,
+    /// The release of that project being installed, as the platform names it.
+    pub source_version: Option<String>,
     /// The modpack's files and overrides, when the instance is installed from a modpack.
     pub modpack: Option<modpack::Payload>,
     /// The launch overrides the instance starts with. An empty set inherits every global default.
@@ -450,6 +452,7 @@ async fn finish(
         source_url: request.source_url.clone(),
         source_platform: request.source_platform.clone(),
         source_project_id: request.source_project_id.clone(),
+        source_version: request.source_version.clone(),
         settings: request.settings.clone(),
     };
     // The mods the modpack names are recorded against the new instance, in the same transaction as its row.

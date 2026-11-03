@@ -12,7 +12,7 @@ autotests = false
 perf = []
 
 [dependencies]
-piston-mc = { version = "0.1.5-beta", features = ["assets", "downloads", "java"] }
+piston-mc = { version = "0.1.5-beta", features = ["assets", "downloads", "java", "news", "java-patch-notes"] }
 aurora_leaf = {path="../aurora_leaf"}
 lodestone_minecraft_authentication = { path = "../auth" }
 open = "5"
@@ -29,6 +29,7 @@ lodestone_loaders = { path = "../loaders" }
 lodestone_launch = { path = "../launcher" }
 lodestone_platforms = { path = "../platforms" }
 lodestone_export = { path = "../export" }
+lodestone_server = { path = "../server" }
 lodestone_updater = { path = "../updater" }
 md-5 = "0.10"
 zip = "9"

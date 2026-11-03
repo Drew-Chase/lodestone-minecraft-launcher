@@ -139,12 +139,18 @@ impl LodestoneLauncher {
     /// Enters the launcher after a sign-in. A portable launcher starts its launch; the others open the library.
     pub(super) fn enter_launcher(&mut self) -> Task<LodestoneAppMessage> {
         // Every launcher leaves the sign-in page. A portable one then shows its own page rather than the library.
-        self.router
-            .replace(crate::app::pages::settings::startup_page(self.settings_values.startup_page));
+        let startup = crate::app::pages::settings::startup_page(self.settings_values.startup_page);
+        self.router.replace(startup);
+        // The startup page does not go through navigation, so the News home loads its feed here.
+        let news = if startup == crate::app::pages::Page::News {
+            self.open_news()
+        } else {
+            Task::none()
+        };
         if self.portable.is_some() {
-            return self.start_portable();
+            return Task::batch([news, self.start_portable()]);
         }
-        Task::none()
+        news
     }
 
     /// Starts a portable launch that was waiting for the database, once someone is signed in.

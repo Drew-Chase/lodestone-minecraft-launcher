@@ -19,14 +19,15 @@ use iced::advanced::renderer;
 use iced::advanced::svg::Renderer as _;
 use iced::advanced::svg::{Handle, Svg};
 use iced::advanced::widget::{Tree, tree};
-use iced::advanced::{Clipboard, Layout, Shell, Widget};
+use iced::advanced::{Clipboard, Layout, Shell, Widget, overlay};
 use iced::border::Radius;
 use iced::mouse::{Cursor, Interaction};
-use iced::{Border, Color, Element, Event, Length, Point, Radians, Rectangle, Renderer as BaseRenderer, Size, Theme, mouse, window};
+use iced::{Border, Color, Element, Event, Length, Point, Radians, Rectangle, Renderer as BaseRenderer, Size, Theme, Vector, mouse, window};
 use iced_anim::Animated;
 use iced_color_extension::rgb;
 
 use super::anim;
+use super::hint::bubble;
 
 /// Item slot size — `.nav-item` is 44×44 with a 12px radius.
 const ITEM_SIZE: f32 = 44.0;
@@ -38,17 +39,26 @@ const INDICATOR_INSET: f32 = 14.0;
 /// Indicator bar geometry — 3px wide, 22px tall, centered on the item.
 const INDICATOR_WIDTH: f32 = 3.0;
 const INDICATOR_HEIGHT: f32 = 22.0;
+/// The gap between a slot and the tooltip that names it, beside the rail.
+const TOOLTIP_GAP: f32 = 10.0;
 
 /// One slot in a [`NavRail`].
 #[derive(Debug, Clone)]
 pub struct NavItem {
     /// SVG markup of the icon.
     pub icon: &'static str,
+    /// The name a tooltip shows beside the slot while the pointer rests on it. `None` shows no tooltip.
+    pub label: Option<&'static str>,
 }
 
 impl NavItem {
     pub fn new(icon: &'static str) -> Self {
-        Self { icon }
+        Self { icon, label: None }
+    }
+
+    /// A slot whose tooltip names it.
+    pub fn labelled(icon: &'static str, label: &'static str) -> Self {
+        Self { icon, label: Some(label) }
     }
 }
 
@@ -78,6 +88,9 @@ struct State {
     is_pressed: Option<usize>,
     /// True until the first layout, so the indicator settles instead of flying.
     first_layout: bool,
+    /// The tooltip's tree, kept between passes. Each pass builds a new overlay, and only a layout fills in the tooltip's
+    /// text, so the tree must outlive the overlay that draws it.
+    bubble: Option<Tree>,
 }
 
 impl<Message> NavRail<Message> {
@@ -223,6 +236,7 @@ where
             hover_alpha: Animated::new(0.0, anim::micro()),
             is_pressed: None,
             first_layout: true,
+            bubble: None,
         })
     }
 
@@ -410,11 +424,67 @@ where
             Interaction::default()
         }
     }
+
+    /// The tooltip of the hovered slot, if that slot has a label. It is an overlay, so it draws above the page.
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut Tree,
+        layout: Layout<'_>,
+        _renderer: &BaseRenderer,
+        _viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<overlay::Element<'b, Message, Theme, BaseRenderer>> {
+        let state = tree.state.downcast_mut::<State>();
+        let index = state.hovered?;
+        let label = self.items.get(index)?.label?;
+        let slot = *state.item_bounds.get(index)?;
+        let bounds = layout.bounds();
+        let anchor = Rectangle::new(Point::new(bounds.x + slot.x, bounds.y + slot.y), slot.size()) + translation;
+        let content = bubble(label);
+        let bubble_tree = state.bubble.get_or_insert_with(|| Tree::new(&content));
+        Some(overlay::Element::new(Box::new(BubbleOverlay {
+            content,
+            tree: bubble_tree,
+            anchor,
+        })))
+    }
 }
 
 impl<'a, Message: 'static + 'a> From<NavRail<Message>> for Element<'a, Message, Theme, BaseRenderer> {
     fn from(rail: NavRail<Message>) -> Self {
         Element::new(rail)
+    }
+}
+
+/// Where a tooltip of `size` sits beside the slot `anchor`: to its right, centred on it, and kept inside `window`.
+fn tooltip_origin(anchor: Rectangle, size: Size, window: Size) -> Vector {
+    let x = (anchor.x + anchor.width + TOOLTIP_GAP).min(window.width - size.width).max(0.0);
+    let y = (anchor.center_y() - size.height / 2.0).min(window.height - size.height).max(0.0);
+    Vector::new(x, y)
+}
+
+/// The bubble that names a hovered slot. It draws above the page, so it is an overlay rather than part of the rail.
+/// Its tree is kept in the rail's state, so the text its layout fills in is still there when the bubble draws.
+struct BubbleOverlay<'b, Message> {
+    content: Element<'static, Message, Theme, BaseRenderer>,
+    tree: &'b mut Tree,
+    /// The slot's bounds in window coordinates.
+    anchor: Rectangle,
+}
+
+impl<Message: 'static> overlay::Overlay<Message, Theme, BaseRenderer> for BubbleOverlay<'_, Message> {
+    fn layout(&mut self, renderer: &BaseRenderer, bounds: Size) -> Node {
+        let node = self.content.as_widget_mut().layout(self.tree, renderer, &Limits::new(Size::ZERO, bounds));
+        let size = node.size();
+        Node::with_children(size, vec![node]).translate(tooltip_origin(self.anchor, size, bounds))
+    }
+
+    fn draw(&self, renderer: &mut BaseRenderer, theme: &Theme, style: &renderer::Style, layout: Layout<'_>, cursor: Cursor) {
+        if let Some(node) = layout.children().next() {
+            self.content
+                .as_widget()
+                .draw(self.tree, renderer, theme, style, node, cursor, &Rectangle::with_size(Size::INFINITE));
+        }
     }
 }
 

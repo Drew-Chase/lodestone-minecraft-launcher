@@ -95,7 +95,7 @@ pub async fn from_file(path: PathBuf, paths: LauncherPaths, taken: Vec<String>) 
         _ => Source::Modrinth,
     };
     let name = modpack.name.clone();
-    let request = pack::request(&paths, &taken, modpack, Some(path.clone()), Some(source), None).await?;
+    let request = pack::request(&paths, &taken, modpack, Some(path.clone()), Some(source), None, None).await?;
     Ok(Prepared {
         request,
         record: ImportRecord {

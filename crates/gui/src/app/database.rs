@@ -2,6 +2,9 @@
 //! database file next to the credential store, schema versioned through
 //! sqlx migrations.
 
+mod notifications;
+pub mod servers;
+
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Local, Utc};
@@ -65,7 +68,7 @@ impl Database {
             "SELECT id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
              last_played_at, installed_at, pinned, state, biome, art_seed, art_path, \
              icon_background, icon_symbol, icon_path, directory_name, java_component, version_id, \
-             source_url, source_platform, source_project_id, settings FROM instances",
+             source_url, source_platform, source_project_id, source_version, settings FROM instances",
         )
         .fetch_all(&self.pool)
         .await
@@ -102,6 +105,7 @@ impl Database {
                     source_url: row.get("source_url"),
                     source_platform: row.get("source_platform"),
                     source_project_id: row.get("source_project_id"),
+                    source_version: row.get("source_version"),
                     settings: settings_of(row.get("settings")),
                 }
             })
@@ -152,8 +156,8 @@ impl Database {
              (id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
               last_played_at, installed_at, pinned, state, biome, art_seed, art_path, \
               icon_background, icon_symbol, icon_path, directory_name, java_component, version_id, \
-              source_url, source_platform, source_project_id, settings) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              source_url, source_platform, source_project_id, source_version, settings) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&instance.id)
         .bind(&instance.name)
@@ -178,6 +182,7 @@ impl Database {
         .bind(&instance.source_url)
         .bind(&instance.source_platform)
         .bind(&instance.source_project_id)
+        .bind(&instance.source_version)
         .bind(settings_json(&instance.settings))
         .execute(&mut *transaction)
         .await
@@ -265,6 +270,17 @@ impl Database {
         sqlx::query(statement)
             .bind(instance_id)
             .bind(folder)
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    /// Records the modpack release an instance is at, as the update check finds it when the instance has none recorded yet.
+    pub async fn set_source_version(&self, id: &str, version: &str) -> Result<(), String> {
+        sqlx::query("UPDATE instances SET source_version = ? WHERE id = ?")
+            .bind(version)
+            .bind(id)
             .execute(&self.pool)
             .await
             .map(|_| ())

@@ -205,7 +205,7 @@ impl LodestoneLauncher {
                 info!("Deleted instance {id}");
                 let showing = self.router.current() == Page::Instance && self.instance_page.instance().is_some_and(|instance| instance.id == id);
                 if showing {
-                    self.router.replace(Page::Home);
+                    self.router.replace(Page::Library);
                 }
                 self.world_pins.forget_instance(&id);
                 self.worlds.set_pins(self.world_pins.clone());

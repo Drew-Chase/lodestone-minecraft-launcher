@@ -129,7 +129,10 @@ impl LodestoneLauncher {
     /// Applies an update message.
     pub(super) fn updater_message(&mut self, message: Message) -> Task<LodestoneAppMessage> {
         match message {
-            Message::Checked(Ok(Some(release))) => self.newer_release(release),
+            Message::Checked(Ok(Some(release))) => {
+                let notice = self.notify_launcher_update(&release);
+                Task::batch([notice, self.newer_release(release)])
+            }
             Message::Checked(Ok(None)) => Task::none(),
             Message::Checked(Err(error)) => {
                 warn!("The update check failed: {error}");

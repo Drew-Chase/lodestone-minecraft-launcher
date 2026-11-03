@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use lodestone_launch::Launcher;
+use lodestone_server::address::ServerAddress;
 use sipper::Sender as ProgressSender;
 use sipper::{Sipper, sipper};
 use tokio::sync::mpsc;
@@ -30,6 +31,15 @@ const LAUNCHER_NAME: &str = "Lodestone Launcher";
 /// How close to expiry, in seconds, a Microsoft session is refreshed before a launch.
 const REFRESH_WITHIN: u64 = 300;
 
+/// What a launch joins as the game starts: a world of the instance, or a server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QuickPlay {
+    /// A world, by its folder name.
+    World(String),
+    /// A server, by its address.
+    Server(ServerAddress),
+}
+
 /// The instance a launch starts, as its database row describes it.
 #[derive(Debug, Clone)]
 pub struct Target {
@@ -40,11 +50,26 @@ pub struct Target {
     pub version_id: Option<String>,
     /// The instance folder, which is the game's directory.
     pub directory: PathBuf,
-    /// The world to quick play into, by its folder name. Only set for a version that can (see
+    /// What the launch joins as the game starts. A world needs a version that can quick play (see
     /// [`supports_quick_play`]).
-    pub quick_play: Option<String>,
+    pub quick_play: Option<QuickPlay>,
     /// The launch settings the instance resolves to: its overrides merged with the global defaults.
     pub settings: LaunchSettings,
+}
+
+/// The game arguments that join `server` as the game starts. A version that can quick play takes the address as one
+/// argument, and an older one takes the host and the port apart.
+pub fn join_arguments(mc_version: &str, server: &ServerAddress) -> Vec<String> {
+    if supports_quick_play(mc_version) {
+        let host = if server.host.contains(':') {
+            format!("[{}]", server.host)
+        } else {
+            server.host.clone()
+        };
+        vec!["--quickPlayMultiplayer".to_owned(), format!("{host}:{}", server.port)]
+    } else {
+        vec!["--server".to_owned(), server.host.clone(), "--port".to_owned(), server.port.to_string()]
+    }
 }
 
 /// Whether a Minecraft version can quick play into a world from the command line. `--quickPlaySingleplayer`
@@ -379,10 +404,14 @@ fn build(parts: Build<'_>) -> Result<Launcher, String> {
     jvm.extend(log_config.and_then(|config| arguments::logging(merged, config)));
     jvm.extend(split_arguments(&settings.jvm_args));
     let mut game = arguments::game(merged, &values, identity, platform);
-    // Quick play opens the world at once. Minecraft finds the world by its folder name.
-    if let Some(world) = &target.quick_play {
-        game.push("--quickPlaySingleplayer".to_string());
-        game.push(world.clone());
+    // Quick play opens the world, or joins the server, at once. Minecraft finds a world by its folder name.
+    match &target.quick_play {
+        Some(QuickPlay::World(world)) => {
+            game.push("--quickPlaySingleplayer".to_string());
+            game.push(world.clone());
+        }
+        Some(QuickPlay::Server(server)) => game.extend(join_arguments(&target.mc_version, server)),
+        None => {}
     }
     game.extend(window_arguments(settings));
     game.extend(split_arguments(&settings.game_args));

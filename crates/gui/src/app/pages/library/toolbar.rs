@@ -5,6 +5,7 @@ use crate::app::components::hint::hint;
 use crate::app::components::icon_button::ghost_button_style;
 use crate::app::components::{IconButton, TextButton, input};
 use crate::app::lang;
+use crate::app::notifications::{Notifications, bell};
 use crate::app::theme::{color, fonts};
 use crate::app::updater::Button;
 use aurora_leaf::Icon;
@@ -41,7 +42,7 @@ fn update_button(update: Button) -> Element<'static, Message> {
 impl Library {
     /// The page header — title, stats, search and actions. The update button, when an update is showing, sits between
     /// the refresh button and the notifications bell.
-    pub(super) fn header(&self, update: Option<Button>) -> Element<'_, Message> {
+    pub(super) fn header<'a>(&'a self, update: Option<Button>, notifications: &'a Notifications) -> Element<'a, Message> {
         let total_hours: u32 = self.instances.iter().map(|instance| instance.playtime_seconds / 3600).sum();
         let title = column![
             Text::new(lang::t("library.title"))
@@ -67,15 +68,7 @@ impl Library {
         if let Some(update) = update {
             children.push(update_button(update));
         }
-        children.push(
-            IconButton::new(Icon::lucide().bell())
-                .size(36)
-                .radius(12.0)
-                .icon_size(16.0)
-                .style(ghost_button_style())
-                .on_press(Message::QuickAction("notifications"))
-                .into(),
-        );
+        children.push(bell(notifications).map(Message::Notifications));
         children.push(
             TextButton::content(
                 row![

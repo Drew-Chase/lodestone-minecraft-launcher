@@ -20,6 +20,7 @@ use crate::app::components::scrollbar;
 use crate::app::downloads::Pending;
 use crate::app::install::InstallRequest;
 use crate::app::lang;
+use crate::app::notifications;
 use crate::app::paths::LauncherPaths;
 use crate::app::theme::fonts;
 use crate::app::updater::Button;
@@ -55,8 +56,10 @@ pub enum Message {
     },
     /// The pointer entered (`hovered`) or left a card, which grows while it is hovered.
     Hover { instance: String, hovered: bool },
-    /// A quick action that is still a dummy (Join Server, Co-op Sync).
-    QuickAction(&'static str),
+    /// The Join Server card opens the Join Server dialog. The root opens it.
+    OpenJoinServer,
+    /// The Co-op Sync card opens the Co-op Sync dialog. The root opens it.
+    OpenCoopSync,
     /// The update button in the header was pressed. The root starts the update, or opens its page.
     UpdatePressed,
     /// The refresh button — the root re-queries the database.
@@ -67,6 +70,8 @@ pub enum Message {
     OpenImport,
     /// A message for the New Instance dialog.
     NewInstance(new_instance::Message),
+    /// The bell in the header and its panel. The root applies them, since the notifications are kept there.
+    Notifications(notifications::Message),
 }
 
 /// The Library's view modes.
@@ -228,9 +233,15 @@ impl Library {
             Message::OpenInstance(id) => info!("Open instance {id} requested"),
             // The root routes these: they need the database, the alerts or the instance page.
             Message::EditInstance(_) | Message::RevealInstance(_) | Message::InstanceMenu { .. } => {}
-            Message::QuickAction(action) => info!("Quick action '{action}' (dummy)"),
             // The root handles the reload, the update and the New Instance messages: they need the database or the updater.
-            Message::Reload | Message::OpenNewInstance | Message::OpenImport | Message::NewInstance(_) | Message::UpdatePressed => {}
+            Message::Reload
+            | Message::OpenNewInstance
+            | Message::OpenImport
+            | Message::OpenJoinServer
+            | Message::OpenCoopSync
+            | Message::NewInstance(_)
+            | Message::UpdatePressed
+            | Message::Notifications(_) => {}
         }
     }
 
@@ -369,8 +380,14 @@ impl Library {
     /// The page: the header stays where it is, and the hero, the quick actions and the instance list
     /// scroll beneath it. `viewport` is the window's inner size, used for the grid's column count and the
     /// windowed row count.
-    pub fn view<'a>(&'a self, viewport: Size, art: &'a ArtCache, update: Option<Button>) -> Element<'a, Message> {
-        let fixed = container(self.header(update))
+    pub fn view<'a>(
+        &'a self,
+        viewport: Size,
+        art: &'a ArtCache,
+        update: Option<Button>,
+        notifications: &'a notifications::Notifications,
+    ) -> Element<'a, Message> {
+        let fixed = container(self.header(update, notifications))
             .padding(Padding::new(0.0).top(24).left(28).right(28))
             .width(Fill);
         // The banner is optional, so the column takes its children one at a

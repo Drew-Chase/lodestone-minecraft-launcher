@@ -3,19 +3,23 @@
 
 use crate::app::components::alert::Message as AlertMessage;
 use crate::app::components::art_cache::ArtKey;
+use crate::app::coop_sync::Message as CoopSyncMessage;
 use crate::app::database::Database;
 use crate::app::downloads::Message as DownloadsMessage;
 use crate::app::export::Message as ExportMessage;
 use crate::app::import::Message as ImportMessage;
 use crate::app::launch::GameMessage;
 use crate::app::mod_actions;
+use crate::app::notifications;
 use crate::app::pages::Page;
 use crate::app::pages::discover::Message as DiscoverMessage;
 use crate::app::pages::instance::Message as InstanceMessage;
 use crate::app::pages::library::Message as LibraryMessage;
 use crate::app::pages::library::instance::Instance;
 use crate::app::pages::login::Message as LoginMessage;
+use crate::app::pages::news::Message as NewsMessage;
 use crate::app::pages::resource::Message as ResourceMessage;
+use crate::app::pages::servers::Message as ServersMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
 use crate::app::pages::showcase::Message as ShowcaseMessage;
 use crate::app::pages::skins::previews::Drawn;
@@ -23,6 +27,8 @@ use crate::app::pages::skins::{Appearance, Message as SkinsMessage, Scan};
 use crate::app::pages::worlds::Message as WorldsMessage;
 use crate::app::perf;
 use crate::app::portable::Message as PortableMessage;
+use crate::app::servers::dialog::Message as ServersDialogMessage;
+use crate::app::servers::join::Message as JoinDialogMessage;
 use crate::app::shared_library::{ModSource, SharedRecord};
 use crate::app::titlebar::TitlebarMessage;
 use crate::app::updater::Message as UpdaterMessage;
@@ -63,6 +69,18 @@ pub enum LodestoneAppMessage {
     Showcase(ShowcaseMessage),
     /// The download queue: an install's progress or result, and the Downloads popover's controls.
     Downloads(DownloadsMessage),
+    /// The notifications the database keeps: the bell's panel, and the reads and writes that answer it.
+    Notifications(notifications::Message),
+    /// The News page: its refresh, its lists and its reader, and the feed and pictures its work brings back.
+    News(NewsMessage),
+    /// The Servers page: its tabs and search, its pings and the games heard on the network, and the row actions.
+    Servers(ServersMessage),
+    /// The Add server or Edit server dialog.
+    ServersDialog(ServersDialogMessage),
+    /// The Join Server dialog.
+    JoinDialog(JoinDialogMessage),
+    /// The Co-op Sync dialog.
+    CoopSync(CoopSyncMessage),
     /// The export dialog: its fields, its folder listing, and the export it starts.
     Export(ExportMessage),
     /// The Import Instance dialog: its tabs and fields, the files it is given, and the import it reads and queues.

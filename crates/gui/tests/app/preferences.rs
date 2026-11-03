@@ -73,6 +73,21 @@ fn removing_the_file_deletes_it_and_a_missing_file_is_not_an_error() {
 }
 
 #[test]
+fn the_news_startup_page_is_saved_by_its_name() {
+    let preferences = Preferences {
+        settings: SettingsValues {
+            startup_page: StartupPage::News,
+            ..SettingsValues::default()
+        },
+        ..Preferences::default()
+    };
+    let json = serde_json::to_string(&preferences).expect("serializes");
+    assert!(json.contains("\"startup_page\":\"news\""), "{json}");
+    let loaded: Preferences = serde_json::from_str(&json).expect("parses");
+    assert_eq!(loaded.settings.startup_page, StartupPage::News);
+}
+
+#[test]
 fn located_launcher_folders_round_trip_and_an_older_file_loads_without_them() {
     let path = temp_path("launcher-folders");
     let mut preferences = Preferences::default();

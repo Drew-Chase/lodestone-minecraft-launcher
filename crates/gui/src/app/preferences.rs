@@ -143,6 +143,8 @@ pub enum StartupPage {
     /// The instance library, the launcher's home page.
     #[default]
     Library,
+    /// The Minecraft news home.
+    News,
     /// The Discover page.
     Discover,
     /// The Worlds page.

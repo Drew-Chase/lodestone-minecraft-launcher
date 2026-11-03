@@ -143,7 +143,7 @@ impl Library {
                 color::amber_tint(),
                 lang::t("library.quick.join_server.title"),
                 lang::t("library.quick.join_server.subtitle"),
-                Message::QuickAction("library.quick.join_server"),
+                Message::OpenJoinServer,
             ),
             (
                 Icon::lucide().users(),
@@ -151,7 +151,7 @@ impl Library {
                 color::violet_tint(),
                 lang::t("library.quick.co_op.title"),
                 lang::t("library.quick.co_op.subtitle"),
-                Message::QuickAction("library.quick.co_op"),
+                Message::OpenCoopSync,
             ),
         ];
         row(cards

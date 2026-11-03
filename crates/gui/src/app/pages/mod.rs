@@ -18,10 +18,13 @@
 //! 6. Add an arm to the root's `outlet()` so the page renders.
 
 pub mod discover;
+pub mod friends;
 pub mod instance;
 pub mod library;
 pub mod login;
+pub mod news;
 pub mod resource;
+pub mod servers;
 pub mod settings;
 pub mod showcase;
 pub mod skins;
@@ -37,8 +40,10 @@ pub enum Page {
     /// The sign-in gate shown before the primary navigation.
     #[default]
     Login,
-    /// Landing page — the instance Library.
-    Home,
+    /// The instance Library, the rail's book and the startup choice of the same name.
+    Library,
+    /// The Minecraft news home, opened by the Lodestone logo. It lists Mojang's posts and patch notes.
+    News,
     /// The content browser: modpacks, resource packs, shaders, worlds and data packs from the
     /// platforms.
     Discover,
@@ -53,6 +58,10 @@ pub enum Page {
     Worlds,
     /// The player's skin and cape, the skins to choose from, and the capes the player owns.
     Skins,
+    /// The servers the player saved, their live pings, and the LAN games announced on the network.
+    Servers,
+    /// The friends page. Friends are coming soon, so the page shows a banner in place of them.
+    Friends,
     /// Launcher preferences.
     Settings,
     /// Style-guide gallery of every core control.
@@ -64,10 +73,13 @@ impl Page {
     pub fn title(self) -> &'static str {
         match self {
             Page::Login => "Login",
-            Page::Home => "Library",
+            Page::Library => "Library",
+            Page::News => "News",
             Page::Discover => "Discover",
             Page::Worlds => "Worlds",
             Page::Skins => "Skins",
+            Page::Servers => "Servers",
+            Page::Friends => "Friends",
             Page::Instance => "Instance",
             Page::Resource => "Resource",
             Page::Settings => "Settings",
