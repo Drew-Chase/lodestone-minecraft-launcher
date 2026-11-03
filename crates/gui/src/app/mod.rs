@@ -27,6 +27,7 @@ mod resource;
 pub mod router;
 mod screenshot_actions;
 mod shared_library;
+mod skin_actions;
 pub mod storage;
 mod subscription;
 pub mod theme;
@@ -147,10 +148,13 @@ pub struct LodestoneLauncher {
     restoring: Option<String>,
     /// Whether the sign-in page was opened to add an account, so a sign-in returns to Settings.
     adding_account: bool,
-    /// The skin in use, decoded for the viewer, which the Accounts tab shows.
-    skin: Option<std::sync::Arc<crate::app::pages::settings::accounts::viewer::Skin>>,
-    /// The skin staged for upload while the upload is confirmed.
-    skin_pending: Option<crate::app::pages::settings::accounts::skins::PendingSkin>,
+    /// The Skins page: the skin and cape the account wears, the skins to choose from, and the capes the account owns.
+    skins: pages::skins::Skins,
+    /// The change to the profile that the player is asked to confirm, until the answer comes back.
+    pending_change: Option<skin_actions::ProfileChange>,
+    /// The change to the profile that was confirmed while the Microsoft session refreshes, so it goes ahead once the
+    /// refresh lands.
+    waiting_change: Option<skin_actions::ProfileChange>,
     auth: Authentication,
     /// Bumped on every new/abandoned sign-in so results from stale polls
     /// (cancelled or superseded) are dropped when they arrive.
@@ -215,8 +219,9 @@ impl Default for LodestoneLauncher {
             speed: Default::default(),
             restoring: None,
             adding_account: false,
-            skin: None,
-            skin_pending: None,
+            skins: pages::skins::Skins::default(),
+            pending_change: None,
+            waiting_change: None,
             auth: Authentication::new(AZURE_CLIENT_ID),
             auth_generation: 0,
             face: None,

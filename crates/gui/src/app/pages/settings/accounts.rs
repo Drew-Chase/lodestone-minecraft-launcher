@@ -1,42 +1,25 @@
-//! The Accounts tab: the accounts the launcher keeps signed in, and the skin browser. Making one the default, signing one
-//! out, and adding a Microsoft account each act at once, because each is a sign-in the root carries out. The skin the
-//! browser stages is uploaded on Save, like the rest of the page.
-
-pub mod skins;
-pub mod viewer;
-
-use std::sync::Arc;
+//! The Accounts tab: the accounts the launcher keeps signed in. Making one the default, signing one out, and adding a
+//! Microsoft account each act at once, because each is a sign-in the root carries out. The skin and the cape an account
+//! wears are on the Skins page.
 
 use aurora_leaf::Icon;
-use iced::widget::image::FilterMethod;
-use iced::widget::{Row, Space, button, column, container, image, row, text};
+use iced::widget::{Space, column, container, image, row, text};
 use iced::{Background, Border, Element, Fill, Padding, alignment};
 
-use self::skins::LibrarySkin;
-use self::viewer::{Layers, Model, Pose, Skin};
 use super::{Message, card};
 use crate::app::components::button::Variant;
-use crate::app::components::hint::hint;
 use crate::app::components::menu::MenuItem;
 use crate::app::components::{Dropdown, TextButton};
 use crate::app::lang;
+use crate::app::pages::Page;
 use crate::app::storage::{StoredAccount, StoredCredentials};
-use crate::app::theme::{Accent, color, fonts, utility};
+use crate::app::theme::{Accent, color, fonts};
 
 /// The side of an account's avatar, in pixels.
 const AVATAR_SIZE: f32 = 44.0;
 
 /// The colors an account without a face takes its initial on, cycled by its place in the list.
 const AVATAR_ACCENTS: [Accent; 5] = [Accent::Green, Accent::Violet, Accent::Cyan, Accent::Amber, Accent::Pink];
-
-/// The side of a saved skin's thumbnail, in pixels.
-const THUMBNAIL_SIZE: f32 = 56.0;
-
-/// How many thumbnails share a row of the grid.
-const THUMBNAILS_PER_ROW: usize = 6;
-
-/// The width of the panel that shows the selected skin.
-const INFO_WIDTH: f32 = 240.0;
 
 /// A change to the signed-in accounts. The root carries each one out, since each is a sign-in.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,52 +32,8 @@ pub enum AccountAction {
     Add,
 }
 
-/// One of the overlay layers the viewer draws.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Layer {
-    Hat,
-    Jacket,
-    Sleeves,
-    Pants,
-}
-
-/// A change to the skin browser. The page applies each one, except opening the folder, which the root reveals.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SkinAction {
-    /// Shows the saved skin at this index in the viewer.
-    View(usize),
-    /// Stages the saved skin at this index, to upload on Save.
-    Stage(usize),
-    /// Shows the account's own skin in the viewer again.
-    ShowCurrent,
-    /// Changes the pose.
-    Pose(Pose),
-    /// Shows or hides an overlay layer.
-    Layer(Layer),
-    /// Chooses the classic or the slim model.
-    Slim(bool),
-    /// Opens the folder the saved skins live in.
-    OpenFolder,
-}
-
-/// What the skin browser shows: the saved skins, what the viewer shows, and the controls' state.
-pub struct BrowserView<'a> {
-    pub library: &'a [LibrarySkin],
-    /// The saved skin the viewer shows, when one is chosen.
-    pub viewing: Option<usize>,
-    /// The saved skin staged for upload on Save.
-    pub staged: Option<usize>,
-    /// The decoded saved skin the viewer shows.
-    pub preview: Option<&'a Arc<Skin>>,
-    /// The skin the account uses, decoded.
-    pub current: Option<&'a Arc<Skin>>,
-    pub pose: Pose,
-    pub layers: Layers,
-    pub slim: bool,
-}
-
-/// The Accounts tab: the signed-in list, and the skin browser under it. `face` is the face of the account that plays.
-pub fn view<'a>(credentials: &'a StoredCredentials, face: Option<&'a image::Handle>, browser: BrowserView<'a>) -> Element<'a, Message> {
+/// The Accounts tab: the signed-in list, and a way to the Skins page. `face` is the face of the account that plays.
+pub fn view<'a>(credentials: &'a StoredCredentials, face: Option<&'a image::Handle>) -> Element<'a, Message> {
     let playing = credentials.primary_index();
     let rows = credentials.accounts.iter().enumerate().map(|(index, account)| {
         let is_playing = playing == Some(index);
@@ -108,15 +47,23 @@ pub fn view<'a>(credentials: &'a StoredCredentials, face: Option<&'a image::Hand
     let add = TextButton::labeled_icon(Icon::lucide().plus(), lang::t("settings.accounts.add_microsoft"), Variant::Ghost)
         .width(Fill)
         .on_press(Message::Account(AccountAction::Add));
-    column![
-        card(
-            lang::t("settings.accounts.signed_in_title"),
-            lang::t("settings.accounts.signed_in_subtitle"),
-            column![column(rows.collect::<Vec<_>>()).spacing(10), add].spacing(14).width(Fill).into(),
-        ),
-        skin_browser(browser),
+    let skins = row![
+        text(lang::t("settings.accounts.skins_hint"))
+            .size(13)
+            .font(fonts::Inter::REGULAR)
+            .color(color::text_muted()),
+        Space::new().width(Fill),
+        TextButton::ghost(lang::t("settings.accounts.open_skins")).on_press(Message::Navigate(Page::Skins)),
     ]
-    .spacing(24)
+    .align_y(alignment::Vertical::Center);
+    column![card(
+        lang::t("settings.accounts.signed_in_title"),
+        lang::t("settings.accounts.signed_in_subtitle"),
+        column![column(rows.collect::<Vec<_>>()).spacing(10), add, skins]
+            .spacing(14)
+            .width(Fill)
+            .into(),
+    )]
     .width(Fill)
     .into()
 }
@@ -219,237 +166,6 @@ fn primary_tag<'a>() -> Element<'a, Message> {
             ..Border::default()
         },
         ..container::Style::default()
-    })
-    .into()
-}
-
-/// The skin browser: the viewer with its layer and pose controls, the selected skin's details, and the saved skins.
-fn skin_browser<'a>(browser: BrowserView<'a>) -> Element<'a, Message> {
-    let count = lang::t_count("settings.skins.count", browser.library.len());
-    let open = TextButton::ghost(lang::t("settings.skins.open_folder")).on_press(Message::Skin(SkinAction::OpenFolder));
-    let shown = browser.preview.or(browser.current).cloned();
-    let model = Model {
-        skin: shown,
-        pose: browser.pose,
-        layers: browser.layers,
-        slim: browser.slim,
-    };
-    let stage = column![
-        row![
-            layer_column(browser.layers),
-            container(viewer::viewer(model)).width(Fill),
-            pose_column(browser.pose),
-        ]
-        .spacing(12)
-        .align_y(alignment::Vertical::Center),
-    ]
-    .width(Fill);
-    let body = row![stage, info_panel(&browser)].spacing(20).width(Fill);
-    card(
-        lang::t("settings.skins.title"),
-        lang::t("settings.skins.subtitle"),
-        column![
-            row![
-                text(count).size(13).font(fonts::Inter::REGULAR).color(color::text_muted()),
-                Space::new().width(Fill),
-                open
-            ]
-            .align_y(alignment::Vertical::Center),
-            body,
-            thumbnails(&browser),
-        ]
-        .spacing(18)
-        .width(Fill)
-        .into(),
-    )
-}
-
-/// The overlay layer switches, beside the viewer: an icon for each, named on hover.
-fn layer_column<'a>(layers: Layers) -> Element<'a, Message> {
-    let switches = [
-        (Layer::Hat, layers.hat, Icon::lucide().hat_glasses(), lang::t("settings.skins.layer_hat")),
-        (
-            Layer::Jacket,
-            layers.jacket,
-            Icon::lucide().shirt(),
-            lang::t("settings.skins.layer_jacket"),
-        ),
-        (
-            Layer::Sleeves,
-            layers.sleeves,
-            Icon::lucide().hand(),
-            lang::t("settings.skins.layer_sleeves"),
-        ),
-        (
-            Layer::Pants,
-            layers.pants,
-            Icon::lucide().columns_2(),
-            lang::t("settings.skins.layer_pants"),
-        ),
-    ];
-    column(switches.map(|(layer, on, icon, name)| icon_choice(icon, name, on, Message::Skin(SkinAction::Layer(layer)))))
-        .spacing(8)
-        .into()
-}
-
-/// The pose choices, beside the viewer: an icon for each, named on hover.
-fn pose_column<'a>(pose: Pose) -> Element<'a, Message> {
-    let choices = [
-        (Pose::Stand, Icon::lucide().person_standing(), lang::t("settings.skins.pose_stand")),
-        (Pose::Arms, Icon::lucide().accessibility(), lang::t("settings.skins.pose_arms")),
-        (Pose::Walk, Icon::lucide().footprints(), lang::t("settings.skins.pose_walk")),
-        (Pose::Run, Icon::lucide().wind(), lang::t("settings.skins.pose_run")),
-        (Pose::Crouch, Icon::lucide().chevrons_down(), lang::t("settings.skins.pose_crouch")),
-    ];
-    column(choices.map(|(choice, icon, name)| icon_choice(icon, name, choice == pose, Message::Skin(SkinAction::Pose(choice)))))
-        .spacing(8)
-        .into()
-}
-
-/// A square icon switch that shows whether it is on, and sends `on_press` when pressed. Its name shows on hover, because the
-/// icon alone does not say what the switch does.
-fn icon_choice<'a>(icon: &'static str, name: &'static str, on: bool, on_press: Message) -> Element<'a, Message> {
-    let ink = if on { color::primary() } else { color::text_muted() };
-    let glyph: Element<'a, Message> = container(utility::icon(icon, 16.0, Some((ink, ink))))
-        .width(Fill)
-        .height(Fill)
-        .align_x(alignment::Horizontal::Center)
-        .align_y(alignment::Vertical::Center)
-        .into();
-    hint(
-        button(glyph)
-            .width(36)
-            .height(36)
-            .padding(0)
-            .on_press(on_press)
-            .style(move |_, _| button::Style {
-                background: Some(Background::Color(if on { color::primary_tint() } else { color::surface_bg3() })),
-                border: Border {
-                    radius: 10.0.into(),
-                    width: 1.0,
-                    color: if on { color::primary_glow() } else { color::surface_line() },
-                },
-                ..button::Style::default()
-            }),
-        name,
-    )
-}
-
-/// The panel beside the viewer: the skin in use, its model, size and color, and the stage button for a saved skin.
-fn info_panel<'a>(browser: &BrowserView<'a>) -> Element<'a, Message> {
-    let saved = browser.viewing.and_then(|index| browser.library.get(index));
-    let name = match saved {
-        Some(skin) => skin.name.clone(),
-        None => lang::t("settings.skins.current_name").to_owned(),
-    };
-    let size = match saved {
-        Some(skin) => skins::dimensions(&skin.png).map_or_else(String::new, |(width, height)| format!("{width}×{height}")),
-        None => "64×64".to_owned(),
-    };
-    let accent = saved.and_then(|skin| skins::accent_hex(&skin.png)).unwrap_or_else(|| "—".to_owned());
-    let mut panel = column![
-        text(lang::t("settings.skins.selected"))
-            .size(10)
-            .font(fonts::JetBrainsMono::SEMI_BOLD)
-            .color(color::text_muted()),
-        text(name).size(18).font(fonts::Inter::SEMI_BOLD).color(color::text_headline()),
-        crate::app::components::segmented::segmented(
-            &[(false, lang::t("settings.skins.classic")), (true, lang::t("settings.skins.slim")),],
-            browser.slim,
-            |slim| Message::Skin(SkinAction::Slim(slim)),
-        ),
-        detail_line(lang::t("settings.skins.resolution"), size),
-        detail_line(lang::t("settings.skins.accent"), accent),
-    ]
-    .spacing(12)
-    .width(INFO_WIDTH);
-    if let Some(index) = browser.viewing {
-        panel = if browser.staged == Some(index) {
-            panel.push(
-                text(lang::t("settings.skins.staged"))
-                    .size(12)
-                    .font(fonts::Inter::REGULAR)
-                    .color(color::primary()),
-            )
-        } else {
-            panel.push(TextButton::primary(lang::t("settings.skins.stage")).on_press(Message::Skin(SkinAction::Stage(index))))
-        };
-        panel = panel.push(TextButton::ghost(lang::t("settings.skins.show_current")).on_press(Message::Skin(SkinAction::ShowCurrent)));
-    }
-    panel.into()
-}
-
-/// One labelled value in the selected panel.
-fn detail_line<'a>(label: &'static str, value: String) -> Element<'a, Message> {
-    row![
-        text(label).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::text_muted()),
-        Space::new().width(Fill),
-        text(value).size(12).font(fonts::JetBrainsMono::SEMI_BOLD).color(color::text_headline()),
-    ]
-    .align_y(alignment::Vertical::Center)
-    .into()
-}
-
-/// The saved skins as thumbnails, a row of them at a time. The viewed skin and the staged one are outlined.
-fn thumbnails<'a>(browser: &BrowserView<'a>) -> Element<'a, Message> {
-    if browser.library.is_empty() {
-        return text(lang::t("settings.skins.empty"))
-            .size(12)
-            .font(fonts::Inter::REGULAR)
-            .color(color::text_muted())
-            .into();
-    }
-    let tiles: Vec<Element<'a, Message>> = browser
-        .library
-        .iter()
-        .enumerate()
-        .map(|(index, skin)| thumbnail(index, skin, browser.viewing == Some(index), browser.staged == Some(index)))
-        .collect();
-    let mut rows = column![].spacing(10);
-    let mut current = Row::new().spacing(10);
-    for (count, tile) in tiles.into_iter().enumerate() {
-        current = current.push(tile);
-        if (count + 1) % THUMBNAILS_PER_ROW == 0 {
-            rows = rows.push(std::mem::replace(&mut current, Row::new().spacing(10)));
-        }
-    }
-    if !browser.library.len().is_multiple_of(THUMBNAILS_PER_ROW) {
-        rows = rows.push(current);
-    }
-    rows.into()
-}
-
-/// One saved skin: its picture and name. Pressing it views the skin.
-fn thumbnail<'a>(index: usize, skin: &LibrarySkin, viewing: bool, staged: bool) -> Element<'a, Message> {
-    let outline = if staged {
-        color::primary()
-    } else if viewing {
-        color::text_headline()
-    } else {
-        color::surface_line()
-    };
-    let picture = image(skin.handle.clone())
-        .width(THUMBNAIL_SIZE)
-        .height(THUMBNAIL_SIZE)
-        .filter_method(FilterMethod::Nearest);
-    button(
-        column![
-            picture,
-            text(skin.name.clone()).size(11).font(fonts::Inter::REGULAR).color(color::text_muted()),
-        ]
-        .spacing(6)
-        .align_x(alignment::Horizontal::Center),
-    )
-    .padding(8)
-    .on_press(Message::Skin(SkinAction::View(index)))
-    .style(move |_, _| button::Style {
-        background: Some(Background::Color(color::surface_bg3())),
-        border: Border {
-            radius: 12.0.into(),
-            width: 1.0,
-            color: outline,
-        },
-        ..button::Style::default()
     })
     .into()
 }

@@ -47,7 +47,9 @@ impl LodestoneLauncher {
         self.credentials = StoredCredentials::default();
         self.account = None;
         self.face = None;
-        self.skin = None;
+        self.skins = crate::app::pages::skins::Skins::default();
+        self.pending_change = None;
+        self.waiting_change = None;
         self.adding_account = false;
         let save = self.save_credentials();
         Task::batch([remove_preferences, save, self.navigate(Page::Login)])

@@ -7,7 +7,7 @@ use crate::app::pages::library::Message as LibraryMessage;
 /// The scope name for `message`'s update, such as `update.Navigate` or `update.Library.Scrolled`.
 ///
 /// The match is exhaustive, so a new message variant cannot go unnamed. It deliberately does not use
-/// `Debug`: formatting `FaceReady(Ok(bytes))` would print the whole skin.
+/// `Debug`: formatting `AppearanceReady(Ok(appearance))` would print the whole skin.
 pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
     use LodestoneAppMessage as M;
     match message {
@@ -41,9 +41,15 @@ pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
         M::VersionsPrefetched(_) => "update.VersionsPrefetched",
         M::SpeedTick => "update.SpeedTick",
         M::AccountSwitched(..) => "update.AccountSwitched",
-        M::SkinUploadConfirmed(_) => "update.SkinUploadConfirmed",
+        M::ProfileChangeConfirmed(_) => "update.ProfileChangeConfirmed",
         M::LocalDataAnswered(_) => "update.LocalDataAnswered",
-        M::SkinUploaded(_) => "update.SkinUploaded",
+        M::ProfileChanged(_) => "update.ProfileChanged",
+        M::Skins(_) => "update.Skins",
+        M::SkinsLoaded(_) => "update.SkinsLoaded",
+        M::CapesLoaded(_) => "update.CapesLoaded",
+        M::PreviewsReady(..) => "update.PreviewsReady",
+        M::ProfileRefreshed(_) => "update.ProfileRefreshed",
+        M::SkinFileMoved(_) => "update.SkinFileMoved",
         M::ReinstallFinished { .. } => "update.ReinstallFinished",
         M::FolderOpened(_) => "update.FolderOpened",
         M::SourceOpened(_) => "update.SourceOpened",
@@ -53,7 +59,7 @@ pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
         M::AuthProbeTick => "update.AuthProbeTick",
         M::AuthProbeResult(_) => "update.AuthProbeResult",
         M::SidebarNav { .. } => "update.SidebarNav",
-        M::FaceReady(_) => "update.FaceReady",
+        M::AppearanceReady(_) => "update.AppearanceReady",
         M::CredentialsSaved(_) => "update.CredentialsSaved",
         M::Alert(_) => "update.Alert",
         M::Game(_) => "update.Game",

@@ -20,7 +20,6 @@ use aurora_leaf::Icon;
 use iced::widget::{Id, Space, column, container, row, stack, text, text_editor};
 use iced::{Element, Fill, Padding, Task, alignment};
 
-use self::accounts::{SkinAction, viewer};
 use self::draft::Draft;
 pub use self::edit::Edit;
 use self::network::speed::Meter;
@@ -40,7 +39,6 @@ use crate::app::preferences::{SettingsValues, StartupPage};
 use crate::app::storage::StoredCredentials;
 use crate::app::theme::{Accent, color, fonts, parse_hex};
 use iced::widget::image;
-use std::sync::Arc;
 
 /// The Settings page: the draft the tabs edit, and what the rows need to show it.
 #[derive(Debug)]
@@ -72,17 +70,6 @@ pub struct Settings {
     /// The width and height fields while they are being typed.
     resolution: ResolutionDraft,
     environment_open: bool,
-    /// The saved skins in the skins folder, read when the page opens.
-    library: Vec<accounts::skins::LibrarySkin>,
-    /// The saved skin the viewer shows, when one is chosen.
-    viewing: Option<usize>,
-    /// The saved skin staged for upload on Save.
-    staged: Option<usize>,
-    /// The decoded saved skin the viewer shows.
-    preview: Option<Arc<viewer::Skin>>,
-    pose: viewer::Pose,
-    layers: viewer::Layers,
-    slim: bool,
 }
 
 /// Messages produced by the settings page.
@@ -121,8 +108,6 @@ pub enum Message {
     MemoryLoaded(u32),
     /// An account was switched, signed out of, or added. The root carries it out.
     Account(accounts::AccountAction),
-    /// A change to the skin browser.
-    Skin(SkinAction),
     /// Opens the folder instances are kept in. The root reveals it.
     OpenInstancesFolder,
     /// Opens the folder the launcher keeps its data in. The root reveals it.
@@ -234,13 +219,6 @@ impl Default for Settings {
             ceiling_gb: 0,
             resolution: ResolutionDraft::default(),
             environment_open: false,
-            library: Vec::new(),
-            viewing: None,
-            staged: None,
-            preview: None,
-            pose: viewer::Pose::default(),
-            layers: viewer::Layers::default(),
-            slim: false,
         }
     }
 }
@@ -252,8 +230,6 @@ impl Settings {
         self.draft.reload(saved);
         self.paths = paths.clone();
         self.instances_dir = paths.instances();
-        let _ = std::fs::create_dir_all(paths.skins());
-        self.library = accounts::skins::scan(&paths.skins());
         self.tab = Tab::default();
         self.offsets.clear();
         self.scroll = 0.0;
@@ -269,9 +245,6 @@ impl Settings {
     /// Takes `saved` as the saved values and drops the edits in progress. The root calls it once the saved settings are cleared.
     pub fn replace_saved(&mut self, saved: &SettingsValues, paths: &LauncherPaths) {
         self.draft = Draft::new(saved.clone());
-        self.staged = None;
-        self.viewing = None;
-        self.preview = None;
         self.sync(saved, paths);
     }
 
@@ -291,10 +264,6 @@ impl Settings {
     /// Applies a message. Navigation, opening the folder and saving are the root's, so they leave here untouched.
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Skin(action) => {
-                self.apply_skin(action);
-                Task::none()
-            }
             Message::Navigate(_)
             | Message::OpenInstancesFolder
             | Message::OpenDataFolder
@@ -337,7 +306,6 @@ impl Settings {
             }
             Message::Reset => {
                 self.draft.reset();
-                self.staged = None;
                 self.refresh();
                 Task::none()
             }
@@ -383,48 +351,6 @@ impl Settings {
                 Task::none()
             }
         }
-    }
-
-    /// Takes the skin staged for upload, with the model it was staged in. Taking it clears the stage.
-    pub fn take_staged(&mut self) -> Option<accounts::skins::PendingSkin> {
-        let index = self.staged.take()?;
-        let skin = self.library.get(index)?;
-        Some(accounts::skins::PendingSkin {
-            name: skin.name.clone(),
-            png: skin.png.clone(),
-            slim: self.slim,
-        })
-    }
-
-    /// Applies a change to the skin browser: the saved skin the viewer shows, the stage for upload, and the viewer's pose,
-    /// layers and model.
-    fn apply_skin(&mut self, action: SkinAction) {
-        match action {
-            SkinAction::View(index) => self.view_saved(index),
-            SkinAction::Stage(index) => {
-                self.view_saved(index);
-                self.staged = Some(index);
-            }
-            SkinAction::ShowCurrent => {
-                self.viewing = None;
-                self.preview = None;
-            }
-            SkinAction::Pose(pose) => self.pose = pose,
-            SkinAction::Layer(layer) => match layer {
-                accounts::Layer::Hat => self.layers.hat = !self.layers.hat,
-                accounts::Layer::Jacket => self.layers.jacket = !self.layers.jacket,
-                accounts::Layer::Sleeves => self.layers.sleeves = !self.layers.sleeves,
-                accounts::Layer::Pants => self.layers.pants = !self.layers.pants,
-            },
-            SkinAction::Slim(slim) => self.slim = slim,
-            SkinAction::OpenFolder => {}
-        }
-    }
-
-    /// Shows the saved skin at `index` in the viewer.
-    fn view_saved(&mut self, index: usize) {
-        self.viewing = Some(index);
-        self.preview = self.library.get(index).and_then(|skin| viewer::Skin::decode(&skin.png)).map(Arc::new);
     }
 
     /// Asks where to save the saved values, then writes them there as JSON. A failure is logged, not shown.
@@ -483,7 +409,6 @@ impl Settings {
         meter: &'a Meter,
         accounts: &'a StoredCredentials,
         face: Option<&'a image::Handle>,
-        skin: Option<&'a Arc<viewer::Skin>>,
     ) -> Element<'a, Message> {
         let shown = Shown {
             values: &self.values,
@@ -496,23 +421,7 @@ impl Settings {
                 Tab::General,
                 general::view(shown, &self.resolution, self.draft.current(), &self.instances_dir),
             ),
-            block(
-                Tab::Accounts,
-                accounts::view(
-                    accounts,
-                    face,
-                    accounts::BrowserView {
-                        library: &self.library,
-                        viewing: self.viewing,
-                        staged: self.staged,
-                        preview: self.preview.as_ref(),
-                        current: skin,
-                        pose: self.pose,
-                        layers: self.layers,
-                        slim: self.slim,
-                    },
-                ),
-            ),
+            block(Tab::Accounts, accounts::view(accounts, face)),
             block(Tab::JavaMemory, java_memory::view(shown, &self.jvm, &self.runtimes)),
             block(Tab::Appearance, appearance::view(self.draft.current(), &self.custom_hex)),
             block(Tab::Network, network::view(self.draft.current(), meter, connected)),
@@ -525,7 +434,7 @@ impl Settings {
             .width(Fill)
             .padding(Padding::new(0.0).left(28.0).right(28.0).top(8.0).bottom(40.0));
         let main = column![
-            header(self.draft.dirty() || self.staged.is_some()),
+            header(self.draft.dirty()),
             hairline(),
             scrollbar::scroll(content)
                 .id(nav::content_id())

@@ -75,6 +75,17 @@ impl Pose {
     /// Every pose, in rail order.
     pub const ALL: [Pose; 5] = [Pose::Stand, Pose::Arms, Pose::Walk, Pose::Run, Pose::Crouch];
 
+    /// The seconds one loop of the pose's motion takes. The motion repeats after it.
+    pub fn loop_seconds(self) -> f32 {
+        match self {
+            Pose::Stand => geometry::STAND_PERIOD,
+            Pose::Arms => geometry::ARMS_PERIOD,
+            Pose::Walk => geometry::WALK_PERIOD,
+            Pose::Run => geometry::RUN_PERIOD,
+            Pose::Crouch => geometry::CROUCH_PERIOD,
+        }
+    }
+
     /// The moment of the pose's motion that a skin preview draws: the moment its limbs are furthest through the motion, so a
     /// still preview shows the pose at its fullest. A pose that holds still draws at the start.
     pub fn preview_time(self) -> f32 {

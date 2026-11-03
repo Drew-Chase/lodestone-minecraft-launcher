@@ -6,6 +6,7 @@ use iced::window::Id;
 use iced::{Subscription, event, keyboard, mouse, window};
 
 use super::pages::Page;
+use super::pages::skins::{Message as SkinsMessage, PREVIEW_FRAME};
 use super::{LodestoneAppMessage, LodestoneLauncher, perf};
 
 impl LodestoneLauncher {
@@ -17,6 +18,7 @@ impl LodestoneLauncher {
             iced::time::every(std::time::Duration::from_secs(15)).map(|_| LodestoneAppMessage::AuthProbeTick),
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| LodestoneAppMessage::SpeedTick),
             self.instance_subscription(),
+            self.skins_subscription(),
             self.discover_shortcut(),
             perf::subscription(&self.perf).map(LodestoneAppMessage::Perf),
         ])
@@ -39,6 +41,17 @@ impl LodestoneLauncher {
                 (is_k && modifiers.command()).then_some(LodestoneAppMessage::Discover(super::pages::discover::Message::FocusSearch))
             }
             _ => None,
+        }
+    }
+
+    /// The Skins page's preview clock: its previews take a step through the poses at each frame. It runs only while that page is on
+    /// screen, and not under reduced motion, where the poses are held.
+    fn skins_subscription(&self) -> Subscription<LodestoneAppMessage> {
+        match self.router.current() {
+            Page::Skins if super::theme::effects::ambient() => {
+                iced::time::every(PREVIEW_FRAME).map(|now| LodestoneAppMessage::Skins(SkinsMessage::Tick(now)))
+            }
+            _ => Subscription::none(),
         }
     }
 

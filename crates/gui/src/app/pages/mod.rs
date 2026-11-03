@@ -24,6 +24,7 @@ pub mod login;
 pub mod resource;
 pub mod settings;
 pub mod showcase;
+pub mod skins;
 pub mod worlds;
 
 /// Every screen the launcher can display.
@@ -50,6 +51,8 @@ pub enum Page {
     Resource,
     /// Every saved world across every instance.
     Worlds,
+    /// The player's skin and cape, the skins to choose from, and the capes the player owns.
+    Skins,
     /// Launcher preferences.
     Settings,
     /// Style-guide gallery of every core control.
@@ -64,6 +67,7 @@ impl Page {
             Page::Home => "Library",
             Page::Discover => "Discover",
             Page::Worlds => "Worlds",
+            Page::Skins => "Skins",
             Page::Instance => "Instance",
             Page::Resource => "Resource",
             Page::Settings => "Settings",

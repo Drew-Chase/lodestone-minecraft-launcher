@@ -23,13 +23,14 @@ use lodestone_minecraft_authentication::Cape;
 
 use self::catalog::{BUNDLED, Pack};
 use self::library::SavedSkin;
-use self::previews::{Item, Job, Previews};
+use self::previews::{Drawn, Item, Job, Slot};
 use self::viewer::{Layers, Pose, Skin};
 use crate::app::pages::Page;
 use crate::app::theme::effects;
 
-/// How often the skin previews take a step through the poses' motion. The viewer draws its own frames faster.
-pub const PREVIEW_FRAME: Duration = Duration::from_millis(66);
+/// How often the skin previews take a step through the poses' motion, which is one frame of their cache. The viewer draws its
+/// own frames faster.
+pub const PREVIEW_FRAME: Duration = previews::FRAME;
 
 /// The skin and cape the account wears, and the model it wears them in.
 #[derive(Clone)]
@@ -131,6 +132,15 @@ pub enum Message {
     Tick(Instant),
 }
 
+/// What the previews are drawn in: the pose, the layers, and the model the saved skins wear. A change to any of them makes the
+/// cached frames stale.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Look {
+    pose: Pose,
+    layers: Layers,
+    slim: bool,
+}
+
 /// The page's state.
 pub struct Skins {
     appearance: Option<Appearance>,
@@ -152,20 +162,20 @@ pub struct Skins {
     collapsed: HashSet<Section>,
     /// Whether a change to the profile is under way. The page offers no other change until it ends.
     busy: bool,
-    /// The 3D previews of the saved, archived and bundled skins, drawn in the pose on show.
-    previews: Previews,
-    /// Whether the previews must be drawn again, and the generation of the last drawing asked for, so that an answer to an
-    /// older drawing is dropped.
-    previews_stale: bool,
-    /// The generation of the last drawing asked for, and of the last one shown.
-    preview_generation: u64,
-    drawn_generation: u64,
+    /// The 3D previews of the skins on the page, one frame of a loop at a time, keyed by the slot and the frame. A loop is drawn
+    /// once, and then plays from these frames.
+    frames: HashMap<(Slot, usize), Handle>,
+    /// The frame last drawn of each skin, which shows while the frame on show is still being drawn.
+    latest: HashMap<Slot, Handle>,
+    /// The look the frames were drawn in. `None` once they were forgotten, until the next job names the look again.
+    cached_look: Option<Look>,
+    /// Bumped each time the frames are forgotten, so that a drawing made for them is dropped when it answers.
+    generation: u64,
     /// Whether a drawing is running, so that the next one waits for it.
-    previews_busy: bool,
-    /// The moment the previews' clock started, the seconds of motion it has run, and whether a frame of it has fallen due.
+    previews_drawing: bool,
+    /// The moment the previews' clock started, and the seconds of motion it has run.
     clock_start: Option<Instant>,
     clock: f32,
-    frame_due: bool,
 }
 
 impl Default for Skins {
@@ -189,136 +199,104 @@ impl Default for Skins {
                 .map(|pack| Section::Pack(*pack))
                 .collect(),
             busy: false,
-            previews: Previews::default(),
-            previews_stale: false,
-            preview_generation: 0,
-            drawn_generation: 0,
-            previews_busy: false,
+            frames: HashMap::new(),
+            latest: HashMap::new(),
+            cached_look: None,
+            generation: 0,
+            previews_drawing: false,
             clock_start: None,
             clock: 0.0,
-            frame_due: false,
         }
     }
 }
 
 impl Skins {
-    /// Takes what the folders hold. A choice that no longer names a skin goes back to the current one.
+    /// Takes what the folders hold. A choice that no longer names a skin goes back to the current one. The cached frames are
+    /// kept while the lists hold the same skins in the same places.
     pub fn set_scan(&mut self, scan: Scan) {
+        let lists_changed = !same_skins(&self.saved, &scan.saved) || !same_skins(&self.archived, &scan.archived);
         self.saved = scan.saved;
         self.archived = scan.archived;
         self.known = self.saved.iter().map(|skin| skin.digest.clone()).chain(scan.bundled).collect();
         if !self.exists(self.choice) {
             self.choose(Choice::Current);
         }
-        self.previews_stale = true;
+        if lists_changed {
+            self.forget_frames();
+        }
     }
 
-    /// Takes the account's skin and cape, decoded for the viewer. The chosen skin is shown with the cape the account wears.
+    /// Takes the account's skin and cape, decoded for the viewer. The chosen skin is shown with the cape the account wears. The
+    /// cached frames show the cape, so they are forgotten when it changes.
     pub fn set_appearance(&mut self, appearance: Appearance) {
+        let cape_changed = self.appearance.as_ref().is_none_or(|old| old.cape_png != appearance.cape_png);
         self.current = Skin::compose(&appearance.skin_png, appearance.cape_png.as_deref()).map(Arc::new);
         self.appearance = Some(appearance);
         self.choose(self.choice);
-        self.previews_stale = true;
+        if cape_changed {
+            self.forget_frames();
+        }
     }
 
-    /// Notes a frame of the poses' motion, at `now`. The previews are drawn again at the next opportunity.
+    /// Notes the previews' clock at `now`. The frame on show follows the clock.
     pub fn tick(&mut self, now: Instant) {
         let start = *self.clock_start.get_or_insert(now);
         self.clock = now.saturating_duration_since(start).as_secs_f32();
-        self.frame_due = true;
     }
 
-    /// The job that draws the previews again: when the list, the pose, the layers, the account or the open sections changed, or
-    /// a frame is due. Only one drawing runs at a time, so `None` while one is running or nothing has changed. Under reduced
-    /// motion the poses are held, so a frame is never due.
+    /// The job that draws the frame on show for the open skins that have no frame yet. `None` while a drawing runs, and when
+    /// every skin of the frame is cached, which is every frame once a loop has been drawn.
     pub fn preview_job(&mut self) -> Option<Job> {
-        if self.previews_busy || !(self.previews_stale || self.frame_due) {
+        let look = self.look();
+        if self.cached_look != Some(look) {
+            self.forget_frames();
+            self.cached_look = Some(look);
+        }
+        if self.previews_drawing {
             return None;
         }
-        self.previews_stale = false;
-        self.frame_due = false;
-        self.previews_busy = true;
-        self.preview_generation += 1;
-        let time = if effects::ambient() {
-            self.clock
-        } else {
-            self.pose.preview_time()
-        };
-        let saved_open = !self.collapsed(Section::Saved);
-        let archived_open = !self.collapsed(Section::Archived);
+        let frame = self.frame();
+        let missing: Vec<Slot> = self.open_slots().filter(|slot| !self.frames.contains_key(&(*slot, frame))).collect();
+        if missing.is_empty() {
+            return None;
+        }
+        self.previews_drawing = true;
         Some(Job {
-            generation: self.preview_generation,
+            generation: self.generation,
+            frame,
             pose: self.pose,
-            time,
+            time: previews::frame_time(self.pose, frame),
             layers: self.layers,
             cape: self.appearance.as_ref().and_then(|appearance| appearance.cape_png.clone()),
-            saved_len: self.saved.len(),
-            archived_len: self.archived.len(),
-            saved: if saved_open {
-                self.saved
-                    .iter()
-                    .enumerate()
-                    .map(|(index, skin)| {
-                        (
-                            index,
-                            Item {
-                                texels: skin.texels.clone(),
-                                slim: self.slim,
-                            },
-                        )
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            },
-            archived: if archived_open {
-                self.archived
-                    .iter()
-                    .enumerate()
-                    .map(|(index, skin)| {
-                        (
-                            index,
-                            Item {
-                                texels: skin.texels.clone(),
-                                slim: skin.slim.unwrap_or(false),
-                            },
-                        )
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            },
-            bundled: BUNDLED
-                .iter()
-                .enumerate()
-                .filter(|(_, skin)| !self.collapsed(Section::Pack(skin.pack)))
-                .map(|(index, skin)| (index, skin.slim))
-                .collect(),
+            items: missing.into_iter().filter_map(|slot| Some((slot, self.item(slot)?))).collect(),
         })
     }
 
-    /// Takes the previews a drawing made. Drawings finish in the order they were asked for, so each one replaces the last.
-    pub fn set_previews(&mut self, generation: u64, previews: Previews) {
-        self.previews_busy = false;
-        if generation > self.drawn_generation {
-            self.drawn_generation = generation;
-            self.previews = previews;
+    /// Takes the frame a drawing made, and caches each skin's preview in it. A drawing made for forgotten frames is dropped.
+    pub fn set_previews(&mut self, drawn: Drawn) {
+        self.previews_drawing = false;
+        if drawn.generation != self.generation {
+            return;
+        }
+        for (slot, handle) in drawn.previews {
+            self.latest.insert(slot, handle.clone());
+            self.frames.insert((slot, drawn.frame), handle);
         }
     }
 
-    /// The 3D preview of the saved skin at `index`, when it has been drawn.
+    /// The 3D preview of the saved skin at `index`, in the frame on show.
     pub fn saved_preview(&self, index: usize) -> Option<&Handle> {
-        self.previews.saved.get(index).and_then(Option::as_ref)
+        self.preview_of(Slot::Saved(index))
     }
 
-    /// The 3D preview of the archived skin at `index`, when it has been drawn.
+    /// The 3D preview of the archived skin at `index`, in the frame on show.
     pub fn archived_preview(&self, index: usize) -> Option<&Handle> {
-        self.previews.archived.get(index).and_then(Option::as_ref)
+        self.preview_of(Slot::Archived(index))
     }
 
-    /// The 3D preview of the bundled skin at `index`, when it has been drawn.
+    /// The 3D preview of the bundled skin at `index`, in the frame on show.
     pub fn bundled_preview(&self, index: usize) -> Option<&Handle> {
-        self.previews.bundled.get(index).and_then(Option::as_ref)
+        self.preview_of(Slot::Bundled(index))
     }
 
     /// Takes the fronts of the capes the player owns, by cape id.
@@ -368,11 +346,6 @@ impl Skins {
 
     /// Applies the page's own changes. The changes that start a request pass through untouched, for the root.
     pub fn update(&mut self, message: Message) {
-        // The previews show the pose, the layers and the model of the saved skins, so changing any of them draws them again.
-        let restyles = matches!(
-            message,
-            Message::Pose(_) | Message::Layer(_) | Message::Slim(_) | Message::ToggleSection(_)
-        );
         match message {
             Message::Choose(choice) => self.choose(choice),
             Message::Tick(now) => self.tick(now),
@@ -390,9 +363,6 @@ impl Skins {
                 }
             }
             Message::Use | Message::RemoveArchived(_) | Message::Cape(_) | Message::OpenFolder | Message::Navigate(_) => {}
-        }
-        if restyles {
-            self.previews_stale = true;
         }
     }
 
@@ -429,6 +399,72 @@ impl Skins {
             Choice::Archived(index) => self.archived.get(index).map(|skin| (skin.png.as_slice(), skin.slim)),
             Choice::Bundled(index) => BUNDLED.get(index).map(|skin| (skin.png, Some(skin.slim))),
         }
+    }
+
+    /// The look the previews are drawn in now.
+    fn look(&self) -> Look {
+        Look {
+            pose: self.pose,
+            layers: self.layers,
+            slim: self.slim,
+        }
+    }
+
+    /// The frame of the pose's loop on show: the frame at the clock, or the moment the pose is held at under reduced motion.
+    fn frame(&self) -> usize {
+        let time = if effects::ambient() { self.clock } else { self.pose.preview_time() };
+        previews::frame_at(self.pose, time)
+    }
+
+    /// Forgets the cached frames. A drawing still running was made for them, so its answer is dropped.
+    fn forget_frames(&mut self) {
+        self.frames.clear();
+        self.latest.clear();
+        self.cached_look = None;
+        self.generation += 1;
+    }
+
+    /// The slots of the skins in the open sections, in the order the page shows them.
+    fn open_slots(&self) -> impl Iterator<Item = Slot> + '_ {
+        let saved = if self.collapsed(Section::Saved) { 0..0 } else { 0..self.saved.len() };
+        let archived = if self.collapsed(Section::Archived) {
+            0..0
+        } else {
+            0..self.archived.len()
+        };
+        let bundled = BUNDLED
+            .iter()
+            .enumerate()
+            .filter(|(_, skin)| !self.collapsed(Section::Pack(skin.pack)))
+            .map(|(index, _)| Slot::Bundled(index));
+        saved.map(Slot::Saved).chain(archived.map(Slot::Archived)).chain(bundled)
+    }
+
+    /// The skin a slot names, as a drawing takes it. `None` when the page holds no skin in that slot.
+    fn item(&self, slot: Slot) -> Option<Item> {
+        match slot {
+            Slot::Saved(index) => self.saved.get(index).map(|skin| Item {
+                texels: skin.texels.clone(),
+                slim: self.slim,
+            }),
+            Slot::Archived(index) => self.archived.get(index).map(|skin| Item {
+                texels: skin.texels.clone(),
+                slim: skin.slim.unwrap_or(false),
+            }),
+            Slot::Bundled(index) => BUNDLED.get(index).map(|skin| Item {
+                texels: None,
+                slim: skin.slim,
+            }),
+        }
+    }
+
+    /// The preview of the skin at `slot` in the frame on show, or the last frame drawn of it while the frame on show is still
+    /// being drawn. Nothing shows while the cached frames belong to another look, until the next job replaces them.
+    fn preview_of(&self, slot: Slot) -> Option<&Handle> {
+        if self.cached_look != Some(self.look()) {
+            return None;
+        }
+        self.frames.get(&(slot, self.frame())).or_else(|| self.latest.get(&slot))
     }
 
     /// The choice the grid highlights.
@@ -500,6 +536,11 @@ impl Skins {
             Choice::Current | Choice::Bundled(_) => None,
         }
     }
+}
+
+/// Whether two lists hold the same skins in the same places, so that the previews drawn of one hold for the other.
+fn same_skins(old: &[SavedSkin], new: &[SavedSkin]) -> bool {
+    old.len() == new.len() && old.iter().zip(new).all(|(old, new)| old.digest == new.digest && old.slim == new.slim)
 }
 
 #[cfg(test)]

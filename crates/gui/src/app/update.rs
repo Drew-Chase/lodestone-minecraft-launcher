@@ -3,7 +3,6 @@
 //! `auth.rs`.
 
 use crate::app::database::Database;
-use crate::app::face;
 use crate::app::lang;
 use crate::app::launch::GameMessage;
 use crate::app::launch::pidfile;
@@ -18,13 +17,11 @@ use crate::app::pages::library::instance::Instance;
 use crate::app::pages::login::Message as LoginMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
 use crate::app::pages::settings::accounts::AccountAction;
-use crate::app::pages::settings::accounts::SkinAction;
 use crate::app::pages::showcase::Message as ShowcaseMessage;
 use crate::app::pages::worlds::Message as WorldsMessage;
 use crate::app::perf;
 use crate::app::preferences::{Preferences, SettingsValues};
 use crate::app::world_actions::WorldMessage;
-use iced::widget::image;
 use iced::{Size, Task, window};
 use iced_borderless_window_resize_handle_widget::drag_resize;
 use std::path::PathBuf;
@@ -175,9 +172,25 @@ impl LodestoneLauncher {
             LodestoneAppMessage::SettingsSaved(result) => self.settings_saved(result),
             LodestoneAppMessage::VersionsPrefetched(result) => self.versions_prefetched(result),
             LodestoneAppMessage::AccountSwitched(index, result) => self.account_switched(index, result),
-            LodestoneAppMessage::SkinUploadConfirmed(confirmed) => self.skin_upload_confirmed(confirmed),
+            LodestoneAppMessage::ProfileChangeConfirmed(confirmed) => self.profile_change_confirmed(confirmed),
             LodestoneAppMessage::LocalDataAnswered(confirmed) => self.local_data_answered(confirmed),
-            LodestoneAppMessage::SkinUploaded(result) => self.skin_uploaded(result),
+            LodestoneAppMessage::ProfileChanged(result) => self.profile_changed(result),
+            LodestoneAppMessage::Skins(message) => self.update_skins(message),
+            LodestoneAppMessage::SkinsLoaded(scan) => {
+                self.skins.set_scan(scan);
+                self.previews_task()
+            }
+            LodestoneAppMessage::PreviewsReady(drawn) => {
+                self.skins.set_previews(drawn);
+                // The frame on show may still need drawing, so the next drawing starts now rather than at the next tick.
+                self.previews_task()
+            }
+            LodestoneAppMessage::CapesLoaded(faces) => {
+                self.skins.set_cape_faces(faces);
+                Task::none()
+            }
+            LodestoneAppMessage::ProfileRefreshed(result) => self.profile_refreshed(result),
+            LodestoneAppMessage::SkinFileMoved(result) => self.skin_file_moved(result),
             LodestoneAppMessage::SpeedTick => {
                 self.speed.tick(lodestone_net::bytes_received());
                 Task::none()
@@ -287,7 +300,6 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Settings(SettingsMessage::OpenInstancesFolder) => super::instances::reveal_folder(self.paths.instances()),
             LodestoneAppMessage::Settings(SettingsMessage::OpenDataFolder) => super::instances::reveal_folder(self.paths.root()),
             LodestoneAppMessage::Settings(SettingsMessage::ClearLocalData) => self.ask_clear_local_data(),
-            LodestoneAppMessage::Settings(SettingsMessage::Skin(SkinAction::OpenFolder)) => super::instances::reveal_folder(self.paths.skins()),
             LodestoneAppMessage::Settings(SettingsMessage::Account(action)) => match action {
                 AccountAction::MakePrimary(index) => self.switch_account(index),
                 AccountAction::SignOut(index) => self.remove_account(index),
@@ -314,15 +326,9 @@ impl LodestoneLauncher {
                 debug!("Sidebar nav item {group:?}#{index} has no page yet");
                 Task::none()
             }
-            LodestoneAppMessage::FaceReady(Ok(skin_png)) => {
-                self.skin = crate::app::pages::settings::accounts::viewer::Skin::decode(&skin_png).map(std::sync::Arc::new);
-                self.face = face::face_from_skin_png(&skin_png)
-                    .and_then(|face| face::expanded_avatar(&face))
-                    .map(|expanded| image::Handle::from_rgba(face::AVATAR_SIZE as u32, face::AVATAR_SIZE as u32, expanded));
-                Task::none()
-            }
-            LodestoneAppMessage::FaceReady(Err(error)) => {
-                warn!("Player face unavailable: {error}");
+            LodestoneAppMessage::AppearanceReady(Ok(appearance)) => self.apply_appearance(appearance),
+            LodestoneAppMessage::AppearanceReady(Err(error)) => {
+                warn!("Player appearance unavailable: {error}");
                 self.face = None;
                 Task::none()
             }
@@ -393,6 +399,9 @@ impl LodestoneLauncher {
             if page == Page::Worlds {
                 return self.open_worlds();
             }
+            if page == Page::Skins {
+                return self.open_skins();
+            }
             if page == Page::Settings {
                 return self.open_settings();
             }
@@ -423,13 +432,9 @@ impl LodestoneLauncher {
         values.apply();
         self.settings_values = values.clone();
         self.refresh_instance_page();
-        let save = match self.settings_saves.request(SETTINGS_KEY, values) {
+        match self.settings_saves.request(SETTINGS_KEY, values) {
             Some(values) => write_settings(values),
             None => Task::none(),
-        };
-        match self.settings.take_staged() {
-            Some(skin) => Task::batch([save, self.confirm_skin_upload(skin)]),
-            None => save,
         }
     }
 

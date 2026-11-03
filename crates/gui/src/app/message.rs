@@ -17,6 +17,8 @@ use crate::app::pages::login::Message as LoginMessage;
 use crate::app::pages::resource::Message as ResourceMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
 use crate::app::pages::showcase::Message as ShowcaseMessage;
+use crate::app::pages::skins::previews::Drawn;
+use crate::app::pages::skins::{Appearance, Message as SkinsMessage, Scan};
 use crate::app::pages::worlds::Message as WorldsMessage;
 use crate::app::perf;
 use crate::app::portable::Message as PortableMessage;
@@ -27,7 +29,7 @@ use crate::app::world_actions::WorldMessage;
 use iced::Size;
 use iced::widget::image::Handle;
 use iced::window::{Direction, Id};
-use lodestone_minecraft_authentication::{AuthProbe, Session};
+use lodestone_minecraft_authentication::{AuthProbe, Profile, Session};
 
 #[derive(Debug, Clone)]
 pub enum LodestoneAppMessage {
@@ -70,10 +72,22 @@ pub enum LodestoneAppMessage {
     SpeedTick,
     /// A switch to another account, which signed in again, finished.
     AccountSwitched(usize, Result<Session, String>),
-    /// The answer to the question whether to upload the staged skin.
-    SkinUploadConfirmed(bool),
-    /// A skin upload finished, with the skin's picture when it was uploaded.
-    SkinUploaded(Result<Vec<u8>, String>),
+    /// The answer to the question whether to make the change to the profile that was asked for: a skin or a cape.
+    ProfileChangeConfirmed(bool),
+    /// A change to the profile finished, with the profile it leaves.
+    ProfileChanged(Result<Profile, String>),
+    /// The Skins page's own messages, and the requests it makes of the root.
+    Skins(SkinsMessage),
+    /// The skin folders were read.
+    SkinsLoaded(Scan),
+    /// The capes the account owns were read, each with the front of its picture.
+    CapesLoaded(Vec<(String, Handle)>),
+    /// A drawing of the skin previews finished, with the frame it made.
+    PreviewsReady(Drawn),
+    /// The profile was read again when the Skins page opened.
+    ProfileRefreshed(Result<Profile, String>),
+    /// A skin file was moved to the trash, or could not be.
+    SkinFileMoved(Result<(), String>),
     /// The answer to the question whether to clear the saved settings and the sign-ins.
     LocalDataAnswered(bool),
     /// The Minecraft version list fetched at launch, when Auto-update game versions is on.
@@ -144,8 +158,8 @@ pub enum LodestoneAppMessage {
         group: NavGroup,
         index: usize,
     },
-    /// The player face finished loading (8×8 RGBA, ready to upscale).
-    FaceReady(Result<Vec<u8>, String>),
+    /// The account's skin and cape finished loading, for the sidebar's face and the Skins page's viewer.
+    AppearanceReady(Result<Appearance, String>),
     /// A background credential write finished.
     CredentialsSaved(Result<(), String>),
     /// The open alert was answered (see `components::alert`).

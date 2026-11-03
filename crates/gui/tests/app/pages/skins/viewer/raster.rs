@@ -20,6 +20,15 @@ fn model(skin: Skin, pose: Pose) -> Model {
     }
 }
 
+/// `model` drawn the way a preview draws it: projected once, then filled with its skin's texels. A model with no skin draws
+/// nothing, over a clear background.
+fn render(model: &Model, width: u32, height: u32) -> Vec<u8> {
+    match model.skin.as_ref() {
+        Some(skin) => fill(&project(model, skin.cape, width, height), &skin.texels),
+        None => vec![0u8; (width * height * 4) as usize],
+    }
+}
+
 /// The RGBA of the pixel at `(x, y)` of a `width`-wide image.
 fn pixel(pixels: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
     let at = ((y * width + x) * 4) as usize;
@@ -69,4 +78,23 @@ fn a_model_without_a_skin_draws_nothing() {
         time: 0.0,
     };
     assert!(render(&nothing, 96, 128).iter().all(|&byte| byte == 0));
+}
+
+#[test]
+fn a_projection_filled_with_a_skin_is_the_render_of_that_skin() {
+    let model = model(skin([200, 40, 40, 255]), Pose::Stand);
+    let texels = model.skin.as_ref().expect("the model has a skin").texels.clone();
+    assert!(fill(&project(&model, false, 96, 128), &texels) == render(&model, 96, 128));
+}
+
+#[test]
+fn one_projection_draws_each_skin_worn_in_it() {
+    let red = model(skin([200, 40, 40, 255]), Pose::Stand);
+    let blue_texels = model(skin([40, 40, 200, 255]), Pose::Stand).skin.expect("a skin").texels.clone();
+    let drawn = fill(&project(&red, false, 96, 128), &blue_texels);
+    let centre = pixel(&drawn, 96, 48, 64);
+    assert!(
+        centre[2] > centre[0] && centre[2] > centre[1],
+        "the blue skin shows through the red model's projection: {centre:?}"
+    );
 }

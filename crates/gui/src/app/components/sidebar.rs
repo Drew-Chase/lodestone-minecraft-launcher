@@ -1,11 +1,11 @@
 //! The sidebar — the launcher's primary navigation rail.
 //!
 //! Matches the reference (`02-library.png`): the Lodestone logo with its
-//! glow, a divider, the five primary nav items, the utility items pinned to
+//! glow, a divider, the six primary nav items, the utility items pinned to
 //! the bottom, and the player avatar with its presence dot. The icon groups
 //! reuse [`NavRail`] for the sliding indicator and hover states.
 //!
-//! Library, Discover and Worlds navigate; the remaining items keep their
+//! Library, Discover, Worlds and Skins navigate; the remaining items keep their
 //! hover affordances but produce no navigation.
 
 use std::sync::OnceLock;
@@ -30,8 +30,8 @@ pub const WIDTH: f32 = 68.0;
 /// macOS draws no titlebar, so its traffic lights sit over the rail's top 32px; the padding takes that strip in too.
 const TOP_PADDING: f32 = if cfg!(target_os = "macos") { 50.0 } else { 18.0 };
 
-/// The top nav group: Library, Discover, Worlds, Servers, Friends.
-const TOP_ICONS: [&str; 5] = ["home", "compass", "globe", "server", "users"];
+/// The top nav group: Library, Discover, Worlds, Skins, Servers, Friends.
+const TOP_ICONS: [&str; 6] = ["home", "compass", "globe", "shirt", "server", "users"];
 /// The bottom nav group: Settings. The Downloads trigger sits above it.
 const BOTTOM_ICONS: [&str; 1] = ["settings"];
 
@@ -43,6 +43,7 @@ fn rail_icon(name: &str) -> &'static str {
             ("home", Icon::lucide().house()),
             ("compass", Icon::lucide().compass()),
             ("globe", Icon::lucide().globe()),
+            ("shirt", Icon::lucide().shirt()),
             ("server", Icon::lucide().server()),
             ("users", Icon::lucide().users()),
             ("settings", Icon::lucide().settings()),

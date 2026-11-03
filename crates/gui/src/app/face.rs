@@ -1,9 +1,10 @@
-//! Player face extraction — the 8×8 face crop out of a Minecraft skin.
+//! Player face extraction — the 8×8 helm crop out of a Minecraft skin.
 //!
 //! A skin texture is a 64×64 PNG whose face occupies the 8×8 block at
-//! (8, 8). This module turns skin PNG bytes (downloaded from Mojang) into
-//! that face as RGBA, and expands it to a crisp 40×40 texture for the
-//! sidebar avatar (nearest-neighbour, so the pixels stay square).
+//! (8, 8), with the hat layer (the helm) over it at (40, 8). This module
+//! turns skin PNG bytes (downloaded from Mojang) into that helm as RGBA, and
+//! expands it to a crisp 40×40 texture for the sidebar avatar
+//! (nearest-neighbour, so the pixels stay square).
 
 use image::ImageReader;
 use image::RgbaImage;
@@ -12,6 +13,8 @@ use image::RgbaImage;
 const FACE_SIZE: usize = 8;
 /// Where the face sits on the skin texture (both axes).
 const FACE_OFFSET: usize = 8;
+/// Where the hat layer sits on the skin texture, across. Its rows share the face's.
+const HAT_OFFSET_X: usize = 40;
 /// The avatar's rendered size — 5× per face pixel.
 pub const AVATAR_SIZE: usize = 40;
 
@@ -27,20 +30,40 @@ pub fn face_from_skin_png(skin_png: &[u8]) -> Option<Vec<u8>> {
     face_from_rgba(&skin.clone().into_raw(), skin.width() as usize)
 }
 
-/// Crops the face out of raw skin RGBA (64×64×4, row-major).
+/// Crops the helm out of raw skin RGBA (64×64×4, row-major): the face, with the hat layer drawn over it. A skin with no
+/// hat has transparent pixels there, so its crop is the face alone.
 pub fn face_from_rgba(skin_rgba: &[u8], skin_width: usize) -> Option<Vec<u8>> {
     let stride = skin_width * 4;
-    if skin_rgba.len() < stride * (FACE_OFFSET + FACE_SIZE) {
+    if skin_width < HAT_OFFSET_X + FACE_SIZE || skin_rgba.len() < stride * (FACE_OFFSET + FACE_SIZE) {
         return None;
     }
     let mut face = Vec::with_capacity(FACE_SIZE * FACE_SIZE * 4);
     for y in 0..FACE_SIZE {
+        let row = (FACE_OFFSET + y) * stride;
         for x in 0..FACE_SIZE {
-            let px = ((FACE_OFFSET + y) * stride) + (FACE_OFFSET + x) * 4;
-            face.extend_from_slice(&skin_rgba[px..px + 4]);
+            let base = row + (FACE_OFFSET + x) * 4;
+            let hat = row + (HAT_OFFSET_X + x) * 4;
+            face.extend_from_slice(&over(&skin_rgba[base..base + 4], &skin_rgba[hat..hat + 4]));
         }
     }
     Some(face)
+}
+
+/// `top` drawn over `bottom`, both straight (not premultiplied) RGBA, with source-over alpha.
+fn over(bottom: &[u8], top: &[u8]) -> [u8; 4] {
+    let top_alpha = u32::from(top[3]);
+    if top_alpha == 0 {
+        return [bottom[0], bottom[1], bottom[2], bottom[3]];
+    }
+    let bottom_alpha = u32::from(bottom[3]);
+    // The alpha that is left of the bottom once the top covers its share of the pixel.
+    let uncovered = bottom_alpha * (255 - top_alpha) / 255;
+    let out_alpha = top_alpha + uncovered;
+    if out_alpha == 0 {
+        return [0, 0, 0, 0];
+    }
+    let channel = |index: usize| (u32::from(top[index]) * top_alpha + u32::from(bottom[index]) * uncovered) / out_alpha;
+    [channel(0) as u8, channel(1) as u8, channel(2) as u8, out_alpha as u8]
 }
 
 /// Nearest-neighbour expansion of an 8×8 RGBA face to the avatar size —

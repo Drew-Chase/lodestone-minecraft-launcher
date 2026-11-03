@@ -67,3 +67,33 @@ fn expanded_avatar_fades_the_corners() {
     assert_eq!(alpha_at(0, 39), 0);
     assert_eq!(alpha_at(39, 39), 0);
 }
+
+#[test]
+fn the_hat_layer_covers_the_face_where_it_is_opaque() {
+    let mut skin = test_skin();
+    // An opaque blue hat pixel over the face's top-left texel, at (40, 8).
+    let px = (8 * 64 + 40) * 4;
+    skin[px..px + 4].copy_from_slice(&[0, 0, 255, 255]);
+    let face = face_from_rgba(&skin, 64).expect("valid skin");
+    assert_eq!(&face[0..4], &[0, 0, 255, 255], "the hat replaces the face under it");
+    assert_eq!(&face[4..8], &[255, 0, 0, 255], "the rest of the face shows through");
+}
+
+#[test]
+fn a_translucent_hat_pixel_blends_with_the_face() {
+    let mut skin = test_skin();
+    let px = (8 * 64 + 40) * 4;
+    skin[px..px + 4].copy_from_slice(&[0, 0, 255, 128]);
+    let face = face_from_rgba(&skin, 64).expect("valid skin");
+    // Half blue over opaque red leaves an opaque pixel that is half of each.
+    assert_eq!(face[3], 255);
+    assert!((i32::from(face[0]) - 127).abs() <= 1, "red {}", face[0]);
+    assert_eq!(face[1], 0);
+    assert!((i32::from(face[2]) - 128).abs() <= 1, "blue {}", face[2]);
+}
+
+#[test]
+fn a_skin_too_narrow_for_the_hat_has_no_face() {
+    let skin = vec![255u8; 32 * 16 * 4];
+    assert!(face_from_rgba(&skin, 32).is_none());
+}

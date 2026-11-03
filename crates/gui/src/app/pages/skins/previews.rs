@@ -1,105 +1,124 @@
-//! The skin previews: each skin in an open section, drawn in 3D in the pose the viewer shows, at the moment of its motion on
-//! show, with the layers on show and the cape the account wears. The poses move, so the previews are drawn again at each
-//! frame. They are drawn on the CPU in a background task, one drawing at a time, so the list stays responsive.
+//! The skin previews: each skin in an open section, drawn in 3D in the pose the viewer shows. The poses move, so the previews are
+//! cached a frame at a time. A loop of a pose is drawn once, frame by frame, with each skin on the page drawn once for each
+//! frame. After that the loop plays from the cache, and nothing is drawn. The skins of a frame share one projection of the model
+//! for each arm width. The frames are drawn on the CPU in a background task, one drawing at a time, so the list stays responsive.
 
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use iced::widget::image::Handle;
-use image::RgbaImage;
 
 use super::catalog::BUNDLED;
-use super::viewer::{Layers, Model, Pose, Skin, atlas, decode_cape, raster, skin_texels};
+use super::viewer::{Layers, Model, Pose, atlas, decode_cape, raster, skin_texels};
 
 /// The size a preview is drawn at: twice the 96 by 128 it is shown at, so it stays sharp on a dense screen.
 pub const WIDTH: u32 = 192;
 pub const HEIGHT: u32 = 256;
 
-/// One saved or archived skin to preview: its texels, and whether it wears the slim model. `None` texels draw nothing.
+/// How often the previews take a step through a pose's motion, which is one frame of the cache.
+pub const FRAME: Duration = Duration::from_millis(66);
+
+/// The most frames a loop is cached as. A walk and a run are cached one frame per step, and a slow pose in this many, so that
+/// the cache of a loop is never bigger than a walk's.
+pub const MAX_FRAMES_PER_LOOP: usize = 15;
+
+/// Where a previewed skin stands on the page: a saved skin, an archived one, or a bundled one, by its place in its list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Slot {
+    Saved(usize),
+    Archived(usize),
+    Bundled(usize),
+}
+
+/// One skin to draw in a frame: its texels, and the model it wears. A bundled skin has no texels here, since the drawing takes
+/// it from the catalog.
 #[derive(Debug, Clone)]
 pub struct Item {
     pub texels: Option<Arc<Vec<u8>>>,
     pub slim: bool,
 }
 
-/// One drawing of the previews: which skins of each group to draw, the pose and the moment of it, the layers, and the cape
-/// the account wears. Each skin names its place in its group, so the drawing lands where it belongs.
+/// One frame of the previews that is missing from the cache: the skins to draw in it, and the pose, the layers and the cape it
+/// is drawn with.
 #[derive(Debug, Clone)]
 pub struct Job {
-    /// Which drawing this is. Drawings are answered in the order they were asked for.
+    /// Which look of the previews the frame belongs to. A drawing made for an older look is dropped.
     pub generation: u64,
+    /// The frame of the loop, which the cache keys it by.
+    pub frame: usize,
     pub pose: Pose,
-    /// The moment of the pose's motion that the drawing shows, in seconds.
+    /// The moment of the pose's motion the frame shows, in seconds.
     pub time: f32,
     pub layers: Layers,
     pub cape: Option<Vec<u8>>,
-    /// How many skins each group holds, so that the drawing has a place for every one.
-    pub saved_len: usize,
-    pub archived_len: usize,
-    /// The skins to draw, each with its place in its group. A bundled skin is named by its place in the catalog.
-    pub saved: Vec<(usize, Item)>,
-    pub archived: Vec<(usize, Item)>,
-    pub bundled: Vec<(usize, bool)>,
+    pub items: Vec<(Slot, Item)>,
 }
 
-/// The drawn previews, in the order of each group. A skin that was not drawn, or cannot be, has none.
-#[derive(Debug, Clone, Default)]
-pub struct Previews {
-    pub saved: Vec<Option<Handle>>,
-    pub archived: Vec<Option<Handle>>,
-    pub bundled: Vec<Option<Handle>>,
+/// The frame a drawing made, with each drawn skin's slot. A skin that cannot be drawn has no entry.
+#[derive(Debug, Clone)]
+pub struct Drawn {
+    pub generation: u64,
+    pub frame: usize,
+    pub previews: Vec<(Slot, Handle)>,
 }
 
-/// What every preview of a drawing shares: the pose and its moment, the layers, and the cape.
-struct Look<'a> {
-    pose: Pose,
-    layers: Layers,
-    time: f32,
-    cape: Option<&'a RgbaImage>,
+/// How many frames a loop of the pose is cached as: one per step of the clock where the loop is short enough, and at most
+/// `MAX_FRAMES_PER_LOOP` where it is not.
+pub fn frames_per_loop(pose: Pose) -> usize {
+    let per_step = (pose.loop_seconds() / FRAME.as_secs_f32()).round() as usize;
+    per_step.clamp(1, MAX_FRAMES_PER_LOOP)
 }
 
-impl Look<'_> {
-    /// Draws one skin, given its texels and model, as a preview.
-    fn draw(&self, texels: &[u8], slim: bool) -> Option<Handle> {
-        let skin = Skin {
-            id: 0,
-            texels: atlas(texels, self.cape),
-            cape: self.cape.is_some(),
-        };
-        let model = Model {
-            skin: Some(Arc::new(skin)),
-            pose: self.pose,
-            layers: self.layers,
-            slim,
-            time: self.time,
-        };
-        Some(Handle::from_rgba(WIDTH, HEIGHT, raster::render(&model, WIDTH, HEIGHT)))
-    }
+/// The moment of the pose's motion that frame `frame` of its loop shows.
+pub fn frame_time(pose: Pose, frame: usize) -> f32 {
+    pose.loop_seconds() * frame as f32 / frames_per_loop(pose) as f32
 }
 
-/// Draws the skins of a job in its pose, and returns them with the job's generation.
-pub fn draw(job: Job) -> (u64, Previews) {
+/// The frame of the pose's loop that shows the moment `time`: the frame whose moment is nearest. The loop repeats, so the frame
+/// wraps round to the start.
+pub fn frame_at(pose: Pose, time: f32) -> usize {
+    let frames = frames_per_loop(pose);
+    let step = pose.loop_seconds() / frames as f32;
+    ((time / step).round() as usize) % frames
+}
+
+/// Draws the items of a job, and returns them with the job's generation and frame. The skins of one model are drawn from one
+/// projection, so the model is projected once for each arm width.
+pub fn draw(job: Job) -> Drawn {
     let cape = job.cape.as_deref().and_then(decode_cape);
-    let look = Look {
-        pose: job.pose,
-        layers: job.layers,
-        time: job.time,
-        cape: cape.as_ref(),
-    };
-    let mut previews = Previews {
-        saved: vec![None; job.saved_len],
-        archived: vec![None; job.archived_len],
-        bundled: vec![None; BUNDLED.len()],
-    };
-    for (index, item) in &job.saved {
-        previews.saved[*index] = item.texels.as_deref().and_then(|texels| look.draw(texels, item.slim));
+    let mut projections: [Option<raster::Projection>; 2] = [None, None];
+    let previews = job
+        .items
+        .iter()
+        .filter_map(|(slot, item)| {
+            let texels = texels_of(*slot, item)?;
+            let projection = projections[usize::from(item.slim)].get_or_insert_with(|| {
+                let model = Model {
+                    skin: None,
+                    pose: job.pose,
+                    layers: job.layers,
+                    slim: item.slim,
+                    time: job.time,
+                };
+                raster::project(&model, cape.is_some(), WIDTH, HEIGHT)
+            });
+            let texture = atlas(texels, cape.as_ref());
+            Some((*slot, Handle::from_rgba(WIDTH, HEIGHT, raster::fill(projection, &texture))))
+        })
+        .collect();
+    Drawn {
+        generation: job.generation,
+        frame: job.frame,
+        previews,
     }
-    for (index, item) in &job.archived {
-        previews.archived[*index] = item.texels.as_deref().and_then(|texels| look.draw(texels, item.slim));
+}
+
+/// The texels a slot draws: a saved or archived skin's own, or a bundled skin's from the catalog.
+fn texels_of(slot: Slot, item: &Item) -> Option<&[u8]> {
+    match slot {
+        Slot::Bundled(index) => bundled_texels(index),
+        Slot::Saved(_) | Slot::Archived(_) => item.texels.as_deref().map(Vec::as_slice),
     }
-    for (index, slim) in &job.bundled {
-        previews.bundled[*index] = bundled_texels(*index).and_then(|texels| look.draw(texels, *slim));
-    }
-    (job.generation, previews)
 }
 
 /// The texels of the bundled skin at `index`. Every bundled skin is decoded the first time one is drawn, and then kept.

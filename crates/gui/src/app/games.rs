@@ -195,21 +195,28 @@ impl LodestoneLauncher {
                         self.begin_launch(&id, serial, quick_play)
                     });
                 }
+                // A skin or cape change that waited for this refresh goes ahead with the new session.
+                tasks.push(self.resume_profile_change(applied));
                 Task::batch(tasks)
             }
             Err(error) => {
                 warn!("Refreshing the Microsoft session failed: {error}");
+                let mut tasks = Vec::new();
                 let mut failed = false;
                 for (id, serial, _) in waiting {
                     failed |= self.games.finish_preparing(&id, serial);
                 }
                 if failed {
-                    self.alerts
-                        .show(Alert::error(lang::t_with("launch.failed", &[("error", error.as_str())])))
-                        .discard()
-                } else {
-                    Task::none()
+                    tasks.push(
+                        self.alerts
+                            .show(Alert::error(lang::t_with("launch.failed", &[("error", error.as_str())])))
+                            .discard(),
+                    );
                 }
+                if self.waiting_change.take().is_some() {
+                    tasks.push(self.alerts.show(Alert::warn(lang::t("skins.sign_in_again"))).discard());
+                }
+                Task::batch(tasks)
             }
         }
     }

@@ -2,7 +2,7 @@
 
 use crate::app::components::backdrop::LoginBackdrop;
 use crate::app::components::game_controls::Actions;
-use crate::app::components::page::MAX_CONTENT_WIDTH;
+use crate::app::components::page::{MAX_CONTENT_WIDTH, content_width};
 use crate::app::components::sidebar::{game_block, sidebar as sidebar_view};
 use crate::app::downloads::{self, Pending};
 use crate::app::launch::GameMessage;
@@ -17,6 +17,18 @@ use iced_borderless_window_resize_handle_widget::ResizeHandles;
 use tracing::debug;
 
 use super::{Account, LodestoneAppMessage, LodestoneLauncher, NavGroup};
+
+/// The pages the top nav group opens, in the order the rail lists them: Library, Discover, Worlds and Skins.
+const TOP_NAV: [Page; 4] = [Page::Home, Page::Discover, Page::Worlds, Page::Skins];
+
+/// The top nav item a page highlights. Discover and its resource pages share one, and a page outside the group highlights
+/// Library.
+fn top_nav_index(page: Page) -> usize {
+    match page {
+        Page::Discover | Page::Resource => 1,
+        page => TOP_NAV.iter().position(|item| *item == page).unwrap_or(0),
+    }
+}
 
 impl LodestoneLauncher {
     pub fn view(&self) -> Element<'_, LodestoneAppMessage> {
@@ -170,16 +182,10 @@ impl LodestoneLauncher {
             self.face.clone(),
             self.account.as_ref().map(Account::username).map(str::to_string),
             matches!(self.account, Some(Account::Microsoft { .. })),
-            match self.router.current() {
-                Page::Discover | Page::Resource => 1,
-                Page::Worlds => 2,
-                _ => 0,
-            },
-            |index| match index {
-                0 => LodestoneAppMessage::Navigate(Page::Home),
-                1 => LodestoneAppMessage::Navigate(Page::Discover),
-                2 => LodestoneAppMessage::Navigate(Page::Worlds),
-                _ => {
+            top_nav_index(self.router.current()),
+            |index| match TOP_NAV.get(index) {
+                Some(page) => LodestoneAppMessage::Navigate(*page),
+                None => {
                     debug!("Sidebar nav item {index} has no page yet");
                     LodestoneAppMessage::SidebarNav { group: NavGroup::Top, index }
                 }
@@ -221,6 +227,7 @@ impl LodestoneLauncher {
             Page::Showcase => "view.showcase",
             Page::Discover => "view.discover",
             Page::Worlds => "view.worlds",
+            Page::Skins => "view.skins",
         });
         match page {
             Page::Login => self.login.view(None).map(LodestoneAppMessage::Login),
@@ -243,12 +250,15 @@ impl LodestoneLauncher {
                     &self.speed,
                     &self.credentials,
                     self.face.as_ref(),
-                    self.skin.as_ref(),
                 )
                 .map(LodestoneAppMessage::Settings),
             Page::Showcase => self.showcase.view().map(LodestoneAppMessage::Showcase),
             Page::Discover => self.discover.view(self.window_size).map(LodestoneAppMessage::Discover),
             Page::Worlds => self.worlds.view(self.window_size).map(LodestoneAppMessage::Worlds),
+            Page::Skins => self
+                .skins
+                .view(self.skins_account(), content_width(self.window_size.width))
+                .map(LodestoneAppMessage::Skins),
         }
     }
 }

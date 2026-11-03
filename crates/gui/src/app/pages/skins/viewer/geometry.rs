@@ -22,6 +22,11 @@ struct Part {
 pub(super) const WALK_PERIOD: f32 = 1.0;
 pub(super) const RUN_PERIOD: f32 = 0.6;
 
+/// The seconds one sway of the standing, arm-raised and crouching poses takes.
+pub(super) const STAND_PERIOD: f32 = 3.0;
+pub(super) const ARMS_PERIOD: f32 = 1.2;
+pub(super) const CROUCH_PERIOD: f32 = 2.0;
+
 /// How far the body drops when the model crouches, in model pixels.
 const CROUCH_DROP: f32 = 3.0;
 
@@ -42,7 +47,7 @@ fn motion(pose: Pose, time: f32) -> Motion {
     use std::f32::consts::{FRAC_PI_2, TAU};
     match pose {
         Pose::Stand => {
-            let sway = 0.04 * (TAU * time / 3.0).sin();
+            let sway = 0.04 * (TAU * time / STAND_PERIOD).sin();
             Motion {
                 right_arm: (0.0, sway),
                 left_arm: (0.0, -sway),
@@ -53,7 +58,7 @@ fn motion(pose: Pose, time: f32) -> Motion {
         }
         Pose::Arms => {
             // The arms stay out to the sides, and flap slowly.
-            let flap = 0.12 * (TAU * time / 1.2).sin();
+            let flap = 0.12 * (TAU * time / ARMS_PERIOD).sin();
             Motion {
                 right_arm: (-FRAC_PI_2 + flap, 0.0),
                 left_arm: (FRAC_PI_2 - flap, 0.0),
@@ -65,7 +70,7 @@ fn motion(pose: Pose, time: f32) -> Motion {
         Pose::Walk => stride(time, WALK_PERIOD, 0.5, 0.06),
         Pose::Run => stride(time, RUN_PERIOD, 0.9, 0.12),
         Pose::Crouch => {
-            let sway = 0.05 * (TAU * time / 2.0).sin();
+            let sway = 0.05 * (TAU * time / CROUCH_PERIOD).sin();
             Motion {
                 right_arm: (0.0, -0.6 + sway),
                 left_arm: (0.0, -0.6 - sway),
@@ -213,11 +218,17 @@ fn parts(model: &Model) -> Vec<Part> {
 /// The vertices of the model: six faces per box, each as two triangles, with the texel coordinates and the face's shade.
 /// The cape's quad follows the boxes when the skin carries a cape.
 pub(super) fn model_vertices(model: &Model) -> Vec<f32> {
+    model_vertices_with_cape(model, model.skin.as_ref().is_some_and(|skin| skin.cape))
+}
+
+/// The vertices of the model, with the cape's quad when `cape` is set. A projection of the model carries no skin, so it passes
+/// the cape itself.
+pub(super) fn model_vertices_with_cape(model: &Model, cape: bool) -> Vec<f32> {
     let mut vertices = Vec::new();
     for part in parts(model) {
         push_box(&mut vertices, &part);
     }
-    if model.skin.as_ref().is_some_and(|skin| skin.cape) {
+    if cape {
         push_cape(&mut vertices, body_transform(model));
     }
     vertices

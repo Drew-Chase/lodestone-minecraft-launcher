@@ -19,7 +19,7 @@ use crate::app::pages::skins::archive;
 use crate::app::pages::skins::capes;
 use crate::app::pages::skins::catalog::BUNDLED;
 use crate::app::pages::skins::library;
-use crate::app::pages::skins::previews::{self, Previews};
+use crate::app::pages::skins::previews::{self, Drawn};
 use crate::app::pages::skins::{Account as SkinsAccount, Appearance, Message as SkinsMessage, Scan};
 
 /// A change to the account's appearance that Mojang makes.
@@ -122,20 +122,22 @@ impl LodestoneLauncher {
         self.previews_task()
     }
 
-    /// The task that draws the skin previews again, when the list, the pose, the layers or the account's cape asked for it. The
-    /// drawing runs on a background thread, so the list stays responsive while it runs.
+    /// The task that draws the frame on show for the skins that have none yet. The drawing runs on a background thread, so the
+    /// list stays responsive while it runs.
     pub(super) fn previews_task(&mut self) -> Task<LodestoneAppMessage> {
         let Some(job) = self.skins.preview_job() else {
             return Task::none();
         };
-        let generation = job.generation;
+        let (generation, frame) = (job.generation, job.frame);
         Task::perform(
             async move {
-                tokio::task::spawn_blocking(move || previews::draw(job))
-                    .await
-                    .unwrap_or_else(|_| (generation, Previews::default()))
+                tokio::task::spawn_blocking(move || previews::draw(job)).await.unwrap_or_else(|_| Drawn {
+                    generation,
+                    frame,
+                    previews: Vec::new(),
+                })
             },
-            |(generation, previews)| LodestoneAppMessage::PreviewsReady(generation, previews),
+            LodestoneAppMessage::PreviewsReady,
         )
     }
 

@@ -1,8 +1,11 @@
 //! A software rasteriser for the skin previews. It draws the triangles the viewer draws, through the same camera and sampling
 //! the same texture with nearest filtering, into a pixel buffer on the CPU. A grid of skins can then show each one in 3D
 //! without a GPU pipeline per tile, and the drawing runs off the UI thread.
+//!
+//! The triangles of a model depend on its pose, its moment, its layers, its arm width and its cape, but not on the skin's
+//! texels. So a model is projected once, and every skin worn in it is filled from that one projection.
 
-use super::geometry::model_vertices;
+use super::geometry::model_vertices_with_cape;
 use super::math::Mat4;
 use super::{ATLAS_HEIGHT, ATLAS_WIDTH, Model, PITCH, YAW, view_proj};
 
@@ -22,27 +25,41 @@ struct Corner {
     shade: f32,
 }
 
-/// Draws `model` into a `width` by `height` image, as RGBA with straight alpha. The background is clear. The camera is the
-/// viewer's at its starting turn, and the model fits the height as it does in the viewer.
-pub fn render(model: &Model, width: u32, height: u32) -> Vec<u8> {
-    let mut pixels = vec![0u8; (width * height * 4) as usize];
-    let Some(skin) = model.skin.as_ref() else {
-        return pixels;
-    };
+/// The triangles of a model on a `width` by `height` image, as the camera sees them. Every skin worn in the model is filled
+/// from one projection.
+pub struct Projection {
+    width: u32,
+    height: u32,
+    triangles: Vec<[Corner; 3]>,
+}
+
+/// Projects `model` on a `width` by `height` image, with the cape when `cape` is set. The model's skin is not read, so one
+/// projection serves every skin worn in the same model and pose.
+pub fn project(model: &Model, cape: bool, width: u32, height: u32) -> Projection {
     let view = view_proj(width as f32 / height as f32, PITCH, YAW, model.pose);
-    let vertices = model_vertices(model);
+    let triangles = model_vertices_with_cape(model, cape)
+        .chunks_exact(3 * 6)
+        .filter_map(|triangle| {
+            let corner = |index: usize| corner(&view, width, height, &triangle[index * 6..index * 6 + 6]);
+            Some([corner(0)?, corner(1)?, corner(2)?])
+        })
+        .collect();
+    Projection { width, height, triangles }
+}
+
+/// Draws a projection with a skin's `texels`, on a clear background, as RGBA with straight alpha.
+pub fn fill(projection: &Projection, texels: &[u8]) -> Vec<u8> {
+    let (width, height) = (projection.width, projection.height);
+    let mut pixels = vec![0u8; (width * height * 4) as usize];
     let mut depth = vec![f32::INFINITY; (width * height) as usize];
-    for triangle in vertices.chunks_exact(3 * 6) {
-        let corner = |index: usize| corner(&view, width, height, &triangle[index * 6..index * 6 + 6]);
-        if let (Some(a), Some(b), Some(c)) = (corner(0), corner(1), corner(2)) {
-            fill(&mut pixels, &mut depth, width, height, &skin.texels, [a, b, c]);
-        }
+    for triangle in &projection.triangles {
+        fill_triangle(&mut pixels, &mut depth, width, height, texels, *triangle);
     }
     pixels
 }
 
 /// `point` through `matrix`, to clip space as `[x, y, z, w]`.
-fn project(matrix: &Mat4, point: [f32; 3]) -> [f32; 4] {
+fn clip(matrix: &Mat4, point: [f32; 3]) -> [f32; 4] {
     let mut out = [0.0; 4];
     for (row, value) in out.iter_mut().enumerate() {
         *value = matrix[0][row] * point[0] + matrix[1][row] * point[1] + matrix[2][row] * point[2] + matrix[3][row];
@@ -52,7 +69,7 @@ fn project(matrix: &Mat4, point: [f32; 3]) -> [f32; 4] {
 
 /// A vertex of the model, as the camera sees it on a `width` by `height` image. `None` when it is behind the camera.
 fn corner(view: &Mat4, width: u32, height: u32, vertex: &[f32]) -> Option<Corner> {
-    let [x, y, z, w] = project(view, [vertex[0], vertex[1], vertex[2]]);
+    let [x, y, z, w] = clip(view, [vertex[0], vertex[1], vertex[2]]);
     if w <= 0.0 {
         return None;
     }
@@ -129,7 +146,7 @@ fn texel_index(u: f32, v: f32) -> usize {
 
 /// Draws one triangle. Each pixel whose centre it covers takes the texel the triangle shows there, if nothing nearer has
 /// been drawn there and the texel is not see-through.
-fn fill(pixels: &mut [u8], depth: &mut [f32], width: u32, height: u32, texels: &[u8], [a, b, c]: [Corner; 3]) {
+fn fill_triangle(pixels: &mut [u8], depth: &mut [f32], width: u32, height: u32, texels: &[u8], [a, b, c]: [Corner; 3]) {
     let Some(weights) = barycentric(a, b, c) else {
         return;
     };

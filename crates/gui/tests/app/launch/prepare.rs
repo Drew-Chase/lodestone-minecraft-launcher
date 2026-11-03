@@ -26,6 +26,8 @@ fn microsoft(in_seconds: u64, refresh_token: Option<&str>) -> Account {
                 id: "0123456789abcdef".to_string(),
                 name: "Drew".to_string(),
                 skin_url: None,
+                slim: false,
+                capes: Vec::new(),
             },
         },
     }

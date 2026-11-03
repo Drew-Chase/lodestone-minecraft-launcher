@@ -11,6 +11,7 @@ use crate::app::components::alert::Alert;
 use crate::app::lang;
 use crate::app::pages::Page;
 use crate::app::pages::login::Message as LoginMessage;
+use crate::app::pages::skins::Appearance;
 use crate::app::storage::{StoredAccount, StoredMicrosoft};
 
 use super::{Account, LodestoneAppMessage, LodestoneLauncher};
@@ -70,10 +71,10 @@ impl LodestoneLauncher {
                 };
                 self.account = Some(Account::Microsoft { session });
                 self.login.update(LoginMessage::Reset);
-                // The face for the sidebar avatar comes from the account's skin.
-                let face_task = self.face_task();
+                // The sidebar's face and the Skins page's viewer come from the account's appearance.
+                let appearance = self.appearance_task();
                 let destination = self.signed_in_destination();
-                Task::batch([save, face_task, destination])
+                Task::batch([save, appearance, destination])
             }
             LoginMessage::SignInFinished(generation, Err(error)) if generation == self.auth_generation => {
                 warn!("Sign-in failed: {error}");
@@ -135,9 +136,9 @@ impl LodestoneLauncher {
                 self.login.update(LoginMessage::Reset);
                 // The canonical Steve face — fetched from Mojang's own
                 // profile service for the "Steve" account.
-                let face_task = self.face_task();
+                let appearance = self.appearance_task();
                 let destination = self.signed_in_destination();
-                Task::batch([save, face_task, destination])
+                Task::batch([save, appearance, destination])
             }
             LoginMessage::DemoMode => {
                 info!("Entering offline mode as Demo Player");
@@ -196,23 +197,41 @@ impl LodestoneLauncher {
         }
     }
 
-    /// The task that fetches the face of the account in use: its skin, or the vanilla Steve when the profile has none.
-    pub(super) fn face_task(&self) -> Task<LodestoneAppMessage> {
+    /// The task that fetches the appearance of the account in use: its skin and the cape it wears, or the vanilla Steve when
+    /// the profile has no skin. An offline account has no cape.
+    pub(super) fn appearance_task(&self) -> Task<LodestoneAppMessage> {
         let auth = self.auth.clone();
-        let skin_url = match self.account.as_ref() {
-            Some(Account::Microsoft { session }) => session.profile.skin_url.clone(),
+        let profile = match self.account.as_ref() {
+            Some(Account::Microsoft { session }) => Some(session.profile.clone()),
             Some(Account::Offline { .. }) | None => None,
         };
-        match skin_url {
-            Some(url) => Task::perform(
-                async move { auth.fetch_skin(&url).await.map_err(|error| error.to_string()) },
-                LodestoneAppMessage::FaceReady,
-            ),
-            None => Task::perform(
-                async move { auth.fetch_default_steve_face().await.map_err(|error| error.to_string()) },
-                LodestoneAppMessage::FaceReady,
-            ),
-        }
+        Task::perform(
+            async move {
+                let Some(profile) = profile else {
+                    let skin_png = auth.fetch_default_steve_face().await.map_err(|error| error.to_string())?;
+                    return Ok(Appearance {
+                        skin_png,
+                        cape_png: None,
+                        slim: false,
+                    });
+                };
+                let skin_png = match &profile.skin_url {
+                    Some(url) => auth.fetch_skin(url).await,
+                    None => auth.fetch_default_steve_face().await,
+                }
+                .map_err(|error| error.to_string())?;
+                let cape_png = match profile.capes.iter().find(|cape| cape.active) {
+                    Some(cape) => Some(auth.fetch_skin(&cape.url).await.map_err(|error| error.to_string())?),
+                    None => None,
+                };
+                Ok(Appearance {
+                    skin_png,
+                    cape_png,
+                    slim: profile.slim,
+                })
+            },
+            LodestoneAppMessage::AppearanceReady,
+        )
     }
 
     /// Makes the account at `index` the one that plays. An offline profile takes over at once. A Microsoft account logs in
@@ -230,7 +249,7 @@ impl LodestoneLauncher {
                 self.credentials.make_primary(index);
                 self.account = Some(Account::Offline { username });
                 let save = self.save_credentials();
-                Task::batch([save, self.face_task()])
+                Task::batch([save, self.appearance_task()])
             }
             StoredAccount::Microsoft(microsoft) => {
                 info!("Switching to {} (signing in again)", microsoft.username);
@@ -259,7 +278,7 @@ impl LodestoneLauncher {
                 self.credentials.make_primary(index);
                 let save = self.save_credentials();
                 self.account = Some(Account::Microsoft { session });
-                Task::batch([save, self.face_task()])
+                Task::batch([save, self.appearance_task()])
             }
             Err(error) => {
                 warn!("Switching accounts failed: {error}");
@@ -334,60 +353,5 @@ impl LodestoneLauncher {
     pub(super) fn add_account(&mut self) -> Task<LodestoneAppMessage> {
         self.adding_account = true;
         self.navigate(Page::Login)
-    }
-}
-
-impl LodestoneLauncher {
-    /// Asks before a staged skin is uploaded to the account in use. The answer returns as `SkinUploadConfirmed`.
-    pub(super) fn confirm_skin_upload(&mut self, pending: crate::app::pages::settings::accounts::skins::PendingSkin) -> Task<LodestoneAppMessage> {
-        let message = lang::t_with("settings.skins.upload_message", &[("name", pending.name.as_str())]);
-        self.skin_pending = Some(pending);
-        self.alerts
-            .show(Alert::warn(message).title(lang::t("settings.skins.upload_title")).yes_no())
-            .map(LodestoneAppMessage::SkinUploadConfirmed)
-    }
-
-    /// The answer to the upload question. A yes uploads the staged skin with the Microsoft account's token.
-    pub(super) fn skin_upload_confirmed(&mut self, confirmed: bool) -> Task<LodestoneAppMessage> {
-        let Some(pending) = self.skin_pending.take() else {
-            return Task::none();
-        };
-        if !confirmed {
-            return Task::none();
-        }
-        let Some(Account::Microsoft { session }) = self.account.as_ref() else {
-            return self.alerts.show(Alert::warn(lang::t("settings.skins.needs_microsoft"))).discard();
-        };
-        let token = session.minecraft_token.clone();
-        info!("Uploading the skin {}", pending.name);
-        let png = pending.png.clone();
-        let slim = pending.slim;
-        Task::perform(
-            async move {
-                crate::app::pages::settings::accounts::skins::upload(token, slim, pending.png)
-                    .await
-                    .map(|()| png)
-            },
-            LodestoneAppMessage::SkinUploaded,
-        )
-    }
-
-    /// The upload finished. A new skin takes over the viewer, the sidebar's face, and the account's skin. A failure is
-    /// shown to the player.
-    pub(super) fn skin_uploaded(&mut self, result: Result<Vec<u8>, String>) -> Task<LodestoneAppMessage> {
-        match result {
-            Ok(png) => {
-                info!("The skin was uploaded");
-                self.skin = crate::app::pages::settings::accounts::viewer::Skin::decode(&png).map(std::sync::Arc::new);
-                self.face = crate::app::face::face_from_skin_png(&png).map(iced::widget::image::Handle::from_bytes);
-                Task::none()
-            }
-            Err(error) => {
-                warn!("Uploading the skin failed: {error}");
-                self.alerts
-                    .show(Alert::warn(lang::t_with("settings.skins.upload_failed", &[("error", error.as_str())])))
-                    .discard()
-            }
-        }
     }
 }

@@ -146,59 +146,147 @@ fn a_busy_page_says_so_until_the_change_ends() {
     assert!(!page.busy());
 }
 
-#[test]
-fn a_change_of_list_or_pose_asks_for_the_previews_again_once() {
+/// What a drawing of `job` made: a one-pixel picture for each of its skins, in the job's frame.
+fn drawn_for(job: &Job) -> Drawn {
+    Drawn {
+        generation: job.generation,
+        frame: job.frame,
+        previews: job.items.iter().map(|(slot, _)| (*slot, Handle::from_rgba(1, 1, vec![0; 4]))).collect(),
+    }
+}
+
+/// A walking page with one saved skin, and the clock at its start, which is returned with it.
+fn walking_page() -> (Skins, Instant) {
     let mut page = Skins::default();
+    page.update(Message::Pose(Pose::Walk));
     page.set_scan(scan_of(vec![saved("Red", [200, 0, 0, 255])]));
-    assert!(page.preview_job().is_some(), "a new list asks for previews");
-    page.set_previews(1, Previews::default());
-    assert!(page.preview_job().is_none(), "the previews are asked for once");
-    page.update(Message::Pose(Pose::Run));
-    assert!(page.preview_job().is_some(), "a new pose asks for them again");
-    page.set_previews(2, Previews::default());
-    page.update(Message::Choose(Choice::Saved(0)));
-    assert!(page.preview_job().is_none(), "choosing a skin changes no preview");
+    let start = Instant::now();
+    page.update(Message::Tick(start));
+    (page, start)
+}
+
+/// The moment on the clock that shows frame `frame` of a walk, counted from `start`.
+fn walk_moment(start: Instant, frame: usize) -> Instant {
+    start + Duration::from_secs_f32(previews::frame_time(Pose::Walk, frame))
 }
 
 #[test]
-fn a_frame_asks_for_a_drawing_at_its_moment_of_the_poses_motion() {
+fn a_new_list_asks_for_its_frame_once() {
     let mut page = Skins::default();
     page.set_scan(scan_of(vec![saved("Red", [200, 0, 0, 255])]));
-    let first = page.preview_job().expect("the list asks for a drawing");
-    page.set_previews(first.generation, Previews::default());
-    let start = Instant::now();
-    page.update(Message::Tick(start));
-    page.update(Message::Tick(start + Duration::from_millis(500)));
-    let frame = page.preview_job().expect("a frame falls due");
-    assert!((frame.time - 0.5).abs() < 1e-3, "the drawing is at half a second: {}", frame.time);
-    assert!(frame.generation > first.generation);
+    let job = page.preview_job().expect("a new list asks for its frame");
+    assert!(
+        job.items.iter().any(|(slot, _)| *slot == Slot::Saved(0)),
+        "the saved skin is in the frame"
+    );
+    page.set_previews(drawn_for(&job));
+    assert!(page.preview_job().is_none(), "the frame is drawn once and kept");
+}
+
+#[test]
+fn a_pose_change_draws_the_frames_of_the_new_pose() {
+    let mut page = Skins::default();
+    page.set_scan(scan_of(vec![saved("Red", [200, 0, 0, 255])]));
+    let job = page.preview_job().expect("the first frame is asked for");
+    page.set_previews(drawn_for(&job));
+    page.update(Message::Pose(Pose::Run));
+    assert!(page.saved_preview(0).is_none(), "the frames of the old pose are not shown");
+    let run = page.preview_job().expect("the new pose asks for its frames");
+    assert_eq!(run.pose, Pose::Run);
+    assert_eq!(run.frame, 0);
+}
+
+#[test]
+fn a_drawing_made_for_forgotten_frames_is_dropped() {
+    let mut page = Skins::default();
+    page.set_scan(scan_of(vec![saved("Red", [200, 0, 0, 255])]));
+    let old = page.preview_job().expect("the first frame is asked for");
+    page.set_scan(scan_of(vec![saved("Red", [200, 0, 0, 255]), saved("Blue", [0, 0, 200, 255])]));
+    page.set_previews(drawn_for(&old));
+    let current = page.preview_job().expect("the new list asks for its frame");
+    assert!(page.saved_preview(0).is_none(), "a drawing made before the list changed is not kept");
+    page.set_previews(drawn_for(&current));
+    assert!(page.saved_preview(0).is_some(), "the drawing of the new list is kept");
+}
+
+#[test]
+fn the_frame_on_show_follows_the_clock() {
+    let (mut page, start) = walking_page();
+    let first = page.preview_job().expect("frame 0 is asked for");
+    assert_eq!(first.frame, 0);
+    page.set_previews(drawn_for(&first));
+    page.update(Message::Tick(walk_moment(start, 3)));
+    assert!(page.saved_preview(0).is_some(), "the last frame stands in until frame 3 is drawn");
+    let later = page.preview_job().expect("frame 3 is asked for when the clock reaches it");
+    assert_eq!(later.frame, 3);
+    assert!((later.time - previews::frame_time(Pose::Walk, 3)).abs() < 1e-6);
+}
+
+#[test]
+fn a_frame_drawn_late_is_kept_for_its_moment_of_the_loop() {
+    let (mut page, start) = walking_page();
+    let first = page.preview_job().expect("frame 0 is asked for");
+    page.update(Message::Tick(walk_moment(start, 2)));
+    page.set_previews(drawn_for(&first));
+    let second = page.preview_job().expect("frame 2 is asked for next");
+    assert_eq!(second.frame, 2);
+    page.set_previews(drawn_for(&second));
+    page.update(Message::Tick(start + Duration::from_secs(1)));
+    assert!(page.preview_job().is_none(), "frame 0, drawn late, is kept for the loop's return to it");
+    assert!(page.saved_preview(0).is_some());
+}
+
+#[test]
+fn one_loop_is_drawn_once_and_the_loop_after_it_draws_nothing() {
+    let (mut page, start) = walking_page();
+    let frames = previews::frames_per_loop(Pose::Walk);
+    let mut drawings = 0;
+    for step in 0..2 * frames {
+        page.update(Message::Tick(walk_moment(start, step % frames)));
+        while let Some(job) = page.preview_job() {
+            drawings += 1;
+            page.set_previews(drawn_for(&job));
+        }
+    }
+    assert_eq!(drawings, frames, "each frame of the loop is drawn once, and the second loop draws none");
 }
 
 #[test]
 fn a_drawing_still_running_holds_the_next_one_back() {
-    let mut page = Skins::default();
-    page.set_scan(scan_of(vec![saved("Red", [200, 0, 0, 255])]));
-    let first = page.preview_job().expect("the first drawing starts");
-    page.update(Message::Tick(Instant::now()));
+    let (mut page, start) = walking_page();
+    let first = page.preview_job().expect("the first frame starts");
+    page.update(Message::Tick(walk_moment(start, 1)));
     assert!(page.preview_job().is_none(), "no second drawing while the first runs");
-    page.set_previews(first.generation, Previews::default());
-    assert!(page.preview_job().is_some(), "the frame due meanwhile starts once the first is done");
+    page.set_previews(drawn_for(&first));
+    assert!(page.preview_job().is_some(), "frame 1, which is not drawn, starts once the first is done");
 }
 
 #[test]
-fn a_drawing_that_is_not_the_last_one_asked_for_is_not_shown() {
+fn a_rescan_of_the_same_skins_keeps_the_frames() {
+    let (mut page, _) = walking_page();
+    let job = page.preview_job().expect("the frame is asked for");
+    page.set_previews(drawn_for(&job));
+    page.set_scan(scan_of(vec![saved("Red", [200, 0, 0, 255])]));
+    assert!(page.preview_job().is_none(), "the same skins in the same places are drawn already");
+    assert!(page.saved_preview(0).is_some(), "and their frame still shows");
+}
+
+#[test]
+fn only_the_open_sections_are_drawn() {
     let mut page = Skins::default();
     page.set_scan(scan_of(vec![saved("Red", [200, 0, 0, 255])]));
-    let first = page.preview_job().expect("the first drawing starts");
-    let handle = Handle::from_rgba(1, 1, vec![0; 4]);
-    page.set_previews(
-        first.generation,
-        Previews {
-            saved: vec![Some(handle.clone())],
-            ..Previews::default()
-        },
+    page.update(Message::ToggleSection(Section::Saved));
+    let job = page.preview_job().expect("a change asks for its frame");
+    assert!(job.items.iter().all(|(slot, _)| *slot != Slot::Saved(0)), "a folded section is not drawn");
+    assert!(
+        job.items.iter().any(|(slot, _)| matches!(slot, Slot::Bundled(_))),
+        "the open defaults are drawn"
     );
-    assert!(page.saved_preview(0).is_some(), "the drawing asked for is shown");
-    page.set_previews(first.generation - 1, Previews::default());
-    assert!(page.saved_preview(0).is_some(), "an older drawing does not replace a newer one");
+    assert!(
+        job.items.iter().all(|(slot, _)| match slot {
+            Slot::Bundled(index) => BUNDLED[*index].pack == Pack::Defaults,
+            _ => true,
+        }),
+        "and no folded pack is"
+    );
 }
