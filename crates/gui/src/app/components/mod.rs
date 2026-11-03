@@ -32,6 +32,7 @@ pub mod popover;
 pub mod progress;
 pub mod scene_art;
 pub mod screenshot_tile;
+pub mod scroll_spy;
 pub mod scrollbar;
 pub mod search_field;
 pub mod segmented;
