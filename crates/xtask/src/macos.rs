@@ -106,6 +106,8 @@ pub fn info_plist(version: &str) -> String {
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Lodestone lists the games other players announce on your local network, so you can join them.</string>
 </dict>
 </plist>
 "#
