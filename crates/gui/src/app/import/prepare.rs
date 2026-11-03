@@ -9,6 +9,7 @@ use chrono::Local;
 use lodestone_export::format::lodestone::{self, Manifest};
 use lodestone_platforms::{ContentType, Modpack, SearchQuery};
 
+use super::launcher;
 use super::page;
 use super::record::{ImportFormat, ImportOrigin, ImportRecord};
 use crate::app::discover::{MODRINTH, curseforge, prepare_modpack, resolve_curseforge_files};
@@ -180,24 +181,35 @@ pub enum Work {
     Backup(PathBuf),
     Url(String),
     Again(ImportRecord),
+    /// Instances the user checked in another launcher, each read from its folder.
+    Launchers(Vec<launcher::Pick>),
 }
 
 /// Reads the import `work` describes and makes the install that queues it.
-pub async fn read(work: Work, paths: LauncherPaths, taken: Vec<String>) -> Result<Prepared, String> {
+pub async fn read(work: Work, paths: LauncherPaths, taken: Vec<String>) -> Result<Vec<Prepared>, String> {
     match work {
-        Work::File(path) => from_file(path, paths, taken).await,
-        Work::Backup(path) => from_backup(path, paths, taken).await,
-        Work::Url(address) => from_url(address, paths, taken).await,
+        Work::File(path) => from_file(path, paths, taken).await.map(|one| vec![one]),
+        Work::Backup(path) => from_backup(path, paths, taken).await.map(|one| vec![one]),
+        Work::Url(address) => from_url(address, paths, taken).await.map(|one| vec![one]),
         Work::Again(record) => again(record, paths, taken).await,
+        Work::Launchers(picks) => blocking(move || launcher::prepare(&picks, &paths, &taken)).await,
     }
 }
 
 /// Makes the install of a recorded import again, from the source it was started from.
-async fn again(record: ImportRecord, paths: LauncherPaths, taken: Vec<String>) -> Result<Prepared, String> {
+async fn again(record: ImportRecord, paths: LauncherPaths, taken: Vec<String>) -> Result<Vec<Prepared>, String> {
     match (record.origin, record.format) {
-        (ImportOrigin::Url, _) => from_url(record.source, paths, taken).await,
-        (ImportOrigin::File, ImportFormat::Lodestone) => from_backup(PathBuf::from(record.source), paths, taken).await,
-        (ImportOrigin::File, _) => from_file(PathBuf::from(record.source), paths, taken).await,
+        (ImportOrigin::Launcher, format) => {
+            let launcher = launcher::Launcher::from_format(format).ok_or_else(|| lang::t("import.launcher.unrecognised").to_string())?;
+            let pick = launcher::Pick {
+                launcher,
+                source: record.source,
+            };
+            blocking(move || launcher::prepare(&[pick], &paths, &taken)).await
+        }
+        (ImportOrigin::Url, _) => from_url(record.source, paths, taken).await.map(|one| vec![one]),
+        (ImportOrigin::File, ImportFormat::Lodestone) => from_backup(PathBuf::from(record.source), paths, taken).await.map(|one| vec![one]),
+        (ImportOrigin::File, _) => from_file(PathBuf::from(record.source), paths, taken).await.map(|one| vec![one]),
     }
 }
 

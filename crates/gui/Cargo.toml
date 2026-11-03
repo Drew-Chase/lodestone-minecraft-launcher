@@ -59,6 +59,9 @@ chrono = { version = "0.4.45" }
 tar = { version = "0.4.43" }
 xz2 = { version = "0.1.7" }
 
+[target.'cfg(windows)'.dependencies]
+winreg = { version = "0.55" }
+
 [build-dependencies]
 chrono = { version = "0.4.45" }
 walkdir = { version = "2.5.0" }

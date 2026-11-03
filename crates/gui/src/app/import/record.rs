@@ -12,6 +12,13 @@ pub enum ImportFormat {
     CurseForge,
     /// A Lodestone package, `.lodestone`.
     Lodestone,
+    /// A launcher's instance, copied from its game folder. Each launcher records under its own name.
+    PrismLauncher,
+    MultiMc,
+    AtLauncher,
+    MinecraftLauncher,
+    CurseForgeApp,
+    ModrinthApp,
 }
 
 impl ImportFormat {
@@ -21,6 +28,12 @@ impl ImportFormat {
             Self::Mrpack => "mrpack",
             Self::CurseForge => "curseforge",
             Self::Lodestone => "lodestone",
+            Self::PrismLauncher => "prism",
+            Self::MultiMc => "multimc",
+            Self::AtLauncher => "atlauncher",
+            Self::MinecraftLauncher => "minecraft-launcher",
+            Self::CurseForgeApp => "curseforge-app",
+            Self::ModrinthApp => "modrinth-app",
         }
     }
 
@@ -30,6 +43,12 @@ impl ImportFormat {
             "mrpack" => Some(Self::Mrpack),
             "curseforge" => Some(Self::CurseForge),
             "lodestone" => Some(Self::Lodestone),
+            "prism" => Some(Self::PrismLauncher),
+            "multimc" => Some(Self::MultiMc),
+            "atlauncher" => Some(Self::AtLauncher),
+            "minecraft-launcher" => Some(Self::MinecraftLauncher),
+            "curseforge-app" => Some(Self::CurseForgeApp),
+            "modrinth-app" => Some(Self::ModrinthApp),
             _ => None,
         }
     }
@@ -42,6 +61,8 @@ pub enum ImportOrigin {
     File,
     /// A CurseForge page, which the import fetches by its url.
     Url,
+    /// A launcher's instance folder, copied from disk.
+    Launcher,
 }
 
 impl ImportOrigin {
@@ -50,6 +71,7 @@ impl ImportOrigin {
         match self {
             Self::File => "file",
             Self::Url => "url",
+            Self::Launcher => "launcher",
         }
     }
 
@@ -58,6 +80,7 @@ impl ImportOrigin {
         match name {
             "file" => Some(Self::File),
             "url" => Some(Self::Url),
+            "launcher" => Some(Self::Launcher),
             _ => None,
         }
     }
@@ -79,3 +102,7 @@ pub struct ImportRecord {
     /// When the import was queued.
     pub imported_at: DateTime<Local>,
 }
+
+#[cfg(test)]
+#[path = "../../../tests/app/import/record.rs"]
+mod tests;

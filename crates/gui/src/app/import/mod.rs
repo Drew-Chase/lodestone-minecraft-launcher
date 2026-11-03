@@ -1,10 +1,13 @@
-//! The Import Instance dialog. It reads a modpack file, a CurseForge page or a Lodestone backup, and queues the install that
-//! makes its instance. The dialog keeps the imports it queued, so the latest can be started again.
+//! The Import Instance dialog. It reads a modpack file, a CurseForge page, a Lodestone backup, or an instance another launcher
+//! keeps, and queues the install that makes its instance. The dialog keeps the imports it queued, so the latest can be started
+//! again.
 //!
 //! This module is the root's side: opening and closing the dialog, starting a read, and queueing what the read answers with.
-//! The dialog is in `dialog/`, the reads are in `prepare.rs`, and the CurseForge address is read by `page.rs`.
+//! The dialog is in `dialog/`, the reads are in `prepare.rs`, the CurseForge address is read by `page.rs`, and the other
+//! launchers' folders are read by `launcher/`.
 
 mod dialog;
+mod launcher;
 mod page;
 mod prepare;
 pub mod record;
@@ -51,8 +54,22 @@ pub enum Message {
     Reimport(usize),
     /// The recent imports were read from the database.
     Recent(Result<Vec<ImportRecord>, String>),
-    /// The import was read into the install that queues it, or could not be.
-    Prepared(Result<Box<Prepared>, String>),
+    /// The import was read into the installs that queue it, or could not be.
+    Prepared(Result<Vec<Prepared>, String>),
+    /// The From launcher tab opened: the launchers on this machine are looked for, in the background.
+    ScanLaunchers,
+    /// The launchers were looked for, with what each folder held.
+    Scanned(Vec<launcher::Scan>),
+    /// The Locate button of a launcher was pressed: the folder picker opens.
+    Locate(launcher::Launcher),
+    /// The folder picker answered for a launcher, or was cancelled.
+    LocatePicked(launcher::Launcher, Option<PathBuf>),
+    /// The folder a launcher was located in was checked, and listed when it holds the launcher's instances.
+    Located(launcher::Launcher, Result<launcher::Scan, String>),
+    /// An instance's checkbox was pressed.
+    ToggleInstance(launcher::Pick),
+    /// A launcher's select-all checkbox was pressed.
+    ToggleLauncher(launcher::Launcher),
 }
 
 impl LodestoneLauncher {
@@ -98,7 +115,7 @@ impl LodestoneLauncher {
             return Task::none();
         };
         let read = Task::perform(prepare::read(work, self.paths.clone(), self.taken_directories()), |result| {
-            LodestoneAppMessage::Import(Message::Prepared(result.map(Box::new)))
+            LodestoneAppMessage::Import(Message::Prepared(result))
         });
         let (task, abort) = read.abortable();
         if let Some(dialog) = self.import.as_mut() {
@@ -107,24 +124,27 @@ impl LodestoneLauncher {
         task
     }
 
-    /// Queues a read import with the downloads, records it for the recent list, and closes the dialog. A read that failed
+    /// Queues the installs a read answered with, records each for the recent list, and closes the dialog. A read that failed
     /// stays in the dialog, with its reason.
-    fn import_prepared(&mut self, result: Result<Box<Prepared>, String>) -> Task<LodestoneAppMessage> {
+    fn import_prepared(&mut self, result: Result<Vec<Prepared>, String>) -> Task<LodestoneAppMessage> {
         match result {
             Ok(prepared) => {
-                let Prepared { request, record } = *prepared;
                 self.import = None;
-                let queue = self.queue_install(request);
-                let save = match self.db.clone() {
-                    Some(db) => Task::future(async move {
-                        if let Err(error) = db.record_import(&record).await {
-                            warn!("recording the import failed: {error}");
-                        }
-                    })
-                    .discard(),
-                    None => Task::none(),
-                };
-                Task::batch([queue, save])
+                let mut tasks = Vec::with_capacity(prepared.len() * 2);
+                for Prepared { request, record } in prepared {
+                    tasks.push(self.queue_install(request));
+                    if let Some(db) = self.db.clone() {
+                        tasks.push(
+                            Task::future(async move {
+                                if let Err(error) = db.record_import(&record).await {
+                                    warn!("recording the import failed: {error}");
+                                }
+                            })
+                            .discard(),
+                        );
+                    }
+                }
+                Task::batch(tasks)
             }
             Err(error) => {
                 if let Some(dialog) = self.import.as_mut() {
