@@ -4,6 +4,8 @@
 
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use lodestone_export::format::lodestone;
 use lodestone_platforms::{Modpack, ModpackFile};
@@ -11,6 +13,7 @@ use sipper::Sender as ProgressSender;
 use tokio::sync::mpsc;
 use tracing::warn;
 
+use super::copy;
 use super::download::{self, Part, PartReport};
 use super::{InstallProgress, Stage, Totals, drive, fraction, report};
 use crate::app::lang;
@@ -58,6 +61,9 @@ pub enum Origin {
     /// A Lodestone package on disk. Its bundled files, under `overrides/`, lay over the root of the instance. The
     /// folder, target and skip of the unpack do not apply to a package.
     Package(PathBuf),
+    /// A folder on disk, such as a launcher's game folder. Its files are copied into the instance, except the top-level
+    /// names in `skip`, which are left out along with the launcher's own files.
+    Folder { root: PathBuf, skip: Vec<String> },
 }
 
 impl Payload {
@@ -113,6 +119,7 @@ pub(super) async fn stage(
         .enumerate()
         .map(|(index, unpack)| match &unpack.origin {
             Origin::Local(path) | Origin::Package(path) => path.clone(),
+            Origin::Folder { root, .. } => root.clone(),
             Origin::Remote { .. } => fetched.join(format!("{index}.zip")),
         })
         .collect();
@@ -133,7 +140,7 @@ pub(super) async fn stage(
             sha1: sha1.clone(),
             size: *size,
         }),
-        Origin::Local(_) | Origin::Package(_) => None,
+        Origin::Local(_) | Origin::Package(_) | Origin::Folder { .. } => None,
     }));
     // The instance's folders are written at the end of the install, so the folders the items go into
     // are made here.
@@ -173,7 +180,10 @@ pub(super) async fn stage(
 
     let unpacks: Vec<(PathBuf, Unpack)> = archives.into_iter().zip(payload.unpacks.iter().cloned()).collect();
     let game_dir = game_dir.to_path_buf();
-    tokio::task::spawn_blocking(move || unpack_all(&unpacks, &game_dir))
+    // Dropping this stage (an aborted install) sets the flag, so a copy still running stops at its next file.
+    let abandon = Abandon(Arc::new(AtomicBool::new(false)));
+    let abandoned = Arc::clone(&abandon.0);
+    tokio::task::spawn_blocking(move || unpack_all(&unpacks, &game_dir, &abandoned))
         .await
         .map_err(|error| error.to_string())??;
     Ok(())
@@ -181,10 +191,11 @@ pub(super) async fn stage(
 
 /// Unpacks each archive into the instance in turn, then removes the folder the remote archives were
 /// fetched into.
-fn unpack_all(unpacks: &[(PathBuf, Unpack)], game_dir: &Path) -> Result<(), String> {
+fn unpack_all(unpacks: &[(PathBuf, Unpack)], game_dir: &Path, abandoned: &AtomicBool) -> Result<(), String> {
     for (archive, unpack) in unpacks {
-        match unpack.origin {
+        match &unpack.origin {
             Origin::Package(_) => extract_package(archive, game_dir)?,
+            Origin::Folder { root, skip } => copy_folder(root, skip, game_dir, abandoned)?,
             _ => extract(archive, &unpack.folder, &unpack.target, &unpack.skip, game_dir)?,
         }
     }
@@ -236,6 +247,26 @@ fn extract(archive: &Path, folder: &str, target: &str, skip: &[String], game_dir
 fn extract_package(archive: &Path, game_dir: &Path) -> Result<(), String> {
     let file = std::fs::File::open(archive).map_err(|error| error.to_string())?;
     lodestone::extract_overrides(file, game_dir).map_err(|error| error.to_string())
+}
+
+/// Copies a launcher's game folder into the instance, leaving out the names in `skip` and the launcher's own files.
+fn copy_folder(root: &Path, skip: &[String], game_dir: &Path, abandoned: &AtomicBool) -> Result<(), String> {
+    let planned = copy::plan(root, skip).map_err(|error| error.to_string())?;
+    let report = copy::copy_into(&planned, game_dir, abandoned).map_err(|error| error.to_string())?;
+    if report.failed > 0 {
+        warn!("{} of {} files could not be copied from {}", report.failed, planned.len(), root.display());
+    }
+    Ok(())
+}
+
+/// Sets its flag when it is dropped. An install holds one, so an install that is dropped (aborted) tells a copy still
+/// running on the blocking pool to stop at its next file.
+struct Abandon(Arc<AtomicBool>);
+
+impl Drop for Abandon {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
 }
 
 /// The prefix the entries of `folder` carry in an archive: none for the archive's root, and `folder/`

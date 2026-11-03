@@ -6,6 +6,7 @@
 //! downloads queue does.
 
 pub mod catalog;
+pub(crate) mod copy;
 pub(crate) mod download;
 pub(crate) mod ensure;
 pub(crate) mod java;

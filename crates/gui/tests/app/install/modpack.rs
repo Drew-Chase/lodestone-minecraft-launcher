@@ -117,7 +117,7 @@ fn a_lodestone_package_lays_its_bundled_files_over_the_instance() {
         target: String::new(),
         skip: Vec::new(),
     };
-    unpack_all(&[(archive, unpack)], &game).expect("package unpacked");
+    unpack_all(&[(archive, unpack)], &game, &AtomicBool::new(false)).expect("package unpacked");
     assert_eq!(std::fs::read_to_string(game.join("config/a.toml")).expect("override written"), "x=1");
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -180,5 +180,31 @@ fn the_sha1_of_a_file_matches_its_digest() {
     let path = dir.join("abc.txt");
     std::fs::write(&path, b"abc").expect("file written");
     assert_eq!(sha1_of(&path).expect("hashed"), "a9993e364706816aba3e25717850c26c9cd0d89d");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_launcher_folder_is_copied_into_the_instance_without_the_names_it_skips() {
+    let dir = scratch("launcher-folder");
+    let source = dir.join("source");
+    std::fs::create_dir_all(source.join("mods")).expect("mods folder made");
+    std::fs::create_dir_all(source.join("logs")).expect("logs folder made");
+    std::fs::write(source.join("mods").join("sodium.jar"), "jar").expect("mod written");
+    std::fs::write(source.join("logs").join("latest.log"), "log").expect("log written");
+    std::fs::write(source.join("minecraftinstance.json"), "{}").expect("metadata written");
+    let game = dir.join("instance");
+    let unpack = Unpack {
+        origin: Origin::Folder {
+            root: source.clone(),
+            skip: vec!["minecraftinstance.json".to_string()],
+        },
+        folder: String::new(),
+        target: String::new(),
+        skip: Vec::new(),
+    };
+    unpack_all(&[(source.clone(), unpack)], &game, &AtomicBool::new(false)).expect("the folder is copied");
+    assert_eq!(std::fs::read_to_string(game.join("mods").join("sodium.jar")).expect("mod copied"), "jar");
+    assert!(!game.join("logs").exists(), "logs are never copied");
+    assert!(!game.join("minecraftinstance.json").exists(), "the launcher's own file is left out");
     std::fs::remove_dir_all(&dir).ok();
 }
