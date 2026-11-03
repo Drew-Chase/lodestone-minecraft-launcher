@@ -1,6 +1,7 @@
 //! Shared HTTP and download helpers (private).
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use reqwest::Client;
 use simple_download_utility::{DownloadProgress, download_file};
@@ -35,7 +36,12 @@ pub(crate) async fn get_json(http: &Client, url: &str) -> Result<serde_json::Val
 }
 
 /// How many files a loader download fetches at once.
-const PARALLEL: usize = 64;
+static CONCURRENCY: AtomicUsize = AtomicUsize::new(64);
+
+/// Sets how many files a loader download fetches at once. The Settings page sets it.
+pub fn set_concurrency(count: usize) {
+    CONCURRENCY.store(count, Ordering::Relaxed);
+}
 
 /// Downloads `(url, destination)` pairs concurrently, creating parent directories as
 /// needed, and returns the destination paths in the order given. A file already on disk
@@ -59,7 +65,7 @@ pub(crate) async fn download_files(
                 Ok::<PathBuf, LoaderError>(path)
             }
         })
-        .buffered(PARALLEL)
+        .buffered(CONCURRENCY.load(Ordering::Relaxed))
         .try_collect::<Vec<PathBuf>>()
         .await
 }

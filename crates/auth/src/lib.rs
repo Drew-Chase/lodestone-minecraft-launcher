@@ -152,7 +152,7 @@ impl Authentication {
     pub fn new(client_id: impl Into<String>) -> Self {
         Self {
             client_id: client_id.into(),
-            http: reqwest::Client::new(),
+            http: lodestone_net::client(),
         }
     }
 

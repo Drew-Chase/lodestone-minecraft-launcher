@@ -55,6 +55,54 @@ pub async fn latest(client: &reqwest::Client, current: &str) -> Result<Option<Re
     newer(&current, release)
 }
 
+/// The newest release, prereleases included, when it is newer than `current`. Drafts are never offered.
+pub async fn latest_with_prereleases(client: &reqwest::Client, current: &str) -> Result<Option<Release>, Error> {
+    let current = Version::parse(current).map_err(|_| Error::Version(current.to_string()))?;
+    let url = format!("https://api.github.com/repos/{REPOSITORY}/releases?per_page=20");
+    let listed = client
+        .get(url)
+        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+        .timeout(Duration::from_secs(20))
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<Vec<Listed>>()
+        .await?;
+    Ok(newest(&current, listed))
+}
+
+/// The newest release on the channel the caller chose: stable releases only, or prereleases as well.
+pub async fn latest_for(client: &reqwest::Client, current: &str, prereleases: bool) -> Result<Option<Release>, Error> {
+    if prereleases {
+        latest_with_prereleases(client, current).await
+    } else {
+        latest(client, current).await
+    }
+}
+
+/// The release in `listed` with the highest version, when that version is newer than `current`. Drafts are skipped.
+fn newest(current: &Version, listed: Vec<Listed>) -> Option<Release> {
+    let mut best: Option<(Version, Release)> = None;
+    for entry in listed.into_iter().filter(|entry| !entry.draft) {
+        let Ok(version) = entry.release.version() else {
+            continue;
+        };
+        if best.as_ref().is_none_or(|(highest, _)| version > *highest) {
+            best = Some((version, entry.release));
+        }
+    }
+    best.and_then(|(version, release)| (version > *current).then_some(release))
+}
+
+/// A release as the release list returns it, with the flag the list adds.
+#[derive(Debug, Deserialize)]
+struct Listed {
+    #[serde(flatten)]
+    release: Release,
+    #[serde(default)]
+    draft: bool,
+}
+
 /// The release, when its version is newer than `current`.
 pub fn newer(current: &Version, release: Release) -> Result<Option<Release>, Error> {
     let version = release.version()?;

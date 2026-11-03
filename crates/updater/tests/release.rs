@@ -59,3 +59,29 @@ fn a_release_reads_from_github_json() {
     assert_eq!(parsed.assets.len(), 1);
     assert_eq!(parsed.version().expect("a version"), Version::new(0, 2, 0));
 }
+
+fn listed(tag: &str, draft: bool) -> Listed {
+    Listed {
+        release: release(tag, &[]),
+        draft,
+    }
+}
+
+#[test]
+fn the_newest_listed_release_may_be_a_prerelease() {
+    let current = Version::new(1, 0, 0);
+    let found = newest(&current, vec![listed("v1.1.0", false), listed("v1.2.0-beta.1", false)]).expect("a newer release");
+    assert_eq!(found.tag, "v1.2.0-beta.1");
+}
+
+#[test]
+fn a_draft_is_never_offered() {
+    let current = Version::new(1, 0, 0);
+    assert!(newest(&current, vec![listed("v2.0.0", true)]).is_none());
+}
+
+#[test]
+fn nothing_is_offered_when_no_listed_release_is_newer() {
+    let current = Version::new(1, 2, 0);
+    assert!(newest(&current, vec![listed("v1.1.0", false), listed("v1.2.0", false)]).is_none());
+}

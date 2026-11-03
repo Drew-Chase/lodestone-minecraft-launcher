@@ -64,6 +64,7 @@ mod vanilla;
 pub use error::LoaderError;
 pub use fabric::Fabric;
 pub use forge::Forge;
+pub use http::set_concurrency as set_download_concurrency;
 pub use install::InstalledVersion;
 pub use meta::{LoaderVersion, ModDependency, ModDependencyKind, ModInfo};
 pub use neoforge::NeoForge;
@@ -148,7 +149,7 @@ impl<K: LoaderKind> Loader<K> {
     /// Creates a loader handle with a default [`reqwest::Client`].
     pub fn new() -> Self {
         Self {
-            http: reqwest::Client::new(),
+            http: lodestone_net::client(),
             kind: PhantomData,
         }
     }

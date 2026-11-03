@@ -87,7 +87,7 @@ fn request(credential: Option<&str>, path: &str) -> Result<(String, reqwest::Cli
         source: "the CurseForge API key contains invalid header characters".into(),
     })?;
     headers.insert(reqwest::header::HeaderName::from_static("x-api-key"), value);
-    let client = reqwest::Client::builder()
+    let client = lodestone_net::builder()
         .default_headers(headers)
         .user_agent(concat!("lodestone_platforms/", env!("CARGO_PKG_VERSION")))
         .build()

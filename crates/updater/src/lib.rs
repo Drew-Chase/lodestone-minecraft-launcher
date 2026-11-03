@@ -7,13 +7,11 @@ mod error;
 mod install;
 mod release;
 
-use std::time::Duration;
-
 pub use checksum::checksum_for;
 pub use download::{download_verified, fetch_installer, verify_file};
 pub use error::Error;
 pub use install::{installed_with_installer, run_silent_elevated};
-pub use release::{Asset, Release, installer_asset, latest, newer};
+pub use release::{Asset, Release, installer_asset, latest, latest_for, newer};
 
 /// The repository whose releases are checked.
 pub const REPOSITORY: &str = "Drew-Chase/lodestone-minecraft-launcher";
@@ -23,8 +21,5 @@ pub const CHECKSUMS: &str = "SHA256SUMS.txt";
 
 /// The HTTP client for the update check. GitHub's API refuses requests that carry no User-Agent.
 pub fn client(user_agent: &str) -> Result<reqwest::Client, Error> {
-    Ok(reqwest::Client::builder()
-        .user_agent(user_agent)
-        .connect_timeout(Duration::from_secs(15))
-        .build()?)
+    Ok(lodestone_net::builder().user_agent(user_agent).build()?)
 }

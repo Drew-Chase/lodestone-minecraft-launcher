@@ -1,0 +1,10 @@
+[package]
+name = "lodestone_net"
+version = "0.1.0"
+edition = "2024"
+# Tests mirror src/ under tests/ and are wired in with #[path], so top-level files there are not
+# separate test targets.
+autotests = false
+
+[dependencies]
+reqwest = { workspace = true }

@@ -28,7 +28,7 @@ const ANSWER_CAPACITY: usize = 64;
 /// The client the hand-rolled kinds share. ATLauncher sits behind Cloudflare,
 /// which turns away requests that carry no User-Agent.
 pub(crate) fn client() -> Client {
-    Client::builder()
+    lodestone_net::builder()
         .user_agent(concat!("lodestone_platforms/", env!("CARGO_PKG_VERSION")))
         .build()
         .unwrap_or_else(|_| Client::new())
