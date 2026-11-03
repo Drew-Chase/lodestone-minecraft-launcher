@@ -32,6 +32,23 @@ pub struct Profile {
     /// The texture URL of the player's ACTIVE skin (the full 64×64 PNG on
     /// Mojang's texture CDN), when the profile reports one.
     pub skin_url: Option<String>,
+    /// Whether the ACTIVE skin uses the slim (3-pixel arm) model.
+    pub slim: bool,
+    /// Every cape the player owns, with the one being worn marked `active`.
+    pub capes: Vec<Cape>,
+}
+
+/// A cape the player owns.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cape {
+    /// The cape's id, exactly as the profile returned it. It is sent back unchanged to wear the cape.
+    pub id: String,
+    /// The cape's name, such as `"Migrator"`.
+    pub name: String,
+    /// The texture URL of the cape PNG (64×32 on Mojang's texture CDN).
+    pub url: String,
+    /// Whether the player is wearing this cape.
+    pub active: bool,
 }
 
 /// The first phase of a device-code login: what the user must see and confirm.

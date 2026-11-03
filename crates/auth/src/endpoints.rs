@@ -11,6 +11,12 @@ pub(crate) const MSA_TOKEN_URL: &str = "https://login.microsoftonline.com/consum
 /// The Minecraft profile endpoint — uuid + name for the signed-in account.
 pub(crate) const PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
 
+/// The skin upload: a multipart form with the model and the PNG. The answer is the profile.
+pub(crate) const SKIN_UPLOAD_URL: &str = "https://api.minecraftservices.com/minecraft/profile/skins";
+
+/// The cape the profile wears: `PUT` a cape id to wear it, `DELETE` to take the cape off. The answer is the profile.
+pub(crate) const CAPE_ACTIVE_URL: &str = "https://api.minecraftservices.com/minecraft/profile/capes/active";
+
 /// Instance discovery — a lightweight, tenant-agnostic endpoint that also
 /// reports the region scope Microsoft assigns to the requesting address.
 /// Used as the auth-services reachability probe for the login status bar.

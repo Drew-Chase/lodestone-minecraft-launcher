@@ -37,7 +37,7 @@
 //! - Device-code login in two phases (`begin_device_code_login` /
 //!   `finish_device_code_login`)
 //! - Silent re-login from a stored refresh token (`login_with_refresh_token`)
-//! - Profile resolution (`Profile { id, name, skin_url }`) with
+//! - Profile resolution (`Profile`: the skin, its model and the capes) with
 //!   game-ownership detection
 //!   (`AuthError::MinecraftNotOwned`)
 //! - User-presentable Xbox errors (`NoXboxAccount`, `ChildAccount`, …) instead
@@ -54,18 +54,20 @@
 mod endpoints;
 mod error;
 mod http;
+mod profile;
 mod session;
+mod upload;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use minecraft_msa_auth::MinecraftAuthorizationFlow;
 use oauth2::{AuthUrl, ClientId, DeviceAuthorizationUrl, Scope, TokenResponse, TokenUrl};
-use serde::Deserialize;
 
 pub use error::AuthError;
-pub use session::{DeviceCodeStart, Profile, Session};
+pub use session::{Cape, DeviceCodeStart, Profile, Session};
 
 use crate::http::Oauth2HttpClient;
+use crate::profile::ProfileResponse;
 use crate::session::DeviceCodeState;
 
 /// The authentication handle for one Azure app registration. Cheap to clone;
@@ -119,29 +121,6 @@ fn base64_engine(encoded: &str) -> Result<String, AuthError> {
     String::from_utf8(bytes).map_err(|_| AuthError::Microsoft {
         message: "the sessionserver returned a malformed texture payload".to_string(),
     })
-}
-
-/// A skin entry of `/minecraft/profile` — players may own several skins,
-/// exactly one of which is `ACTIVE`.
-#[derive(Debug, Deserialize)]
-struct SkinEntry {
-    state: String,
-    url: String,
-}
-
-/// The Minecraft profile payload of `/minecraft/profile`.
-#[derive(Debug, Deserialize)]
-struct ProfileResponse {
-    id: String,
-    name: String,
-    skins: Option<Vec<SkinEntry>>,
-}
-
-/// Picks the ACTIVE skin's texture url, falling back to the first entry.
-fn active_skin_url(skins: Option<Vec<SkinEntry>>) -> Option<String> {
-    let mut skins = skins?;
-    let active = skins.iter().position(|skin| skin.state == "ACTIVE")?;
-    Some(skins.swap_remove(active).url)
 }
 
 impl Authentication {
@@ -425,7 +404,7 @@ impl Authentication {
 
     /// Fetches the Minecraft profile for a Minecraft services bearer token.
     /// A 404 means the account has no Minecraft Java profile.
-    async fn fetch_profile(&self, minecraft_token: &str) -> Result<Profile, AuthError> {
+    pub async fn fetch_profile(&self, minecraft_token: &str) -> Result<Profile, AuthError> {
         let response = self
             .http
             .get(endpoints::PROFILE_URL)
@@ -454,11 +433,61 @@ impl Authentication {
             url: endpoints::PROFILE_URL.to_string(),
             source,
         })?;
-        Ok(Profile {
-            id: profile.id,
-            name: profile.name,
-            skin_url: active_skin_url(profile.skins),
-        })
+        Ok(profile.into_profile())
+    }
+
+    /// Wears the cape `cape_id`, as the profile lists it, and returns the profile it leaves.
+    pub async fn equip_cape(&self, minecraft_token: &str, cape_id: &str) -> Result<Profile, AuthError> {
+        let request = self
+            .http
+            .put(endpoints::CAPE_ACTIVE_URL)
+            .bearer_auth(minecraft_token)
+            .json(&serde_json::json!({ "capeId": cape_id }));
+        self.profile_after_change(request, minecraft_token, endpoints::CAPE_ACTIVE_URL).await
+    }
+
+    /// Takes the cape the player wears off, and returns the profile it leaves.
+    pub async fn hide_cape(&self, minecraft_token: &str) -> Result<Profile, AuthError> {
+        let request = self.http.delete(endpoints::CAPE_ACTIVE_URL).bearer_auth(minecraft_token);
+        self.profile_after_change(request, minecraft_token, endpoints::CAPE_ACTIVE_URL).await
+    }
+
+    /// Uploads `png` as the profile's skin, in the classic or slim model. The upload makes the skin the one in use.
+    pub async fn upload_skin(&self, minecraft_token: &str, slim: bool, png: &[u8]) -> Result<Profile, AuthError> {
+        let request = self
+            .http
+            .post(endpoints::SKIN_UPLOAD_URL)
+            .bearer_auth(minecraft_token)
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                format!("multipart/form-data; boundary={}", upload::BOUNDARY),
+            )
+            .body(upload::skin_upload_body(slim, png));
+        self.profile_after_change(request, minecraft_token, endpoints::SKIN_UPLOAD_URL).await
+    }
+
+    /// Sends a change to the profile and returns the profile its answer carries. An answer that cannot be read is
+    /// followed by a fetch of the profile, so the caller still gets the profile as it now stands.
+    async fn profile_after_change(&self, request: reqwest::RequestBuilder, minecraft_token: &str, url: &str) -> Result<Profile, AuthError> {
+        let response = request.send().await.map_err(|source| AuthError::Network {
+            url: url.to_string(),
+            source,
+        })?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(AuthError::UnexpectedResponse {
+                url: url.to_string(),
+                status: status.as_u16(),
+            });
+        }
+        let body = response.text().await.map_err(|source| AuthError::Network {
+            url: url.to_string(),
+            source,
+        })?;
+        match serde_json::from_str::<ProfileResponse>(&body) {
+            Ok(profile) => Ok(profile.into_profile()),
+            Err(_) => self.fetch_profile(minecraft_token).await,
+        }
     }
 }
 
