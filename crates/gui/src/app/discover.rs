@@ -22,15 +22,13 @@ use super::LodestoneAppMessage;
 use super::LodestoneLauncher;
 use super::components::alert::Alert;
 use super::downloads::{JobState, ModJob};
+use super::install::InstallRequest;
 use super::install::mods::add_to_instance;
-use super::install::{self, IconSource, InstallRequest, modpack::Payload};
+use super::install::pack::{self, Page};
 use super::lang;
 use super::mod_actions::replace_jar;
-use super::mod_sources::{curseforge_sources, modrinth_sources};
 use super::pages::discover::{self, AddRequest, CONTENT_ID, Effect, InstallState, InstanceChoice, Message, Project, SEARCH_ID, Search, Source};
 use super::pages::instance::Tab;
-use super::pages::library::instance::Loader;
-use super::pages::library::new_instance::naming;
 use super::paths::LauncherPaths;
 use super::preferences::Preferences;
 use super::shared_library::{self, ModSource, SharedRecord};
@@ -177,8 +175,9 @@ async fn download_project(project: Project, shared: PathBuf) -> Result<SharedRec
     })
 }
 
-/// Reads a modpack, downloading its archive into the shared folder when it has one, and returns the install that makes its instance.
-async fn prepare_modpack(project: Project, paths: LauncherPaths, taken: Vec<String>) -> Result<InstallRequest, String> {
+/// Reads a modpack, downloading its archive into the shared folder when it has one, and returns the install that makes its instance,
+/// with the archive's size (zero when it has no archive).
+pub(crate) async fn prepare_modpack(project: Project, paths: LauncherPaths, taken: Vec<String>) -> Result<(InstallRequest, u64), String> {
     let versions = versions_of(project.source, project.content, &project.project_id).await?;
     let version = chosen_release(versions, &project).ok_or_else(|| lang::t("discover.no_version").to_string())?;
     let folder = download_folder(&project, &version);
@@ -221,52 +220,20 @@ async fn prepare_modpack(project: Project, paths: LauncherPaths, taken: Vec<Stri
             (modpack, Some(archive))
         }
     };
-    let mut payload = Payload::from_modpack(&modpack, archive);
-    match project.source {
-        Source::CurseForge => {
-            payload.files = resolve_curseforge_files(payload.files).await?;
-            payload.sources = curseforge_sources(&payload.files);
-        }
-        Source::Modrinth => payload.sources = modrinth_sources(&payload.files).await,
-        _ => {}
-    }
-    let (biome, seed) = discover::scene_for(project.source, &project.project_id);
-    // The pack's own picture becomes the instance's icon and banner. Without one, the rose symbol and the
-    // scene stand in.
-    let art = match project.icon_url.clone() {
-        Some(url) => discover::pack_art(url).await,
-        None => None,
+    // The archive's size is what an import from the page lists, so it is read before the archive is taken.
+    let bytes = archive
+        .as_deref()
+        .and_then(|path| std::fs::metadata(path).ok())
+        .map_or(0, |meta| meta.len());
+    let source = Some(project.source);
+    let page = Page {
+        source: project.source,
+        project_id: project.project_id,
+        url: project.web_url,
+        icon_url: project.icon_url,
     };
-    let (icon, banner) = match art {
-        Some(art) => (IconSource::Uploaded(art.icon), Some(art.banner)),
-        None => (
-            IconSource::Composed {
-                background: "rose".to_string(),
-                symbol: "grass".to_string(),
-            },
-            None,
-        ),
-    };
-    let directory_name = naming::unique_directory_name(&paths.instances(), &naming::clean_directory_name(&modpack.name), &taken);
-    Ok(InstallRequest {
-        paths,
-        name: modpack.name,
-        directory_name,
-        mc_version: modpack.minecraft,
-        loader: loader_of(modpack.loader),
-        loader_version: modpack.loader_version,
-        java_component: None,
-        icon,
-        biome,
-        art_seed: seed,
-        banner,
-        id: install::new_id(),
-        source_url: project.web_url,
-        source_platform: Some(project.source.key().to_string()),
-        source_project_id: Some(project.project_id),
-        modpack: Some(payload),
-        settings: Default::default(),
-    })
+    let request = pack::request(&paths, &taken, modpack, archive, source, Some(page)).await?;
+    Ok((request, bytes))
 }
 
 /// The archive a modpack downloaded as: its first `.mrpack` or `.zip`, or the first file.
@@ -278,17 +245,6 @@ fn pack_archive(files: Vec<PathBuf>) -> Result<PathBuf, String> {
         .or_else(|| files.first())
         .cloned()
         .ok_or_else(|| lang::t("discover.no_version").to_string())
-}
-
-/// The loader a modpack names, as an instance's loader. A pack with no loader is vanilla.
-fn loader_of(name: Option<&str>) -> Loader {
-    match name {
-        Some("fabric") => Loader::Fabric,
-        Some("forge") => Loader::Forge,
-        Some("neoforge") => Loader::NeoForge,
-        Some("quilt") => Loader::Quilt,
-        _ => Loader::Vanilla,
-    }
 }
 
 /// Keeps an FTB modpack's file list in its shared folder, since FTB packs are not one archive.
@@ -568,17 +524,21 @@ impl LodestoneLauncher {
             .into_iter()
             .chain(self.library.directory_names())
             .collect();
-        Task::perform(prepare_modpack(project, self.paths.clone(), taken), move |result| {
-            LodestoneAppMessage::Discover(Message::Prepared {
-                platform,
-                project_id,
-                result: result.map(Box::new),
-            })
-        })
+        let paths = self.paths.clone();
+        Task::perform(
+            async move { prepare_modpack(project, paths, taken).await.map(|(request, _)| request) },
+            move |result| {
+                LodestoneAppMessage::Discover(Message::Prepared {
+                    platform,
+                    project_id,
+                    result: result.map(Box::new),
+                })
+            },
+        )
     }
 
     /// Queues a prepared install with the downloads, which start it as a slot frees up.
-    fn queue_install(&mut self, request: InstallRequest) -> Task<LodestoneAppMessage> {
+    pub(crate) fn queue_install(&mut self, request: InstallRequest) -> Task<LodestoneAppMessage> {
         self.downloads.enqueue(request);
         self.downloads.set_open(true);
         self.sync_pending();

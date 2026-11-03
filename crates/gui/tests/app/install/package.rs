@@ -61,7 +61,7 @@ fn a_modrinth_file_downloads_from_its_url_and_a_curseforge_file_comes_by_its_ids
         record("mods/curse.jar", false, curseforge()),
         record("config/options.toml", true, Links::default()),
     ];
-    let payload = payload(&manifest(files));
+    let payload = payload(&manifest(files), None);
     assert_eq!(payload.files.len(), 2);
     assert_eq!(payload.files[0].url, "https://cdn.example/sodium.jar");
     assert_eq!(payload.files[0].project_id, None);
@@ -76,7 +76,7 @@ fn each_linked_mod_is_recorded_with_the_platform_it_came_from() {
         record("mods/sodium.jar", false, modrinth("https://cdn.example/sodium.jar")),
         record("mods/curse.jar", false, curseforge()),
     ];
-    let payload = payload(&manifest(files));
+    let payload = payload(&manifest(files), None);
     assert_eq!(payload.sources.len(), 2);
     assert_eq!(payload.sources[0].platform, "modrinth");
     assert_eq!(payload.sources[0].file_name, "sodium.jar");
@@ -90,20 +90,31 @@ fn a_bundled_file_is_left_to_the_extraction() {
         record("config/options.toml", true, Links::default()),
         record("mods/local.jar", true, Links::default()),
     ];
-    let payload = payload(&manifest(files));
+    let payload = payload(&manifest(files), None);
     assert!(payload.files.is_empty());
     assert!(payload.sources.is_empty());
 }
 
 #[test]
-fn the_instance_takes_the_package_id_and_its_versions() {
-    let root = std::env::temp_dir().join(format!("lodestone-portable-request-{}", std::process::id()));
+fn a_package_on_disk_is_unpacked_over_the_instance_and_one_without_a_path_is_not() {
+    let package = Path::new("pack.lodestone");
+    let files = vec![record("config/options.toml", true, Links::default())];
+    let with = payload(&manifest(files.clone()), Some(package));
+    assert_eq!(with.unpacks.len(), 1);
+    assert!(matches!(&with.unpacks[0].origin, Origin::Package(path) if path == package));
+    let without = payload(&manifest(files), None);
+    assert!(without.unpacks.is_empty());
+}
+
+#[test]
+fn the_instance_takes_the_given_id_and_the_package_versions() {
+    let root = std::env::temp_dir().join(format!("lodestone-package-request-{}", std::process::id()));
     let paths = LauncherPaths::new(&root);
     let manifest = manifest(Vec::new());
-    let request = install_request(&paths, &manifest, payload(&manifest));
-    assert_eq!(request.id, "pack-id");
-    assert_eq!(request.mc_version, "1.21.1");
-    assert_eq!(request.loader, Loader::Fabric);
-    assert_eq!(request.loader_version.as_deref(), Some("0.16.10"));
-    assert!(!request.directory_name.is_empty());
+    let install = request(&paths, &manifest, payload(&manifest, None), manifest.id.clone(), &[]);
+    assert_eq!(install.id, "pack-id");
+    assert_eq!(install.mc_version, "1.21.1");
+    assert_eq!(install.loader, Loader::Fabric);
+    assert_eq!(install.loader_version.as_deref(), Some("0.16.10"));
+    assert!(!install.directory_name.is_empty());
 }

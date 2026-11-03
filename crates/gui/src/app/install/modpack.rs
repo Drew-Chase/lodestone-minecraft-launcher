@@ -5,6 +5,7 @@
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
+use lodestone_export::format::lodestone;
 use lodestone_platforms::{Modpack, ModpackFile};
 use sipper::Sender as ProgressSender;
 use tokio::sync::mpsc;
@@ -54,6 +55,9 @@ pub enum Origin {
     /// A file the install fetches into the instance, then unpacks and removes. The hash and size the
     /// pack gives it, when it gives them, are checked.
     Remote { url: String, sha1: Option<String>, size: Option<u64> },
+    /// A Lodestone package on disk. Its bundled files, under `overrides/`, lay over the root of the instance. The
+    /// folder, target and skip of the unpack do not apply to a package.
+    Package(PathBuf),
 }
 
 impl Payload {
@@ -108,7 +112,7 @@ pub(super) async fn stage(
         .iter()
         .enumerate()
         .map(|(index, unpack)| match &unpack.origin {
-            Origin::Local(path) => path.clone(),
+            Origin::Local(path) | Origin::Package(path) => path.clone(),
             Origin::Remote { .. } => fetched.join(format!("{index}.zip")),
         })
         .collect();
@@ -129,7 +133,7 @@ pub(super) async fn stage(
             sha1: sha1.clone(),
             size: *size,
         }),
-        Origin::Local(_) => None,
+        Origin::Local(_) | Origin::Package(_) => None,
     }));
     // The instance's folders are written at the end of the install, so the folders the items go into
     // are made here.
@@ -179,7 +183,10 @@ pub(super) async fn stage(
 /// fetched into.
 fn unpack_all(unpacks: &[(PathBuf, Unpack)], game_dir: &Path) -> Result<(), String> {
     for (archive, unpack) in unpacks {
-        extract(archive, &unpack.folder, &unpack.target, &unpack.skip, game_dir)?;
+        match unpack.origin {
+            Origin::Package(_) => extract_package(archive, game_dir)?,
+            _ => extract(archive, &unpack.folder, &unpack.target, &unpack.skip, game_dir)?,
+        }
     }
     let fetched = game_dir.join(FETCHED);
     if let Err(error) = std::fs::remove_dir_all(&fetched)
@@ -223,6 +230,12 @@ fn extract(archive: &Path, folder: &str, target: &str, skip: &[String], game_dir
         out.flush().map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+/// Lays the bundled files of a Lodestone package over `game_dir`, from the `overrides/` folder inside it.
+fn extract_package(archive: &Path, game_dir: &Path) -> Result<(), String> {
+    let file = std::fs::File::open(archive).map_err(|error| error.to_string())?;
+    lodestone::extract_overrides(file, game_dir).map_err(|error| error.to_string())
 }
 
 /// The prefix the entries of `folder` carry in an archive: none for the archive's root, and `folder/`

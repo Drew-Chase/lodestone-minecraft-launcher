@@ -1,7 +1,11 @@
 use super::*;
+use lodestone_export::format::{Metadata, Package};
+use lodestone_export::link::{Entry, Links};
+use lodestone_export::progress::{Control, Progress};
 use lodestone_platforms::{Modpack, ModpackArchive};
 use sha1::{Digest, Sha1};
 use std::io::Read;
+use std::sync::atomic::AtomicBool;
 
 /// The SHA-1 of the file at `path`, as lowercase hex.
 fn sha1_of(path: &Path) -> Result<String, String> {
@@ -69,6 +73,52 @@ fn overrides_are_laid_into_the_instance_and_nothing_else_is_extracted() {
     assert_eq!(std::fs::read_to_string(game.join("config/a.toml")).expect("override written"), "x=1");
     assert!(!game.join("other").exists());
     assert!(!dir.join("escape.txt").exists(), "a path that climbs out is skipped");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_lodestone_package_lays_its_bundled_files_over_the_instance() {
+    let dir = scratch("package");
+    let source = dir.join("source/config/a.toml");
+    std::fs::create_dir_all(source.parent().expect("a file has a parent")).expect("source folder made");
+    std::fs::write(&source, "x=1").expect("source written");
+    let entries = vec![Entry {
+        path: "config/a.toml".to_string(),
+        source,
+        size: 3,
+        digests: None,
+        links: Links::default(),
+    }];
+    let metadata = Metadata {
+        name: "Pack".to_string(),
+        version: "1.0.0".to_string(),
+        description: String::new(),
+        minecraft: "1.20.1".to_string(),
+        loader: "fabric".to_string(),
+        loader_version: None,
+    };
+    let package = Package {
+        id: "pack-id".to_string(),
+        exported_at: 0,
+        metadata: &metadata,
+        entries: &entries,
+        bundle_linked: true,
+    };
+    let cancel = AtomicBool::new(false);
+    let mut report = |_: Progress| {};
+    let mut control = Control::new(&cancel, 1, 3, &mut report);
+    let bytes = lodestone::write_to(Vec::new(), &package, &mut control).expect("package written");
+    let archive = dir.join("pack.lodestone");
+    std::fs::write(&archive, bytes).expect("package saved");
+    let game = dir.join("game");
+    let unpack = Unpack {
+        origin: Origin::Package(archive.clone()),
+        folder: String::new(),
+        target: String::new(),
+        skip: Vec::new(),
+    };
+    unpack_all(&[(archive, unpack)], &game).expect("package unpacked");
+    assert_eq!(std::fs::read_to_string(game.join("config/a.toml")).expect("override written"), "x=1");
     std::fs::remove_dir_all(&dir).ok();
 }
 
