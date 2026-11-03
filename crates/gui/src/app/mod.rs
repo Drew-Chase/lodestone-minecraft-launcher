@@ -8,6 +8,7 @@ mod downloads;
 mod export;
 pub mod face;
 mod games;
+mod import;
 mod install;
 mod instances;
 mod lang;
@@ -178,6 +179,8 @@ pub struct LodestoneLauncher {
     downloads: downloads::Downloads,
     /// The export dialog, while it is open. It sits above the page, beside the alerts.
     export: Option<export::Dialog>,
+    /// The Import Instance dialog, while it is open. It sits above the page, beside the export dialog.
+    import: Option<import::Dialog>,
     /// The package this launcher carries, when it is a portable launcher. Its launch replaces the library.
     portable: Option<portable::Portable>,
     /// The update check: the newest release, and what the update is doing. See `updater`.
@@ -233,6 +236,7 @@ impl Default for LodestoneLauncher {
             runs_open: launch::games::RunsOpen::default(),
             downloads: downloads::Downloads::default(),
             export: None,
+            import: None,
             portable: portable::launch(),
             updater: updater::Updater::default(),
             art: components::art_cache::ArtCache::default(),

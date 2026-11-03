@@ -131,7 +131,8 @@ impl LodestoneLauncher {
             platform_specific: window::settings::PlatformSpecific {
                 corner_preference: window::settings::platform::CornerPreference::Default,
                 undecorated_shadow: true,
-                drag_and_drop: false,
+                // Files dragged from Explorer reach the Import Instance dialog. iced's default turns this on too.
+                drag_and_drop: true,
                 skip_taskbar: false,
             },
             #[cfg(target_os = "macos")]

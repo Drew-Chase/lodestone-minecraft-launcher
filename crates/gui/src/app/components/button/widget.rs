@@ -148,15 +148,21 @@ impl<Message: Clone> Widget<Message, Theme, BaseRenderer> for TextButton<'_, Mes
         // The whole surface — fill, border, glow and content — lifts together.
         renderer.with_translation(Vector::new(0.0, -visual.lift), |renderer| {
             let shadow = match self.variant {
-                Variant::Primary => {
+                Variant::Primary | Variant::Cyan => {
                     // §07 — `0 8px 24px -6px var(--mc-green-glow)`. iced has no spread, so the
                     // blur stays short to keep the halo as slight as the reference. `glow`
-                    // scales the strength, so the halo eases with hover and press.
+                    // scales the strength, so the halo eases with hover and press. The cyan
+                    // variant glows in its own accent.
                     let strength = visual.glow;
+                    let glow = if self.variant == Variant::Cyan {
+                        color::cyan()
+                    } else {
+                        color::primary_glow()
+                    };
                     Shadow {
                         color: Color {
                             a: PRIMARY_GLOW_ALPHA * strength,
-                            ..color::primary_glow()
+                            ..glow
                         },
                         offset: Vector::new(0.0, 2.0 + 4.0 * strength),
                         blur_radius: crate::app::theme::blur(4.0 + 12.0 * strength),

@@ -115,11 +115,13 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Library(LibraryMessage::RevealInstance(id)) => self.reveal_instance(&id),
             LodestoneAppMessage::Library(LibraryMessage::InstanceMenu { instance, action }) => self.instance_menu_action(&instance, action),
             LodestoneAppMessage::Library(LibraryMessage::OpenNewInstance) => self.open_new_instance(),
+            LodestoneAppMessage::Library(LibraryMessage::OpenImport) => self.open_import(),
             LodestoneAppMessage::Library(LibraryMessage::NewInstance(message)) => self.new_instance_message(message),
             // The update button in the header is the updater's to handle.
             LodestoneAppMessage::Library(LibraryMessage::UpdatePressed) => self.updater_message(updater::Message::Pressed),
             LodestoneAppMessage::Downloads(message) => self.downloads_message(message),
             LodestoneAppMessage::Export(message) => self.export_message(message),
+            LodestoneAppMessage::Import(message) => self.import_message(message),
             LodestoneAppMessage::Portable(message) => self.portable_message(message),
             LodestoneAppMessage::Updater(message) => self.updater_message(message),
             LodestoneAppMessage::Discover(message) => self.discover_message(message),

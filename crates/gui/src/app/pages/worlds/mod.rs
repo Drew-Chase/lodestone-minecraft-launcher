@@ -5,7 +5,7 @@
 //! belongs to.
 
 mod filters;
-mod format;
+pub(crate) mod format;
 mod header;
 mod list;
 mod scan;

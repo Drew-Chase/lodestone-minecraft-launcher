@@ -5,6 +5,7 @@
 use iced::window::Id;
 use iced::{Subscription, event, keyboard, mouse, window};
 
+use super::import;
 use super::pages::Page;
 use super::pages::skins::{Message as SkinsMessage, PREVIEW_FRAME};
 use super::{LodestoneAppMessage, LodestoneLauncher, perf};
@@ -14,6 +15,7 @@ impl LodestoneLauncher {
         Subscription::batch([
             window::resize_events().map(|(id, size)| LodestoneAppMessage::WindowSizeChanged(id, size)),
             event::listen_with(Self::mouse_navigation),
+            self.import_subscription(),
             // The auth-services probe — keeps the login status bar honest.
             iced::time::every(std::time::Duration::from_secs(15)).map(|_| LodestoneAppMessage::AuthProbeTick),
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| LodestoneAppMessage::SpeedTick),
@@ -22,6 +24,15 @@ impl LodestoneLauncher {
             self.discover_shortcut(),
             perf::subscription(&self.perf).map(LodestoneAppMessage::Perf),
         ])
+    }
+
+    /// The file events the Import dialog listens for: a file dragged over the window, leaving it, or dropped on it. They are
+    /// listened for only while the dialog is open.
+    fn import_subscription(&self) -> Subscription<LodestoneAppMessage> {
+        match self.import {
+            Some(_) => event::listen_with(import::drop_event),
+            None => Subscription::none(),
+        }
     }
 
     /// Ctrl/⌘K focuses the Discover search field. It is listened for only while the page is on

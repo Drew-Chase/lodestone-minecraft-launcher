@@ -55,7 +55,7 @@ pub enum Message {
     },
     /// The pointer entered (`hovered`) or left a card, which grows while it is hovered.
     Hover { instance: String, hovered: bool },
-    /// A header/quick action (Import, Join Server, ...) — dummy.
+    /// A quick action that is still a dummy (Join Server, Co-op Sync).
     QuickAction(&'static str),
     /// The update button in the header was pressed. The root starts the update, or opens its page.
     UpdatePressed,
@@ -63,6 +63,8 @@ pub enum Message {
     Reload,
     /// The New Instance button opens the dialog. The root loads its lists.
     OpenNewInstance,
+    /// The Import card opens the Import Instance dialog. The root reads the recent imports it lists.
+    OpenImport,
     /// A message for the New Instance dialog.
     NewInstance(new_instance::Message),
 }
@@ -228,7 +230,7 @@ impl Library {
             Message::EditInstance(_) | Message::RevealInstance(_) | Message::InstanceMenu { .. } => {}
             Message::QuickAction(action) => info!("Quick action '{action}' (dummy)"),
             // The root handles the reload, the update and the New Instance messages: they need the database or the updater.
-            Message::Reload | Message::OpenNewInstance | Message::NewInstance(_) | Message::UpdatePressed => {}
+            Message::Reload | Message::OpenNewInstance | Message::OpenImport | Message::NewInstance(_) | Message::UpdatePressed => {}
         }
     }
 

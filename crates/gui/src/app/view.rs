@@ -118,6 +118,11 @@ impl LodestoneLauncher {
             Some(dialog) => dialog.view().map(LodestoneAppMessage::Export),
             None => Space::new().into(),
         };
+        // The import dialog covers the page the same way, above the export dialog.
+        let import: Element<'_, LodestoneAppMessage> = match self.import.as_ref() {
+            Some(dialog) => dialog.view().map(LodestoneAppMessage::Import),
+            None => Space::new().into(),
+        };
         // The screenshot viewer covers the whole window, under the alerts. It is open only on the instance page.
         let viewer: Element<'_, LodestoneAppMessage> = match self.router.current() {
             Page::Instance => match self.instance_page.viewer(self.window_size) {
@@ -139,6 +144,7 @@ impl LodestoneLauncher {
                 content,
                 dialog,
                 export,
+                import,
                 viewer,
                 alert,
                 hud,

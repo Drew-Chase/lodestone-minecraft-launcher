@@ -10,37 +10,21 @@ use iced::widget::{Space, Text, column, container};
 use iced::{Element, Fill, Length, Task, alignment};
 use lodestone_export::format::lodestone::{self, Manifest};
 use lodestone_export::portable::{self as package, Located};
-use lodestone_platforms::ModpackFile;
 use tracing::{info, warn};
 
 use super::{LodestoneAppMessage, LodestoneLauncher};
-use crate::app::components::{ProgressBar, TextButton, instance_icon};
+use crate::app::components::{ProgressBar, TextButton};
 use crate::app::database::Database;
 use crate::app::discover::resolve_curseforge_files;
-use crate::app::install::modpack::Payload;
-use crate::app::install::{IconSource, InstallRequest};
+use crate::app::install::InstallRequest;
+use crate::app::install::package as install_package;
 use crate::app::lang;
-use crate::app::mod_sources::stem;
-use crate::app::pages::discover::Source;
-use crate::app::pages::library::instance::{Biome, Instance, Loader};
-use crate::app::pages::library::new_instance::naming;
+use crate::app::pages::library::instance::{Instance, Loader};
 use crate::app::paths::{self, LauncherPaths};
-use crate::app::shared_library::ModSource;
 use crate::app::theme::{color, fonts};
 
 /// The width of the column the page's content sits in.
 const COLUMN_WIDTH: f32 = 420.0;
-/// The biomes the instance's scene art can take. A new instance picks one at random.
-const BIOMES: [Biome; 8] = [
-    Biome::End,
-    Biome::Forest,
-    Biome::Cherry,
-    Biome::Ocean,
-    Biome::Desert,
-    Biome::Snow,
-    Biome::Nether,
-    Biome::Mushroom,
-];
 
 /// The package this launcher carries. It is set once, before the window opens.
 static PACKAGE: OnceLock<Portable> = OnceLock::new();
@@ -343,102 +327,16 @@ async fn check_install(db: Database, paths: LauncherPaths, manifest: Manifest) -
         instance.resolve_files(&paths.instances());
         return Ok(Prepared::Installed(Box::new(instance)));
     }
-    let mut payload = payload(&manifest);
+    let mut payload = install_package::payload(&manifest, None);
     if payload.files.iter().any(|file| file.url.is_empty()) {
         payload.files = resolve_curseforge_files(payload.files).await?;
     }
-    let request = install_request(&paths, &manifest, payload);
+    let request = install_package::request(&paths, &manifest, payload, manifest.id.clone(), &[]);
     let folder = paths.instance(&request.directory_name);
     Ok(Prepared::Install {
         request: Box::new(request),
         folder,
     })
-}
-
-/// The package's linked files as an install takes them. A Modrinth file comes with its download; a CurseForge file
-/// comes by its ids, and its download is resolved before the install. Each mod also becomes a record of where it came
-/// from, which the install keeps for the instance.
-fn payload(manifest: &Manifest) -> Payload {
-    let mut files = Vec::new();
-    let mut sources = Vec::new();
-    for record in manifest.files.iter().filter(|record| !record.bundled) {
-        let file_name = record.path.strip_prefix("mods/").map(str::to_string);
-        if let Some(link) = &record.links.modrinth {
-            files.push(ModpackFile {
-                path: record.path.clone(),
-                url: link.download_url.clone(),
-                sha1: Some(record.sha1.clone()),
-                size: Some(record.size),
-                project_id: None,
-                file_id: None,
-            });
-            if let Some(file_name) = file_name {
-                sources.push(ModSource {
-                    instance: String::new(),
-                    platform: Source::Modrinth.key().to_string(),
-                    project_id: link.project.clone(),
-                    version_id: link.version.clone(),
-                    name: stem(&file_name),
-                    file_name,
-                    sha1: Some(record.sha1.clone()),
-                });
-            }
-        } else if let Some(link) = &record.links.curseforge {
-            files.push(ModpackFile {
-                path: record.path.clone(),
-                url: String::new(),
-                sha1: Some(record.sha1.clone()),
-                size: Some(record.size),
-                project_id: Some(link.project.clone()),
-                file_id: Some(link.file.clone()),
-            });
-            if let Some(file_name) = file_name {
-                sources.push(ModSource {
-                    instance: String::new(),
-                    platform: Source::CurseForge.key().to_string(),
-                    project_id: link.project.clone(),
-                    version_id: link.file.clone(),
-                    name: stem(&file_name),
-                    file_name,
-                    sha1: Some(record.sha1.clone()),
-                });
-            }
-        }
-    }
-    Payload {
-        files,
-        unpacks: Vec::new(),
-        sources,
-    }
-}
-
-/// The request that installs the package's instance. The instance takes the package's id, so a later run finds it,
-/// and a random icon and scene stand in for the ones a new instance would pick.
-fn install_request(paths: &LauncherPaths, manifest: &Manifest, payload: Payload) -> InstallRequest {
-    let (background, symbol) = instance_icon::random();
-    let base = naming::clean_directory_name(&manifest.name);
-    InstallRequest {
-        paths: paths.clone(),
-        name: manifest.name.clone(),
-        directory_name: naming::unique_directory_name(&paths.instances(), &base, &[]),
-        mc_version: manifest.minecraft.clone(),
-        loader: Loader::from_db(&manifest.loader.id),
-        loader_version: manifest.loader.version.clone(),
-        java_component: None,
-        icon: IconSource::Composed {
-            background: background.to_string(),
-            symbol: symbol.to_string(),
-        },
-        biome: BIOMES[fastrand::usize(..BIOMES.len())],
-        art_seed: fastrand::u64(..),
-        banner: None,
-        id: manifest.id.clone(),
-        source_url: None,
-        source_platform: None,
-        source_project_id: None,
-        modpack: Some(payload),
-        settings: Default::default(),
-    }
 }
 
 /// Adds the package's own files to the instance folder, on the blocking pool.
@@ -450,7 +348,3 @@ async fn extract(located: Located, executable: PathBuf, folder: PathBuf) -> Resu
     .await
     .map_err(|error| error.to_string())?
 }
-
-#[cfg(test)]
-#[path = "../../tests/app/portable.rs"]
-mod tests;
