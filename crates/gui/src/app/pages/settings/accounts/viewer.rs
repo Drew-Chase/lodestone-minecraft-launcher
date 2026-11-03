@@ -94,12 +94,16 @@ pub struct Model {
     pub slim: bool,
 }
 
-/// The viewer's state between frames: the turn of the model, and where a drag last was.
+/// The viewer's state between frames: the turn of the model, whether a drag is under way, and where the pointer last was.
 #[derive(Debug, Clone, Copy)]
 pub struct Turn {
     yaw: f32,
     pitch: f32,
-    grab: Option<(f32, f32)>,
+    /// Whether the left button went down over the viewer, so pointer moves turn the model until it comes up.
+    dragging: bool,
+    /// The pointer's place in the window at its last move. A drag turns the model by how far the pointer moved since then.
+    /// Both ends are window coordinates, as `CursorMoved` reports them.
+    pointer: Option<(f32, f32)>,
 }
 
 impl Default for Turn {
@@ -107,7 +111,8 @@ impl Default for Turn {
         Self {
             yaw: 0.6,
             pitch: -0.1,
-            grab: None,
+            dragging: false,
+            pointer: None,
         }
     }
 }
@@ -129,18 +134,27 @@ impl<M> Program<M> for ModelProgram {
     fn update(&self, turn: &mut Turn, event: &Event, bounds: Rectangle, cursor: mouse::Cursor) -> Option<shader::Action<M>> {
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) if cursor.is_over(bounds) => {
-                turn.grab = cursor.position().map(|point| (point.x, point.y));
+                // The press keeps the current turn. Only the moves after it turn the model.
+                turn.dragging = true;
                 Some(shader::Action::capture())
             }
             Event::Mouse(mouse::Event::CursorMoved { position }) => {
-                let (last_x, last_y) = turn.grab?;
+                let previous = turn.pointer.replace((position.x, position.y));
+                if !turn.dragging {
+                    return None;
+                }
+                let (last_x, last_y) = previous?;
                 turn.yaw += (position.x - last_x) * 0.01;
                 turn.pitch = (turn.pitch + (position.y - last_y) * 0.01).clamp(-1.2, 1.2);
-                turn.grab = Some((position.x, position.y));
                 Some(shader::Action::request_redraw())
             }
+            Event::Mouse(mouse::Event::CursorLeft) => {
+                // The next move starts from where the pointer re-enters, not from where it left.
+                turn.pointer = None;
+                None
+            }
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
-                turn.grab = None;
+                turn.dragging = false;
                 None
             }
             _ => None,

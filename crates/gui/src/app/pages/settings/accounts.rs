@@ -16,11 +16,12 @@ use self::skins::LibrarySkin;
 use self::viewer::{Layers, Model, Pose, Skin};
 use super::{Message, card};
 use crate::app::components::button::Variant;
+use crate::app::components::hint::hint;
 use crate::app::components::menu::MenuItem;
 use crate::app::components::{Dropdown, TextButton};
 use crate::app::lang;
 use crate::app::storage::{StoredAccount, StoredCredentials};
-use crate::app::theme::{Accent, color, fonts};
+use crate::app::theme::{Accent, color, fonts, utility};
 
 /// The side of an account's avatar, in pixels.
 const AVATAR_SIZE: f32 = 44.0;
@@ -263,60 +264,75 @@ fn skin_browser<'a>(browser: BrowserView<'a>) -> Element<'a, Message> {
     )
 }
 
-/// The overlay layer switches, beside the viewer.
+/// The overlay layer switches, beside the viewer: an icon for each, named on hover.
 fn layer_column<'a>(layers: Layers) -> Element<'a, Message> {
     let switches = [
-        (Layer::Hat, layers.hat, lang::t("settings.skins.layer_hat")),
-        (Layer::Jacket, layers.jacket, lang::t("settings.skins.layer_jacket")),
-        (Layer::Sleeves, layers.sleeves, lang::t("settings.skins.layer_sleeves")),
-        (Layer::Pants, layers.pants, lang::t("settings.skins.layer_pants")),
+        (Layer::Hat, layers.hat, Icon::lucide().hat_glasses(), lang::t("settings.skins.layer_hat")),
+        (
+            Layer::Jacket,
+            layers.jacket,
+            Icon::lucide().shirt(),
+            lang::t("settings.skins.layer_jacket"),
+        ),
+        (
+            Layer::Sleeves,
+            layers.sleeves,
+            Icon::lucide().hand(),
+            lang::t("settings.skins.layer_sleeves"),
+        ),
+        (
+            Layer::Pants,
+            layers.pants,
+            Icon::lucide().columns_2(),
+            lang::t("settings.skins.layer_pants"),
+        ),
     ];
-    column(switches.map(|(layer, on, label)| choice_button(label, on, Message::Skin(SkinAction::Layer(layer)))))
+    column(switches.map(|(layer, on, icon, name)| icon_choice(icon, name, on, Message::Skin(SkinAction::Layer(layer)))))
         .spacing(8)
-        .width(96)
         .into()
 }
 
-/// The pose choices, beside the viewer.
+/// The pose choices, beside the viewer: an icon for each, named on hover.
 fn pose_column<'a>(pose: Pose) -> Element<'a, Message> {
-    let labels = [
-        (Pose::Stand, lang::t("settings.skins.pose_stand")),
-        (Pose::Arms, lang::t("settings.skins.pose_arms")),
-        (Pose::Walk, lang::t("settings.skins.pose_walk")),
-        (Pose::Run, lang::t("settings.skins.pose_run")),
-        (Pose::Crouch, lang::t("settings.skins.pose_crouch")),
+    let choices = [
+        (Pose::Stand, Icon::lucide().person_standing(), lang::t("settings.skins.pose_stand")),
+        (Pose::Arms, Icon::lucide().accessibility(), lang::t("settings.skins.pose_arms")),
+        (Pose::Walk, Icon::lucide().footprints(), lang::t("settings.skins.pose_walk")),
+        (Pose::Run, Icon::lucide().wind(), lang::t("settings.skins.pose_run")),
+        (Pose::Crouch, Icon::lucide().chevrons_down(), lang::t("settings.skins.pose_crouch")),
     ];
-    column(labels.map(|(choice, label)| choice_button(label, choice == pose, Message::Skin(SkinAction::Pose(choice)))))
+    column(choices.map(|(choice, icon, name)| icon_choice(icon, name, choice == pose, Message::Skin(SkinAction::Pose(choice)))))
         .spacing(8)
-        .width(96)
         .into()
 }
 
-/// A small switch that shows whether it is on, and sends `on_press` when pressed.
-fn choice_button<'a>(label: &'static str, on: bool, on_press: Message) -> Element<'a, Message> {
-    button(
-        container(
-            text(label)
-                .size(12)
-                .font(fonts::Inter::MEDIUM)
-                .color(if on { color::primary() } else { color::text_muted() }),
-        )
+/// A square icon switch that shows whether it is on, and sends `on_press` when pressed. Its name shows on hover, because the
+/// icon alone does not say what the switch does.
+fn icon_choice<'a>(icon: &'static str, name: &'static str, on: bool, on_press: Message) -> Element<'a, Message> {
+    let ink = if on { color::primary() } else { color::text_muted() };
+    let glyph: Element<'a, Message> = container(utility::icon(icon, 16.0, Some((ink, ink))))
         .width(Fill)
-        .padding(Padding::new(0.0).top(7.0).bottom(7.0).left(10.0).right(10.0)),
+        .height(Fill)
+        .align_x(alignment::Horizontal::Center)
+        .align_y(alignment::Vertical::Center)
+        .into();
+    hint(
+        button(glyph)
+            .width(36)
+            .height(36)
+            .padding(0)
+            .on_press(on_press)
+            .style(move |_, _| button::Style {
+                background: Some(Background::Color(if on { color::primary_tint() } else { color::surface_bg3() })),
+                border: Border {
+                    radius: 10.0.into(),
+                    width: 1.0,
+                    color: if on { color::primary_glow() } else { color::surface_line() },
+                },
+                ..button::Style::default()
+            }),
+        name,
     )
-    .width(Fill)
-    .padding(0)
-    .on_press(on_press)
-    .style(move |_, _| button::Style {
-        background: Some(Background::Color(if on { color::primary_tint() } else { color::surface_bg3() })),
-        border: Border {
-            radius: 10.0.into(),
-            width: 1.0,
-            color: if on { color::primary_glow() } else { color::surface_line() },
-        },
-        ..button::Style::default()
-    })
-    .into()
 }
 
 /// The panel beside the viewer: the skin in use, its model, size and color, and the stage button for a saved skin.
