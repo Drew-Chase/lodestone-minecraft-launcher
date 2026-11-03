@@ -1,0 +1,16 @@
+[package]
+name = "lodestone_server"
+version = "0.1.0"
+edition = "2024"
+# Tests mirror src/ under tests/ and are wired in with #[path], so top-level files there are not separate test targets.
+autotests = false
+
+[dependencies]
+base64 = { workspace = true }
+serde_json = { workspace = true }
+socket2 = "0.6"
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "net", "rt", "time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "time"] }
