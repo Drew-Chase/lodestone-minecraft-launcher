@@ -1,15 +1,20 @@
 #!/bin/sh
-# Installs the latest Lodestone Minecraft Launcher release for Linux (x86_64) into ~/.local/bin.
+# Installs the latest Lodestone Minecraft Launcher release for Linux (x86_64) into ~/.local/bin, and adds a menu entry
+# (a .desktop file and icon) so KDE Plasma, and any other freedesktop desktop, lists it in the application launcher.
 #
 #   curl -fsSL https://github.com/Drew-Chase/lodestone-minecraft-launcher/releases/latest/download/installer.sh | sh
 #
-# Set BIN_DIR to install somewhere else.
+# Set BIN_DIR to install somewhere else. Set NO_DESKTOP_ENTRY=1 to skip the menu entry.
 
 set -eu
 
 REPO="Drew-Chase/lodestone-minecraft-launcher"
 BINARY="lodestone_launcher"
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
+# The window's application id (see `application_id` in the launcher's boot.rs). Plasma matches a window to its menu
+# entry through the entry's file name and StartupWMClass, so all three use this one name.
+APP_ID="lodestone_launcher"
 
 die() {
   printf 'error: %s\n' "$1" >&2
@@ -50,6 +55,59 @@ tar -xzf "$tmp/archive.tar.gz" -C "$tmp"
 mkdir -p "$BIN_DIR"
 install -m 0755 "$tmp/$BINARY" "$BIN_DIR/$BINARY"
 printf 'Installed %s to %s\n' "$BINARY" "$BIN_DIR"
+
+# The menu entry. The icon is fetched from the same tag as the release, and an icon that cannot be fetched only costs
+# the entry its picture, so it never fails the install.
+if [ -z "${NO_DESKTOP_ENTRY:-}" ]; then
+  apps_dir="$DATA_DIR/applications"
+  icon_dir="$DATA_DIR/icons/hicolor/512x512/apps"
+  tag=$(printf '%s\n' "$release_json" \
+    | grep -o '"tag_name": *"[^"]*"' \
+    | head -n 1 \
+    | sed 's/.*"\([^"]*\)"$/\1/')
+
+  icon="$APP_ID"
+  mkdir -p "$icon_dir"
+  if fetch "https://raw.githubusercontent.com/$REPO/${tag:-main}/res/icon/icon.png" "$tmp/icon.png" 2>/dev/null \
+    && [ -s "$tmp/icon.png" ]; then
+    install -m 0644 "$tmp/icon.png" "$icon_dir/$APP_ID.png"
+  else
+    icon="applications-games"
+    printf 'Could not download the icon, so the menu entry uses a stock one.\n'
+  fi
+
+  mkdir -p "$apps_dir"
+  cat > "$apps_dir/$APP_ID.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Lodestone
+GenericName=Minecraft Launcher
+Comment=Install, manage and play Minecraft instances
+Exec="$BIN_DIR/$BINARY"
+Icon=$icon
+Terminal=false
+Categories=Game;
+Keywords=Minecraft;Launcher;Modpack;Mods;
+StartupNotify=true
+StartupWMClass=$APP_ID
+EOF
+  chmod 0644 "$apps_dir/$APP_ID.desktop"
+
+  # Refresh the desktop's caches when their tools exist. Plasma also watches these folders, so it is fine if none do.
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$apps_dir" >/dev/null 2>&1 || true
+  fi
+  if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -q -t -f "$DATA_DIR/icons/hicolor" >/dev/null 2>&1 || true
+  fi
+  if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    kbuildsycoca6 >/dev/null 2>&1 || true
+  elif command -v kbuildsycoca5 >/dev/null 2>&1; then
+    kbuildsycoca5 >/dev/null 2>&1 || true
+  fi
+  printf 'Added the menu entry %s\n' "$apps_dir/$APP_ID.desktop"
+fi
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
