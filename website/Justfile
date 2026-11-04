@@ -1,0 +1,37 @@
+#!/usr/bin/env just --justfile
+
+set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
+set shell := ["bash", "-c"]
+
+default:
+    @just --list
+
+# Install Composer (PHP) and pnpm (JavaScript) dependencies
+install:
+    composer install
+    pnpm install
+
+# Install, then start the Vite dev server and the PHP API together
+dev: install
+    pnpm run dev
+
+# Build the site into dist/, with the API and its vendor/ folder beside it
+[windows]
+build: clean install
+    pnpm run build
+    @Copy-Item ./api, ./vendor ./dist/ -Recurse -Force
+
+[linux]
+[macos]
+build: clean install
+    pnpm run build
+    @cp -r ./api ./vendor ./dist/
+
+[windows]
+clean:
+    @if (Test-Path .\dist\) { Remove-Item .\dist\ -Force -Recurse }
+
+[linux]
+[macos]
+clean:
+    @rm -rf ./dist

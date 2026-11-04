@@ -1,0 +1,85 @@
+name: Website
+
+on:
+  push:
+    branches: [master]
+    paths: ['website/**', '.github/workflows/website.yml']
+  pull_request:
+    paths: ['website/**', '.github/workflows/website.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time. A queued run waits for the running one instead of cancelling it.
+concurrency:
+  group: website-deploy
+  cancel-in-progress: false
+
+env:
+  FTP_SERVER: lodestonelauncher.com
+  FTP_SERVER_DIR: ./
+
+jobs:
+  build:
+    name: Build and deploy the website
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: curl, json
+          tools: composer:v2
+
+      - name: Install PHP dependencies
+        working-directory: website
+        run: composer install --no-dev --optimize-autoloader --no-interaction --no-progress --prefer-dist
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: website/pnpm-lock.yaml
+
+      - name: Install JavaScript dependencies
+        working-directory: website
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the site
+        working-directory: website
+        run: pnpm run build
+
+      - name: Assemble the deploy folder
+        working-directory: website
+        run: |
+          cp -R api vendor dist/
+          test -f dist/index.html
+          test -f dist/api/index.php
+          test -f dist/vendor/autoload.php
+          test ! -e dist/.env
+
+      - name: Deploy over FTP
+        # Pull requests and branches only build. Only master (on push or a manual run) deploys.
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        uses: SamKirkland/FTP-Deploy-Action@110f9186c050f71550953127052e77650219c287 # v4.4.0
+        with:
+          server: ${{ env.FTP_SERVER }}
+          username: ${{ secrets.WEBSITE_FTP_USERNAME }}
+          password: ${{ secrets.WEBSITE_FTP_PASSWORD }}
+          protocol: ftp
+          local-dir: website/dist/
+          server-dir: ${{ env.FTP_SERVER_DIR }}
+          dangerous-clean-slate: false
+          timeout: 120000
+          log-level: standard
