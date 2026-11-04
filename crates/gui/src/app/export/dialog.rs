@@ -285,7 +285,7 @@ impl Dialog {
 
     /// The folder listing: where the user is, the header, and the rows.
     fn tree_field(&self) -> Element<'_, Message> {
-        let list = container(scrollbar::scroll(self.rows_column()).width(Fill))
+        let list = container(scrollbar::scroll_panel(self.rows_column()).width(Fill))
             .height(Length::Fixed(TREE_HEIGHT))
             .width(Fill);
         column![label(lang::t("export.files.label")), self.breadcrumb(), self.header_row(), list]

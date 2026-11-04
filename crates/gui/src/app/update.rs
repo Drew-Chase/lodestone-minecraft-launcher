@@ -2,6 +2,8 @@
 //! database, and the probes. Sign-in and account messages are routed to
 //! `auth.rs`.
 
+use crate::app::components::floating_dock::CLEARANCE;
+use crate::app::components::scrollbar;
 use crate::app::database::Database;
 use crate::app::lang;
 use crate::app::launch::GameMessage;
@@ -32,6 +34,13 @@ impl LodestoneLauncher {
     pub fn update(&mut self, message: LodestoneAppMessage) -> Task<LodestoneAppMessage> {
         let _scope = perf::scope(perf::message_kind(&message));
         let task = self.route(message);
+        // The floating bar covers the bottom of every page, so each page scroll keeps that space free at its end.
+        let clearance = if self.settings_values.appearance.floating_bottom_bar {
+            CLEARANCE
+        } else {
+            0.0
+        };
+        scrollbar::set_page_clearance(clearance);
         self.sync_discover_installs();
         Task::batch([task, self.sync_art()])
     }

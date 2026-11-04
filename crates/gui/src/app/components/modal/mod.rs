@@ -272,7 +272,7 @@ impl<'a, Message: Clone + 'a> From<Modal<'a, Message>> for Element<'a, Message> 
         let header = Modal::header(title, subtitle, icon, on_close.clone());
         // The layer hands the body whatever height the header and footer
         // leave, so a long body scrolls instead of pushing the footer out.
-        let mut scrollable = scrollbar::scroll(container(body.into_element(typography::body)).width(Fill).padding(BODY_PADDING));
+        let mut scrollable = scrollbar::scroll_panel(container(body.into_element(typography::body)).width(Fill).padding(BODY_PADDING));
         if let Some(id) = body_id {
             scrollable = scrollable.id(id);
         }

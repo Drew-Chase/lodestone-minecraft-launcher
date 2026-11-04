@@ -97,7 +97,7 @@ fn view(state: &Notifications) -> Element<'_, Message> {
         .into()
     } else {
         let rows = Column::with_children(state.items().iter().map(row_view)).spacing(8).width(Fill);
-        container(scrollbar::scroll(rows).width(Fill).height(Length::Shrink))
+        container(scrollbar::scroll_panel(rows).width(Fill).height(Length::Shrink))
             .max_height(LIST_HEIGHT)
             .width(Fill)
             .into()

@@ -7,9 +7,11 @@
 //! scrollable style catalog. So each scrolling area is styled through [`scroll`]
 //! rather than a bare `scrollable(...)`.
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use iced::widget::scrollable::{Direction, Rail, Scrollbar, Scroller, Status, Style};
-use iced::widget::{container, scrollable};
-use iced::{Border, Element, Theme, border};
+use iced::widget::{Space, column, container, scrollable};
+use iced::{Border, Element, Fill, Theme, border};
 use iced_color_extension::rgb;
 
 /// The width of the track, which is the room the bar takes beside the content.
@@ -17,8 +19,29 @@ pub const TRACK_WIDTH: f32 = 16.0;
 /// The width of the thumb. It sits `(TRACK_WIDTH - THUMB_WIDTH) / 2` in from each side of the track.
 const THUMB_WIDTH: f32 = 6.0;
 
-/// A scrollable over `content` that shows the shared scrollbar.
-pub fn scroll<'a, Message>(content: impl Into<Element<'a, Message>>) -> scrollable::Scrollable<'a, Message> {
+/// The space a page scroll keeps free at its end, as bits of an `f32`. The floating bar takes that space, so it is
+/// set from the Appearance setting (0 while the bar sits in the sidebar).
+static PAGE_CLEARANCE: AtomicU32 = AtomicU32::new(0);
+
+/// Sets the space every [`scroll`] keeps free at its end. The root sets it on each update.
+pub fn set_page_clearance(pixels: f32) {
+    PAGE_CLEARANCE.store(pixels.to_bits(), Ordering::Relaxed);
+}
+
+/// A page's scrollable over `content`: the shared scrollbar, with the floating bar's clearance kept free at the end, so
+/// the last row can scroll clear of the bar. Use [`scroll_panel`] for panels, modals and navs that the bar does not cover.
+pub fn scroll<'a, Message: 'a>(content: impl Into<Element<'a, Message>>) -> scrollable::Scrollable<'a, Message> {
+    let clearance = f32::from_bits(PAGE_CLEARANCE.load(Ordering::Relaxed));
+    if clearance > 0.0 {
+        let content = column![content.into(), Space::new().height(clearance)].width(Fill);
+        scroll_panel(content)
+    } else {
+        scroll_panel(content)
+    }
+}
+
+/// A scrollable over `content` that shows the shared scrollbar, and keeps no space free at its end.
+pub fn scroll_panel<'a, Message>(content: impl Into<Element<'a, Message>>) -> scrollable::Scrollable<'a, Message> {
     scrollable(content)
         .direction(Direction::Vertical(Scrollbar::new().width(TRACK_WIDTH).scroller_width(THUMB_WIDTH)))
         .style(style)

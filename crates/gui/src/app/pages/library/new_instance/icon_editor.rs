@@ -278,7 +278,7 @@ impl IconEditor {
             .collect();
 
         let grid_width = COLUMNS as f32 * CELL + (COLUMNS - 1) as f32 * GAP + scrollbar::TRACK_WIDTH;
-        let grid = scrollbar::scroll(column(rows).spacing(GAP))
+        let grid = scrollbar::scroll_panel(column(rows).spacing(GAP))
             .id(grid_id())
             .width(Length::Fixed(grid_width))
             .height(GRID_HEIGHT);

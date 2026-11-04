@@ -1,6 +1,7 @@
 //! The floating navigation dock: the page, with the navigation's two segments laid over its bottom edge.
 //!
 //! The segments float, so the page keeps its full height and shows through the gaps. The pair is centred in the window.
+//! A scrolling page keeps [`CLEARANCE`] free at its end (see `scrollbar::scroll`), so its last row can scroll above them.
 //! When the side segment would run past the right edge, the pair shifts left, and when the pair cannot keep [`EDGE`] either
 //! side, the sidebar takes its place beside the page until the window is wide enough again.
 //!
@@ -21,6 +22,9 @@ pub const EDGE: f32 = 15.0;
 pub const GAP: f32 = 15.0;
 /// The distance from the bar to the window's bottom edge, in pixels.
 pub const BOTTOM: f32 = 18.0;
+/// The space a scrolling page keeps free at its end for the floating bar: the bar's [`BOTTOM`] inset, its 54px height
+/// (a 40px slot inside 6px padding and a 1px border on each side) and a 24px gap above it.
+pub const CLEARANCE: f32 = 96.0;
 
 /// The child indices: the page, the sidebar, the main segment and the side segment.
 const PAGE: usize = 0;

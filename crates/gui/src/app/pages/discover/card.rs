@@ -173,7 +173,7 @@ fn lines_box<'a>(text: Text<'a>, size: f32, lines: f32) -> Element<'a, Message> 
 
 /// A summary that fills the body it sits in, and scrolls when it runs longer than that body.
 fn summary<'a>(text: &'a str, tint: Color) -> Element<'a, Message> {
-    scrollbar::scroll(Text::new(text).size(12).font(fonts::Inter::REGULAR).color(tint).width(Fill))
+    scrollbar::scroll_panel(Text::new(text).size(12).font(fonts::Inter::REGULAR).color(tint).width(Fill))
         .width(Fill)
         .height(Fill)
         .into()

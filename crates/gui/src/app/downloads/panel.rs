@@ -250,7 +250,7 @@ fn jobs_list(downloads: &Downloads) -> Element<'static, Message> {
             list = list.push(ended_job(job));
         }
     }
-    container(scrollbar::scroll(list).width(Fill)).max_height(LIST_HEIGHT).into()
+    container(scrollbar::scroll_panel(list).width(Fill)).max_height(LIST_HEIGHT).into()
 }
 
 /// One running job, as the running section lists it: an install's card, or a mod's.
