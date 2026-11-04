@@ -27,7 +27,8 @@ fn declared_path(archive: &mut ZipManager) -> Option<String> {
     let fabric = json(archive, "fabric.mod.json").and_then(|document| largest(document.get("icon")?));
     let path = fabric
         .or_else(|| json(archive, "quilt.mod.json").and_then(|document| largest(document.get("quilt_loader")?.get("metadata")?.get("icon")?)))
-        .or_else(|| forge(archive))?;
+        .or_else(|| forge(archive))
+        .or_else(|| legacy_forge(archive))?;
     Some(path.trim_start_matches('/').to_string())
 }
 
@@ -37,13 +38,28 @@ fn json(archive: &mut ZipManager, name: &str) -> Option<Value> {
     serde_json::from_str(&text).ok()
 }
 
-/// The `logoFile` a `mods.toml` names at its top level. NeoForge's file is read first.
+/// The `logoFile` a `mods.toml` names. It sits at the top level, but a file that only names it on its `[[mods]]` entry
+/// is read too. NeoForge's file is read first.
 fn forge(archive: &mut ZipManager) -> Option<String> {
     ["META-INF/neoforge.mods.toml", "META-INF/mods.toml"].into_iter().find_map(|name| {
         let text = archive.read_to_string(name).ok()?;
         let table: toml::Table = text.parse().ok()?;
-        table.get("logoFile")?.as_str().map(str::to_string)
+        let on_entry = table
+            .get("mods")
+            .and_then(toml::Value::as_array)
+            .and_then(|entries| entries.iter().find_map(|entry| entry.get("logoFile")?.as_str()));
+        table.get("logoFile").and_then(toml::Value::as_str).or(on_entry).map(str::to_string)
     })
+}
+
+/// The `logoFile` a Forge 1.12 and older `mcmod.info` names. The file is a list of mods, or an object that holds one
+/// under `modList`.
+fn legacy_forge(archive: &mut ZipManager) -> Option<String> {
+    let document = json(archive, "mcmod.info")?;
+    let mods = document.get("modList").unwrap_or(&document).as_array()?;
+    mods.iter()
+        .find_map(|entry| entry.get("logoFile")?.as_str().filter(|path| !path.is_empty()))
+        .map(str::to_string)
 }
 
 /// A declared icon: a path, or a map from a size to a path. The largest size wins, since the icon is drawn

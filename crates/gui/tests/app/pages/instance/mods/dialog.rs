@@ -101,3 +101,24 @@ fn only_the_tab_answers_the_local_messages() {
             && !Message::Open(0).is_local()
     );
 }
+
+#[test]
+fn a_version_drops_the_text_the_jar_name_shares_with_it() {
+    assert_eq!(version_label("appleskin-forge-mc1.18.2-2.4.0", "appleskin-forge-mc1.18.2-2.4.1"), "2.4.0");
+}
+
+#[test]
+fn a_version_that_shares_nothing_keeps_all_of_it() {
+    assert_eq!(version_label("2.4.1", "appleskin-forge-mc1.18.2-2.4.1"), "2.4.1");
+}
+
+#[test]
+fn a_shared_version_with_no_digit_left_keeps_all_of_it() {
+    assert_eq!(version_label("appleskin-forge", "appleskin-forge"), "appleskin-forge");
+}
+
+#[test]
+fn the_jar_stem_drops_its_extension() {
+    assert_eq!(jar_stem("sodium-1.0.jar"), "sodium-1.0");
+    assert_eq!(jar_stem("sodium-1.0.jar.disabled"), "sodium-1.0");
+}

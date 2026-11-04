@@ -89,8 +89,10 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
     } else {
         (color::text_muted(), rgb!(255, 255, 255, 6%))
     };
-    // The jar's own icon fills the tile when the jar declares one. Otherwise the tile holds the package glyph.
-    let tile: Element<'_, Message> = match &file.icon {
+    // The jar's own icon fills the tile when the jar declares one. Otherwise the platform's picture of the project it
+    // came from does, and failing that the tile holds the package glyph.
+    let picture = file.icon.as_ref().or_else(|| state.project_icon(entry));
+    let tile: Element<'_, Message> = match picture {
         Some(icon) => image(icon.clone()).width(32).height(32).into(),
         None => container(utility::icon(Icon::lucide().package(), 15.0, Some((ink, ink))))
             .width(32)

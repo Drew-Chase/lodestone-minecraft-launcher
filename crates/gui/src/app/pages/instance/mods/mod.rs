@@ -13,12 +13,12 @@ mod menu;
 use std::collections::{HashMap, HashSet};
 
 use iced::widget::scrollable::AbsoluteOffset;
-use iced::widget::{Id, Text, column, container, operation, responsive, text_input};
+use iced::widget::{Id, Text, column, container, image, operation, responsive, text_input};
 use iced::{Background, Border, Element, Fill, Padding, Task, alignment};
 use iced_color_extension::rgb;
 use lodestone_platforms::ContentVersion;
 
-pub use dialog::{Associate, Dependencies, Dialog, Line, Message as DialogMessage, Picked, Switch};
+pub use dialog::{Associate, Dependencies, Dialog, Line, Message as DialogMessage, Picked, Switch, scroll_to_release};
 pub use menu::Action;
 
 use super::GUTTER;
@@ -84,6 +84,16 @@ pub struct State {
     dialog: Option<Dialog>,
     /// Whether the platforms have been asked about these mods since the folder was read.
     checks_started: bool,
+    /// The picture of each platform project a linked mod came from, by [`project_key`]. It stands in for a jar that
+    /// declares none.
+    project_icons: HashMap<String, image::Handle>,
+    /// The projects whose picture has been asked for, so each is asked once.
+    icons_asked: HashSet<String>,
+}
+
+/// The key of the platform project a record names, by platform and project id.
+pub fn project_key(record: &ModSource) -> String {
+    format!("{}:{}", record.platform, record.project_id)
 }
 
 /// Messages the Mods tab handles, or passes to the root.
@@ -174,6 +184,33 @@ impl State {
     /// The row of the mod `file_name`, if the folder holds it.
     pub fn row(&self, file_name: &str) -> Option<&Row> {
         self.rows.iter().find(|row| row.file.file_name == file_name)
+    }
+
+    /// The picture of the platform project a linked mod came from, once it has loaded.
+    pub fn project_icon(&self, row: &Row) -> Option<&image::Handle> {
+        self.project_icons.get(&project_key(row.source.as_ref()?))
+    }
+
+    /// The projects of linked mods whose picture is still needed, each listed once. A mod whose jar declares a picture
+    /// needs none, and a project asked for before is not asked again.
+    pub fn take_icon_requests(&mut self) -> Vec<ModSource> {
+        let mut wanted = Vec::new();
+        for row in &self.rows {
+            let Some(record) = &row.source else {
+                continue;
+            };
+            let key = project_key(record);
+            if row.file.icon.is_some() || self.project_icons.contains_key(&key) || !self.icons_asked.insert(key) {
+                continue;
+            }
+            wanted.push(record.clone());
+        }
+        wanted
+    }
+
+    /// A project's picture arrived. A project with no picture keeps the package glyph.
+    pub fn set_project_icon(&mut self, key: String, handle: image::Handle) {
+        self.project_icons.insert(key, handle);
     }
 
     /// The dialog on top of the tab, when one is open.

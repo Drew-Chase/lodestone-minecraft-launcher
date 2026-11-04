@@ -142,21 +142,27 @@ impl LodestoneLauncher {
         }
     }
 
-    /// The releases of a picked project arrived. They fill the pick that asked, if it is still the pick.
-    pub(super) fn mod_picked(&mut self, project: SearchResult, result: Result<PickedReleases, String>) {
+    /// The releases of a picked project arrived. They fill the pick that asked, if it is still the pick. The release the
+    /// link picks is scrolled into view.
+    pub(super) fn mod_picked(&mut self, project: SearchResult, result: Result<PickedReleases, String>) -> Task<LodestoneAppMessage> {
         if let Some(Dialog::Associate(associate)) = self.instance_page.mods_mut().dialog_mut()
             && let Some(picked) = associate.picked.as_mut()
             && picked.project.id == project.id
         {
             match result {
                 Ok(found) => {
+                    let chosen = found.chosen;
                     picked.releases = Load::Loaded(found.releases);
-                    picked.chosen = found.chosen;
+                    picked.chosen = chosen;
                     picked.jar_sha1 = found.jar_sha1;
+                    if let Some(index) = chosen {
+                        return scroll_to_release(index);
+                    }
                 }
                 Err(error) => picked.releases = Load::Failed(error),
             }
         }
+        Task::none()
     }
 
     /// Links the mod to the picked project and its chosen release, and writes the record.
@@ -208,13 +214,14 @@ impl LodestoneLauncher {
                 mods.apply_source(record.clone());
                 let generation = self.instance_page.generation();
                 let check = check_mods(db, context.check(), Vec::new(), Some(vec![record]));
-                Task::perform(check, move |result| {
+                let check = Task::perform(check, move |result| {
                     LodestoneAppMessage::ModActions(Message::Checked {
                         generation,
                         full: false,
                         result,
                     })
-                })
+                });
+                Task::batch([check, self.project_icons(generation)])
             }
             Err(error) => {
                 warn!("linking a mod failed: {error}");
@@ -239,6 +246,12 @@ async fn search_mods(source: Source, text: String, loader: String, minecraft: St
         Source::CurseForge => curseforge()?.search(&query).await.map_err(|error| error.to_string()),
         _ => MODRINTH.search(&query).await.map_err(|error| error.to_string()),
     }
+}
+
+/// The picture a platform gives a project, or `None` when the project has none or the picture does not load.
+pub(super) async fn project_picture(source: Source, project_id: String) -> Option<image::Handle> {
+    let details = details_of(source, ContentType::Mod, &project_id).await.ok()?;
+    load_image(details.icon_url?).await
 }
 
 /// The releases of a project a link may name, the one that fits the jar best, and the jar's SHA-1. The release with a file

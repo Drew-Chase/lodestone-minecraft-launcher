@@ -142,6 +142,8 @@ pub struct Modal<'a, Message> {
     on_close: Option<Message>,
     close_on_scrim: bool,
     width: f32,
+    /// The id of the body's scrollable, so the caller can scroll the body.
+    body_id: Option<iced::widget::Id>,
 }
 
 impl<'a, Message: Clone + 'a> Modal<'a, Message> {
@@ -157,6 +159,7 @@ impl<'a, Message: Clone + 'a> Modal<'a, Message> {
             on_close: None,
             close_on_scrim: true,
             width: DEFAULT_WIDTH,
+            body_id: None,
         }
     }
 
@@ -191,6 +194,12 @@ impl<'a, Message: Clone + 'a> Modal<'a, Message> {
     /// Whether a click on the scrim sends the `on_close` message.
     pub fn close_on_scrim(mut self, close: bool) -> Self {
         self.close_on_scrim = close;
+        self
+    }
+
+    /// The id of the body's scrollable, which an `operation::scroll_to` names to scroll the body.
+    pub fn body_id(mut self, id: iced::widget::Id) -> Self {
+        self.body_id = Some(id);
         self
     }
 
@@ -257,15 +266,17 @@ impl<'a, Message: Clone + 'a> From<Modal<'a, Message>> for Element<'a, Message> 
             on_close,
             close_on_scrim,
             width,
+            body_id,
         } = modal;
 
         let header = Modal::header(title, subtitle, icon, on_close.clone());
         // The layer hands the body whatever height the header and footer
         // leave, so a long body scrolls instead of pushing the footer out.
-        let body = scrollbar::scroll(container(body.into_element(typography::body)).width(Fill).padding(BODY_PADDING))
-            .width(Fill)
-            .height(Length::Shrink)
-            .into();
+        let mut scrollable = scrollbar::scroll(container(body.into_element(typography::body)).width(Fill).padding(BODY_PADDING));
+        if let Some(id) = body_id {
+            scrollable = scrollable.id(id);
+        }
+        let body = scrollable.width(Fill).height(Length::Shrink).into();
         let footer = footer.map(|footer| {
             container(footer.into_element(typography::small))
                 .width(Fill)

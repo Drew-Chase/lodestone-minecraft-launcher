@@ -145,7 +145,7 @@ fn entry_info(jar: &Path, entry: Option<ModEntry>, fallbacks: MetadataFallbacks,
     Ok(ModInfo {
         loader,
         id: entry.id,
-        version: entry.version,
+        version: resolve_version(jar, entry.version),
         name: entry.name,
         description: entry.description,
         authors: entry.authors.as_ref().map(authors_field).unwrap_or_default(),
@@ -153,6 +153,30 @@ fn entry_info(jar: &Path, entry: Option<ModEntry>, fallbacks: MetadataFallbacks,
         homepage: entry.homepage.or(fallbacks.display_url),
         dependencies: Vec::new(),
     })
+}
+
+/// The placeholder a `mods.toml` writes for a version that is only known once the jar is built. Forge fills it from the
+/// jar's manifest when it loads the mod.
+const JAR_VERSION: &str = "${file.jarVersion}";
+
+/// The version a mod entry declares. A `${file.jarVersion}` placeholder is replaced by the jar's `Implementation-Version`,
+/// the value Forge reads for it. A jar whose manifest has none declares no version.
+fn resolve_version(jar: &Path, version: Option<String>) -> Option<String> {
+    match version {
+        Some(version) if version.contains(JAR_VERSION) => manifest_version(jar),
+        other => other,
+    }
+}
+
+/// The `Implementation-Version` a jar's `META-INF/MANIFEST.MF` names, when it names one.
+fn manifest_version(jar: &Path) -> Option<String> {
+    let mut archive = zipcrawl::ZipManager::new(jar).ok()?;
+    let manifest = archive.read_to_string("META-INF/MANIFEST.MF").ok()?;
+    manifest
+        .lines()
+        .find_map(|line| line.strip_prefix("Implementation-Version:"))
+        .map(|version| version.trim().to_string())
+        .filter(|version| !version.is_empty())
 }
 
 /// Pulls author names out of the shapes the formats use: plain strings,

@@ -5,8 +5,9 @@
 use std::collections::HashMap;
 
 use aurora_leaf::Icon;
-use iced::widget::{Space, Text, column, container, image, row, text_input};
-use iced::{Element, Fill, Padding, alignment};
+use iced::widget::scrollable::AbsoluteOffset;
+use iced::widget::{Id, Space, Text, column, container, image, operation, row, text_input};
+use iced::{Element, Fill, Padding, Task, alignment};
 use iced_color_extension::rgb;
 use lodestone_platforms::{ContentVersion, DependencyKind, SearchResult};
 
@@ -21,6 +22,12 @@ use crate::app::theme::{color, fonts, utility};
 
 /// The width of a dialog's card.
 const WIDTH: f32 = 620.0;
+/// The id of the scrollable body of the link dialog, which scrolls the release the link picks into view.
+pub const RELEASES_ID: &str = "instance-mods-associate-releases";
+/// The height of a release row. A row and its gap are one pitch, which is how far the list scrolls per release.
+const RELEASE_HEIGHT: f32 = 40.0;
+/// The gap between two release rows.
+const RELEASE_GAP: f32 = 6.0;
 
 /// A dialog on top of the Mods tab.
 #[derive(Debug)]
@@ -177,7 +184,7 @@ fn associate_view(dialog: &Associate) -> Element<'_, Message> {
         Some(picked) => (picked_body(picked), dialog.chosen_release().is_some()),
         None => (results_body(dialog), false),
     };
-    let confirm = TextButton::primary(lang::t("instance.mods.associate.confirm"));
+    let confirm = TextButton::primary(confirm_label(dialog));
     let confirm = if ready {
         confirm.on_press(Message::Confirm)
     } else {
@@ -195,8 +202,52 @@ fn associate_view(dialog: &Associate) -> Element<'_, Message> {
     .footer(footer)
     .on_close(Message::Close)
     .close_on_scrim(true)
+    .body_id(Id::new(RELEASES_ID))
     .width(WIDTH)
     .into()
+}
+
+/// The confirm button's label. Once a release is chosen, it names that release's version, trimmed of the text the jar's
+/// name shares with it.
+fn confirm_label(dialog: &Associate) -> String {
+    match dialog.chosen_release() {
+        Some(release) => lang::t_with(
+            "instance.mods.associate.confirm_version",
+            &[("version", version_label(&release.version_number, jar_stem(&dialog.file_name)))],
+        ),
+        None => lang::t("instance.mods.associate.confirm").to_string(),
+    }
+}
+
+/// Scrolls the release list so the release at `index` is in view. The link picks that release when its releases load.
+pub fn scroll_to_release<Message>(index: usize) -> Task<Message> {
+    let offset = AbsoluteOffset {
+        x: None,
+        y: Some(index as f32 * (RELEASE_HEIGHT + RELEASE_GAP)),
+    };
+    operation::scroll_to(Id::new(RELEASES_ID), offset)
+}
+
+/// The jar's name without its `.jar` or `.jar.disabled` ending.
+fn jar_stem(file_name: &str) -> &str {
+    let name = file_name.strip_suffix(".disabled").unwrap_or(file_name);
+    name.strip_suffix(".jar").unwrap_or(name)
+}
+
+/// `version` without the text it shares with the jar's name. The shared text is cut at its last separator, so
+/// `appleskin-forge-mc1.18.2-2.4.0` beside `appleskin-forge-mc1.18.2-2.4.1` leaves `2.4.0`. A version that shares no
+/// text with the jar keeps all of it, and so does one whose rest has no digit.
+fn version_label<'a>(version: &'a str, stem: &str) -> &'a str {
+    const SEPARATORS: &[char] = &['-', '_', '+', ' '];
+    let shared: usize = version
+        .chars()
+        .zip(stem.chars())
+        .take_while(|(own, theirs)| own == theirs)
+        .map(|(own, _)| own.len_utf8())
+        .sum();
+    let cut = version[..shared].rfind(SEPARATORS).map_or(0, |at| at + 1);
+    let rest = &version[cut..];
+    if rest.chars().any(|c| c.is_ascii_digit()) { rest } else { version }
 }
 
 /// The search: the platform switch, the text field, and the hits.
@@ -370,19 +421,23 @@ fn release_choice(index: usize, release: &ContentVersion, chosen: bool) -> Eleme
     let variant = if chosen { Variant::Primary } else { Variant::Ghost };
     let label = release.name.clone().unwrap_or_else(|| release.version_number.clone());
     let versions = release.minecraft_versions.join(", ");
+    // The green fill of the chosen row is light, so its text is dark.
+    let (headline, muted) = if chosen {
+        (rgb!(6, 24, 14, 100%), rgb!(6, 24, 14, 75%))
+    } else {
+        (color::text_headline(), color::text_placeholder())
+    };
     let content = row![
-        Text::new(label).size(13).font(fonts::Inter::SEMI_BOLD).color(color::text_headline()),
+        Text::new(label).size(13).font(fonts::Inter::SEMI_BOLD).color(headline),
         Space::new().width(Fill),
-        Text::new(versions)
-            .size(11)
-            .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::text_placeholder()),
+        Text::new(versions).size(11).font(fonts::JetBrainsMono::REGULAR).color(muted),
     ]
     .spacing(14)
     .align_y(alignment::Vertical::Center);
     TextButton::content(content)
         .variant(variant)
         .width(Fill)
+        .height(RELEASE_HEIGHT)
         .on_press(Message::Choose(index))
         .into()
 }

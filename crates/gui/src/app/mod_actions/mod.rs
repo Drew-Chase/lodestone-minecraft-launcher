@@ -25,7 +25,7 @@ use super::pages::discover::{AddRequest, InstanceChoice, Project, Source, load_i
 use super::pages::instance::Tab;
 use super::pages::instance::files;
 use super::pages::instance::files::ModFile;
-use super::pages::instance::mods::{Action, Associate, Dependencies, Dialog, DialogMessage, Line, Picked, Switch};
+use super::pages::instance::mods::{Action, Associate, Dependencies, Dialog, DialogMessage, Line, Picked, Switch, project_key, scroll_to_release};
 use super::pages::resource::{Listing, Load};
 use super::shared_library::ModSource;
 mod delete;
@@ -108,6 +108,12 @@ pub enum Message {
     Icon {
         generation: u64,
         url: String,
+        handle: Option<image::Handle>,
+    },
+    /// The picture of a linked mod's platform project was loaded under `key`, or the project has none.
+    ProjectIcon {
+        generation: u64,
+        key: String,
         handle: Option<image::Handle>,
     },
     /// The dependencies of a mod's release, or the error reading them.
@@ -264,6 +270,12 @@ impl LodestoneLauncher {
                     Ok(records) => self.instance_page.mods_mut().apply_sources(records),
                     Err(error) => warn!("reading the mods' sources failed: {error}"),
                 }
+                self.project_icons(generation)
+            }
+            Message::ProjectIcon { generation, key, handle } if self.mods_fresh(generation) => {
+                if let Some(handle) = handle {
+                    self.instance_page.mods_mut().set_project_icon(key, handle);
+                }
                 Task::none()
             }
             Message::Checked { generation, full, result } if self.mods_fresh(generation) => {
@@ -310,10 +322,7 @@ impl LodestoneLauncher {
                 self.mod_icon(url, handle);
                 Task::none()
             }
-            Message::Picked { generation, project, result } if self.mods_fresh(generation) => {
-                self.mod_picked(project, result);
-                Task::none()
-            }
+            Message::Picked { generation, project, result } if self.mods_fresh(generation) => self.mod_picked(project, result),
             Message::Linked {
                 generation,
                 file_name,
@@ -380,6 +389,19 @@ impl LodestoneLauncher {
 }
 
 impl LodestoneLauncher {
+    /// Asks the platforms for the pictures of the projects the linked mods came from. Only mods whose jars declare no
+    /// picture ask, and each project is asked once.
+    fn project_icons(&mut self, generation: u64) -> Task<LodestoneAppMessage> {
+        let wanted = self.instance_page.mods_mut().take_icon_requests();
+        Task::batch(wanted.into_iter().filter_map(|record| {
+            let source = Source::from_key(&record.platform)?;
+            let key = project_key(&record);
+            Some(Task::perform(link::project_picture(source, record.project_id), move |handle| {
+                LodestoneAppMessage::ModActions(Message::ProjectIcon { generation, key, handle })
+            }))
+        }))
+    }
+
     /// The dialog's buttons that need the root: a search, a pick, a link, a switch, and a dependency's page. The rest the
     /// tab answers itself.
     pub(super) fn mod_dialog_action(&mut self, message: DialogMessage) -> Task<LodestoneAppMessage> {
