@@ -233,7 +233,7 @@ fn segment<'a, Message: 'a>(content: impl Into<Element<'a, Message>>) -> Element
         .padding(Padding::new(6.0))
         .style(|_| container::Style {
             background: Some(Background::Color(Color {
-                a: 0.96,
+                a: 0.90,
                 ..color::surface_bg1()
             })),
             border: Border {
