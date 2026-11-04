@@ -310,7 +310,7 @@ fn ghost_style() -> IconButtonStyle {
 fn launch_button(label: String, on_press: Option<Message>) -> Element<'static, Message> {
     let button = TextButton::content(
         row![
-            utility::icon(Icon::lucide().play(), 12.0, Some((color::primary_on(), color::primary_on()))),
+            utility::icon(Icon::mage().play_fill(), 12.0, Some((color::primary_on(), color::primary_on()))),
             Text::new(label).size(14).font(fonts::Inter::BOLD).color(color::primary_on()),
         ]
         .spacing(8)
