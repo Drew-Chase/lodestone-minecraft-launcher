@@ -9,10 +9,10 @@ use tokio::sync::mpsc;
 
 use crate::app::lang;
 use crate::app::launch::libraries::Item;
-use crate::app::preferences::MAX_CONCURRENT_DOWNLOADS;
+use crate::app::preferences::DEFAULT_CONCURRENT_DOWNLOADS;
 
 /// The default number of files a download fetches at once.
-pub const PARALLEL: u16 = MAX_CONCURRENT_DOWNLOADS;
+pub const PARALLEL: u16 = DEFAULT_CONCURRENT_DOWNLOADS;
 
 /// How many files a download fetches at once. The Settings page sets it, and each download reads it when it starts.
 static CONCURRENCY: AtomicU16 = AtomicU16::new(PARALLEL);
@@ -146,9 +146,24 @@ pub async fn fetch(
         });
     }
 
+    let (sender, forward) = forward(part, skipped, total, reports);
+    let result = download_multiple_files_with_client(client.clone(), downloads, concurrency(), Some(sender)).await;
+    let _ = forward.await;
+    result.map_err(|error| error.to_string())
+}
+
+/// Starts forwarding a multi-file download's progress to `reports` as `part`, counting `skipped`
+/// files that were already on disk out of `total`. Pass the sender to the download, then await the
+/// handle once the download has returned, so every report has been sent.
+pub fn forward(
+    part: Part,
+    skipped: usize,
+    total: usize,
+    reports: &mpsc::Sender<PartReport>,
+) -> (mpsc::Sender<MultiDownloadProgress>, tokio::task::JoinHandle<()>) {
     let (sender, mut progress) = mpsc::channel::<MultiDownloadProgress>(64);
     let reports = reports.clone();
-    let forward = tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         while let Some(report) = progress.recv().await {
             let _ = reports
                 .send(PartReport {
@@ -160,9 +175,7 @@ pub async fn fetch(
                 .await;
         }
     });
-    let result = download_multiple_files_with_client(client.clone(), downloads, concurrency(), Some(sender)).await;
-    let _ = forward.await;
-    result.map_err(|error| error.to_string())
+    (sender, handle)
 }
 
 /// Runs `work` while forwarding its multi-file progress to `reports` as `part`. The runtime

@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use piston_mc::assets::{AssetItem, Assets};
 use piston_mc::manifest_v2::ManifestV2;
 use serde::Deserialize;
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard, mpsc};
@@ -112,7 +113,45 @@ pub async fn assets(
     let total = items.len();
     let Missing { missing, present } = download::missing_when(items, verify).await?;
     report(reports, Part::Assets, present, total).await;
-    download::fetch(client, missing, Part::Assets, present, total, reports).await
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let result = fetch_objects(paths, index, missing, present, total, reports).await;
+    // piston-mc writes the index it was handed in its own shape, so Mojang's text is put back over it
+    // whether or not the download succeeded.
+    write_file(&paths.asset_indexes().join(format!("{}.json", index.id)), text.as_bytes())?;
+    result
+}
+
+/// Downloads the objects that are missing through piston-mc, as many at a time as the concurrency setting allows. piston-mc
+/// fetches only the objects it is given, checks each one's SHA-1 as it lands, and writes each under
+/// `<assets>/objects/<prefix>/<hash>`, the layout [`object_items`] uses.
+async fn fetch_objects(
+    paths: &LauncherPaths,
+    index: &AssetIndex,
+    missing: Vec<Item>,
+    present: usize,
+    total: usize,
+    reports: &mpsc::Sender<PartReport>,
+) -> Result<(), String> {
+    let objects = missing
+        .into_iter()
+        .filter_map(|item| {
+            let hash = item.sha1?;
+            let size = item.size.unwrap_or_default();
+            Some((hash.clone(), AssetItem { hash, size }))
+        })
+        .collect();
+    let mut assets = Assets {
+        url: index.url.clone(),
+        asset_id: index.id.clone(),
+        path: None,
+        objects,
+    };
+    let (sender, forward) = download::forward(Part::Assets, present, total, reports);
+    let result = assets.download(paths.assets(), download::concurrency(), Some(sender)).await;
+    let _ = forward.await;
+    result.map_err(|error| error.to_string())
 }
 
 /// The asset index text, from the store when it is there.
