@@ -15,6 +15,10 @@ pub fn prepare() {
 }
 
 pub fn run() -> Result<()> {
+    // A launcher already running is shown instead, so this one stops before it opens a window.
+    if app::single_instance::hand_over() {
+        return Ok(());
+    }
     if let Some(portable) = app::portable::launch() {
         info!("Starting the portable launcher for {}", portable.manifest.name);
     }

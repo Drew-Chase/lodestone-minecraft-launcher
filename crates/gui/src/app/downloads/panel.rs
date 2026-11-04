@@ -15,8 +15,8 @@ use crate::app::components::popover::{Placement, Popover};
 use crate::app::components::{ProgressBar, TextButton, instance_icon, platform_logo, scrollbar};
 use crate::app::export::format_label;
 use crate::app::export::job::ExportJob;
+use crate::app::install::InstallRequest;
 use crate::app::install::download::Transfer;
-use crate::app::install::{InstallProgress, InstallRequest};
 use crate::app::lang;
 use crate::app::pages::instance::format::format_bytes;
 use crate::app::theme::{color, fonts, utility};
@@ -599,21 +599,6 @@ fn percent_label(fraction: f32) -> String {
 /// The seconds a transfer has left at its current rate, when the rate is known.
 fn transfer_eta(transfer: Transfer) -> Option<u64> {
     (transfer.per_second > 0).then(|| transfer.total.saturating_sub(transfer.done) / transfer.per_second)
-}
-
-/// The line under an install's bar: what the install is doing, and how fast it is moving when that is known.
-pub fn progress_detail(progress: Option<&InstallProgress>) -> String {
-    let Some(progress) = progress else {
-        return lang::t("downloads.starting").to_owned();
-    };
-    let rate = rate_line(progress.transfer.per_second, transfer_eta(progress.transfer));
-    if rate.is_empty() {
-        return progress.detail.clone();
-    }
-    lang::t_with(
-        "downloads.detail_with_rate",
-        &[("detail", progress.detail.as_str()), ("rate", rate.as_str())],
-    )
 }
 
 /// The download rate, and the time left when it is known. Empty while the rate is unknown.

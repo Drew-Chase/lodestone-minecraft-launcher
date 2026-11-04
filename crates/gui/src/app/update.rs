@@ -13,7 +13,7 @@ use crate::app::pages::instance::Message as InstanceMessage;
 use crate::app::pages::instance::Tab;
 use crate::app::pages::instance::files;
 use crate::app::pages::instance::settings::Message as InstanceSettingsMessage;
-use crate::app::pages::instance::{mods, screenshots, worlds};
+use crate::app::pages::instance::{logs, mods, screenshots, worlds};
 use crate::app::pages::library::Message as LibraryMessage;
 use crate::app::pages::library::instance::Instance;
 use crate::app::pages::login::Message as LoginMessage;
@@ -124,7 +124,7 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Library(LibraryMessage::LaunchNew(id)) => self.launch_new_game(&id),
             // Opening a card/hero hands the instance to the detail page and
             // pushes the route — the page itself never owns navigation.
-            LodestoneAppMessage::Library(LibraryMessage::OpenInstance(id)) => self.open_instance_page(&id, Tab::Overview),
+            LodestoneAppMessage::Library(LibraryMessage::OpenInstance(id)) => self.open_instance_page(&id, Tab::Mods),
             LodestoneAppMessage::Library(LibraryMessage::EditInstance(id)) => self.open_instance_page(&id, Tab::Settings),
             LodestoneAppMessage::Library(LibraryMessage::RevealInstance(id)) => self.reveal_instance(&id),
             LodestoneAppMessage::Library(LibraryMessage::InstanceMenu { instance, action }) => self.instance_menu_action(&instance, action),
@@ -180,6 +180,9 @@ impl LodestoneLauncher {
                 Task::none()
             }
             // The page's reveal and delete actions need the root's IO and alerts, so they are routed here.
+            // The Logs tab's buttons open the instance's latest.log, or show it selected in the file browser.
+            LodestoneAppMessage::Instance(InstanceMessage::Logs(logs::Message::OpenLatest)) => self.latest_log(false),
+            LodestoneAppMessage::Instance(InstanceMessage::Logs(logs::Message::RevealLatest)) => self.latest_log(true),
             LodestoneAppMessage::Instance(InstanceMessage::RevealFolder) => self.reveal_current_instance(),
             LodestoneAppMessage::Instance(InstanceMessage::OpenSource) => self.open_current_source(),
             // The Mods tab's Add opens Discover on the instance's mods.
@@ -275,6 +278,7 @@ impl LodestoneLauncher {
                 Task::batch([select, self.mods_checks_due()])
             }
             LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Open(file_name))) => self.mod_row_pressed(file_name),
+            LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Toggle { file_name, enabled })) => self.mod_toggle(file_name, enabled),
             LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Menu { file_name, action })) => {
                 self.mod_menu_action(file_name, action)
             }
@@ -407,6 +411,11 @@ impl LodestoneLauncher {
             }
             LodestoneAppMessage::Game(message) => self.game_message(message),
             LodestoneAppMessage::SessionRefreshed(result) => self.session_refreshed(result),
+            // Another launcher was started: this one shows its window, which may be minimized, and takes focus.
+            LodestoneAppMessage::FocusRequested => match self.id {
+                Some(id) => Task::batch([window::minimize(id, false), window::gain_focus(id)]),
+                None => Task::none(),
+            },
             LodestoneAppMessage::Perf(message) => {
                 self.perf.update(message);
                 Task::none()
@@ -420,6 +429,9 @@ impl LodestoneLauncher {
         if self.router.push(page) {
             info!("Navigated: {} → {}", from.title(), page.title());
             if page == Page::Discover {
+                // Opened from the sidebar, the page starts out with no instance to return to. The Mods tab's Add sets
+                // that again once this navigation has run.
+                self.discover.set_origin(None);
                 return self.open_discover();
             }
             if page == Page::Worlds {

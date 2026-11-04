@@ -304,3 +304,11 @@ fn any_other_message_ends_the_hover() {
     });
     assert!(!page.is_hovered("1"), "a card that scrolled away never sends its exit");
 }
+
+#[test]
+fn a_layout_is_saved_under_its_key_and_read_back() {
+    for view in [DiscoverView::Grid, DiscoverView::Compact, DiscoverView::Table] {
+        assert_eq!(DiscoverView::from_key(view.key()), Some(view));
+    }
+    assert_eq!(DiscoverView::from_key("gallery"), None, "an unknown key falls back to the default layout");
+}

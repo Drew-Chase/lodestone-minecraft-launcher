@@ -17,8 +17,10 @@ use lodestone_platforms::ContentType;
 use lodestone_updater::Release;
 use tracing::warn;
 
+use super::components::alert::Alert;
 use super::downloads::{Job, JobKind};
 use super::instances::reveal_folder;
+use super::lang;
 use super::pages::discover::Source;
 use super::pages::instance::Tab;
 use super::pages::library::instance::Instance;
@@ -63,6 +65,15 @@ pub enum Message {
     Loaded(Result<Vec<Notification>, String>),
     /// A write finished: a notification was recorded, dismissed, marked read or cleared. The list is read again.
     Written(Result<(), String>),
+    /// A game crashed. The run's crash report, when it left one, is offered by the crash alert. `saved` is the write of
+    /// the bell's record of the crash.
+    Crashed {
+        code: String,
+        report: Option<PathBuf>,
+        saved: Result<(), String>,
+    },
+    /// The crash alert was answered. A yes opens the crash report.
+    CrashAnswered { report: PathBuf, confirmed: bool },
     /// The bell was pressed, which opens or shuts its panel.
     TogglePanel,
     /// A press outside the panel, or Escape, shuts it.
@@ -86,7 +97,7 @@ pub enum Message {
 pub enum Action {
     /// Opens the instance's Logs tab.
     Logs(String),
-    /// Opens the instance's Overview tab.
+    /// Opens the instance's page, on its default tab.
     Instance(String),
     /// Opens the instance's Mods tab.
     Mods(String),
@@ -217,23 +228,50 @@ impl LodestoneLauncher {
             key: event_key(&format!("crash:{instance}"), now),
             kind: Kind::Crash,
             subject: record.name.clone(),
-            detail: code,
+            detail: code.clone(),
             instance_id: Some(instance.to_owned()),
             target: None,
             created_at: now,
         };
         let since = SystemTime::from(started);
-        written(async move {
-            let report = tokio::task::spawn_blocking(move || crash::newest_report_since(&folder, since))
-                .await
-                .ok()
-                .flatten();
-            let draft = Draft {
-                target: report.map(|path| path.display().to_string()),
-                ..draft
-            };
-            db.record_notification(&draft).await
-        })
+        // The report is looked for once: the bell keeps it, and the crash alert offers it.
+        Task::perform(
+            async move {
+                let report = tokio::task::spawn_blocking(move || crash::newest_report_since(&folder, since))
+                    .await
+                    .ok()
+                    .flatten();
+                let saved = db
+                    .record_notification(&Draft {
+                        target: report.as_ref().map(|path| path.display().to_string()),
+                        ..draft
+                    })
+                    .await;
+                (code, report, saved)
+            },
+            |(code, report, saved)| LodestoneAppMessage::Notifications(Message::Crashed { code, report, saved }),
+        )
+    }
+
+    /// Tells the player a game crashed. When the run left a crash report, the alert offers to show it.
+    fn crash_alert(&mut self, code: &str, report: Option<PathBuf>) -> Task<LodestoneAppMessage> {
+        let message = lang::t_with("launch.exited_with_error", &[("code", code)]);
+        match report {
+            Some(report) => self
+                .alerts
+                .show(
+                    Alert::error(message)
+                        .title(lang::t("launch.crash.title"))
+                        .labelled(lang::t("launch.crash.show_report"), Some(lang::t("common.close"))),
+                )
+                .map(move |confirmed| {
+                    LodestoneAppMessage::Notifications(Message::CrashAnswered {
+                        report: report.clone(),
+                        confirmed,
+                    })
+                }),
+            None => self.alerts.show(Alert::error(message)).discard(),
+        }
     }
 
     /// Records that a newer launcher release is out. The release's tag is its key, so it is recorded once.
@@ -259,6 +297,21 @@ impl LodestoneLauncher {
             Message::Loaded(Err(error)) => {
                 warn!("Could not read the notifications: {error}");
                 Task::none()
+            }
+            Message::Crashed { code, report, saved } => {
+                let mut tasks = vec![self.crash_alert(&code, report)];
+                match saved {
+                    Ok(()) => tasks.push(self.load_notifications()),
+                    Err(error) => warn!("Could not record the crash: {error}"),
+                }
+                Task::batch(tasks)
+            }
+            Message::CrashAnswered { report, confirmed } => {
+                if confirmed {
+                    open_path(report)
+                } else {
+                    Task::none()
+                }
             }
             Message::Written(Ok(())) => self.load_notifications(),
             Message::Written(Err(error)) => {
@@ -341,7 +394,7 @@ impl LodestoneLauncher {
     fn notification_action(&mut self, action: Action) -> Task<LodestoneAppMessage> {
         match action {
             Action::Logs(id) => self.open_instance_page(&id, Tab::Logs),
-            Action::Instance(id) => self.open_instance_page(&id, Tab::Overview),
+            Action::Instance(id) => self.open_instance_page(&id, Tab::Mods),
             Action::Mods(id) => self.open_instance_page(&id, Tab::Mods),
             Action::OpenFile(path) => open_path(path),
             Action::ShowFolder(path) => match path.parent() {

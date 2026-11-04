@@ -20,7 +20,19 @@ const SEARCH_WIDTH: f32 = 460.0;
 /// The page title, with the platform in its subtitle, and the search field.
 pub(super) fn view(page: &Discover) -> Element<'_, Message> {
     let subtitle = lang::t_with("discover.subtitle", &[("platform", page.source.name())]);
-    row![
+    let mut heading = iced::widget::Row::new().spacing(16).align_y(alignment::Vertical::Center);
+    // A page opened from an instance to add mods to offers a way back to that instance.
+    if let Some(origin) = page.origin() {
+        let back: Element<'_, Message> = TextButton::labeled_icon(
+            Icon::lucide().chevron_left(),
+            lang::t_with("discover.back", &[("name", origin.name.as_str())]),
+            Variant::Ghost,
+        )
+        .on_press(Message::Back)
+        .into();
+        heading = heading.push(back);
+    }
+    heading = heading.push(
         iced::widget::column![
             Text::new(lang::t("discover.title"))
                 .size(24)
@@ -29,13 +41,12 @@ pub(super) fn view(page: &Discover) -> Element<'_, Message> {
             Text::new(subtitle).size(12).font(fonts::Inter::REGULAR).color(color::text_muted()),
         ]
         .spacing(2),
-        Space::new().width(Fill),
-        search_box(page),
-    ]
-    .spacing(16)
-    .align_y(alignment::Vertical::Center)
-    .width(Fill)
-    .into()
+    );
+    row![heading, Space::new().width(Fill), search_box(page)]
+        .spacing(16)
+        .align_y(alignment::Vertical::Center)
+        .width(Fill)
+        .into()
 }
 
 /// The search input, with its icon on the left and the Ctrl/⌘K hint on the right.

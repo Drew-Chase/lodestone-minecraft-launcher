@@ -11,6 +11,7 @@ use crate::app::pages::library::Message as LibraryMessage;
 pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
     use LodestoneAppMessage as M;
     match message {
+        M::FocusRequested => "update.FocusRequested",
         M::WindowCreation(_) => "update.WindowCreation",
         M::WindowStartResize(_) => "update.WindowStartResize",
         M::WindowSizeChanged(..) => "update.WindowSizeChanged",

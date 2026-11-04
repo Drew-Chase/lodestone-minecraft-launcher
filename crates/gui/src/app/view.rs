@@ -406,7 +406,7 @@ impl LodestoneLauncher {
                     self.face.as_ref(),
                 )
                 .map(LodestoneAppMessage::Settings),
-            Page::Discover => self.discover.view(self.window_size).map(LodestoneAppMessage::Discover),
+            Page::Discover => self.discover.view().map(LodestoneAppMessage::Discover),
             Page::Worlds => self.worlds.view(self.window_size).map(LodestoneAppMessage::Worlds),
             Page::Skins => self
                 .skins

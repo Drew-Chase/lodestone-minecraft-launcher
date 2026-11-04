@@ -10,7 +10,7 @@ mod actions;
 mod panel;
 
 pub(crate) use actions::sweep_partial_installs;
-pub use panel::{progress_detail, trigger};
+pub use panel::trigger;
 
 /// The queue's messages: the installs' reports and results, and the popover's controls.
 #[derive(Debug, Clone)]

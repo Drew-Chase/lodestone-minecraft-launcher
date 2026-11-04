@@ -29,10 +29,12 @@ pub mod perf;
 pub mod portable;
 mod preferences;
 mod resource;
+mod reveal;
 pub mod router;
 mod screenshot_actions;
 mod servers;
 mod shared_library;
+pub(crate) mod single_instance;
 mod skin_actions;
 pub mod storage;
 mod subscription;
@@ -113,6 +115,11 @@ pub struct LodestoneLauncher {
     instance_page: InstancePage,
     /// When each instance's mods were last checked against their platforms, and what the check found, for the session.
     mod_checks: HashMap<String, mod_actions::ModCheck>,
+    /// When a check of the Mods tab's mods against the platforms last started, whichever instance it was for. The checks
+    /// are spaced by [`mod_actions::MOD_CHECK_INTERVAL`].
+    mod_check_started: Option<std::time::Instant>,
+    /// Whether a check that came too soon is waiting for its interval to pass.
+    mod_check_timer: bool,
     settings: Settings,
     /// The Discover page: the platform searches, and the results on screen.
     discover: Discover,
@@ -221,8 +228,14 @@ impl Default for LodestoneLauncher {
             library: Library::default(),
             instance_page: InstancePage::default(),
             mod_checks: HashMap::new(),
+            mod_check_started: None,
+            mod_check_timer: false,
             settings: Settings::default(),
-            discover: Discover::new(discover::opening_source()),
+            discover: {
+                let mut discover = Discover::new(discover::opening_source());
+                discover.set_view(discover::opening_view());
+                discover
+            },
             resource: ResourcePage::default(),
             worlds: crate::app::pages::worlds::State::default(),
             world_pins: world_pins::WorldPins::default(),

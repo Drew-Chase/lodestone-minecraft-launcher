@@ -2,7 +2,7 @@
 //! picker, the card frame with its logo row and headline, the footer, and the status bar.
 
 use iced::widget::{Column, Space, Text, column, container, mouse_area, rich_text, row, span, stack, svg};
-use iced::{Background, Border, Element, Fill, Padding, Radians, Shadow, Vector, gradient};
+use iced::{Background, Border, Element, Fill, Length, Padding, Radians, Shadow, Vector, gradient};
 use iced_color_extension::rgb;
 
 use crate::app::LodestoneLauncher;
@@ -14,7 +14,7 @@ use crate::app::lang;
 use crate::app::theme::{color as palette, fonts};
 
 use super::widgets::{logo_handle, mono, rgb_line, rule};
-use super::{AuthStatus, Login, Message};
+use super::{AuthStatus, Flow, Login, Message};
 
 /// The height of the strip the brand tag sits in. The Windows titlebar is the same height, so
 /// the picker lands at the same spot on every platform: 12px below the strip.
@@ -44,6 +44,15 @@ impl Login {
         bar.push(picker_row).into()
     }
 
+    /// The card's height. The card is a fixed 450px, which holds the sign-in buttons only when no error is shown. A
+    /// failed sign-in adds the error's lines, so that card grows to hold them instead of squeezing its buttons.
+    fn card_height(&self) -> Length {
+        match self.flow {
+            Flow::Failed(_) => Length::Shrink,
+            _ => Length::Fixed(450.0),
+        }
+    }
+
     /// The floating sign-in card.
     pub(super) fn card(&self) -> Element<'_, Message> {
         container(stack![
@@ -56,7 +65,7 @@ impl Login {
             self.card_content(),
         ])
         .width(440)
-        .height(450)
+        .height(self.card_height())
         .style(|_| container::Style {
             background: Some(Background::Gradient(
                 gradient::Linear::new(Radians(std::f32::consts::FRAC_PI_2))

@@ -205,6 +205,8 @@ pub enum LodestoneAppMessage {
     SessionRefreshed(Result<Session, String>),
     /// The performance overlay: its F3 toggle and its one-second refresh. See `perf`.
     Perf(perf::Message),
+    /// Another launcher was started while this one runs. It asks this one to show its window.
+    FocusRequested,
 }
 
 /// Which sidebar group a nav selection came from.

@@ -369,12 +369,8 @@ impl LodestoneLauncher {
             let code = status
                 .code()
                 .map_or_else(|| lang::t("launch.exit_by_signal").to_owned(), |code| code.to_string());
-            tasks.push(
-                self.alerts
-                    .show(Alert::error(lang::t_with("launch.exited_with_error", &[("code", code.as_str())])))
-                    .discard(),
-            );
-            // The crash is kept in the bell as well, with the crash report the run left, when there is one.
+            // The crash is kept in the bell with the crash report the run left, when there is one. The alert that tells the
+            // player of it offers that report.
             tasks.push(self.record_crash(&id, run.started, code));
         }
         if restart {

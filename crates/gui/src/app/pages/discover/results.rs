@@ -3,15 +3,15 @@
 
 use aurora_leaf::Icon;
 use iced::mouse;
-use iced::widget::{Text, column, container, mouse_area, row};
-use iced::{Element, Fill, Padding, Size, alignment};
+use iced::widget::{Text, column, container, mouse_area, responsive, row};
+use iced::{Background, Border, Element, Fill, Length, Padding, alignment};
+use iced_color_extension::rgb;
 use lodestone_platforms::{ContentType, SearchResult};
 
-use super::card::{CARD_RADIUS, compact_row, glyph, grid_card, panel, table_header, table_row};
+use super::card::{CARD_RADIUS, compact_row, glyph, grid_card, panel, skeleton_card, skeleton_row, skeleton_table_row, table_header, table_row};
 use super::{Discover, DiscoverView, InstallState, Message, Source};
 use crate::app::components::button::Variant;
 use crate::app::components::hover_scale::HoverScale;
-use crate::app::components::page::content_width;
 use crate::app::components::{TextButton, anim, grid};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
@@ -22,10 +22,12 @@ const CARD_MIN_WIDTH: f32 = 280.0;
 const GAP: f32 = 16.0;
 /// The width at which compact rows sit two to a line.
 const COMPACT_TWO_COLUMNS: f32 = 760.0;
+/// How many rows of placeholders a layout shows while its results load: a screenful, or the rows a page adds.
+const SKELETON_ROWS: usize = 3;
 
 /// The results in the chosen layout, with the lines that explain an empty or failed search and a Mods tab with no
 /// instance that takes mods.
-pub(super) fn view(page: &Discover, window: Size) -> Element<'_, Message> {
+pub(super) fn view(page: &Discover) -> Element<'_, Message> {
     let mut stack = column![].spacing(16).width(Fill);
     if let Some(line) = mods_note(page) {
         stack = stack.push(line);
@@ -33,12 +35,16 @@ pub(super) fn view(page: &Discover, window: Size) -> Element<'_, Message> {
     if let Some(line) = state_line(page) {
         stack = stack.push(line);
     }
-    if !page.results.hits.is_empty() {
-        stack = stack.push(match page.view {
-            DiscoverView::Grid => grid_layout(page, window),
-            DiscoverView::Compact => compact_layout(page, window),
+    // A search that is loading shows placeholders where its results will be, beneath any results already on screen.
+    if !page.results.hits.is_empty() || page.results.loading {
+        // The grid and the compact rows count their columns from the width their column gives them, so they are laid
+        // out at that width rather than at the window's.
+        let layout: Element<'_, Message> = match page.view {
+            DiscoverView::Grid => responsive(move |size| grid_layout(page, size.width)).height(Length::Shrink).into(),
+            DiscoverView::Compact => responsive(move |size| compact_layout(page, size.width)).height(Length::Shrink).into(),
             DiscoverView::Table => table_layout(page),
-        });
+        };
+        stack = stack.push(layout);
     }
     stack.into()
 }
@@ -94,9 +100,9 @@ fn unavailable(source: Source) -> Element<'static, Message> {
         .into()
 }
 
-/// The grid: as many cards a row as the width allows, each at least `CARD_MIN_WIDTH` wide.
-fn grid_layout(page: &Discover, window: Size) -> Element<'_, Message> {
-    let available = content_width(window.width).max(CARD_MIN_WIDTH);
+/// The grid: as many cards a row as `width` allows, each at least `CARD_MIN_WIDTH` wide.
+fn grid_layout(page: &Discover, width: f32) -> Element<'_, Message> {
+    let available = width.max(CARD_MIN_WIDTH);
     let columns = ((available + GAP) / (CARD_MIN_WIDTH + GAP)).floor().clamp(1.0, 4.0) as usize;
     let width = (available - GAP * (columns as f32 - 1.0)) / columns as f32;
     let cells = page
@@ -114,13 +120,14 @@ fn grid_layout(page: &Discover, window: Size) -> Element<'_, Message> {
             );
             hoverable(card, page, &hit.id)
         })
+        .chain((0..pending(page) * columns).map(|_| skeleton_card(width)))
         .collect();
     grid::grid(cells, columns, GAP)
 }
 
-/// The compact rows: two to a line when the window is wide enough, one otherwise.
-fn compact_layout(page: &Discover, window: Size) -> Element<'_, Message> {
-    let available = content_width(window.width).max(320.0);
+/// The compact rows: two to a line when `width` is wide enough, one otherwise.
+fn compact_layout(page: &Discover, width: f32) -> Element<'_, Message> {
+    let available = width.max(320.0);
     let columns = if available >= COMPACT_TWO_COLUMNS { 2 } else { 1 };
     let cells = page
         .results
@@ -128,31 +135,66 @@ fn compact_layout(page: &Discover, window: Size) -> Element<'_, Message> {
         .iter()
         .map(|hit| {
             pressable(
+                page,
                 compact_row(page.source, hit, page.artwork(hit.icon_url.as_deref()), action(page, hit)),
                 &hit.id,
             )
         })
+        .chain((0..pending(page) * columns).map(|_| skeleton_row()))
         .collect();
     grid::grid(cells, columns, GAP)
 }
 
 /// The table: a header row, then one row per project.
 fn table_layout(page: &Discover) -> Element<'_, Message> {
-    let rows = page.results.hits.iter().map(|hit| {
-        pressable(
-            table_row(page.source, hit, page.artwork(hit.icon_url.as_deref()), action(page, hit)),
-            &hit.id,
-        )
-    });
+    let rows = page
+        .results
+        .hits
+        .iter()
+        .map(|hit| {
+            pressable(
+                page,
+                table_row(page.source, hit, page.artwork(hit.icon_url.as_deref()), action(page, hit)),
+                &hit.id,
+            )
+        })
+        .chain((0..pending(page) * 2).map(|_| skeleton_table_row()));
     container(column![table_header(), column(rows)]).width(Fill).style(panel).into()
 }
 
-/// A card or row that opens its project's resource page when it is pressed. The buttons inside take their own presses.
-fn pressable<'a>(content: Element<'a, Message>, project_id: &str) -> Element<'a, Message> {
-    mouse_area(content)
+/// How many rows of placeholders the layouts add beneath the results: a few while a search is loading, none otherwise.
+fn pending(page: &Discover) -> usize {
+    if page.results.loading { SKELETON_ROWS } else { 0 }
+}
+
+/// A card or row that opens its project's resource page when it is pressed. While the pointer is over it, it lifts a
+/// little, so the row reads as the one a press opens. The buttons inside take their own presses.
+fn pressable<'a>(page: &Discover, content: Element<'a, Message>, project_id: &str) -> Element<'a, Message> {
+    let hovered = page.is_hovered(project_id);
+    let area = mouse_area(content)
         .on_press(Message::OpenResource(project_id.to_string()))
-        .interaction(mouse::Interaction::Pointer)
-        .into()
+        .on_enter(Message::Hover {
+            project_id: project_id.to_string(),
+            hovered: true,
+        })
+        .on_exit(Message::Hover {
+            project_id: project_id.to_string(),
+            hovered: false,
+        })
+        .interaction(mouse::Interaction::Pointer);
+    container(area).width(Fill).style(move |_| lift(hovered)).into()
+}
+
+/// The fill of a row under the pointer: a faint white wash, with its corners rounded.
+fn lift(hovered: bool) -> container::Style {
+    container::Style {
+        background: hovered.then_some(Background::Color(rgb!(255, 255, 255, 4%))),
+        border: Border {
+            radius: 12.0.into(),
+            ..Border::default()
+        },
+        ..container::Style::default()
+    }
 }
 
 /// A grid card that opens its project's resource page when it is pressed. While the pointer is over it, it grows and

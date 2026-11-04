@@ -23,6 +23,9 @@ pub struct Preferences {
     pub language: Option<String>,
     /// The content platform the Discover page opened on last, by its key such as `modrinth`.
     pub discover_source: Option<String>,
+    /// The layout the Discover page showed last, by its key: `grid`, `compact` or `table`. The page opens on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discover_view: Option<String>,
     /// The folder each launcher was located in by hand, keyed by the launcher's key such as `prism`. The Import dialog
     /// scans these before the standard folders.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]

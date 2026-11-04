@@ -3,14 +3,14 @@
 //! search is typed.
 
 use aurora_leaf::Icon;
-use iced::widget::{Space, Text, column, container, row, stack};
-use iced::{Background, Color, Element, Fill, Length, Padding, Size, alignment};
+use iced::widget::{Space, Text, column, container, responsive, row, stack};
+use iced::{Background, Color, Element, Fill, Length, Padding, alignment};
+use lodestone_platforms::SearchResult;
 
 use super::card::{Corners, chip, cover_art, glyph, short_count};
 use super::{Discover, Message};
 use crate::app::components::TextButton;
 use crate::app::components::button::Variant;
-use crate::app::components::page::content_width;
 use crate::app::components::scene_art;
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
@@ -18,14 +18,20 @@ use crate::app::theme::{color, fonts};
 /// The hero's height.
 pub(super) const HEIGHT: f32 = 240.0;
 
-/// The hero for the page's first hit, sized to the content column. `None` while
-/// there is no hit, or while the page is searched rather than browsed.
-pub(super) fn view(page: &Discover, window: Size) -> Option<Element<'_, Message>> {
+/// The hero for the page's first hit. `None` while there is no hit, or while the page is searched rather than browsed.
+/// The hero takes the width its column gives it, so it runs the whole width of the content, as the filter row does.
+pub(super) fn view(page: &Discover) -> Option<Element<'_, Message>> {
     if !page.text.trim().is_empty() {
         return None;
     }
     let hit = page.results.hits.first()?;
-    let width = content_width(window.width).max(320.0);
+    // The height is the hero's own, so the responsive wrapper takes no more than its content asks for.
+    Some(responsive(move |size| banner(page, hit, size.width)).height(Length::Shrink).into())
+}
+
+/// The hero for `hit`, at `width`.
+fn banner<'a>(page: &'a Discover, hit: &'a SearchResult, width: f32) -> Element<'a, Message> {
+    let width = width.max(320.0);
     // The picture sits a pixel inside the frame, and rounds its corners concentric with the frame's.
     let art = cover_art(
         page.source,
@@ -95,19 +101,17 @@ pub(super) fn view(page: &Discover, window: Size) -> Option<Element<'_, Message>
         .height(Fill)
         .align_y(alignment::Vertical::Bottom);
 
-    Some(
-        container(stack![art, shade, body])
-            .padding(Padding::new(1.0))
-            .width(width)
-            .height(HEIGHT)
-            .style(|_| container::Style {
-                border: iced::Border {
-                    radius: 18.0.into(),
-                    width: 1.0,
-                    color: color::surface_line(),
-                },
-                ..container::Style::default()
-            })
-            .into(),
-    )
+    container(stack![art, shade, body])
+        .padding(Padding::new(1.0))
+        .width(width)
+        .height(HEIGHT)
+        .style(|_| container::Style {
+            border: iced::Border {
+                radius: 18.0.into(),
+                width: 1.0,
+                color: color::surface_line(),
+            },
+            ..container::Style::default()
+        })
+        .into()
 }

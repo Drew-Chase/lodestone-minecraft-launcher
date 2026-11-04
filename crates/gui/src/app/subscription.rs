@@ -31,6 +31,7 @@ impl LodestoneLauncher {
             // The launcher checks GitHub for a newer release every couple of minutes while it runs.
             iced::time::every(updater::CHECK_EVERY).map(|_| LodestoneAppMessage::Updater(updater::Message::CheckDue)),
             perf::subscription(&self.perf).map(LodestoneAppMessage::Perf),
+            super::single_instance::focus_requests().map(|()| LodestoneAppMessage::FocusRequested),
         ])
     }
 

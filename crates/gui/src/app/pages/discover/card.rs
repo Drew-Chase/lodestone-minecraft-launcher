@@ -386,6 +386,7 @@ pub fn table_header<'a>() -> Element<'a, Message> {
 pub fn table_row<'a>(source: Source, hit: &'a SearchResult, artwork: Artwork<'_>, action: Element<'a, Message>) -> Element<'a, Message> {
     let name = row![
         thumb(source, hit, artwork, THUMB_SIZE),
+        // The text block takes its own height, so the row centres it as it centres the thumbnail.
         column![
             lines_box(
                 Text::new(hit.name.as_str())
@@ -398,8 +399,7 @@ pub fn table_row<'a>(source: Source, hit: &'a SearchResult, artwork: Artwork<'_>
             summary(hit.description.as_str(), color::text_muted()),
         ]
         .spacing(2)
-        .width(Fill)
-        .height(Fill),
+        .width(Fill),
     ]
     .spacing(12)
     .align_y(alignment::Vertical::Center)
@@ -425,6 +425,83 @@ pub fn table_row<'a>(source: Source, hit: &'a SearchResult, artwork: Artwork<'_>
         container(action)
             .width(Length::Fixed(TABLE_ACTION_WIDTH))
             .align_x(alignment::Horizontal::Right),
+    ]
+    .spacing(12)
+    .padding(Padding::new(0.0).left(16).right(16).top(10).bottom(10))
+    .align_y(alignment::Vertical::Center)
+    .height(Length::Fixed(TABLE_ROW_HEIGHT))
+    .into()
+}
+
+/// A dimmed block standing in for a line of text, or a picture, that has not arrived yet.
+fn placeholder<'a>(width: Length, height: f32) -> Element<'a, Message> {
+    container(Space::new().width(width).height(height))
+        .style(|_| container::Style {
+            background: Some(Background::Color(color::surface_bg3())),
+            border: Border {
+                radius: 6.0.into(),
+                ..Border::default()
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// A card the grid shows while its results load. It has the shape of a result card, so the grid keeps its places as the
+/// results arrive.
+pub fn skeleton_card<'a>(width: f32) -> Element<'a, Message> {
+    let body = column![
+        placeholder(Length::Fixed(width * 0.6), 14.0),
+        placeholder(Length::Fixed(width * 0.35), 10.0),
+        placeholder(Length::Fill, 10.0),
+        placeholder(Length::Fixed(width * 0.5), 10.0),
+    ]
+    .spacing(10);
+    container(column![
+        placeholder(Length::Fill, GRID_ART_HEIGHT),
+        container(body).padding(Padding::new(14.0))
+    ])
+    .width(width)
+    .height(Length::Fixed(GRID_CARD_HEIGHT))
+    .style(panel)
+    .into()
+}
+
+/// A row the compact layout shows while its results load: a thumbnail and three lines, at the height a row takes.
+pub fn skeleton_row<'a>() -> Element<'a, Message> {
+    container(
+        row![
+            placeholder(Length::Fixed(THUMB_SIZE), THUMB_SIZE),
+            column![
+                placeholder(Length::Fixed(220.0), 14.0),
+                placeholder(Length::Fill, 10.0),
+                placeholder(Length::Fixed(140.0), 10.0),
+            ]
+            .spacing(10)
+            .width(Fill),
+        ]
+        .spacing(14)
+        .align_y(alignment::Vertical::Center),
+    )
+    .width(Fill)
+    .height(Length::Fixed(COMPACT_ROW_HEIGHT))
+    .padding(Padding::new(14.0))
+    .style(panel)
+    .into()
+}
+
+/// A row the table shows while its results load, with a block where each column's text will be.
+pub fn skeleton_table_row<'a>() -> Element<'a, Message> {
+    row![
+        placeholder(Length::Fixed(THUMB_SIZE), THUMB_SIZE),
+        column![placeholder(Length::Fixed(260.0), 14.0), placeholder(Length::Fixed(380.0), 10.0)]
+            .spacing(8)
+            .width(Fill),
+        placeholder(Length::Fixed(TABLE_AUTHOR_WIDTH - 40.0), 10.0),
+        placeholder(Length::Fixed(TABLE_SOURCE_WIDTH - 40.0), 10.0),
+        placeholder(Length::Fixed(TABLE_NUMBER_WIDTH - 30.0), 10.0),
+        placeholder(Length::Fixed(TABLE_NUMBER_WIDTH - 30.0), 10.0),
+        Space::new().width(Length::Fixed(TABLE_ACTION_WIDTH)),
     ]
     .spacing(12)
     .padding(Padding::new(0.0).left(16).right(16).top(10).bottom(10))

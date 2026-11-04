@@ -91,6 +91,11 @@ pub enum Buttons {
     YesNo,
     OkCancel,
     Close,
+    /// Buttons with the labels the caller gives: `affirmative` answers `true`, and `negative`, when given, answers `false`.
+    Labelled {
+        affirmative: &'static str,
+        negative: Option<&'static str>,
+    },
 }
 
 impl Buttons {
@@ -100,6 +105,7 @@ impl Buttons {
             Buttons::YesNo => lang::t("common.yes"),
             Buttons::OkCancel => lang::t("common.okay"),
             Buttons::Close => lang::t("common.close"),
+            Buttons::Labelled { affirmative, .. } => affirmative,
         }
     }
 
@@ -109,6 +115,7 @@ impl Buttons {
             Buttons::YesNo => Some(lang::t("common.no")),
             Buttons::OkCancel => Some(lang::t("common.cancel")),
             Buttons::Close => None,
+            Buttons::Labelled { negative, .. } => negative,
         }
     }
 }
@@ -173,6 +180,11 @@ impl Alert {
     pub fn buttons(mut self, buttons: Buttons) -> Self {
         self.buttons = buttons;
         self
+    }
+
+    /// Buttons labelled by the caller, such as "Show report" for an answer that opens something.
+    pub fn labelled(self, affirmative: &'static str, negative: Option<&'static str>) -> Self {
+        self.buttons(Buttons::Labelled { affirmative, negative })
     }
 
     pub fn kind(&self) -> Kind {

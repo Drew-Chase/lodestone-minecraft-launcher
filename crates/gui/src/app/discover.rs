@@ -27,7 +27,9 @@ use super::install::mods::add_to_instance;
 use super::install::pack::{self, Page};
 use super::lang;
 use super::mod_actions::replace_jar;
-use super::pages::discover::{self, AddRequest, CONTENT_ID, Effect, InstallState, InstanceChoice, Message, Project, SEARCH_ID, Search, Source};
+use super::pages::discover::{
+    self, AddRequest, CONTENT_ID, DiscoverView, Effect, InstallState, InstanceChoice, Message, Project, SEARCH_ID, Search, Source,
+};
 use super::pages::instance::Tab;
 use super::paths::LauncherPaths;
 use super::preferences::Preferences;
@@ -35,6 +37,8 @@ use super::shared_library::{self, ModSource, SharedRecord};
 
 /// How long the page waits after the last keystroke before it searches.
 const DEBOUNCE: Duration = Duration::from_millis(300);
+/// How long a picture may take to load before the page gives up on it.
+const ICON_TIMEOUT: Duration = Duration::from_secs(30);
 /// How many CurseForge file links are resolved at once when a modpack installs.
 const RESOLVE_AT_ONCE: usize = 8;
 
@@ -52,6 +56,15 @@ pub(crate) fn opening_source() -> Source {
         .and_then(Source::from_key)
         .filter(|source| source.enabled())
         .unwrap_or(Source::Modrinth)
+}
+
+/// The layout the page opens on: the one picked last, when it names one. Cards in a grid otherwise.
+pub(crate) fn opening_view() -> DiscoverView {
+    Preferences::load()
+        .discover_view
+        .as_deref()
+        .and_then(DiscoverView::from_key)
+        .unwrap_or_default()
 }
 
 /// One client per platform, shared by every request, so connections are reused.
@@ -387,7 +400,9 @@ impl LodestoneLauncher {
             Effect::Queue(request) => self.queue_install(*request),
             Effect::Record(record) => self.record_download(record),
             Effect::Notify(error) => self.notify_discover(error),
-            Effect::OpenInstance(id) => self.open_instance_page(&id, Tab::Overview),
+            Effect::OpenInstance(id) => self.open_instance_page(&id, Tab::Mods),
+            Effect::RememberView(view) => self.remember_discover_view(view),
+            Effect::Back => self.back_from_discover(),
             Effect::OpenResource(listing) => self.open_resource(listing),
             Effect::AddMod(request) => self.add_mod_task(*request),
             Effect::ReplaceMod { request, old_file } => self.replace_mod_task(*request, old_file),
@@ -576,7 +591,9 @@ impl LodestoneLauncher {
         let urls = self.discover.wanted_icons();
         Task::batch(urls.into_iter().map(|url| {
             let answer = url.clone();
-            Task::perform(discover::load_icon(url), move |picture| {
+            // A picture that takes too long is given up, so its place in the loads is freed for the rest.
+            let load = async move { tokio::time::timeout(ICON_TIMEOUT, discover::load_icon(url)).await.ok().flatten() };
+            Task::perform(load, move |picture| {
                 LodestoneAppMessage::Discover(Message::IconReady { url: answer, picture })
             })
         }))
@@ -601,6 +618,33 @@ impl LodestoneLauncher {
             installs.insert((platform.to_string(), project.to_string()), InstallState::Installed(instance.to_string()));
         }
         self.discover.set_installs(installs);
+    }
+
+    /// Writes the page's layout to the preferences on the blocking pool, keeping the other choices, so it opens on it next time.
+    fn remember_discover_view(&self, view: DiscoverView) -> Task<LodestoneAppMessage> {
+        let key = view.key().to_string();
+        Task::future(async move {
+            let saved = tokio::task::spawn_blocking(move || {
+                let mut preferences = Preferences::load();
+                preferences.discover_view = Some(key);
+                preferences.store()
+            })
+            .await;
+            match saved {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => warn!("saving the Discover layout failed: {error}"),
+                Err(error) => warn!("saving the Discover layout failed: {error}"),
+            }
+        })
+        .discard()
+    }
+
+    /// Returns from the Discover page to the instance it was opened from. The instance's page is still as it was left, so
+    /// it is shown again and its mods are read again, since the page may have added some.
+    fn back_from_discover(&mut self) -> Task<LodestoneAppMessage> {
+        self.discover.set_origin(None);
+        let back = self.navigate(super::pages::Page::Instance);
+        Task::batch([back, self.rescan_mods_on_return()])
     }
 
     /// Writes the page's platform to the preferences on the blocking pool, keeping the other choices.
