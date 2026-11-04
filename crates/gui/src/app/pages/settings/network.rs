@@ -13,7 +13,7 @@ use crate::app::components::panel::divided;
 use crate::app::components::setting_row::described_setting;
 use crate::app::components::{Select, Toggle};
 use crate::app::lang;
-use crate::app::preferences::{DownloadMirror, Network, SettingsValues, SourceOrder};
+use crate::app::preferences::{CONCURRENT_DOWNLOADS, DownloadMirror, Network, SettingsValues, SourceOrder};
 use crate::app::theme::{color, fonts};
 
 /// The connection counts the select offers.
@@ -128,9 +128,14 @@ impl<Message> canvas::Program<Message> for Sparkline {
     }
 }
 
-/// The request settings: the connections kept per host, the source order, the mirror, and the timeout.
+/// The request settings: the files fetched at once, the connections kept per host, the source order, the mirror, and the timeout.
 fn request_rows<'a>(network: &Network) -> Vec<Element<'a, Message>> {
     vec![
+        described_setting(
+            lang::t("settings.general.downloads"),
+            lang::t("settings.general.downloads_subtitle"),
+            concurrency_slider(network.concurrent_downloads),
+        ),
         described_setting(
             lang::t("settings.network.connections"),
             lang::t("settings.network.connections_hint"),
@@ -152,6 +157,27 @@ fn request_rows<'a>(network: &Network) -> Vec<Element<'a, Message>> {
             timeout_select(network.timeout_secs),
         ),
     ]
+}
+
+/// The slider for how many files an install fetches at once, with its value.
+fn concurrency_slider<'a>(count: u16) -> Element<'a, Message> {
+    let (low, high) = (*CONCURRENT_DOWNLOADS.start(), *CONCURRENT_DOWNLOADS.end());
+    let bar = iced::widget::slider(f32::from(low)..=f32::from(high), f32::from(count), |value| {
+        Message::Edit(Edit::ConcurrentDownloads(value.round() as u16))
+    })
+    .step(1.0_f32)
+    .style(crate::app::components::slider::style)
+    .width(Fill);
+    row![
+        bar,
+        text(count.to_string())
+            .size(14)
+            .font(fonts::JetBrainsMono::SEMI_BOLD)
+            .color(color::primary()),
+    ]
+    .spacing(16)
+    .align_y(alignment::Vertical::Center)
+    .into()
 }
 
 /// The connections select: how many idle connections a host keeps.

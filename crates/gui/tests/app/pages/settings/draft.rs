@@ -14,10 +14,10 @@ fn a_new_draft_has_no_edits() {
 #[test]
 fn an_edit_is_dirty_until_it_is_committed() {
     let mut draft = Draft::new(saved());
-    draft.current_mut().concurrent_downloads = 11;
+    draft.current_mut().network.concurrent_downloads = 11;
     assert!(draft.dirty());
     let committed = draft.commit();
-    assert_eq!(committed.concurrent_downloads, 11);
+    assert_eq!(committed.network.concurrent_downloads, 11);
     assert!(!draft.dirty());
 }
 

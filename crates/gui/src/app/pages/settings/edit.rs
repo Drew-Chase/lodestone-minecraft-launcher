@@ -68,7 +68,7 @@ impl Edit {
             Edit::AutoUpdate(on) => values.auto_update = on,
             Edit::BetaChannel(on) => values.beta_channel = on,
             Edit::AutoUpdateGameVersions(on) => values.auto_update_game_versions = on,
-            Edit::ConcurrentDownloads(count) => values.concurrent_downloads = count,
+            Edit::ConcurrentDownloads(count) => values.network.concurrent_downloads = count,
             Edit::Accent(accent) => values.appearance.accent = accent,
             Edit::Theme(theme) => values.appearance.theme = theme,
             Edit::Animations(on) => values.appearance.interface_animations = on,

@@ -103,15 +103,16 @@ pub struct SettingsValues {
     pub beta_channel: bool,
     /// Refreshes the Minecraft version list in the background at launch.
     pub auto_update_game_versions: bool,
-    /// How many files an instance fetches at once. See [`CONCURRENT_DOWNLOADS`].
-    pub concurrent_downloads: u16,
     pub appearance: Appearance,
     pub network: Network,
     pub privacy: Privacy,
 }
 
-/// The most files an install fetches at once. It is the cap the downloads always used, and so the default.
-pub const MAX_CONCURRENT_DOWNLOADS: u16 = 64;
+/// The files an install fetches at once when the setting has never been changed.
+pub const DEFAULT_CONCURRENT_DOWNLOADS: u16 = 64;
+
+/// The most files an install fetches at once, the top of the setting's range.
+pub const MAX_CONCURRENT_DOWNLOADS: u16 = 250;
 
 /// The range the concurrent-downloads setting takes.
 pub const CONCURRENT_DOWNLOADS: RangeInclusive<u16> = 1..=MAX_CONCURRENT_DOWNLOADS;
@@ -124,7 +125,6 @@ impl Default for SettingsValues {
             auto_update: true,
             beta_channel: false,
             auto_update_game_versions: true,
-            concurrent_downloads: *CONCURRENT_DOWNLOADS.end(),
             appearance: Appearance::default(),
             network: Network::default(),
             privacy: Privacy::default(),
@@ -138,8 +138,8 @@ impl SettingsValues {
         crate::app::theme::color::set(crate::app::theme::color::Palette::new(&self.appearance.accent, self.appearance.theme));
         crate::app::theme::effects::set(&self.appearance);
         lodestone_net::set(self.network.config());
-        crate::app::install::download::set_concurrency(self.concurrent_downloads);
-        lodestone_loaders::set_download_concurrency(usize::from(self.concurrent_downloads));
+        crate::app::install::download::set_concurrency(self.network.concurrent_downloads);
+        lodestone_loaders::set_download_concurrency(usize::from(self.network.concurrent_downloads));
     }
 }
 
@@ -197,6 +197,8 @@ impl Default for Appearance {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Network {
+    /// How many files an install fetches at once. See [`CONCURRENT_DOWNLOADS`].
+    pub concurrent_downloads: u16,
     /// How many connections a single host may hold open at once.
     pub connections_per_host: u16,
     /// Which platform a file is looked up on first.
@@ -216,6 +218,7 @@ pub struct Network {
 impl Default for Network {
     fn default() -> Self {
         Self {
+            concurrent_downloads: DEFAULT_CONCURRENT_DOWNLOADS,
             connections_per_host: 8,
             source_order: SourceOrder::default(),
             mirror: DownloadMirror::default(),

@@ -1,5 +1,5 @@
-//! The General tab: where the launcher starts and where instances live, how it updates itself, how many files an install
-//! fetches at once, and the window every instance opens with.
+//! The General tab: where the launcher starts and where instances live, how it updates itself, and the window every
+//! instance opens with.
 
 use iced::widget::{column, row, text};
 use iced::{Element, Fill, alignment};
@@ -13,7 +13,7 @@ use crate::app::components::{Select, TextButton, Toggle};
 use crate::app::lang;
 use crate::app::launch_settings::LaunchChange;
 use crate::app::paths::{self, LauncherPaths};
-use crate::app::preferences::{CONCURRENT_DOWNLOADS, SettingsValues, StartupPage};
+use crate::app::preferences::{SettingsValues, StartupPage};
 use crate::app::theme::{color, fonts};
 
 /// The pages the launcher can open on, in the order the select offers them.
@@ -25,7 +25,7 @@ const SELECT_WIDTH: f32 = 240.0;
 /// The width the data folder's path wraps within.
 const FOLDER_PATH_WIDTH: f32 = 300.0;
 
-/// The General tab: the startup and folder rows, the update switches, the download count and the window.
+/// The General tab: the startup and folder rows, the update switches and the window.
 pub fn view<'a>(shown: Shown<'a>, resolution: &'a ResolutionDraft, settings: &'a SettingsValues, paths: &'a LauncherPaths) -> Element<'a, Message> {
     let startup = vec![
         folder_row(paths),
@@ -39,11 +39,6 @@ pub fn view<'a>(shown: Shown<'a>, resolution: &'a ResolutionDraft, settings: &'a
             lang::t("settings.general.updates"),
             lang::t("settings.general.updates_subtitle"),
             divided(update_rows(settings)),
-        ),
-        card(
-            lang::t("settings.general.downloads"),
-            lang::t("settings.general.downloads_subtitle"),
-            downloads(settings.concurrent_downloads),
         ),
         card(
             lang::t("instance.settings.section.window"),
@@ -138,25 +133,4 @@ fn update_rows<'a>(settings: &SettingsValues) -> Vec<Element<'a, Message>> {
                 .on_toggle(Message::Edit(Edit::AutoUpdateGameVersions(!settings.auto_update_game_versions))),
         ),
     ]
-}
-
-/// The slider for how many files an install fetches at once, with its value.
-fn downloads<'a>(count: u16) -> Element<'a, Message> {
-    let (low, high) = (*CONCURRENT_DOWNLOADS.start(), *CONCURRENT_DOWNLOADS.end());
-    let bar = iced::widget::slider(f32::from(low)..=f32::from(high), f32::from(count), |value| {
-        Message::Edit(Edit::ConcurrentDownloads(value.round() as u16))
-    })
-    .step(1.0_f32)
-    .style(crate::app::components::slider::style)
-    .width(Fill);
-    row![
-        bar,
-        text(count.to_string())
-            .size(14)
-            .font(fonts::JetBrainsMono::SEMI_BOLD)
-            .color(color::primary()),
-    ]
-    .spacing(16)
-    .align_y(alignment::Vertical::Center)
-    .into()
 }

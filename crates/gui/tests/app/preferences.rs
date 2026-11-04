@@ -59,7 +59,7 @@ fn a_file_from_before_the_settings_page_keeps_its_launch_defaults() {
     assert_eq!(preferences.language.as_deref(), Some("en_us"));
     assert_eq!(preferences.settings.instance_defaults.memory_mb, 8192);
     assert!(preferences.settings.auto_update);
-    assert_eq!(preferences.settings.concurrent_downloads, 64);
+    assert_eq!(preferences.settings.network.concurrent_downloads, 64);
     assert_eq!(preferences.settings.network.timeout_secs, 30);
 }
 

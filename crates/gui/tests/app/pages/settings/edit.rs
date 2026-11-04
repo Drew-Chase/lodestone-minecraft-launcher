@@ -12,7 +12,7 @@ fn each_edit_writes_its_own_value() {
     assert!(!values.auto_update);
     assert!(values.beta_channel);
     assert!(!values.auto_update_game_versions);
-    assert_eq!(values.concurrent_downloads, 11);
+    assert_eq!(values.network.concurrent_downloads, 11);
 }
 
 #[test]
@@ -20,7 +20,7 @@ fn an_edit_leaves_the_other_values_alone() {
     let mut values = SettingsValues::default();
     Edit::BetaChannel(true).apply(&mut values);
     assert!(values.auto_update);
-    assert_eq!(values.concurrent_downloads, 64);
+    assert_eq!(values.network.concurrent_downloads, 64);
 }
 
 #[test]
