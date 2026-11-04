@@ -1,6 +1,6 @@
 [package]
 name = "lodestone_launch"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 # Tests mirror src/ under tests/ and are wired in with #[path], so only the
 # integration binaries declared below are separate test targets.
