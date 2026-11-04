@@ -17,7 +17,6 @@ use crate::app::pages::library::instance::Instance;
 use crate::app::pages::login::Message as LoginMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
 use crate::app::pages::settings::accounts::AccountAction;
-use crate::app::pages::showcase::Message as ShowcaseMessage;
 use crate::app::pages::worlds::Message as WorldsMessage;
 use crate::app::perf;
 use crate::app::preferences::{Preferences, SettingsValues};
@@ -316,8 +315,12 @@ impl LodestoneLauncher {
             // variants, add the delegation arm per the `pages` contract.
             LodestoneAppMessage::Settings(SettingsMessage::Navigate(page)) => self.navigate(page),
             LodestoneAppMessage::Settings(SettingsMessage::Save) => self.save_settings(),
-            LodestoneAppMessage::Settings(SettingsMessage::OpenInstancesFolder) => super::instances::reveal_folder(self.paths.instances()),
             LodestoneAppMessage::Settings(SettingsMessage::OpenDataFolder) => super::instances::reveal_folder(self.paths.root()),
+            LodestoneAppMessage::Settings(SettingsMessage::ChooseDataFolder) => self.choose_data_folder(),
+            LodestoneAppMessage::Settings(SettingsMessage::UseDefaultDataFolder) => self.use_default_data_folder(),
+            LodestoneAppMessage::DataFolderPicked(folder) => self.data_folder_picked(folder),
+            LodestoneAppMessage::DataFolderAnswered { folder, confirmed } => self.data_folder_answered(folder, confirmed),
+            LodestoneAppMessage::DataFolderMoved { folder, result } => self.data_folder_moved(folder, result),
             LodestoneAppMessage::Settings(SettingsMessage::ClearLocalData) => self.ask_clear_local_data(),
             LodestoneAppMessage::Settings(SettingsMessage::Account(action)) => match action {
                 AccountAction::MakePrimary(index) => self.switch_account(index),
@@ -325,9 +328,7 @@ impl LodestoneLauncher {
                 AccountAction::Add => self.add_account(),
             },
             LodestoneAppMessage::Settings(message) => self.settings.update(message).map(LodestoneAppMessage::Settings),
-            LodestoneAppMessage::Showcase(ShowcaseMessage::Navigate(page)) => self.navigate(page),
             // Every page's language picker routes through the same handler.
-            LodestoneAppMessage::Showcase(ShowcaseMessage::SelectLanguage(code)) => select_language(code),
             LodestoneAppMessage::Login(LoginMessage::SelectLanguage(code)) => select_language(code),
             // Sign-in and account handling lives in `auth.rs`.
             LodestoneAppMessage::Login(message) => self.update_login(message),
@@ -387,10 +388,6 @@ impl LodestoneLauncher {
                     Err(error) => warn!("Auth services unreachable: {error}"),
                 }
                 self.auth_status = Some(result);
-                Task::none()
-            }
-            LodestoneAppMessage::Showcase(message) => {
-                self.showcase.update(message);
                 Task::none()
             }
             // Answering resolves the task `Alerts::show` handed out.

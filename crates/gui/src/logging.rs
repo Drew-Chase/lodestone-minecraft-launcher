@@ -238,7 +238,7 @@ impl<'a> MakeWriter<'a> for LogWriter {
 
 /// Initialise tracing with rolling, multi-level file logs plus console output.
 ///
-/// Writes a `logs/` directory next to the running executable containing:
+/// Writes a `logs/` directory in the launcher's config folder containing:
 /// - `debug.log`  — every level (TRACE..=ERROR), human readable
 /// - `latest.log` — INFO and above
 /// - `error.log`  — ERROR only
@@ -310,10 +310,9 @@ pub fn setup_logging() -> color_eyre::Result<()> {
     Ok(())
 }
 
-/// `logs/` directory next to the current executable, created if missing.
+/// `logs/` in the launcher's config folder, created if missing.
 fn logs_dir() -> io::Result<PathBuf> {
-    let exe = std::env::current_exe()?;
-    let dir = exe.parent().unwrap_or_else(|| Path::new(".")).join("logs");
+    let dir = lodestone_launcher::logs_dir().ok_or_else(|| io::Error::other("no config directory for the logs"))?;
     fs::create_dir_all(&dir)?;
     Ok(dir)
 }

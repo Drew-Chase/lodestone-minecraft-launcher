@@ -5,7 +5,6 @@ pub mod backdrop;
 pub mod badge;
 pub mod brand_tag;
 pub mod button;
-pub mod card;
 pub mod carousel;
 pub mod checkbox;
 pub mod context_menu;
@@ -49,7 +48,6 @@ pub mod world_card;
 
 pub use alert::Alerts;
 pub use button::TextButton;
-pub use card::Card;
 pub use dropdown::Dropdown;
 pub use icon_button::IconButton;
 pub use menu::MenuItem;

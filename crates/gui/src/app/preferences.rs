@@ -27,6 +27,10 @@ pub struct Preferences {
     /// scans these before the standard folders.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub launcher_folders: std::collections::BTreeMap<String, PathBuf>,
+    /// The folder the launcher keeps its data in: the instances, Java runtimes, assets and libraries. `None` is the default
+    /// folder. It sits here, outside the data, so the launcher finds it before it opens the data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_folder: Option<PathBuf>,
     /// The values the Settings page saves. They are flattened into the file's top level.
     #[serde(flatten)]
     pub settings: SettingsValues,

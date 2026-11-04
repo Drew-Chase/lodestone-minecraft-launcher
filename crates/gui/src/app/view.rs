@@ -6,6 +6,7 @@ use crate::app::components::hint;
 use crate::app::components::page::{MAX_CONTENT_WIDTH, content_width};
 use crate::app::components::sidebar::{game_block, sidebar as sidebar_view};
 use crate::app::coop_sync;
+use crate::app::data_folder;
 use crate::app::downloads::{self, Pending};
 use crate::app::lang;
 use crate::app::launch::GameMessage;
@@ -159,6 +160,11 @@ impl LodestoneLauncher {
             },
             _ => Space::new().into(),
         };
+        // The cover for a data move sits above every dialog, so nothing runs on the folder while it moves.
+        let moving: Element<'_, LodestoneAppMessage> = match self.data_move.as_deref() {
+            Some(to) => data_folder::moving_cover(to),
+            None => Space::new().into(),
+        };
         // The overlay sits under the resize handles and above everything else. It is an empty slot unless
         // the `perf` feature shows it, so the layers keep their tree positions either way.
         let hud: Element<'_, LodestoneAppMessage> = perf::overlay(&self.perf);
@@ -173,6 +179,7 @@ impl LodestoneLauncher {
                 coop,
                 viewer,
                 alert,
+                moving,
                 hud,
                 ResizeHandles::new(LodestoneAppMessage::WindowStartResize)
                     .gutter(4.0)
@@ -262,7 +269,6 @@ impl LodestoneLauncher {
             Page::Instance => "view.instance",
             Page::Resource => "view.resource",
             Page::Settings => "view.settings",
-            Page::Showcase => "view.showcase",
             Page::Discover => "view.discover",
             Page::Worlds => "view.worlds",
             Page::Skins => "view.skins",
@@ -296,7 +302,6 @@ impl LodestoneLauncher {
                     self.face.as_ref(),
                 )
                 .map(LodestoneAppMessage::Settings),
-            Page::Showcase => self.showcase.view().map(LodestoneAppMessage::Showcase),
             Page::Discover => self.discover.view(self.window_size).map(LodestoneAppMessage::Discover),
             Page::Worlds => self.worlds.view(self.window_size).map(LodestoneAppMessage::Worlds),
             Page::Skins => self

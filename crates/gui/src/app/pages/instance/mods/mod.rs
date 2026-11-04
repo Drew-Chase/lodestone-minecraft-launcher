@@ -14,7 +14,8 @@ use std::collections::{HashMap, HashSet};
 
 use iced::widget::scrollable::AbsoluteOffset;
 use iced::widget::{Id, Text, column, container, operation, responsive, text_input};
-use iced::{Element, Fill, Padding, Task, alignment};
+use iced::{Background, Border, Element, Fill, Padding, Task, alignment};
+use iced_color_extension::rgb;
 use lodestone_platforms::ContentVersion;
 
 pub use dialog::{Associate, Dependencies, Dialog, Line, Message as DialogMessage, Picked, Switch};
@@ -32,18 +33,22 @@ use crate::app::shared_library::ModSource;
 use crate::app::theme::{color, fonts};
 use aurora_leaf::Icon;
 
-/// The active filter: a case-insensitive match on name or author.
+/// The active filter: a case-insensitive match on name or author, and the updates chip, which narrows the list to the
+/// mods the platforms have a newer release for.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ModFilter {
     pub query: String,
+    pub updates_only: bool,
 }
 
 impl ModFilter {
-    /// Whether `entry` passes the filter.
-    pub fn matches(&self, entry: &ModFile) -> bool {
-        self.query.is_empty()
-            || contains_ignore_case(&entry.name, &self.query)
-            || entry.author.as_deref().is_some_and(|author| contains_ignore_case(author, &self.query))
+    /// Whether `row` passes the filter.
+    pub fn matches(&self, row: &Row) -> bool {
+        let entry = &row.file;
+        (!self.updates_only || row.update.is_some())
+            && (self.query.is_empty()
+                || contains_ignore_case(&entry.name, &self.query)
+                || entry.author.as_deref().is_some_and(|author| contains_ignore_case(author, &self.query)))
     }
 }
 
@@ -86,6 +91,8 @@ pub struct State {
 pub enum Message {
     /// The filter text changed.
     Query(String),
+    /// The updates chip was pressed. `true` narrows the list to the mods with a newer release.
+    Updates(bool),
     /// A mod's switch was flipped.
     Toggle { index: usize, enabled: bool },
     /// Add Mod was pressed. The root opens Discover on the instance's mods.
@@ -213,9 +220,11 @@ impl State {
         match message {
             Message::Query(query) => {
                 self.filter.query = query;
-                self.refilter();
-                self.scroll_y = 0.0;
-                operation::scroll_to(Id::new(list::SCROLL_ID), AbsoluteOffset { x: None, y: Some(0.0) })
+                self.filter_changed()
+            }
+            Message::Updates(updates_only) => {
+                self.filter.updates_only = updates_only;
+                self.filter_changed()
             }
             Message::Toggle { index, enabled } => {
                 if let Some(row) = self.rows.get_mut(index) {
@@ -253,15 +262,27 @@ impl State {
         }
     }
 
+    /// Applies a change of the filter: the list is filtered again, and scrolled back to its top.
+    fn filter_changed(&mut self) -> Task<Message> {
+        self.refilter();
+        self.scroll_y = 0.0;
+        operation::scroll_to(Id::new(list::SCROLL_ID), AbsoluteOffset { x: None, y: Some(0.0) })
+    }
+
     fn refilter(&mut self) {
         let visible = self
             .rows
             .iter()
             .enumerate()
-            .filter(|(_, row)| self.filter.matches(&row.file))
+            .filter(|(_, row)| self.filter.matches(row))
             .map(|(index, _)| index)
             .collect();
         self.visible = visible;
+    }
+
+    /// How many mods have a newer release the platforms know of.
+    fn update_count(&self) -> usize {
+        self.rows.iter().filter(|row| row.update.is_some()).count()
     }
 
     /// The tab: the filter bar, which stays at the top while the list scrolls beneath it, then the list. The list's
@@ -318,12 +339,47 @@ impl State {
                 .padding(Padding::new(0.0).left(14).right(14).top(10).bottom(10))
                 .size(13)
                 .width(Fill),
+            updates_chip(self.filter.updates_only, self.update_count()),
             hint(add, add_hint),
         ]
         .spacing(10)
         .align_y(alignment::Vertical::Center)
         .into()
     }
+}
+
+/// The chip that narrows the list to the mods with a newer release, with how many there are. It lights while it is on, as
+/// the Worlds page's filter chips do.
+fn updates_chip(active: bool, count: usize) -> Element<'static, Message> {
+    let (ink, weight) = if active {
+        (color::text_headline(), fonts::Inter::SEMI_BOLD)
+    } else {
+        (color::text_muted(), fonts::Inter::MEDIUM)
+    };
+    let content = iced::widget::row![
+        Text::new(lang::t("instance.mods.updates_filter")).size(12).font(weight).color(ink),
+        Text::new(count.to_string())
+            .size(11)
+            .font(fonts::JetBrainsMono::REGULAR)
+            .color(color::text_placeholder()),
+    ]
+    .spacing(8)
+    .align_y(alignment::Vertical::Center);
+    container(
+        TextButton::content(content)
+            .padding(Padding::new(0.0).left(12.0).right(12.0).top(7.0).bottom(7.0))
+            .on_press(Message::Updates(!active)),
+    )
+    .style(move |_| container::Style {
+        background: active.then_some(Background::Color(rgb!(255, 255, 255, 10%))),
+        border: Border {
+            radius: 999.0.into(),
+            width: if active { 1.0 } else { 0.0 },
+            color: color::surface_line_strong(),
+        },
+        ..container::Style::default()
+    })
+    .into()
 }
 
 #[cfg(test)]

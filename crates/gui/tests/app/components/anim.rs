@@ -29,13 +29,3 @@ fn fade_multiplies_alpha() {
     assert!((faded.a - 0.5).abs() < 1e-6);
     assert!((faded.r - color!(0x22ff84).r).abs() < 1e-6);
 }
-
-#[test]
-fn mix_hits_endpoints() {
-    let a = color!(0x000000);
-    let b = color!(0xffffff);
-    assert_eq!(mix(a, b, 0.0), a);
-    assert_eq!(mix(a, b, 1.0), b);
-    let middle = mix(a, b, 0.5);
-    assert!((middle.r - 0.5).abs() < 1e-6);
-}

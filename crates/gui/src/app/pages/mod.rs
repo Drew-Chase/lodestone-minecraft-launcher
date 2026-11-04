@@ -26,7 +26,6 @@ pub mod news;
 pub mod resource;
 pub mod servers;
 pub mod settings;
-pub mod showcase;
 pub mod skins;
 pub mod worlds;
 
@@ -64,8 +63,6 @@ pub enum Page {
     Friends,
     /// Launcher preferences.
     Settings,
-    /// Style-guide gallery of every core control.
-    Showcase,
 }
 
 impl Page {
@@ -83,7 +80,6 @@ impl Page {
             Page::Instance => "Instance",
             Page::Resource => "Resource",
             Page::Settings => "Settings",
-            Page::Showcase => "Showcase",
         }
     }
 }

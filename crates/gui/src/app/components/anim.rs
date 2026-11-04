@@ -68,17 +68,6 @@ pub fn fade(color: Color, alpha: f32) -> Color {
     Color { a: color.a * alpha, ..color }
 }
 
-/// Linear interpolation between two colors.
-pub fn mix(from: Color, to: Color, t: f32) -> Color {
-    let t = t.clamp(0.0, 1.0);
-    Color {
-        r: from.r + (to.r - from.r) * t,
-        g: from.g + (to.g - from.g) * t,
-        b: from.b + (to.b - from.b) * t,
-        a: from.a + (to.a - from.a) * t,
-    }
-}
-
 #[cfg(test)]
 #[path = "../../../tests/app/components/anim.rs"]
 mod tests;

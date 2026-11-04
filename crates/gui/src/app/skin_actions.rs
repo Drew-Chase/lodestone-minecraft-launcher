@@ -76,7 +76,7 @@ impl LodestoneLauncher {
     }
 
     /// The task that reads the skin folders.
-    fn scan_task(&self) -> Task<LodestoneAppMessage> {
+    pub(super) fn scan_task(&self) -> Task<LodestoneAppMessage> {
         Task::perform(scan_folders(self.paths.skins()), LodestoneAppMessage::SkinsLoaded)
     }
 

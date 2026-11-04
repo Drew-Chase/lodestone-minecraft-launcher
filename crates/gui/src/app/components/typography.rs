@@ -22,6 +22,8 @@
 //! `eyebrow` uppercases its content at runtime. `display` is fixed at 72px —
 //! chain `.size(40)` where that is too large.
 
+#![allow(dead_code, reason = "the type scale is kept whole; no page uses every style yet")]
+
 use crate::app::theme::{color, fonts};
 use iced::widget::Text;
 use iced::widget::text::IntoFragment;

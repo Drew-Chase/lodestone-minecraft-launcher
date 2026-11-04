@@ -1,8 +1,6 @@
 //! The General tab: where the launcher starts and where instances live, how it updates itself, how many files an install
 //! fetches at once, and the window every instance opens with.
 
-use std::path::Path;
-
 use iced::widget::{column, row, text};
 use iced::{Element, Fill, alignment};
 
@@ -14,6 +12,7 @@ use crate::app::components::setting_row::described_setting;
 use crate::app::components::{Select, TextButton, Toggle};
 use crate::app::lang;
 use crate::app::launch_settings::LaunchChange;
+use crate::app::paths::{self, LauncherPaths};
 use crate::app::preferences::{CONCURRENT_DOWNLOADS, SettingsValues, StartupPage};
 use crate::app::theme::{color, fonts};
 
@@ -23,10 +22,13 @@ const STARTUP_PAGES: [StartupPage; 4] = [StartupPage::Library, StartupPage::News
 /// The width of the selects on this tab.
 const SELECT_WIDTH: f32 = 240.0;
 
+/// The width the data folder's path wraps within.
+const FOLDER_PATH_WIDTH: f32 = 300.0;
+
 /// The General tab: the startup and folder rows, the update switches, the download count and the window.
-pub fn view<'a>(shown: Shown<'a>, resolution: &'a ResolutionDraft, settings: &'a SettingsValues, instances: &'a Path) -> Element<'a, Message> {
+pub fn view<'a>(shown: Shown<'a>, resolution: &'a ResolutionDraft, settings: &'a SettingsValues, paths: &'a LauncherPaths) -> Element<'a, Message> {
     let startup = vec![
-        folder_row(instances),
+        folder_row(paths),
         startup_row(settings.startup_page),
         game_start_row(shown.values.hide_launcher),
         game_exit_row(shown.values.quit_after_exit),
@@ -54,19 +56,27 @@ pub fn view<'a>(shown: Shown<'a>, resolution: &'a ResolutionDraft, settings: &'a
     .into()
 }
 
-/// The folder instances live in, shown with the home folder as `~`, and a button that opens it.
-fn folder_row<'a>(instances: &Path) -> Element<'a, Message> {
-    let path = text(display_path(instances))
+/// The folder the launcher keeps its data in, shown with the home folder as `~`, with buttons that open it and move it. A
+/// portable launcher's folder is its own, so it has no move buttons.
+fn folder_row<'a>(paths: &LauncherPaths) -> Element<'a, Message> {
+    let root = paths.root();
+    // The path wraps within a fixed width, and the buttons sit under it, so a long path never squeezes the row's label.
+    let path = text(display_path(&root))
         .size(12)
         .font(fonts::JetBrainsMono::REGULAR)
         .color(color::text_muted())
-        .width(Fill);
-    let control = row![
-        path,
-        TextButton::ghost(lang::t("settings.general.open_folder")).on_press(Message::OpenInstancesFolder),
-    ]
-    .spacing(12)
-    .align_y(alignment::Vertical::Center);
+        .width(FOLDER_PATH_WIDTH)
+        .align_x(alignment::Horizontal::Right);
+    let mut buttons = row![TextButton::ghost(lang::t("settings.general.open_folder")).on_press(Message::OpenDataFolder)]
+        .spacing(12)
+        .align_y(alignment::Vertical::Center);
+    if !paths::is_portable() {
+        buttons = buttons.push(TextButton::ghost(lang::t("settings.general.change_folder")).on_press(Message::ChooseDataFolder));
+        if root != paths::default_data_root() {
+            buttons = buttons.push(TextButton::ghost(lang::t("settings.general.default_folder")).on_press(Message::UseDefaultDataFolder));
+        }
+    }
+    let control = column![path, buttons].spacing(10).align_x(alignment::Horizontal::Right);
     described_setting(lang::t("settings.general.folder"), lang::t("settings.general.folder_hint"), control)
 }
 

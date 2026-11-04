@@ -21,7 +21,6 @@ use crate::app::pages::news::Message as NewsMessage;
 use crate::app::pages::resource::Message as ResourceMessage;
 use crate::app::pages::servers::Message as ServersMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
-use crate::app::pages::showcase::Message as ShowcaseMessage;
 use crate::app::pages::skins::previews::Drawn;
 use crate::app::pages::skins::{Appearance, Message as SkinsMessage, Scan};
 use crate::app::pages::worlds::Message as WorldsMessage;
@@ -66,7 +65,6 @@ pub enum LodestoneAppMessage {
     Resource(ResourceMessage),
     Instance(InstanceMessage),
     Settings(SettingsMessage),
-    Showcase(ShowcaseMessage),
     /// The download queue: an install's progress or result, and the Downloads popover's controls.
     Downloads(DownloadsMessage),
     /// The notifications the database keeps: the bell's panel, and the reads and writes that answer it.
@@ -145,6 +143,18 @@ pub enum LodestoneAppMessage {
     },
     /// The global defaults were written to the preferences, or the write failed.
     SettingsSaved(Result<(), String>),
+    /// The folder picker answered, with the folder picked. A cancel sends `None`.
+    DataFolderPicked(Option<std::path::PathBuf>),
+    /// The question whether to move the launcher's data to `folder` was answered.
+    DataFolderAnswered {
+        folder: std::path::PathBuf,
+        confirmed: bool,
+    },
+    /// The launcher's data moved to `folder`, or the move failed, and the data stayed where it was.
+    DataFolderMoved {
+        folder: std::path::PathBuf,
+        result: Result<(), String>,
+    },
     /// A reinstall of a version's game files finished, or failed. `job` is its queue entry.
     ReinstallFinished {
         job: u64,

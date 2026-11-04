@@ -3,6 +3,7 @@ mod boot;
 mod clipboard;
 pub mod components;
 mod coop_sync;
+mod data_folder;
 pub mod database;
 mod discover;
 mod downloads;
@@ -53,7 +54,6 @@ use crate::app::pages::library::Library;
 use crate::app::pages::login::Login;
 use crate::app::pages::resource::ResourcePage;
 use crate::app::pages::settings::Settings;
-use crate::app::pages::showcase::Showcase;
 use crate::app::paths::LauncherPaths;
 use crate::app::preferences::SettingsValues;
 use crate::app::router::Router;
@@ -114,7 +114,6 @@ pub struct LodestoneLauncher {
     /// When each instance's mods were last checked against their platforms, and what the check found, for the session.
     mod_checks: HashMap<String, mod_actions::ModCheck>,
     settings: Settings,
-    showcase: Showcase,
     /// The Discover page: the platform searches, and the results on screen.
     discover: Discover,
     /// The resource page: the project it shows, and what it has loaded of it.
@@ -207,6 +206,8 @@ pub struct LodestoneLauncher {
     probe_step: u32,
     /// The F3 performance overlay. It shows nothing unless built with the `perf` feature.
     perf: perf::Hud,
+    /// The folder the data is moving to, while its move runs. The window is covered until it lands.
+    data_move: Option<std::path::PathBuf>,
 }
 impl Default for LodestoneLauncher {
     fn default() -> Self {
@@ -219,7 +220,6 @@ impl Default for LodestoneLauncher {
             instance_page: InstancePage::default(),
             mod_checks: HashMap::new(),
             settings: Settings::default(),
-            showcase: Showcase::default(),
             discover: Discover::new(discover::opening_source()),
             resource: ResourcePage::default(),
             worlds: crate::app::pages::worlds::State::default(),
@@ -263,6 +263,7 @@ impl Default for LodestoneLauncher {
             updater: updater::Updater::default(),
             art: components::art_cache::ArtCache::default(),
             perf: perf::Hud::default(),
+            data_move: None,
         }
     }
 }

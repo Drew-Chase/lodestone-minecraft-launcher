@@ -11,7 +11,6 @@ fn every_page_has_a_title() {
         Page::Servers,
         Page::Friends,
         Page::Settings,
-        Page::Showcase,
     ] {
         assert!(!page.title().is_empty(), "{page:?} needs a title");
     }

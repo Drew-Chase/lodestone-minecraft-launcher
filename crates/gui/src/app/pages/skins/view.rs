@@ -28,6 +28,9 @@ const VIEWER_MIN: f32 = 300.0;
 const COLUMN_GAP: f32 = 20.0;
 const GAP: f32 = 12.0;
 
+/// The room the list keeps clear on its right for the scrollbar: its track, and a gap before the track.
+const SCROLLBAR_INSET: f32 = scrollbar::TRACK_WIDTH + GAP;
+
 /// A skin's tile, and its 3D preview inside it. The preview is shown at 96 by 128.
 const TILE_WIDTH: f32 = 112.0;
 const TILE_HEIGHT: f32 = 170.0;
@@ -45,10 +48,12 @@ const CAPE_PICTURE_HEIGHT: f32 = 64.0;
 pub(super) fn view<'a>(page: &'a Skins, account: Account<'a>, width: f32) -> Element<'a, Message> {
     let viewer_width = (width * VIEWER_SHARE).max(VIEWER_MIN);
     let list_width = (width - viewer_width - COLUMN_GAP).max(TILE_WIDTH);
-    let columns = ((list_width + GAP) / (TILE_WIDTH + GAP)).floor().max(1.0) as usize;
+    // The scrollbar's track lies over the list's right edge, so the capes and the sections keep clear of it.
+    let inner_width = (list_width - SCROLLBAR_INSET).max(TILE_WIDTH);
+    let columns = ((inner_width + GAP) / (TILE_WIDTH + GAP)).floor().max(1.0) as usize;
     let list = column![
-        container(capes(page, account, list_width)).padding(Padding::new(0.0).top(24.0)),
-        scrollbar::scroll(container(sections(page, columns)).padding(Padding::new(0.0).top(12.0).bottom(24.0)))
+        container(capes(page, account, inner_width)).padding(Padding::new(0.0).top(24.0).right(SCROLLBAR_INSET)),
+        scrollbar::scroll(container(sections(page, columns)).padding(Padding::new(0.0).top(12.0).bottom(24.0).right(SCROLLBAR_INSET)))
             .width(Fill)
             .height(Fill),
     ]

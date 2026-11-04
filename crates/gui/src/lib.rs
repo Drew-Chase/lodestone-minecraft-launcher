@@ -1,5 +1,6 @@
 mod app;
 use crate::app::LodestoneLauncher;
+pub use app::paths::logs_dir;
 /// Measurement for the `perf` feature. The binary starts it, so it is public for `main`'s logging.
 pub use app::perf;
 use app::theme::{color, fonts};
@@ -7,9 +8,16 @@ use aurora_leaf::FontFamily;
 use color_eyre::Result;
 use tracing::info;
 
-pub fn run() -> Result<()> {
-    // A launcher that carries a package boots as a portable launcher, with its own roots, before the window opens.
+/// Chooses the launcher's roots: a launcher that carries a package takes its own, so its logs and files stay apart.
+/// Call it before [`logs_dir`] and before logging starts.
+pub fn prepare() {
     app::portable::prepare();
+}
+
+pub fn run() -> Result<()> {
+    if let Some(portable) = app::portable::launch() {
+        info!("Starting the portable launcher for {}", portable.manifest.name);
+    }
     info!("Starting Lodestone Launcher v{}#{}", LodestoneLauncher::VERSION, LodestoneLauncher::BUILD);
     iced::application(LodestoneLauncher::boot, LodestoneLauncher::update, LodestoneLauncher::view)
         .title(LodestoneLauncher::TITLE)

@@ -5,6 +5,7 @@ use crate::app::install::catalog;
 use crate::app::lang;
 use crate::app::pages::library::LibraryView;
 use crate::app::pages::login::Message as LoginMessage;
+use crate::app::paths::{self, LauncherPaths};
 use crate::app::preferences::Preferences;
 use crate::app::storage::StoredAccount;
 use iced::window::{Level, Position};
@@ -24,8 +25,11 @@ impl LodestoneLauncher {
         }
         preferences.settings.apply();
         let id = window::latest();
+        // The data folder is read before the database opens, so every path the launcher builds starts in the right place.
+        let data = LauncherPaths::new(paths::resolve_data_root(preferences.data_folder.as_deref()));
         let mut app = Self {
             settings_values: preferences.settings,
+            paths: data,
             ..Self::default()
         };
         let mut tasks = vec![id.map(LodestoneAppMessage::WindowCreation)];

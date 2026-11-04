@@ -172,6 +172,23 @@ fn an_update_outlives_a_rescan_until_the_check_clears_it() {
 }
 
 #[test]
+fn the_updates_chip_narrows_the_list_to_the_mods_with_a_newer_release() {
+    let mut state = sample();
+    let found = HashMap::from([("lithium.jar".to_string(), release("lithium-2"))]);
+    state.apply_checks(Vec::new(), found, &["sodium.jar".to_string(), "lithium.jar".to_string()]);
+    assert_eq!(state.update_count(), 1);
+
+    let _ = state.update(Message::Updates(true));
+    assert_eq!(visible_names(&state), ["Lithium"]);
+
+    let _ = state.update(Message::Query("sod".to_string()));
+    assert!(state.visible.is_empty(), "the chip and the text both have to pass");
+
+    let _ = state.update(Message::Updates(false));
+    assert_eq!(visible_names(&state), ["Sodium"]);
+}
+
+#[test]
 fn scrolling_is_remembered_and_a_new_filter_goes_back_to_the_top() {
     let mut state = sample();
     let _ = state.update(Message::Scrolled(300.0));

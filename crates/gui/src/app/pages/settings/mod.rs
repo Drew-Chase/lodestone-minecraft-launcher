@@ -14,7 +14,7 @@ mod nav;
 pub mod network;
 mod privacy;
 
-use std::path::{MAIN_SEPARATOR, Path, PathBuf};
+use std::path::{MAIN_SEPARATOR, Path};
 
 use aurora_leaf::Icon;
 use iced::widget::{Id, Space, column, container, row, stack, text, text_editor};
@@ -49,8 +49,6 @@ pub struct Settings {
     values: LaunchSettings,
     /// The launcher's folders. The Java tab looks for the runtimes installed in them.
     paths: LauncherPaths,
-    /// The folder every instance keeps its files in, which the General tab shows.
-    instances_dir: PathBuf,
     /// The section at the top of the page, which the sidebar lights.
     tab: Tab,
     /// Where each section's top sits, measured on the last scroll or press.
@@ -108,10 +106,12 @@ pub enum Message {
     MemoryLoaded(u32),
     /// An account was switched, signed out of, or added. The root carries it out.
     Account(accounts::AccountAction),
-    /// Opens the folder instances are kept in. The root reveals it.
-    OpenInstancesFolder,
     /// Opens the folder the launcher keeps its data in. The root reveals it.
     OpenDataFolder,
+    /// Asks for another folder to move the data to. The root asks, and moves it when the user confirms.
+    ChooseDataFolder,
+    /// Moves the data back to the default folder. The root asks, as it does for a folder picked.
+    UseDefaultDataFolder,
     /// Saves the saved settings to a file the user picks.
     ExportSettings,
     /// Asks before the saved settings and the sign-ins are cleared. The root asks.
@@ -207,7 +207,6 @@ impl Default for Settings {
             draft,
             values,
             paths: LauncherPaths::default(),
-            instances_dir: PathBuf::new(),
             tab: Tab::default(),
             offsets: Vec::new(),
             scroll: 0.0,
@@ -229,12 +228,17 @@ impl Settings {
     pub fn sync(&mut self, saved: &SettingsValues, paths: &LauncherPaths) {
         self.draft.reload(saved);
         self.paths = paths.clone();
-        self.instances_dir = paths.instances();
         self.tab = Tab::default();
         self.offsets.clear();
         self.scroll = 0.0;
         self.at_end = false;
         self.refresh();
+    }
+
+    /// Takes the launcher's folders once the data has moved, so the folder row and the Java runtimes follow it.
+    pub fn set_paths(&mut self, paths: &LauncherPaths) {
+        self.paths = paths.clone();
+        self.runtimes = installed_runtimes(&self.paths, &self.java.bundled);
     }
 
     /// Commits the draft, and returns the values for the root to apply and save.
@@ -265,7 +269,8 @@ impl Settings {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Navigate(_)
-            | Message::OpenInstancesFolder
+            | Message::ChooseDataFolder
+            | Message::UseDefaultDataFolder
             | Message::OpenDataFolder
             | Message::ClearLocalData
             | Message::Save
@@ -417,10 +422,7 @@ impl Settings {
             ceiling_gb: self.ceiling_gb,
         };
         let sections = column![
-            block(
-                Tab::General,
-                general::view(shown, &self.resolution, self.draft.current(), &self.instances_dir),
-            ),
+            block(Tab::General, general::view(shown, &self.resolution, self.draft.current(), &self.paths),),
             block(Tab::Accounts, accounts::view(accounts, face)),
             block(Tab::JavaMemory, java_memory::view(shown, &self.jvm, &self.runtimes)),
             block(Tab::Appearance, appearance::view(self.draft.current(), &self.custom_hex)),
@@ -476,7 +478,7 @@ fn installed_runtimes(paths: &LauncherPaths, bundled: &[BundledJava]) -> Vec<Run
 }
 
 /// The path with the home folder written as `~`, as the rest of the page shows it.
-pub(super) fn display_path(path: &Path) -> String {
+pub(crate) fn display_path(path: &Path) -> String {
     match dirs::home_dir().and_then(|home| path.strip_prefix(&home).ok().map(Path::to_path_buf)) {
         Some(rest) => format!("~{MAIN_SEPARATOR}{}", rest.display()),
         None => path.display().to_string(),

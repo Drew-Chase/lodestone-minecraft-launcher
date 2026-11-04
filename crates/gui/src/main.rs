@@ -5,6 +5,8 @@ mod logging;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    // The roots come first: the logs go to the config folder of the roots the launcher runs under.
+    lodestone_launcher::prepare();
     if let Err(e) = logging::setup_logging() {
         eprintln!(": {e}");
     }

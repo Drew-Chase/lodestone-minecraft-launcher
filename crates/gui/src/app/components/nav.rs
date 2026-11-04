@@ -70,8 +70,7 @@ pub struct NavRail<Message> {
     icon_size: f32,
     disabled: bool,
     /// Whether the active item draws the 3px left indicator bar. The
-    /// sidebar suppresses it (its active state is the filled slot alone);
-    /// the style-guide showcase keeps it.
+    /// sidebar suppresses it (its active state is the filled slot alone).
     indicator: bool,
 }
 

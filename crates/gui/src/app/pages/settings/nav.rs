@@ -1,15 +1,14 @@
-//! The Settings sidebar: the six sections, with the one at the top of the page lit, and a link to the component gallery at its
-//! foot. A press scrolls the page to its section, and the page's scroll lights the section it reaches.
+//! The Settings sidebar: the six sections, with the one at the top of the page lit, and the launcher's version and build at
+//! its foot. A press scrolls the page to its section, and the page's scroll lights the section it reaches.
 
 use iced::widget::scrollable::Viewport;
 use iced::widget::{Id, Space, button, column, container, row, text};
 use iced::{Background, Border, Element, Fill, Padding, Task, alignment};
 
 use super::{Message, Tab};
-use crate::app::components::TextButton;
+use crate::app::LodestoneLauncher;
 use crate::app::components::scroll_spy;
 use crate::app::lang;
-use crate::app::pages::Page;
 use crate::app::theme::{color, fonts, utility};
 
 /// The sidebar's width.
@@ -46,22 +45,21 @@ fn anchors() -> Vec<(Tab, Id)> {
     Tab::ALL.into_iter().map(|tab| (tab, tab.anchor_id())).collect()
 }
 
-/// The sidebar: an eyebrow, the six sections, and the component gallery link.
+/// The sidebar: an eyebrow, the six sections, and the launcher's version and build.
 pub fn view<'a>(active: Tab) -> Element<'a, Message> {
     let tabs = Tab::ALL
         .into_iter()
         .fold(column![].spacing(4), |list, tab| list.push(item(tab, tab == active)));
-    column![
-        crate::eyebrow!(lang::t("settings.nav.eyebrow")),
-        tabs,
-        Space::new().height(Fill),
-        TextButton::ghost(lang::t("settings.component_gallery")).on_press(Message::Navigate(Page::Showcase)),
-    ]
-    .spacing(18)
-    .padding(Padding::new(0.0).top(30.0).bottom(24.0).left(16.0).right(16.0))
-    .width(WIDTH)
-    .height(Fill)
-    .into()
+    let version = text(format!("v{} · {}", LodestoneLauncher::VERSION, LodestoneLauncher::BUILD))
+        .size(11)
+        .font(fonts::JetBrainsMono::REGULAR)
+        .color(color::text_placeholder());
+    column![crate::eyebrow!(lang::t("settings.nav.eyebrow")), tabs, Space::new().height(Fill), version,]
+        .spacing(18)
+        .padding(Padding::new(0.0).top(30.0).bottom(24.0).left(16.0).right(16.0))
+        .width(WIDTH)
+        .height(Fill)
+        .into()
 }
 
 /// One section: its icon and title, lit when it is the section at the top of the page.

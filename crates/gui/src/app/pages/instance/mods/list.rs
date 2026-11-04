@@ -11,12 +11,13 @@ use iced::{Background, Border, Color, Element, Fill, Length, Padding, alignment,
 use iced_color_extension::rgb;
 
 use super::menu::{self, Menu};
-use super::{Message, Row, State};
-use crate::app::components::Toggle;
+use super::{Action, Message, Row, State};
 use crate::app::components::badge::Badge;
+use crate::app::components::button::Variant;
 use crate::app::components::context_menu::ContextMenu;
 use crate::app::components::dropdown::Dropdown;
 use crate::app::components::panel::{hairline, panel_with_padding};
+use crate::app::components::{TextButton, Toggle};
 use crate::app::lang;
 use crate::app::perf;
 use crate::app::theme::{color, fonts, utility};
@@ -121,6 +122,20 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
     ]
     .spacing(4);
 
+    // A mod with a newer release shows a button that installs it, the same action as the menu's Update row.
+    let update = entry.update.as_ref().map(|release| {
+        TextButton::labeled_icon(
+            Icon::lucide().arrow_up(),
+            lang::t_with("instance.mods.menu.update", &[("version", release.version_number.as_str())]),
+            Variant::Primary,
+        )
+        .padding(Padding::new(0.0).left(12.0).right(12.0).top(6.0).bottom(6.0))
+        .disabled(busy)
+        .on_press(Message::Menu {
+            file_name: file.file_name.clone(),
+            action: Some(Action::Update),
+        })
+    });
     let switch = Toggle::new(file.enabled).on_toggle_with(move |enabled| Message::Toggle { index, enabled });
     let more_name = file.file_name.clone();
     let more_actions = actions.clone();
@@ -132,7 +147,13 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
             action: more_actions.get(selected).copied().flatten(),
         });
 
-    let body = row![tile, details, Space::new().width(Fill), switch, more]
+    let mut body = row![tile, details, Space::new().width(Fill)];
+    if let Some(update) = update {
+        body = body.push(update);
+    }
+    let body = body
+        .push(switch)
+        .push(more)
         .spacing(14)
         .align_y(alignment::Vertical::Center)
         .height(Length::Fixed(ROW_HEIGHT));

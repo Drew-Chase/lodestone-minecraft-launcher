@@ -4,7 +4,7 @@
 //! is downloaded once: the Java runtimes, the version JSON and client jars, the
 //! libraries, the asset index and objects, extracted natives and log configs.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// The launcher's data root and the folders under it.
@@ -107,9 +107,9 @@ impl LauncherPaths {
 }
 
 impl Default for LauncherPaths {
-    /// `<data dir>/lodestone`, the folder the instance list has always used. A portable launcher uses its own root.
+    /// The default data folder, or the portable root when the launcher is portable.
     fn default() -> Self {
-        Self::new(data_root())
+        Self::new(resolve_data_root(None))
     }
 }
 
@@ -142,12 +142,28 @@ pub fn config_dir() -> Option<PathBuf> {
     }
 }
 
-/// The data root: `<data dir>/lodestone`, or the portable root when the launcher is portable.
-fn data_root() -> PathBuf {
+/// The folder the launcher writes its logs to: `logs/` in the config folder, so a portable launcher's logs go to its own.
+pub fn logs_dir() -> Option<PathBuf> {
+    config_dir().map(|dir| dir.join("logs"))
+}
+
+/// The data folder the launcher keeps unless the user chooses another: `<data dir>/lodestone`.
+pub fn default_data_root() -> PathBuf {
+    dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("lodestone")
+}
+
+/// The data root the launcher works under. A portable launcher uses its own root. Otherwise it uses `chosen`, the folder
+/// the user picked on the Settings page, and the default folder when there is none.
+pub fn resolve_data_root(chosen: Option<&Path>) -> PathBuf {
     match PORTABLE_ROOTS.get() {
         Some(roots) => roots.data.clone(),
-        None => dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("lodestone"),
+        None => chosen.map_or_else(default_data_root, Path::to_path_buf),
     }
+}
+
+/// Whether the launcher is portable. A portable launcher's data folder is its own, and cannot be moved.
+pub fn is_portable() -> bool {
+    PORTABLE_ROOTS.get().is_some()
 }
 
 #[cfg(test)]

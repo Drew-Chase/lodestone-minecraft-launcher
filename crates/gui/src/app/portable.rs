@@ -10,7 +10,6 @@ use iced::widget::{Space, Text, column, container};
 use iced::{Element, Fill, Length, Task, alignment};
 use lodestone_export::format::lodestone::{self, Manifest};
 use lodestone_export::portable::{self as package, Located};
-use tracing::{info, warn};
 
 use super::{LodestoneAppMessage, LodestoneLauncher};
 use crate::app::components::{ProgressBar, TextButton};
@@ -88,8 +87,8 @@ pub enum Prepared {
 }
 
 /// Looks for a package in this launcher's file, or beside it in a macOS app bundle. A launcher that carries one takes
-/// the portable roots, and its window opens as a portable launcher. A package that cannot be read is logged, and the
-/// launcher opens as usual.
+/// the portable roots, and its window opens as a portable launcher. It runs before logging starts, so a failure is
+/// printed rather than logged, and the launcher opens as usual.
 pub fn prepare() {
     let Ok(executable) = std::env::current_exe() else {
         return;
@@ -98,7 +97,7 @@ pub fn prepare() {
         Ok(Some(located)) => located,
         Ok(None) => return,
         Err(error) => {
-            warn!("could not look for a package in the launcher: {error}");
+            eprintln!("could not look for a package in the launcher: {error}");
             return;
         }
     };
@@ -108,11 +107,10 @@ pub fn prepare() {
     {
         Ok(manifest) => manifest,
         Err(error) => {
-            warn!("the launcher's package cannot be read: {error}");
+            eprintln!("the launcher's package cannot be read: {error}");
             return;
         }
     };
-    info!("Starting the portable launcher for {}", manifest.name);
     paths::use_portable_roots(&manifest.id);
     let _ = PACKAGE.set(Portable {
         manifest,

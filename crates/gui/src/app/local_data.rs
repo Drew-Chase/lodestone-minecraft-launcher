@@ -29,7 +29,7 @@ impl LodestoneLauncher {
         }
         info!("Clearing the saved settings and the sign-ins");
         let remove_preferences = Task::future(async {
-            match tokio::task::spawn_blocking(Preferences::remove).await {
+            match tokio::task::spawn_blocking(clear_preferences_keeping_folder).await {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => warn!("Removing the saved settings failed: {error}"),
                 Err(error) => warn!("Removing the saved settings failed: {error}"),
@@ -53,5 +53,19 @@ impl LodestoneLauncher {
         self.adding_account = false;
         let save = self.save_credentials();
         Task::batch([remove_preferences, save, self.navigate(Page::Login)])
+    }
+}
+
+/// Removes the saved settings, but keeps the folder the data is in: the data stays there, so the launcher must still find it.
+fn clear_preferences_keeping_folder() -> Result<(), String> {
+    let data_folder = Preferences::load().data_folder;
+    Preferences::remove()?;
+    match data_folder {
+        Some(data_folder) => Preferences {
+            data_folder: Some(data_folder),
+            ..Preferences::default()
+        }
+        .store(),
+        None => Ok(()),
     }
 }

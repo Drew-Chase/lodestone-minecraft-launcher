@@ -100,3 +100,18 @@ fn located_launcher_folders_round_trip_and_an_older_file_loads_without_them() {
     assert!(Preferences::load_from(&path).launcher_folders.is_empty());
     std::fs::remove_file(&path).ok();
 }
+
+#[test]
+fn a_chosen_data_folder_round_trips_and_the_default_is_left_out_of_the_file() {
+    let path = temp_path("data-folder");
+    let chosen = Preferences {
+        data_folder: Some(PathBuf::from("/mnt/games/lodestone")),
+        ..Preferences::default()
+    };
+    Preferences::store_to(&path, &chosen).expect("store succeeds");
+    assert_eq!(Preferences::load_from(&path).data_folder, chosen.data_folder);
+    std::fs::remove_file(&path).ok();
+
+    let json = serde_json::to_string(&Preferences::default()).expect("serializes");
+    assert!(!json.contains("data_folder"), "{json}");
+}
