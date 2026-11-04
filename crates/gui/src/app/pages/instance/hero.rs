@@ -50,15 +50,19 @@ pub struct Controls {
 pub fn hero<'a>(instance: &'a Instance, files: Option<&InstanceFiles>, controls: Controls, viewport: Size) -> Element<'a, Message> {
     // The art is generated at the masthead's exact pixel size, so it fills
     // the band without stretching.
+    // An uploaded banner takes the same rounded frame and left fade as the scene art, which bakes both in.
     let (biome, seed) = (instance.biome, instance.art_seed);
-    let upload = instance.art_path.clone();
-    let art = responsive(move |size| match &upload {
-        Some(path) => instance_art::custom_banner(path),
-        None => svg(banner_handle(biome, seed, size))
-            .content_fit(ContentFit::Fill)
-            .width(Fill)
-            .height(Fill)
-            .into(),
+    let uploaded = instance.art_path.is_some();
+    let art = responsive(move |size| {
+        if uploaded {
+            instance_art::hero_banner(instance, None)
+        } else {
+            svg(banner_handle(biome, seed, size))
+                .content_fit(ContentFit::Fill)
+                .width(Fill)
+                .height(Fill)
+                .into()
+        }
     })
     .height(HERO_HEIGHT);
 
