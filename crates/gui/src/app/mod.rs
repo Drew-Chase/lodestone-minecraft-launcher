@@ -167,6 +167,8 @@ pub struct LodestoneLauncher {
     /// for Microsoft accounts, the vanilla Steve for offline/demo. `None`
     /// renders the username-initial fallback.
     face: Option<image::Handle>,
+    /// Whether the account menu on the player's face is open.
+    account_menu_open: bool,
     /// The last auth-services probe: `Ok` reached it (with delay + region),
     /// `Err` did not. `None` until the first probe lands.
     auth_status: Option<Result<AuthProbe, String>>,
@@ -244,6 +246,7 @@ impl Default for LodestoneLauncher {
             auth: Authentication::new(AZURE_CLIENT_ID),
             auth_generation: 0,
             face: None,
+            account_menu_open: false,
             probe_step: 0,
             auth_status: None,
             alerts: Alerts::default(),

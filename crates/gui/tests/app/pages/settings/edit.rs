@@ -43,6 +43,15 @@ fn the_appearance_edits_write_their_own_fields() {
 }
 
 #[test]
+fn the_floating_bar_edit_writes_its_own_field() {
+    let mut values = SettingsValues::default();
+    assert!(!values.appearance.floating_bottom_bar);
+    Edit::FloatingBottomBar(true).apply(&mut values);
+    assert!(values.appearance.floating_bottom_bar);
+    assert!(!values.appearance.reduce_motion);
+}
+
+#[test]
 fn the_privacy_edits_write_their_own_fields() {
     let mut values = SettingsValues::default();
     Edit::CrashReports(false).apply(&mut values);

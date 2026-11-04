@@ -1,3 +1,4 @@
+pub mod account_menu;
 pub mod alert;
 pub mod anim;
 pub mod art_cache;
@@ -9,6 +10,7 @@ pub mod carousel;
 pub mod checkbox;
 pub mod context_menu;
 pub mod dropdown;
+pub mod floating_dock;
 pub mod game_controls;
 pub mod grid;
 pub mod hint;

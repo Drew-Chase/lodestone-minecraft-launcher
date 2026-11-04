@@ -1,6 +1,7 @@
 //! The root message type: every event the launcher reacts to, from window
 //! chrome and navigation to page messages and background-task results.
 
+use crate::app::components::account_menu::Message as AccountMenuMessage;
 use crate::app::components::alert::Message as AlertMessage;
 use crate::app::components::art_cache::ArtKey;
 use crate::app::coop_sync::Message as CoopSyncMessage;
@@ -92,6 +93,8 @@ pub enum LodestoneAppMessage {
     SpeedTick,
     /// A switch to another account, which signed in again, finished.
     AccountSwitched(usize, Result<Session, String>),
+    /// The account menu on the player's face: its toggle, its dismissal, a switch to an account, and the add.
+    AccountMenu(AccountMenuMessage),
     /// The answer to the question whether to make the change to the profile that was asked for: a skin or a cape.
     ProfileChangeConfirmed(bool),
     /// A change to the profile finished, with the profile it leaves.

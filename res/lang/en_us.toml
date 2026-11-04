@@ -43,6 +43,7 @@ nav.settings = "Settings"
 nav.downloads = "Downloads"
 nav.running_games = "Running games"
 nav.account = "Account"
+nav.accounts = "Accounts"
 
 # --- notifications (the bell and its panel) ---
 notifications.bell = "Notifications"
@@ -721,6 +722,10 @@ settings.appearance.theme_subtitle = "Global color scheme and surface treatment.
 settings.appearance.void = "Void"
 settings.appearance.slate = "Slate"
 settings.appearance.obsidian = "Obsidian"
+settings.appearance.nav_title = "Navigation"
+settings.appearance.nav_subtitle = "Where the main navigation sits."
+settings.appearance.floating_bar = "Floating navigation bar"
+settings.appearance.floating_bar_hint = "Moves the navigation to a bar that floats at the bottom of the window."
 settings.appearance.effects_title = "Motion and effects"
 settings.appearance.effects_subtitle = "What moves on screen, and what casts a glow or a shadow."
 settings.appearance.animations = "Interface animations"

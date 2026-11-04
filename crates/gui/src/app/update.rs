@@ -188,6 +188,7 @@ impl LodestoneLauncher {
             LodestoneAppMessage::SettingsSaved(result) => self.settings_saved(result),
             LodestoneAppMessage::VersionsPrefetched(result) => self.versions_prefetched(result),
             LodestoneAppMessage::AccountSwitched(index, result) => self.account_switched(index, result),
+            LodestoneAppMessage::AccountMenu(message) => self.account_menu(message),
             LodestoneAppMessage::ProfileChangeConfirmed(confirmed) => self.profile_change_confirmed(confirmed),
             LodestoneAppMessage::LocalDataAnswered(confirmed) => self.local_data_answered(confirmed),
             LodestoneAppMessage::ProfileChanged(result) => self.profile_changed(result),

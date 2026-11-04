@@ -50,6 +50,7 @@ pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
         M::VersionsPrefetched(_) => "update.VersionsPrefetched",
         M::SpeedTick => "update.SpeedTick",
         M::AccountSwitched(..) => "update.AccountSwitched",
+        M::AccountMenu(_) => "update.AccountMenu",
         M::ProfileChangeConfirmed(_) => "update.ProfileChangeConfirmed",
         M::LocalDataAnswered(_) => "update.LocalDataAnswered",
         M::ProfileChanged(_) => "update.ProfileChanged",

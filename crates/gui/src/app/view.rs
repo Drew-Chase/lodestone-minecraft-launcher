@@ -1,10 +1,13 @@
 //! The root view: the login gate, or the titlebar, sidebar, and the routed page.
 
+use crate::app::components::account_menu::{self, Menu};
 use crate::app::components::backdrop::LoginBackdrop;
+use crate::app::components::floating_dock::FloatingDock;
 use crate::app::components::game_controls::Actions;
 use crate::app::components::hint;
 use crate::app::components::page::{MAX_CONTENT_WIDTH, content_width};
-use crate::app::components::sidebar::{game_block, sidebar as sidebar_view};
+use crate::app::components::popover::Placement;
+use crate::app::components::sidebar::{SLOT_SIZE, floating_segments, game_block, game_indicator, sidebar as sidebar_view};
 use crate::app::coop_sync;
 use crate::app::data_folder;
 use crate::app::downloads::{self, Pending};
@@ -19,7 +22,7 @@ use crate::app::servers;
 use crate::app::theme::color;
 use iced::widget::tooltip::Position;
 use iced::widget::{Space, column, container, row, stack};
-use iced::{Element, Fill, alignment};
+use iced::{Element, Fill, Padding, alignment};
 use iced_borderless_window_resize_handle_widget::ResizeHandles;
 use tracing::debug;
 
@@ -35,6 +38,36 @@ fn top_nav_index(page: Page) -> usize {
     match page {
         Page::Discover | Page::Resource => 1,
         page => TOP_NAV.iter().position(|item| *item == page).unwrap_or(0),
+    }
+}
+
+/// The message a press on the top nav item at `index` sends. Items without a page yet are logged and send their own message.
+fn top_nav_message(index: usize) -> LodestoneAppMessage {
+    match TOP_NAV.get(index) {
+        Some(page) => LodestoneAppMessage::Navigate(*page),
+        None => {
+            debug!("Sidebar nav item {index} has no page yet");
+            LodestoneAppMessage::SidebarNav { group: NavGroup::Top, index }
+        }
+    }
+}
+
+/// The message a press on the bottom nav item at `index` sends.
+fn bottom_nav_message(index: usize) -> LodestoneAppMessage {
+    LodestoneAppMessage::SidebarNav {
+        group: NavGroup::Bottom,
+        index,
+    }
+}
+
+/// The running-games panel's messages, for the panel placed at `place`.
+fn runs_actions(place: RunsPlace) -> Actions<LodestoneAppMessage> {
+    Actions {
+        toggle: LodestoneAppMessage::Game(GameMessage::ToggleRuns(place)),
+        dismiss: LodestoneAppMessage::Game(GameMessage::DismissRuns(place)),
+        kill: |serial: u64| LodestoneAppMessage::Game(GameMessage::KillRun(serial)),
+        console: |serial: u64| LodestoneAppMessage::Game(GameMessage::ConsoleRun(serial)),
+        launch: |id: String| LodestoneAppMessage::Game(GameMessage::LaunchNew(id)),
     }
 }
 
@@ -93,6 +126,14 @@ impl LodestoneLauncher {
             .into()
         } else {
             let bar = self.game_bar();
+            // The floating dock lays the bar over the page's bottom edge, and falls back to the sidebar when the window is
+            // too narrow for the bar to keep its edges.
+            let page: Element<'_, LodestoneAppMessage> = if self.floating_bottom_bar() {
+                let (main, side) = self.floating_pieces(&bar);
+                FloatingDock::new(self.body(), self.rail_column(&bar), main, side).into()
+            } else {
+                row![self.rail_column(&bar), self.body()].width(Fill).height(Fill).into()
+            };
             column![
                 self.titlebar
                     .view(
@@ -103,7 +144,7 @@ impl LodestoneLauncher {
                         self.runs_open.is_open(RunsPlace::Titlebar),
                     )
                     .map(LodestoneAppMessage::TitlebarMessage),
-                row![self.rail_column(&bar), self.body()].width(Fill).height(Fill),
+                page,
             ]
             .width(Fill)
             .height(Fill)
@@ -203,55 +244,112 @@ impl LodestoneLauncher {
         self.library.pending_install(&instance.id)
     }
 
-    /// The full sidebar — logo, all nav groups, the game block, and the player avatar. The
+    /// Whether the navigation floats at the bottom of the window, as the Appearance setting chooses.
+    fn floating_bottom_bar(&self) -> bool {
+        self.settings_values.appearance.floating_bottom_bar
+    }
+
+    /// The full sidebar — logo, all nav groups, the game block, and the account's face. The
     /// top group's first item (Library) navigates; the rest are display-only
     /// until their pages exist.
     fn rail_column(&self, bar: &GameBar) -> Element<'_, LodestoneAppMessage> {
         // The game block and the Downloads trigger sit above the bottom group, in that order.
         let above_bottom = column![
-            game_block(
-                bar,
-                self.runs_open.is_open(RunsPlace::Sidebar),
-                &Actions {
-                    toggle: LodestoneAppMessage::Game(GameMessage::ToggleRuns(RunsPlace::Sidebar)),
-                    dismiss: LodestoneAppMessage::Game(GameMessage::DismissRuns(RunsPlace::Sidebar)),
-                    kill: |serial: u64| LodestoneAppMessage::Game(GameMessage::KillRun(serial)),
-                    console: |serial: u64| LodestoneAppMessage::Game(GameMessage::ConsoleRun(serial)),
-                    launch: |id: String| LodestoneAppMessage::Game(GameMessage::LaunchNew(id)),
-                },
-            ),
-            hint::at(
-                downloads::trigger(&self.downloads).map(LodestoneAppMessage::Downloads),
-                lang::t("nav.downloads"),
-                Position::Right,
-            ),
+            game_block(bar, self.runs_open.is_open(RunsPlace::Sidebar), &runs_actions(RunsPlace::Sidebar)),
+            self.downloads_slot(Position::Right),
         ]
         .spacing(6);
         sidebar_view(
-            self.face.clone(),
-            self.account.as_ref().map(Account::username).map(str::to_string),
-            matches!(self.account, Some(Account::Microsoft { .. })),
+            self.account_face(Position::Right, Placement::Beside),
             top_nav_index(self.router.current()),
-            |index| match TOP_NAV.get(index) {
-                Some(page) => LodestoneAppMessage::Navigate(*page),
-                None => {
-                    debug!("Sidebar nav item {index} has no page yet");
-                    LodestoneAppMessage::SidebarNav { group: NavGroup::Top, index }
-                }
-            },
-            |index| LodestoneAppMessage::SidebarNav {
-                group: NavGroup::Bottom,
-                index,
-            },
+            top_nav_message,
+            bottom_nav_message,
             LodestoneAppMessage::Navigate(Page::News),
             above_bottom.into(),
         )
     }
 
+    /// The two segments of the floating bar. Its running games, Downloads and face sit in the second segment, and their
+    /// tooltips show above them. On the News home the logo is the highlighted item, not the Library.
+    fn floating_pieces(&self, bar: &GameBar) -> (Element<'static, LodestoneAppMessage>, Element<'static, LodestoneAppMessage>) {
+        let running = row![
+            game_indicator(
+                bar,
+                self.runs_open.is_open(RunsPlace::Sidebar),
+                &runs_actions(RunsPlace::Sidebar),
+                Position::Top
+            ),
+            self.floating_downloads(),
+        ]
+        .spacing(4)
+        .align_y(alignment::Vertical::Center);
+        let news = self.router.current() == Page::News;
+        let active = (!news).then(|| top_nav_index(self.router.current()));
+        floating_segments(
+            active,
+            news,
+            top_nav_message,
+            LodestoneAppMessage::Navigate(Page::News),
+            bottom_nav_message(0),
+            running.into(),
+            self.account_face(Position::Top, Placement::Below),
+        )
+    }
+
+    /// The Downloads trigger in the sidebar, named in a hint at `position`. Its panel opens beside it.
+    fn downloads_slot(&self, position: Position) -> Element<'static, LodestoneAppMessage> {
+        hint::at(
+            downloads::trigger(&self.downloads, Placement::Beside).map(LodestoneAppMessage::Downloads),
+            lang::t("nav.downloads"),
+            position,
+        )
+    }
+
+    /// The Downloads trigger in the floating bar. It names itself in its own hint above, and its panel opens above the
+    /// bar. The trigger spans its row, so it is kept to one slot's width.
+    fn floating_downloads(&self) -> Element<'static, LodestoneAppMessage> {
+        container(downloads::trigger(&self.downloads, Placement::Below).map(LodestoneAppMessage::Downloads))
+            .width(SLOT_SIZE)
+            .into()
+    }
+
+    /// The player's face with its account menu, named in a hint at `position`. The panel opens at `placement`.
+    fn account_face(&self, position: Position, placement: Placement) -> Element<'static, LodestoneAppMessage> {
+        let menu = Menu {
+            open: self.account_menu_open,
+            entries: self.account_menu_entries(),
+        };
+        let face = account_menu::trigger(
+            self.face.clone(),
+            self.account.as_ref().map(Account::username).map(str::to_string),
+            matches!(self.account, Some(Account::Microsoft { .. })),
+            menu,
+            placement,
+            LodestoneAppMessage::AccountMenu,
+        );
+        // The menu's own rows cover the face while it is open, so the hint steps aside.
+        if self.account_menu_open {
+            face
+        } else {
+            hint::at(face, lang::t("nav.account"), position)
+        }
+    }
+
     /// The page area: the router's current page. The page sits in a column at most [`MAX_CONTENT_WIDTH`]
     /// wide, centred beside the sidebar, so a wide window keeps the page at its designed width.
     fn body(&self) -> Element<'_, LodestoneAppMessage> {
-        let page = container(self.outlet()).max_width(MAX_CONTENT_WIDTH).width(Fill).height(Fill);
+        // The floating bar floats over the page, so the page keeps its full height. macOS draws no titlebar row, so with the
+        // bar the page starts below the traffic lights, as the rail does.
+        let top = if self.floating_bottom_bar() && cfg!(target_os = "macos") {
+            32.0
+        } else {
+            0.0
+        };
+        let page = container(self.outlet())
+            .max_width(MAX_CONTENT_WIDTH)
+            .width(Fill)
+            .height(Fill)
+            .padding(Padding::new(0.0).top(top));
         container(page)
             .width(Fill)
             .height(Fill)

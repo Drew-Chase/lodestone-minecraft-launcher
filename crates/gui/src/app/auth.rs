@@ -7,6 +7,7 @@ use iced::Task;
 use lodestone_minecraft_authentication::Session;
 use tracing::{debug, info, warn};
 
+use crate::app::components::account_menu::{Entry as AccountEntry, Message as AccountMenuMessage};
 use crate::app::components::alert::Alert;
 use crate::app::lang;
 use crate::app::pages::Page;
@@ -353,5 +354,49 @@ impl LodestoneLauncher {
     pub(super) fn add_account(&mut self) -> Task<LodestoneAppMessage> {
         self.adding_account = true;
         self.navigate(Page::Login)
+    }
+
+    /// Handles the account menu on the player's face. A switch or an add shuts the menu, then does what the Accounts
+    /// tab does for the same account.
+    pub(super) fn account_menu(&mut self, message: AccountMenuMessage) -> Task<LodestoneAppMessage> {
+        match message {
+            AccountMenuMessage::Toggle => {
+                self.account_menu_open = !self.account_menu_open;
+                Task::none()
+            }
+            AccountMenuMessage::Dismiss => {
+                self.account_menu_open = false;
+                Task::none()
+            }
+            AccountMenuMessage::Switch(index) => {
+                self.account_menu_open = false;
+                self.switch_account(index)
+            }
+            AccountMenuMessage::Add => {
+                self.account_menu_open = false;
+                self.add_account()
+            }
+        }
+    }
+
+    /// The accounts the account menu lists, in the order the Accounts tab shows them. Only the account that plays has
+    /// the face the sidebar loaded.
+    pub(super) fn account_menu_entries(&self) -> Vec<AccountEntry> {
+        let playing = self.credentials.primary_index();
+        self.credentials
+            .accounts
+            .iter()
+            .enumerate()
+            .map(|(index, account)| {
+                let is_playing = playing == Some(index);
+                let microsoft = matches!(account, StoredAccount::Microsoft(_));
+                AccountEntry {
+                    username: account.username().to_owned(),
+                    microsoft,
+                    playing: is_playing,
+                    face: if is_playing && microsoft { self.face.clone() } else { None },
+                }
+            })
+            .collect()
     }
 }

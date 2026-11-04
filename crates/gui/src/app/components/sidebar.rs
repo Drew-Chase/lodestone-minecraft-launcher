@@ -2,11 +2,14 @@
 //!
 //! Matches the reference (`02-library.png`): the Lodestone logo with its
 //! glow, a divider, the six primary nav items, the utility items pinned to
-//! the bottom, and the player avatar with its presence dot. The icon groups
+//! the bottom, and the player's face with its presence dot. The icon groups
 //! reuse [`NavRail`] for the sliding indicator and hover states.
 //!
 //! Every rail slot navigates and names itself in a tooltip beside it. The logo
 //! opens the News home, and its tooltip says so.
+//!
+//! The Appearance setting can move the same navigation into the floating bar's two
+//! segments, from [`floating_segments`], which the floating dock places.
 
 use std::sync::OnceLock;
 
@@ -15,17 +18,13 @@ use crate::app::components::game_controls;
 use crate::app::components::hint;
 use crate::app::lang;
 use crate::app::launch::games::GameBar;
-use crate::app::theme::color;
-use crate::app::theme::fonts;
+use crate::app::theme::{color, fonts, utility};
 use aurora_leaf::Icon;
 use iced::mouse;
-use iced::widget::image::Handle;
 use iced::widget::tooltip::Position;
-use iced::widget::{Space, Text, column, container, image, mouse_area, stack, svg};
-use iced::{Background, Border, Element, Fill, Length, Padding, alignment};
+use iced::widget::{Row, Space, button, column, container, mouse_area, row, stack, svg, text};
+use iced::{Background, Border, Color, Element, Fill, Length, Padding, Shadow, Vector, alignment};
 use iced_color_extension::rgb;
-
-use crate::app::face::AVATAR_RADIUS;
 
 /// The rail's width — the reference sidebar's 68px.
 pub const WIDTH: f32 = 68.0;
@@ -45,6 +44,9 @@ const TOP_ITEMS: [(&str, &str); 6] = [
 ];
 /// The bottom nav group: Settings. The Downloads trigger sits above it.
 const BOTTOM_ITEMS: [(&str, &str); 1] = [("settings", "nav.settings")];
+
+/// The side of a slot in the floating bar, in pixels. An owner keeps its own control to one slot's width.
+pub const SLOT_SIZE: f32 = 40.0;
 
 /// The icon markup for a rail slot, resolved once (iconify lookups).
 fn rail_icon(name: &str) -> &'static str {
@@ -73,16 +75,12 @@ fn rail_items(items: &[(&'static str, &'static str)]) -> Vec<crate::app::compone
         .collect()
 }
 
-/// The full sidebar: logo, nav groups, and the player avatar. `active` is
-/// the highlighted index in the top group; the closures route the two
-/// groups' selections, and `on_logo` is what a press on the logo sends.
-/// `above_bottom` holds the game block and the Downloads trigger, placed
-/// above the bottom group. Each part is its own argument, so there are eight.
-#[allow(clippy::too_many_arguments)]
+/// The full sidebar: logo, nav groups, and the account's face. `account` is the face and its menu, already named in a
+/// hint, which the caller builds. `active` is the highlighted index in the top group; the closures route the two groups'
+/// selections, and `on_logo` is what a press on the logo sends. `above_bottom` holds the game block and the Downloads
+/// trigger, placed above the bottom group.
 pub fn sidebar<Message: Clone + 'static>(
-    face: Option<Handle>,
-    username: Option<String>,
-    online: bool,
+    account: Element<'static, Message>,
     active: usize,
     on_top_nav: impl Fn(usize) -> Message + 'static,
     on_bottom_nav: impl Fn(usize) -> Message + 'static,
@@ -95,7 +93,7 @@ pub fn sidebar<Message: Clone + 'static>(
     let rail = column![logo(on_logo), divider(), top_rail, Space::new().height(Fill), above_bottom]
         .spacing(6)
         .push(bottom_rail)
-        .push(avatar(face, username, online));
+        .push(centered(account));
 
     container(rail.padding(Padding::new(0.0).top(TOP_PADDING).bottom(18)))
         .width(WIDTH)
@@ -107,15 +105,48 @@ pub fn sidebar<Message: Clone + 'static>(
         .into()
 }
 
+/// The floating bar's two segments, for the floating dock to place. The first runs from News to Friends. The second holds
+/// the running games, the Downloads trigger, Settings and the account's face. `active` is the highlighted top item, and
+/// `news` highlights the logo instead while the News home shows. The closures route the top group and the segments'
+/// buttons, as [`sidebar`] does.
+pub fn floating_segments<Message: Clone + 'static>(
+    active: Option<usize>,
+    news: bool,
+    on_top_nav: impl Fn(usize) -> Message,
+    on_logo: Message,
+    on_settings: Message,
+    running: Element<'static, Message>,
+    account: Element<'static, Message>,
+) -> (Element<'static, Message>, Element<'static, Message>) {
+    let mut main: Row<'static, Message> = row![bar_logo(on_logo, news)].spacing(4).align_y(alignment::Vertical::Center);
+    for (index, &(icon, label)) in TOP_ITEMS.iter().enumerate() {
+        main = main.push(bar_slot(rail_icon(icon), lang::t(label), active == Some(index), on_top_nav(index)));
+    }
+    let side = row![
+        running,
+        bar_slot(rail_icon("settings"), lang::t(BOTTOM_ITEMS[0].1), false, on_settings),
+        account
+    ]
+    .spacing(4)
+    .align_y(alignment::Vertical::Center);
+    (segment(main), segment(side))
+}
+
 /// The game block above the Downloads item: the indicator, whose panel lists the running games with
 /// their console and kill buttons, and a button on each row that starts another run of its instance.
 /// Starting a run of an instance that is not running is left to the instance and library pages.
 pub fn game_block<Message: Clone + 'static>(bar: &GameBar, open: bool, actions: &game_controls::Actions<Message>) -> Element<'static, Message> {
-    centered(hint::at(
-        game_controls::runs_popover(bar, open, actions),
-        lang::t("nav.running_games"),
-        Position::Right,
-    ))
+    centered(game_indicator(bar, open, actions, Position::Right))
+}
+
+/// The running-games indicator and its panel, named in a hint at `position`.
+pub fn game_indicator<Message: Clone + 'static>(
+    bar: &GameBar,
+    open: bool,
+    actions: &game_controls::Actions<Message>,
+    position: Position,
+) -> Element<'static, Message> {
+    hint::at(game_controls::runs_popover(bar, open, actions), lang::t("nav.running_games"), position)
 }
 
 /// Centres `content` across the rail.
@@ -146,6 +177,80 @@ fn logo<Message: Clone + 'static>(on_press: Message) -> Element<'static, Message
     )
 }
 
+/// The mark at the start of the floating bar: the logo with its word beside it, opening the News home.
+fn bar_logo<Message: Clone + 'static>(on_press: Message, selected: bool) -> Element<'static, Message> {
+    let mark = row![
+        svg(crate::app::pages::login::logo_handle().clone()).width(22).height(22),
+        bar_word(lang::t("nav.news"), selected),
+    ]
+    .spacing(8)
+    .align_y(alignment::Vertical::Center);
+    bar_button(mark, selected, on_press)
+}
+
+/// One labelled slot of the floating bar: its icon with the word beside it. The selected slot takes the accent tint.
+fn bar_slot<Message: Clone + 'static>(icon: &'static str, label: &'static str, selected: bool, on_press: Message) -> Element<'static, Message> {
+    let ink = if selected { color::primary() } else { color::text_muted() };
+    let content = row![utility::icon(icon, 18.0, Some((ink, ink))), bar_word(label, selected)]
+        .spacing(8)
+        .align_y(alignment::Vertical::Center);
+    bar_button(content, selected, on_press)
+}
+
+/// The word of a floating bar slot.
+fn bar_word<'a, Message: 'a>(label: &'static str, selected: bool) -> Element<'a, Message> {
+    let ink = if selected { color::primary() } else { color::text_muted() };
+    text(label).size(13).font(fonts::Inter::MEDIUM).color(ink).into()
+}
+
+/// The button a floating bar slot's content sits in: 40px tall, rounded, tinted when selected, faint white under the pointer.
+fn bar_button<'a, Message: Clone + 'a>(content: impl Into<Element<'a, Message>>, selected: bool, on_press: Message) -> Element<'a, Message> {
+    // The content sits centred on the slot's height, so the word and the icon share a midline.
+    button(container(content.into()).height(Fill).align_y(alignment::Vertical::Center))
+        .height(SLOT_SIZE)
+        .padding(Padding::new(0.0).left(12.0).right(14.0))
+        .on_press(on_press)
+        .style(move |_, status| button::Style {
+            background: Some(Background::Color(match (selected, status) {
+                (true, _) => color::primary_tint(),
+                (false, button::Status::Hovered | button::Status::Pressed) => rgb!(255, 255, 255, 8%),
+                _ => Color::TRANSPARENT,
+            })),
+            border: Border {
+                radius: 12.0.into(),
+                ..Border::default()
+            },
+            text_color: color::text_headline(),
+            ..button::Style::default()
+        })
+        .into()
+}
+
+/// One floating segment: its content on a translucent panel with a lighter hairline and rounded corners, and a soft
+/// shadow when the glass effect is on.
+fn segment<'a, Message: 'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    container(content)
+        .padding(Padding::new(6.0))
+        .style(|_| container::Style {
+            background: Some(Background::Color(Color {
+                a: 0.96,
+                ..color::surface_bg1()
+            })),
+            border: Border {
+                radius: 18.0.into(),
+                width: 1.0,
+                color: color::surface_line_strong(),
+            },
+            shadow: Shadow {
+                color: rgb!(0, 0, 0, 45%),
+                offset: Vector::new(0.0, 8.0),
+                blur_radius: crate::app::theme::blur(24.0),
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
 /// The 32px hairline under the logo.
 fn divider<Message: Clone + 'static>() -> Element<'static, Message> {
     container(Space::new().height(1).width(32))
@@ -155,62 +260,4 @@ fn divider<Message: Clone + 'static>() -> Element<'static, Message> {
             ..container::Style::default()
         })
         .into()
-}
-
-/// The player avatar: the 8×8 face upscaled to 40×40 with the presence dot
-/// pinned to its bottom-right corner. Falls back to the username's initial
-/// on the green gradient when no face is loaded. Its tooltip sits beside it.
-fn avatar<Message: Clone + 'static>(face: Option<Handle>, username: Option<String>, online: bool) -> Element<'static, Message> {
-    let face_layer: Element<'static, Message> = match face {
-        Some(handle) => image(handle).width(40).height(40).into(),
-        None => {
-            let initial = username
-                .as_deref()
-                .and_then(|name| name.chars().next())
-                .map(|initial| initial.to_uppercase().to_string())
-                .unwrap_or_default();
-            container(Text::new(initial).size(16).font(fonts::Inter::EXTRA_BOLD).color(color::primary_on()))
-                .width(Fill)
-                .height(Fill)
-                .center(Length::Fill)
-                .into()
-        }
-    };
-
-    let dot_ink = if online { color::primary() } else { color::text_disabled() };
-
-    let face = container(
-        stack![
-            face_layer,
-            // The ring rides on top of the face; the corners themselves are
-            // faded in the texture.
-            container(Space::new().width(Fill).height(Fill)).style(|_| container::Style {
-                border: Border {
-                    radius: (AVATAR_RADIUS + 2.0).into(),
-                    width: 1.5,
-                    color: rgb!(255, 255, 255, 25%),
-                },
-                ..container::Style::default()
-            }),
-            container(container(Space::new().width(10).height(10)).style(move |_| container::Style {
-                background: Some(Background::Color(dot_ink)),
-                border: Border {
-                    radius: 5.0.into(),
-                    width: 2.0,
-                    color: color::surface_bg1(),
-                },
-                ..container::Style::default()
-            }))
-            .width(Fill)
-            .height(Fill)
-            .align_x(alignment::Horizontal::Right)
-            .align_y(alignment::Vertical::Bottom)
-            .padding(Padding::new(0.0).right(1).bottom(1)),
-        ]
-        .width(40)
-        .height(40),
-    )
-    .width(Fill)
-    .center_x(Fill);
-    hint::at(face, lang::t("nav.account"), Position::Right)
 }

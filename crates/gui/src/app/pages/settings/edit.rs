@@ -30,6 +30,8 @@ pub enum Edit {
     Aurora(bool),
     /// Stops the looping motion and makes transitions instant.
     ReduceMotion(bool),
+    /// Moves the navigation into a bar that floats at the bottom of the window.
+    FloatingBottomBar(bool),
     /// How many idle connections a host keeps open.
     ConnectionsPerHost(u16),
     /// Which platform a file is looked up on first.
@@ -74,6 +76,7 @@ impl Edit {
             Edit::Glass(on) => values.appearance.glass_effect = on,
             Edit::Aurora(on) => values.appearance.aurora_backgrounds = on,
             Edit::ReduceMotion(on) => values.appearance.reduce_motion = on,
+            Edit::FloatingBottomBar(on) => values.appearance.floating_bottom_bar = on,
             Edit::ConnectionsPerHost(count) => values.network.connections_per_host = count,
             Edit::SourceOrder(order) => values.network.source_order = order,
             Edit::Mirror(mirror) => values.network.mirror = mirror,

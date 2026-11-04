@@ -27,8 +27,8 @@ const WIDTH: f32 = 380.0;
 const LIST_HEIGHT: f32 = 420.0;
 
 /// The sidebar's Downloads trigger: the download icon, tinted and numbered while installs have not
-/// ended. The popover opens beside it.
-pub fn trigger(downloads: &Downloads) -> Element<'static, Message> {
+/// ended. The popover opens at `placement`: beside the rail, or above the floating bar.
+pub fn trigger(downloads: &Downloads, placement: Placement) -> Element<'static, Message> {
     let count = downloads.badge();
     let active = count > 0;
     let button = hint(
@@ -48,7 +48,7 @@ pub fn trigger(downloads: &Downloads) -> Element<'static, Message> {
     Popover::new(face, panel)
         .open(downloads.is_open())
         .on_dismiss(Message::DismissPanel)
-        .placement(Placement::Beside)
+        .placement(placement)
         .into()
 }
 

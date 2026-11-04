@@ -171,6 +171,8 @@ pub struct Appearance {
     pub aurora_backgrounds: bool,
     /// Stops the looping motion and makes transitions instant.
     pub reduce_motion: bool,
+    /// Moves the navigation out of the sidebar into a bar that floats at the bottom of the window.
+    pub floating_bottom_bar: bool,
 }
 
 impl Default for Appearance {
@@ -183,6 +185,7 @@ impl Default for Appearance {
             glass_effect: true,
             aurora_backgrounds: true,
             reduce_motion: false,
+            floating_bottom_bar: false,
         }
     }
 }

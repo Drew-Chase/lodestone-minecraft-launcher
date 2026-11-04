@@ -37,6 +37,11 @@ pub fn view<'a>(settings: &'a SettingsValues, custom_hex: &'a str) -> Element<'a
             theme_body(settings.appearance.theme),
         ),
         card(
+            lang::t("settings.appearance.nav_title"),
+            lang::t("settings.appearance.nav_subtitle"),
+            divided(navigation_rows(&settings.appearance)),
+        ),
+        card(
             lang::t("settings.appearance.effects_title"),
             lang::t("settings.appearance.effects_subtitle"),
             divided(effect_rows(&settings.appearance)),
@@ -176,6 +181,16 @@ fn theme_label(theme: SurfaceTheme) -> &'static str {
         SurfaceTheme::Slate => lang::t("settings.appearance.slate"),
         SurfaceTheme::Obsidian => lang::t("settings.appearance.obsidian"),
     }
+}
+
+/// The navigation switches: where the main navigation sits.
+fn navigation_rows<'a>(appearance: &Appearance) -> Vec<Element<'a, Message>> {
+    let on = appearance.floating_bottom_bar;
+    vec![described_setting(
+        lang::t("settings.appearance.floating_bar"),
+        lang::t("settings.appearance.floating_bar_hint"),
+        Toggle::new(on).on_toggle(Message::Edit(Edit::FloatingBottomBar(!on))),
+    )]
 }
 
 /// The motion and effects switches.
