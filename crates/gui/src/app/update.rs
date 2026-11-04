@@ -201,8 +201,8 @@ impl LodestoneLauncher {
                 // The frame on show may still need drawing, so the next drawing starts now rather than at the next tick.
                 self.previews_task()
             }
-            LodestoneAppMessage::CapesLoaded(faces) => {
-                self.skins.set_cape_faces(faces);
+            LodestoneAppMessage::CapesLoaded(capes) => {
+                self.skins.set_capes(capes);
                 Task::none()
             }
             LodestoneAppMessage::ProfileRefreshed(result) => self.profile_refreshed(result),

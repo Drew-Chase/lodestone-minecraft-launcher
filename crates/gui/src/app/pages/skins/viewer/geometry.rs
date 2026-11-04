@@ -3,11 +3,26 @@
 use super::math::{Mat4, about, mul, rotate_x, rotate_z, transform_point, translate};
 use super::{ATLAS_HEIGHT, ATLAS_WIDTH, CAPE_X, Model, Pose};
 
-/// Where the cape hangs: just behind the body's back face (z = -2) and the jacket layer (z = -2.25).
-const CAPE_DEPTH: f32 = -2.6;
+/// Where the cape's centre line leaves the shoulders: just behind the body's back face (z = -2) and the jacket layer (z = -2.25).
+/// The cape is `CAPE_THICKNESS` deep, so its outside starts at z = -2.6, the depth it hung at before it had any thickness.
+const CAPE_DEPTH: f32 = -2.35;
+const CAPE_THICKNESS: f32 = 0.5;
+const CAPE_TOP: f32 = 24.0;
+const CAPE_LENGTH: f32 = 16.0;
+const CAPE_HALF_WIDTH: f32 = 5.0;
 
-/// The shade of the cape, which is the back of the model. It matches the back of a box.
+/// The cape is cut into this many strips down its length, so that it can bend as it flows.
+const CAPE_SEGMENTS: usize = 8;
+
+/// The rows of the cape's art: its 16 texels down the sides, from the row below the top edge.
+const CAPE_ART_HEIGHT: f32 = 16.0;
+
+/// The shade of the cape's faces. The outside is the back of the model, which matches the back of a box. The inside faces the
+/// body, and the edges and the lower edge match the sides and the bottom of a box.
 const BACK_SHADE: f32 = 0.8;
+const INSIDE_SHADE: f32 = 0.95;
+const EDGE_SHADE: f32 = 0.85;
+const LOWER_EDGE_SHADE: f32 = 0.6;
 
 /// One box of the model: its corners in model pixels, its skin position, and the transform its pose gives it.
 struct Part {
@@ -216,20 +231,20 @@ fn parts(model: &Model) -> Vec<Part> {
 }
 
 /// The vertices of the model: six faces per box, each as two triangles, with the texel coordinates and the face's shade.
-/// The cape's quad follows the boxes when the skin carries a cape.
+/// The cape follows the boxes when the skin carries a cape.
 pub(super) fn model_vertices(model: &Model) -> Vec<f32> {
     model_vertices_with_cape(model, model.skin.as_ref().is_some_and(|skin| skin.cape))
 }
 
-/// The vertices of the model, with the cape's quad when `cape` is set. A projection of the model carries no skin, so it passes
-/// the cape itself.
+/// The vertices of the model, with the cape when `cape` is set. A projection of the model carries no skin, so it passes the
+/// cape itself.
 pub(super) fn model_vertices_with_cape(model: &Model, cape: bool) -> Vec<f32> {
     let mut vertices = Vec::new();
     for part in parts(model) {
         push_box(&mut vertices, &part);
     }
     if cape {
-        push_cape(&mut vertices, body_transform(model));
+        push_cape(&mut vertices, body_transform(model), model.pose, model.time);
     }
     vertices
 }
@@ -305,31 +320,149 @@ fn push_box(vertices: &mut Vec<f32>, part: &Part) {
     }
 }
 
-/// The cape: one quad behind the body, drawn from the outside of the cape texture, the 10×16 block at (1, 1). It hangs
-/// from the shoulders to the top of the legs, and moves with the body.
-fn push_cape(vertices: &mut Vec<f32>, transform: Mat4) {
-    // As seen from behind, the player's left is on the viewer's left, which is the model's +x side.
-    let corners = [
-        [5.0, 24.0, CAPE_DEPTH],
-        [-5.0, 24.0, CAPE_DEPTH],
-        [-5.0, 8.0, CAPE_DEPTH],
-        [5.0, 8.0, CAPE_DEPTH],
-    ];
-    let texels = [(1.0, 1.0), (11.0, 1.0), (11.0, 17.0), (1.0, 17.0)];
-    let vertex = |index: usize| {
+/// How far a pose swings the cape back, in radians at its lower edge, and how far a ripple runs down it. A walk and a run
+/// stream the cape out behind the body further than a stand does.
+fn cape_flow(pose: Pose) -> (f32, f32) {
+    match pose {
+        Pose::Stand => (0.45, 0.06),
+        Pose::Arms => (0.5, 0.1),
+        Pose::Walk => (0.6, 0.14),
+        Pose::Run => (0.8, 0.22),
+        Pose::Crouch => (0.4, 0.04),
+    }
+}
+
+/// The angle the cape leans back at `fraction` of its length down from the shoulders, `time` seconds into the pose. The lean
+/// grows down the cape, and a ripple travels down it once per loop of the pose, so the lower edge flows behind the body.
+fn cape_angle(pose: Pose, fraction: f32, time: f32) -> f32 {
+    use std::f32::consts::{PI, TAU};
+    let (lean, ripple) = cape_flow(pose);
+    let phase = TAU * time / pose.loop_seconds() - PI * fraction;
+    fraction * (lean + ripple * phase.sin())
+}
+
+/// A cross-section of the cape: where its centre line is at one strip's end, in the body's height and depth, and the
+/// direction that points out of its back, as `(y, z)`.
+struct Station {
+    fraction: f32,
+    y: f32,
+    z: f32,
+    normal: [f32; 2],
+}
+
+/// The cross-sections down the cape, from the shoulders to the lower edge. Each strip carries the centre line on along the
+/// angle at its middle, so the cape curves rather than folding at the seams.
+fn cape_stations(pose: Pose, time: f32) -> Vec<Station> {
+    let segment = CAPE_LENGTH / CAPE_SEGMENTS as f32;
+    let (mut y, mut z) = (CAPE_TOP, CAPE_DEPTH);
+    let mut stations = Vec::with_capacity(CAPE_SEGMENTS + 1);
+    for index in 0..=CAPE_SEGMENTS {
+        let fraction = index as f32 / CAPE_SEGMENTS as f32;
+        let angle = cape_angle(pose, fraction, time);
+        stations.push(Station {
+            fraction,
+            y,
+            z,
+            normal: [angle.sin(), -angle.cos()],
+        });
+        let middle = cape_angle(pose, fraction + 0.5 / CAPE_SEGMENTS as f32, time);
+        y -= segment * middle.cos();
+        z -= segment * middle.sin();
+    }
+    stations
+}
+
+/// The point across the cape at `station`, at `x`, on its outside (`side` of 1) or its inside (`side` of -1).
+fn cape_point(station: &Station, x: f32, side: f32) -> [f32; 3] {
+    let half = side * CAPE_THICKNESS / 2.0;
+    [x, station.y + half * station.normal[0], station.z + half * station.normal[1]]
+}
+
+/// One quad of the cape: its four corners in order, the cape's texel of each corner, and its shade. The texels are on the
+/// cape's own 64×32 block, which starts at `CAPE_X` on the texture.
+fn push_cape_quad(vertices: &mut Vec<f32>, transform: Mat4, corners: [[f32; 3]; 4], texels: [(f32, f32); 4], shade: f32) {
+    for index in [0, 1, 2, 0, 2, 3] {
         let p = transform_point(transform, corners[index]);
         let (u, v) = texels[index];
-        [
-            p[0],
-            p[1],
-            p[2],
-            (CAPE_X as f32 + u) / ATLAS_WIDTH as f32,
-            v / ATLAS_HEIGHT as f32,
+        vertices.extend_from_slice(&[p[0], p[1], p[2], (CAPE_X as f32 + u) / ATLAS_WIDTH as f32, v / ATLAS_HEIGHT as f32, shade]);
+    }
+}
+
+/// The cape: a thin sheet hung from the shoulders, drawn in the cape texture's own layout. Its outside is the 10×16 block at
+/// (1, 1), its inside the block beside it at (12, 1), and its edges and lower edge are the thin strips around them. The sheet
+/// bends back as it hangs, so it stands out behind the body, and it moves with the body.
+fn push_cape(vertices: &mut Vec<f32>, transform: Mat4, pose: Pose, time: f32) {
+    let stations = cape_stations(pose, time);
+    let half = CAPE_HALF_WIDTH;
+    // The texel row at a station's place down the cape. The art's top row is row 1, below the cape's top edge.
+    let row = |station: &Station| 1.0 + CAPE_ART_HEIGHT * station.fraction;
+    for strip in stations.windows(2) {
+        let (top, bottom) = (&strip[0], &strip[1]);
+        let (top_v, bottom_v) = (row(top), row(bottom));
+        // As seen from behind, the player's left is on the viewer's left, which is the model's +x side. The outside reads
+        // that way, and the inside reads it mirrored, as a box's faces do.
+        push_cape_quad(
+            vertices,
+            transform,
+            [
+                cape_point(top, half, 1.0),
+                cape_point(top, -half, 1.0),
+                cape_point(bottom, -half, 1.0),
+                cape_point(bottom, half, 1.0),
+            ],
+            [(1.0, top_v), (11.0, top_v), (11.0, bottom_v), (1.0, bottom_v)],
             BACK_SHADE,
-        ]
-    };
-    for index in [0, 1, 2, 0, 2, 3] {
-        vertices.extend_from_slice(&vertex(index));
+        );
+        push_cape_quad(
+            vertices,
+            transform,
+            [
+                cape_point(top, half, -1.0),
+                cape_point(top, -half, -1.0),
+                cape_point(bottom, -half, -1.0),
+                cape_point(bottom, half, -1.0),
+            ],
+            [(22.0, top_v), (12.0, top_v), (12.0, bottom_v), (22.0, bottom_v)],
+            INSIDE_SHADE,
+        );
+        push_cape_quad(
+            vertices,
+            transform,
+            [
+                cape_point(top, half, 1.0),
+                cape_point(top, half, -1.0),
+                cape_point(bottom, half, -1.0),
+                cape_point(bottom, half, 1.0),
+            ],
+            [(11.0, top_v), (12.0, top_v), (12.0, bottom_v), (11.0, bottom_v)],
+            EDGE_SHADE,
+        );
+        push_cape_quad(
+            vertices,
+            transform,
+            [
+                cape_point(top, -half, -1.0),
+                cape_point(top, -half, 1.0),
+                cape_point(bottom, -half, 1.0),
+                cape_point(bottom, -half, -1.0),
+            ],
+            [(1.0, top_v), (0.0, top_v), (0.0, bottom_v), (1.0, bottom_v)],
+            EDGE_SHADE,
+        );
+    }
+    if let Some(lower) = stations.last() {
+        push_cape_quad(
+            vertices,
+            transform,
+            [
+                cape_point(lower, half, 1.0),
+                cape_point(lower, -half, 1.0),
+                cape_point(lower, -half, -1.0),
+                cape_point(lower, half, -1.0),
+            ],
+            [(11.0, 0.0), (21.0, 0.0), (21.0, 1.0), (11.0, 1.0)],
+            LOWER_EDGE_SHADE,
+        );
     }
 }
 

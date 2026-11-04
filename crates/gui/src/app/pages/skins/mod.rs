@@ -21,6 +21,7 @@ use iced::Element;
 use iced::widget::image::Handle;
 use lodestone_minecraft_authentication::Cape;
 
+use self::capes::CapeArt;
 use self::catalog::{BUNDLED, Pack};
 use self::library::SavedSkin;
 use self::previews::{Drawn, Item, Job, Slot};
@@ -90,6 +91,18 @@ pub enum Layer {
     Pants,
 }
 
+/// The cape the viewer shows with the skin, which Save applies. `Worn` is the cape the account wears, so nothing is pending.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum CapePick {
+    /// The cape the account wears.
+    #[default]
+    Worn,
+    /// No cape.
+    Off,
+    /// The cape with this id.
+    Owned(String),
+}
+
 /// A skin the page would upload: its name for the question that confirms it, its PNG, and its model.
 pub struct Chosen {
     pub name: String,
@@ -122,8 +135,10 @@ pub enum Message {
     Use,
     /// Asks to move the archived skin at this place to the trash. The root confirms it.
     RemoveArchived(usize),
-    /// Asks to wear the cape with this id, or to take the cape off when `None`. The root confirms it.
-    Cape(Option<String>),
+    /// Shows the cape in the viewer, with the skin on show. Nothing is changed until Save.
+    PickCape(CapePick),
+    /// Asks to apply the cape the viewer shows. The root applies it.
+    SaveCape,
     /// Opens the folder the saved skins live in. The root reveals it.
     OpenFolder,
     /// Opens another page, such as Settings, where a Microsoft account signs in.
@@ -144,17 +159,19 @@ struct Look {
 /// The page's state.
 pub struct Skins {
     appearance: Option<Appearance>,
-    /// The skin the account wears, composed with its cape, as the viewer samples it.
-    current: Option<Arc<Skin>>,
     saved: Vec<SavedSkin>,
     archived: Vec<SavedSkin>,
     /// The digests the archive does not keep again: those of the saved skins and of the bundled ones.
     known: Vec<String>,
     /// The fronts of the capes the player owns, by cape id.
     cape_faces: HashMap<String, Handle>,
+    /// The pictures of the capes the player owns, by cape id, which the viewer wears.
+    cape_pngs: HashMap<String, Vec<u8>>,
     choice: Choice,
-    /// The chosen skin as the viewer shows it, with the cape the account wears. `None` while the current skin is chosen.
-    preview: Option<Arc<Skin>>,
+    /// The cape the viewer shows, which Save applies.
+    cape_pick: CapePick,
+    /// The skin on show, composed with the cape the viewer shows, as the viewer samples it.
+    shown: Option<Arc<Skin>>,
     pose: Pose,
     layers: Layers,
     /// The model the saved skins show in, which the switch sets.
@@ -182,13 +199,14 @@ impl Default for Skins {
     fn default() -> Self {
         Self {
             appearance: None,
-            current: None,
             saved: Vec::new(),
             archived: Vec::new(),
             known: Vec::new(),
             cape_faces: HashMap::new(),
+            cape_pngs: HashMap::new(),
             choice: Choice::Current,
-            preview: None,
+            cape_pick: CapePick::Worn,
+            shown: None,
             pose: Pose::default(),
             layers: Layers::default(),
             slim: false,
@@ -226,16 +244,48 @@ impl Skins {
         }
     }
 
-    /// Takes the account's skin and cape, decoded for the viewer. The chosen skin is shown with the cape the account wears. The
-    /// cached frames show the cape, so they are forgotten when it changes.
+    /// Takes the account's skin and cape, decoded for the viewer. The viewer shows the cape the account wears unless another
+    /// is previewed. The cached frames show the cape the account wears, so they are forgotten when it changes.
     pub fn set_appearance(&mut self, appearance: Appearance) {
         let cape_changed = self.appearance.as_ref().is_none_or(|old| old.cape_png != appearance.cape_png);
-        self.current = Skin::compose(&appearance.skin_png, appearance.cape_png.as_deref()).map(Arc::new);
         self.appearance = Some(appearance);
-        self.choose(self.choice);
+        self.refresh_shown();
         if cape_changed {
             self.forget_frames();
         }
+    }
+
+    /// Takes the capes the player owns: each one's front for the list, and its picture for the viewer.
+    pub fn set_capes(&mut self, capes: Vec<CapeArt>) {
+        self.cape_faces = capes.iter().map(|cape| (cape.id.clone(), cape.face.clone())).collect();
+        self.cape_pngs = capes.into_iter().map(|cape| (cape.id, cape.png)).collect();
+        self.refresh_shown();
+    }
+
+    /// Drops the cape the viewer shows back to the one the account wears, once a change to the profile has applied.
+    pub fn reset_cape_pick(&mut self) {
+        self.cape_pick = CapePick::Worn;
+        self.refresh_shown();
+    }
+
+    /// The change to the account's cape that Save applies. `Some(None)` takes the cape off, `Some(Some(id))` wears the cape with
+    /// that id, and `None` leaves the cape as it is. `worn` is the id of the cape the account wears.
+    pub fn cape_change(&self, worn: Option<&str>) -> Option<Option<String>> {
+        match &self.cape_pick {
+            CapePick::Worn => None,
+            CapePick::Off => worn.map(|_| None),
+            CapePick::Owned(id) => (worn != Some(id.as_str())).then(|| Some(id.clone())),
+        }
+    }
+
+    /// The cape the viewer shows.
+    pub fn cape_pick(&self) -> &CapePick {
+        &self.cape_pick
+    }
+
+    /// Whether the viewer shows a cape that differs from the one the account wears, so that Save has a change to apply.
+    pub fn cape_pending(&self, worn: Option<&str>) -> bool {
+        self.cape_change(worn).is_some()
     }
 
     /// Notes the previews' clock at `now`. The frame on show follows the clock.
@@ -299,11 +349,6 @@ impl Skins {
         self.preview_of(Slot::Bundled(index))
     }
 
-    /// Takes the fronts of the capes the player owns, by cape id.
-    pub fn set_cape_faces(&mut self, faces: Vec<(String, Handle)>) {
-        self.cape_faces = faces.into_iter().collect();
-    }
-
     /// Marks a change to the profile as under way, or finished.
     pub fn set_busy(&mut self, busy: bool) {
         self.busy = busy;
@@ -348,6 +393,7 @@ impl Skins {
     pub fn update(&mut self, message: Message) {
         match message {
             Message::Choose(choice) => self.choose(choice),
+            Message::PickCape(pick) => self.pick_cape(pick),
             Message::Tick(now) => self.tick(now),
             Message::Pose(pose) => self.pose = pose,
             Message::Layer(layer) => match layer {
@@ -362,7 +408,7 @@ impl Skins {
                     self.collapsed.insert(section);
                 }
             }
-            Message::Use | Message::RemoveArchived(_) | Message::Cape(_) | Message::OpenFolder | Message::Navigate(_) => {}
+            Message::Use | Message::RemoveArchived(_) | Message::SaveCape | Message::OpenFolder | Message::Navigate(_) => {}
         }
     }
 
@@ -371,14 +417,35 @@ impl Skins {
         view::view(self, account, width)
     }
 
-    /// Shows `choice` in the viewer, with the cape the account wears.
+    /// Shows `choice` in the viewer, with the cape the viewer shows.
     fn choose(&mut self, choice: Choice) {
         self.choice = choice;
-        let cape = self.appearance.as_ref().and_then(|appearance| appearance.cape_png.as_deref());
-        self.preview = match self.source(choice) {
-            Some((png, _)) => Skin::compose(png, cape).map(Arc::new),
-            None => None,
+        self.refresh_shown();
+    }
+
+    /// Shows a cape in the viewer, on the skin on show. Nothing is saved until Save.
+    fn pick_cape(&mut self, pick: CapePick) {
+        self.cape_pick = pick;
+        self.refresh_shown();
+    }
+
+    /// Composes the skin on show with the cape the viewer shows, for the viewer to sample. The cached frames of the grid keep
+    /// the cape the account wears, so they are not touched here.
+    fn refresh_shown(&mut self) {
+        let skin = match self.choice {
+            Choice::Current => self.appearance.as_ref().map(|appearance| appearance.skin_png.as_slice()),
+            choice => self.source(choice).map(|(png, _)| png),
         };
+        self.shown = skin.and_then(|png| Skin::compose(png, self.shown_cape())).map(Arc::new);
+    }
+
+    /// The picture of the cape the viewer shows: the one the account wears, none, or the one previewed.
+    fn shown_cape(&self) -> Option<&[u8]> {
+        match &self.cape_pick {
+            CapePick::Worn => self.appearance.as_ref().and_then(|appearance| appearance.cape_png.as_deref()),
+            CapePick::Off => None,
+            CapePick::Owned(id) => self.cape_pngs.get(id).map(Vec::as_slice),
+        }
     }
 
     /// Whether `choice` names a skin the page holds.
@@ -512,12 +579,9 @@ impl Skins {
         self.cape_faces.get(id)
     }
 
-    /// The skin the viewer shows: the current skin, or the chosen one.
+    /// The skin the viewer shows: the current skin, or the chosen one, with the cape the viewer shows.
     pub fn shown_skin(&self) -> Option<Arc<Skin>> {
-        match self.choice {
-            Choice::Current => self.current.clone(),
-            _ => self.preview.clone(),
-        }
+        self.shown.clone()
     }
 
     /// The model the viewer shows: the account's own, for the current skin, or the chosen skin's.

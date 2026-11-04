@@ -21,6 +21,7 @@ use crate::app::pages::news::Message as NewsMessage;
 use crate::app::pages::resource::Message as ResourceMessage;
 use crate::app::pages::servers::Message as ServersMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
+use crate::app::pages::skins::capes::CapeArt;
 use crate::app::pages::skins::previews::Drawn;
 use crate::app::pages::skins::{Appearance, Message as SkinsMessage, Scan};
 use crate::app::pages::worlds::Message as WorldsMessage;
@@ -99,8 +100,8 @@ pub enum LodestoneAppMessage {
     Skins(SkinsMessage),
     /// The skin folders were read.
     SkinsLoaded(Scan),
-    /// The capes the account owns were read, each with the front of its picture.
-    CapesLoaded(Vec<(String, Handle)>),
+    /// The capes the account owns were read, each with its front and its picture.
+    CapesLoaded(Vec<CapeArt>),
     /// A drawing of the skin previews finished, with the frame it made.
     PreviewsReady(Drawn),
     /// The profile was read again when the Skins page opened.

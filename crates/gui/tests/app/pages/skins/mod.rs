@@ -290,3 +290,34 @@ fn only_the_open_sections_are_drawn() {
         "and no folded pack is"
     );
 }
+
+#[test]
+fn a_previewed_cape_is_saved_only_when_it_differs_from_the_worn_one() {
+    let mut page = Skins::default();
+    assert_eq!(page.cape_change(Some("worn")), None, "the worn cape is not pending");
+    page.update(Message::PickCape(CapePick::Owned("worn".to_owned())));
+    assert_eq!(page.cape_change(Some("worn")), None, "previewing the worn cape changes nothing");
+    page.update(Message::PickCape(CapePick::Owned("other".to_owned())));
+    assert_eq!(page.cape_change(Some("worn")), Some(Some("other".to_owned())));
+    page.update(Message::PickCape(CapePick::Off));
+    assert_eq!(page.cape_change(Some("worn")), Some(None), "no cape takes the worn one off");
+    assert_eq!(page.cape_change(None), None, "with no cape worn, no cape has nothing to take off");
+}
+
+#[test]
+fn the_viewer_shows_the_previewed_cape_on_the_skin() {
+    let mut page = Skins::default();
+    page.set_appearance(Appearance {
+        skin_png: skin_png([255, 0, 0, 255]),
+        cape_png: Some(cape_png([0, 0, 200, 255])),
+        slim: false,
+    });
+    assert!(page.shown_skin().is_some_and(|skin| skin.cape), "the worn cape is shown first");
+    page.update(Message::PickCape(CapePick::Off));
+    assert!(
+        page.shown_skin().is_some_and(|skin| !skin.cape),
+        "a previewed no-cape takes it off in the viewer"
+    );
+    page.reset_cape_pick();
+    assert!(page.shown_skin().is_some_and(|skin| skin.cape), "reset shows the worn cape again");
+}

@@ -27,26 +27,68 @@ fn every_layer_is_twelve_boxes() {
     assert_eq!(model_vertices(&model(false)).len(), 12 * BOX_FLOATS);
 }
 
+/// The floats of the cape: its outside, inside, two edges and lower edge, each strip a quad of six vertices.
+const CAPE_FLOATS: usize = (4 * CAPE_SEGMENTS + 1) * 6 * 6;
+
+/// The cape's vertices, which the model's are followed by.
+fn cape_of(vertices: &[f32]) -> &[f32] {
+    &vertices[vertices.len() - CAPE_FLOATS..]
+}
+
+fn vertices_of(vertices: &[f32]) -> impl Iterator<Item = &[f32]> {
+    vertices.chunks_exact(6)
+}
+
 #[test]
-fn a_worn_cape_adds_one_quad_behind_the_body() {
+fn a_worn_cape_adds_a_sheet_behind_the_body() {
     let plain = model_vertices(&model(false));
     let caped = model_vertices(&model(true));
-    assert_eq!(caped.len(), plain.len() + 6 * 6, "one quad is six vertices");
-    for vertex in caped[plain.len()..].chunks_exact(6) {
-        assert!((vertex[2] - CAPE_DEPTH).abs() < 1e-5, "the cape sits behind the body");
+    assert_eq!(caped.len(), plain.len() + CAPE_FLOATS, "the cape is a strip of quads down its length");
+    for vertex in vertices_of(cape_of(&caped)) {
+        assert!(vertex[2] < -2.0, "the cape sits behind the body's back face");
         assert!(vertex[3] >= CAPE_X as f32 / ATLAS_WIDTH as f32, "the cape is on the texture's right half");
         assert!(vertex[4] <= 17.0 / ATLAS_HEIGHT as f32, "the cape's art stops at its own 17th texel");
     }
 }
 
 #[test]
-fn the_cape_hangs_from_the_shoulders_to_the_top_of_the_legs() {
+fn the_cape_is_three_dimensional() {
     let caped = model_vertices(&model(true));
-    let quad = &caped[caped.len() - 36..];
-    let top = quad.chunks_exact(6).map(|vertex| vertex[1]).fold(f32::MIN, f32::max);
-    let bottom = quad.chunks_exact(6).map(|vertex| vertex[1]).fold(f32::MAX, f32::min);
+    let shades: Vec<f32> = vertices_of(cape_of(&caped)).map(|vertex| vertex[5]).collect();
+    assert!(shades.contains(&BACK_SHADE), "the outside is drawn");
+    assert!(shades.contains(&INSIDE_SHADE), "the inside is drawn");
+    assert!(shades.contains(&EDGE_SHADE), "the edges are drawn");
+}
+
+#[test]
+fn the_cape_hangs_from_the_shoulders() {
+    let caped = model_vertices(&model(true));
+    let cape = cape_of(&caped);
+    let top = vertices_of(cape).map(|vertex| vertex[1]).fold(f32::MIN, f32::max);
+    let bottom = vertices_of(cape).map(|vertex| vertex[1]).fold(f32::MAX, f32::min);
     assert_eq!(top, 24.0, "the shoulders");
-    assert_eq!(bottom, 8.0, "the top of the legs");
+    assert!(
+        bottom > 8.0 && bottom < 12.0,
+        "the lower edge is a little above the top of the legs, as the cape leans back: {bottom}"
+    );
+}
+
+#[test]
+fn the_cape_flows_out_behind_the_body() {
+    let caped = model_vertices(&model(true));
+    let deepest = vertices_of(cape_of(&caped)).map(|vertex| vertex[2]).fold(f32::MAX, f32::min);
+    assert!(deepest < -4.0, "the lower edge stands well behind the body: {deepest}");
+}
+
+#[test]
+fn a_run_streams_the_cape_further_back_than_a_stand() {
+    let deepest = |pose: Pose| {
+        let mut posed = model(true);
+        posed.pose = pose;
+        let vertices = model_vertices(&posed);
+        vertices_of(cape_of(&vertices)).map(|vertex| vertex[2]).fold(f32::MAX, f32::min)
+    };
+    assert!(deepest(Pose::Run) < deepest(Pose::Stand) - 1.0);
 }
 
 #[test]
@@ -54,8 +96,7 @@ fn crouching_lowers_the_cape_with_the_body() {
     let mut crouched = model(true);
     crouched.pose = Pose::Crouch;
     let vertices = model_vertices(&crouched);
-    let quad = &vertices[vertices.len() - 36..];
-    let top = quad.chunks_exact(6).map(|vertex| vertex[1]).fold(f32::MIN, f32::max);
+    let top = vertices_of(cape_of(&vertices)).map(|vertex| vertex[1]).fold(f32::MIN, f32::max);
     assert_eq!(top, 21.0);
 }
 

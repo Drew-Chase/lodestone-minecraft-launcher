@@ -8,6 +8,14 @@ use super::viewer::decode_cape;
 const THUMBNAIL_WIDTH: u32 = 40;
 const THUMBNAIL_HEIGHT: u32 = 64;
 
+/// A cape the player owns, as the page holds it: its id, its front for the list, and its picture for the viewer.
+#[derive(Debug, Clone)]
+pub struct CapeArt {
+    pub id: String,
+    pub face: Handle,
+    pub png: Vec<u8>,
+}
+
 /// The front of a cape: the outside of the cape texture, the 10×16 block at (1, 1), scaled up with nearest sampling so its
 /// pixels stay square. `None` when the bytes are not a PNG.
 pub fn front_image(png: &[u8]) -> Option<image::RgbaImage> {

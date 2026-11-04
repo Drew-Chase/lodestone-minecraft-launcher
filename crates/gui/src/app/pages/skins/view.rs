@@ -8,7 +8,7 @@ use iced::{Background, Border, Color, Element, Fill, Padding, alignment};
 
 use super::catalog::{BUNDLED, Pack};
 use super::viewer::{self, Layers, Model, Pose};
-use super::{Account, Choice, Layer, Message, Section, Skins};
+use super::{Account, CapePick, Choice, Layer, Message, Section, Skins};
 use crate::app::components::TextButton;
 use crate::app::components::grid::grid;
 use crate::app::components::hint::hint;
@@ -254,16 +254,28 @@ fn icon_choice<'a>(icon: &'static str, name: &'static str, on: bool, on_press: M
     )
 }
 
-/// The account's capes: "No cape" first, then each cape the account owns. The one it wears is ringed.
+/// The account's capes: "No cape" first, then each cape the account owns. The one the viewer shows is ringed, and a press shows
+/// it in the viewer. Save applies it.
 fn capes<'a>(page: &'a Skins, account: Account<'a>, width: f32) -> Element<'a, Message> {
-    let worn = account.capes.iter().any(|cape| cape.active);
+    let worn = account.capes.iter().find(|cape| cape.active).map(|cape| cape.id.as_str());
+    let pick = page.cape_pick();
+    let none_selected = match pick {
+        CapePick::Off => true,
+        CapePick::Worn => worn.is_none(),
+        CapePick::Owned(_) => false,
+    };
     let mut cells: Vec<Element<'a, Message>> = vec![cape_tile(
         glyph(Icon::lucide().circle_x()),
         lang::t("skins.capes.none").to_owned(),
-        !worn,
-        Message::Cape(None),
+        none_selected,
+        Message::PickCape(CapePick::Off),
     )];
     for cape in account.capes {
+        let selected = match pick {
+            CapePick::Off => false,
+            CapePick::Worn => cape.active,
+            CapePick::Owned(id) => id == &cape.id,
+        };
         let picture: Element<'a, Message> = match page.cape_face(&cape.id) {
             Some(handle) => image(handle.clone())
                 .width(CAPE_PICTURE_WIDTH)
@@ -272,14 +284,28 @@ fn capes<'a>(page: &'a Skins, account: Account<'a>, width: f32) -> Element<'a, M
                 .into(),
             None => Space::new().width(CAPE_PICTURE_WIDTH).height(CAPE_PICTURE_HEIGHT).into(),
         };
-        cells.push(cape_tile(picture, cape.name.clone(), cape.active, Message::Cape(Some(cape.id.clone()))));
+        cells.push(cape_tile(
+            picture,
+            cape.name.clone(),
+            selected,
+            Message::PickCape(CapePick::Owned(cape.id.clone())),
+        ));
     }
     let columns = ((width + GAP) / (CAPE_TILE_WIDTH + GAP)).floor().max(1.0) as usize;
     let title = text(lang::t("skins.capes.title"))
         .size(13)
         .font(fonts::Inter::SEMI_BOLD)
         .color(color::text_headline());
-    let mut block = column![title, grid(cells, columns, GAP)].spacing(12).width(Fill);
+    let mut header = row![title, Space::new().width(Fill)].align_y(alignment::Vertical::Center);
+    if !account.capes.is_empty() {
+        let can_save = account.microsoft && !page.busy() && page.cape_pending(worn);
+        header = header.push(
+            TextButton::primary(lang::t("skins.cape.save"))
+                .disabled(!can_save)
+                .on_press(Message::SaveCape),
+        );
+    }
+    let mut block = column![header, grid(cells, columns, GAP)].spacing(12).width(Fill);
     if account.capes.is_empty() {
         block = block.push(
             text(lang::t("skins.capes.empty"))

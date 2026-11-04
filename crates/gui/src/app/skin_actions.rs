@@ -5,7 +5,6 @@
 use std::path::PathBuf;
 
 use iced::Task;
-use iced::widget::image::Handle;
 use lodestone_minecraft_authentication::{Cape, Profile};
 use tracing::{info, warn};
 
@@ -16,7 +15,7 @@ use crate::app::lang;
 use crate::app::launch::prepare::{self, SessionCheck};
 use crate::app::pages::instance::files::move_to_trash;
 use crate::app::pages::skins::archive;
-use crate::app::pages::skins::capes;
+use crate::app::pages::skins::capes::{self, CapeArt};
 use crate::app::pages::skins::catalog::BUNDLED;
 use crate::app::pages::skins::library;
 use crate::app::pages::skins::previews::{self, Drawn};
@@ -26,8 +25,8 @@ use crate::app::pages::skins::{Account as SkinsAccount, Appearance, Message as S
 pub enum ProfileChange {
     /// Upload `png` as the skin, in the classic or the slim model. `name` is what the question shows.
     Skin { name: String, png: Vec<u8>, slim: bool },
-    /// Wear the cape with this id, or take the cape off when `id` is `None`. `name` is what the question shows.
-    Cape { id: Option<String>, name: String },
+    /// Wear the cape with this id, or take the cape off when `id` is `None`. A cape is saved from the page, without a question.
+    Cape { id: Option<String> },
 }
 
 /// Reads the saved skins, the archive, and the digests of the bundled skins, off the UI thread.
@@ -102,8 +101,8 @@ impl LodestoneLauncher {
                 tokio::task::spawn_blocking(move || {
                     pictures
                         .into_iter()
-                        .filter_map(|(id, png)| capes::front(&png).map(|face| (id, face)))
-                        .collect::<Vec<(String, Handle)>>()
+                        .filter_map(|(id, png)| capes::front(&png).map(|face| CapeArt { id, face, png }))
+                        .collect::<Vec<CapeArt>>()
                 })
                 .await
                 .unwrap_or_default()
@@ -183,15 +182,11 @@ impl LodestoneLauncher {
     pub(super) fn update_skins(&mut self, message: SkinsMessage) -> Task<LodestoneAppMessage> {
         match message {
             SkinsMessage::Use => match self.skins.chosen() {
-                Some(chosen) => self.ask_change(ProfileChange::Skin {
-                    name: chosen.name,
-                    png: chosen.png,
-                    slim: chosen.slim,
-                }),
+                Some(chosen) => self.ask_upload(chosen.name, chosen.png, chosen.slim),
                 None => Task::none(),
             },
             SkinsMessage::RemoveArchived(index) => self.remove_archived(index),
-            SkinsMessage::Cape(id) => self.ask_cape(id),
+            SkinsMessage::SaveCape => self.save_cape(),
             SkinsMessage::OpenFolder => super::instances::reveal_folder(self.paths.skins()),
             SkinsMessage::Navigate(page) => self.navigate(page),
             message => {
@@ -201,50 +196,33 @@ impl LodestoneLauncher {
         }
     }
 
-    /// Asks before the account's cape changes. Wearing the cape the account already wears, or taking off a cape it does not
-    /// wear, asks nothing.
-    fn ask_cape(&mut self, id: Option<String>) -> Task<LodestoneAppMessage> {
-        let Some(Account::Microsoft { session }) = self.account.as_ref() else {
-            return self.ask_change(ProfileChange::Cape { id, name: String::new() });
-        };
-        let worn = session.profile.capes.iter().find(|cape| cape.active);
-        let change_needed = match (&id, worn) {
-            (Some(wanted), Some(worn)) => wanted != &worn.id,
-            (Some(_), None) => true,
-            (None, worn) => worn.is_some(),
-        };
-        if !change_needed {
+    /// Applies the cape the viewer shows, without a question. It needs a Microsoft account, and no other change under way.
+    fn save_cape(&mut self) -> Task<LodestoneAppMessage> {
+        if self.skins.busy() {
             return Task::none();
         }
-        let name = id
-            .as_ref()
-            .and_then(|id| session.profile.capes.iter().find(|cape| &cape.id == id))
-            .map_or_else(String::new, |cape| cape.name.clone());
-        self.ask_change(ProfileChange::Cape { id, name })
+        let Some(Account::Microsoft { session }) = self.account.as_ref() else {
+            return Task::none();
+        };
+        let worn = session.profile.capes.iter().find(|cape| cape.active).map(|cape| cape.id.as_str());
+        let Some(id) = self.skins.cape_change(worn) else {
+            return Task::none();
+        };
+        self.start_profile_change(ProfileChange::Cape { id })
     }
 
-    /// Asks the player to confirm a change. The answer returns as `ProfileChangeConfirmed`.
-    fn ask_change(&mut self, change: ProfileChange) -> Task<LodestoneAppMessage> {
+    /// Asks the player to confirm a skin upload. The answer returns as `ProfileChangeConfirmed`.
+    fn ask_upload(&mut self, name: String, png: Vec<u8>, slim: bool) -> Task<LodestoneAppMessage> {
         if self.skins.busy() {
             return Task::none();
         }
         if !self.signed_in_microsoft() {
             return self.alerts.show(Alert::warn(lang::t("skins.needs_microsoft"))).discard();
         }
-        let (message, title): (String, &'static str) = match &change {
-            ProfileChange::Skin { name, .. } => (
-                lang::t_with("skins.upload_message", &[("name", name.as_str())]),
-                lang::t("skins.upload_title"),
-            ),
-            ProfileChange::Cape { id: Some(_), name } => (
-                lang::t_with("skins.cape.wear_message", &[("name", name.as_str())]),
-                lang::t("skins.cape.title"),
-            ),
-            ProfileChange::Cape { id: None, .. } => (lang::t("skins.cape.hide_message").to_owned(), lang::t("skins.cape.title")),
-        };
-        self.pending_change = Some(change);
+        let message = lang::t_with("skins.upload_message", &[("name", name.as_str())]);
+        self.pending_change = Some(ProfileChange::Skin { name, png, slim });
         self.alerts
-            .show(Alert::warn(message).title(title).yes_no())
+            .show(Alert::warn(message).title(lang::t("skins.upload_title")).yes_no())
             .map(LodestoneAppMessage::ProfileChangeConfirmed)
     }
 
@@ -328,11 +306,11 @@ impl LodestoneLauncher {
                     LodestoneAppMessage::ProfileChanged,
                 )
             }
-            ProfileChange::Cape { id: Some(id), .. } => Task::perform(
+            ProfileChange::Cape { id: Some(id) } => Task::perform(
                 async move { auth.equip_cape(&token, &id).await.map_err(|error| error.to_string()) },
                 LodestoneAppMessage::ProfileChanged,
             ),
-            ProfileChange::Cape { id: None, .. } => Task::perform(
+            ProfileChange::Cape { id: None } => Task::perform(
                 async move { auth.hide_cape(&token).await.map_err(|error| error.to_string()) },
                 LodestoneAppMessage::ProfileChanged,
             ),
@@ -347,6 +325,7 @@ impl LodestoneLauncher {
             Ok(profile) => {
                 info!("The profile changed for {}", profile.name);
                 self.replace_profile(profile);
+                self.skins.reset_cape_pick();
                 Task::batch([self.appearance_task(), self.capes_task()])
             }
             Err(error) => {
