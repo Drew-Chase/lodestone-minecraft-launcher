@@ -76,6 +76,11 @@ When reasoning about a change or answering a question about impact, work through
 - Verify correctness with the Rust toolchain: `cargo fmt` (config in `rustfmt.toml`), `cargo clippy`, and `cargo test`, run across the workspace
 - Never use Python for any tooling or scripts
 
+## Release Notes
+
+- When asked to write release notes for a tag (for example "write a release note for v0.1.2"), assume the user means to update the notes of the existing GitHub release for that tag, not to create a new release. Edit it with `gh release edit <tag> --notes-file <file>`, and check the release exists first with `gh release view <tag>`.
+- Follow the format of the previous release's notes (heading, Highlights or Fixes sections, the `SHA256SUMS.txt` line) and base the content on the commits between the previous tag and this one.
+
 ## Progress Tracking
 
 - Keep the task list the app shows (`update_plan`) current as the work moves, not only at the start and end of a turn. Check a step off in the same call that starts the next one, and never leave a finished step unchecked or a started step unmarked.
