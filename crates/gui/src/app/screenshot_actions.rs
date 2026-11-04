@@ -9,7 +9,7 @@ use arboard::ImageData;
 use iced::Task;
 use tracing::{info, warn};
 
-use super::instances::reveal_folder;
+use super::reveal::reveal_file;
 use super::{LodestoneAppMessage, LodestoneLauncher, clipboard};
 use crate::app::components::alert::Alert;
 use crate::app::lang;
@@ -23,10 +23,7 @@ impl LodestoneLauncher {
         match action {
             Some(Action::Copy) => self.copy_screenshot(path),
             Some(Action::Open) => open_file(path),
-            Some(Action::Reveal) => match self.instance_page.instance() {
-                Some(instance) => reveal_folder(self.paths.instance(&instance.directory_name).join("screenshots")),
-                None => Task::none(),
-            },
+            Some(Action::Reveal) => reveal_file(path),
             Some(Action::Delete) => self.ask_screenshot_delete(path),
             None => Task::none(),
         }

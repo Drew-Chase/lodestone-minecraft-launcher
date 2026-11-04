@@ -75,3 +75,26 @@ fn the_disabled_suffix_is_matched_without_regard_to_case_and_splits_no_character
     assert_eq!(strip_suffix_ignore_case("€.jar", ".jar.disabled"), None);
     assert_eq!(strip_suffix_ignore_case("x", ".jar"), None);
 }
+
+#[test]
+fn a_switch_renames_the_jar_by_its_disabled_suffix() {
+    assert_eq!(switched_name("sodium.jar", false).as_deref(), Some("sodium.jar.disabled"));
+    assert_eq!(switched_name("sodium.jar.disabled", true).as_deref(), Some("sodium.jar"));
+    assert_eq!(
+        switched_name("sodium.JAR.DISABLED", true).as_deref(),
+        Some("sodium.JAR"),
+        "the suffix matches without case"
+    );
+    assert_eq!(switched_name("sodium.jar", true), None, "a jar already enabled has nothing to do");
+    assert_eq!(
+        switched_name("sodium.jar.disabled", false),
+        None,
+        "a jar already disabled has nothing to do"
+    );
+    assert_eq!(switched_name("notes.txt", false), None, "only jars are switched");
+    assert_eq!(
+        switched_name("notes.disabled", true),
+        None,
+        "a disabled file that is not a jar is left alone"
+    );
+}

@@ -46,7 +46,7 @@ fn row(update: bool, source: bool) -> Row {
 fn an_unassociated_mod_offers_only_associating_and_deleting() {
     assert_eq!(
         menu(&row(false, false), false).actions,
-        [Some(Action::Associate), None, Some(Action::Delete)]
+        [Some(Action::Associate), Some(Action::Reveal), None, Some(Action::Delete)]
     );
 }
 
@@ -59,6 +59,7 @@ fn an_associated_mod_offers_switching_and_its_dependencies() {
             Some(Action::Dependencies),
             None,
             Some(Action::Associate),
+            Some(Action::Reveal),
             None,
             Some(Action::Delete)
         ]
@@ -75,6 +76,7 @@ fn an_update_leads_the_menu_when_the_platform_has_one() {
             Some(Action::Dependencies),
             None,
             Some(Action::Associate),
+            Some(Action::Reveal),
             None,
             Some(Action::Delete),
         ]

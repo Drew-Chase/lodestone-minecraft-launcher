@@ -21,7 +21,7 @@ use crate::app::perf;
 use super::logs::{LogLine, MAX_LINES};
 
 pub use backups::BackupFile;
-pub use mods::ModFile;
+pub use mods::{ModFile, switched_name};
 pub use screenshots::ScreenshotFile;
 pub use worlds::{Difficulty, GameMode, WorldFile};
 

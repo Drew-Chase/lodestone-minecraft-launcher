@@ -5,7 +5,7 @@
 //! pill toggles that, and the page re-reads the file on a timer while it is on.
 //! Export is display-only until the root owns file IO.
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 use aurora_leaf::Icon;
 use iced::widget::{Space, Text, column, container, row};
@@ -30,7 +30,7 @@ const TAG_WIDTH: f32 = 64.0;
 const CARET_OFFSET: f32 = TIME_WIDTH + TAG_WIDTH + 28.0;
 
 /// The severity a log line is tagged with.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LogLevel {
     Debug,
     Info,
@@ -39,6 +39,9 @@ pub enum LogLevel {
 }
 
 impl LogLevel {
+    /// Every level, from the quietest to the loudest, in the order the filter shows them.
+    pub const ALL: [LogLevel; 4] = [LogLevel::Debug, LogLevel::Info, LogLevel::Warn, LogLevel::Error];
+
     /// The bracketed tag drawn before the message.
     pub fn tag(self) -> &'static str {
         match self {
@@ -46,6 +49,16 @@ impl LogLevel {
             LogLevel::Info => "[INFO]",
             LogLevel::Warn => "[WARN]",
             LogLevel::Error => "[ERROR]",
+        }
+    }
+
+    /// The level's name, as the filter's chip shows it.
+    pub fn name(self) -> &'static str {
+        match self {
+            LogLevel::Debug => "DEBUG",
+            LogLevel::Info => "INFO",
+            LogLevel::Warn => "WARN",
+            LogLevel::Error => "ERROR",
         }
     }
 }
@@ -91,8 +104,14 @@ impl LogBuffer {
 pub enum Message {
     /// The LIVE pill was pressed.
     ToggleFollow,
+    /// A level's filter chip was pressed: its lines are shown, or hidden when they were.
+    ToggleLevel(LogLevel),
     /// Export was pressed — display-only until the root owns file IO.
     Export,
+    /// The button that opens `latest.log` in its app was pressed. The root opens it.
+    OpenLatest,
+    /// The button that shows `latest.log` in the file browser was pressed. The root shows it.
+    RevealLatest,
 }
 
 /// The Logs tab's state.
@@ -100,14 +119,17 @@ pub enum Message {
 pub struct State {
     buffer: LogBuffer,
     follow: bool,
+    /// The levels whose lines the filter hides. Every level shows until its chip is pressed.
+    hidden: HashSet<LogLevel>,
 }
 
 impl Default for State {
-    /// Empty, and following new lines.
+    /// Empty, following new lines, with every level shown.
     fn default() -> Self {
         Self {
             buffer: LogBuffer::default(),
             follow: true,
+            hidden: HashSet::new(),
         }
     }
 }
@@ -126,8 +148,13 @@ impl State {
     pub fn update(&mut self, message: Message) {
         match message {
             Message::ToggleFollow => self.follow = !self.follow,
-            // Display-only until the root owns file IO.
-            Message::Export => {}
+            Message::ToggleLevel(level) => {
+                if !self.hidden.remove(&level) {
+                    self.hidden.insert(level);
+                }
+            }
+            // Display-only until the root owns file IO. The root opens and reveals the log.
+            Message::Export | Message::OpenLatest | Message::RevealLatest => {}
         }
     }
 
@@ -148,16 +175,22 @@ impl State {
                 .font(fonts::JetBrainsMono::SEMI_BOLD)
                 .color(color::text_headline()),
             Space::new().width(Fill),
+            row(LogLevel::ALL.map(|level| level_chip(level, !self.hidden.contains(&level))))
+                .spacing(6)
+                .align_y(alignment::Vertical::Center),
             live_pill(self.follow),
+            TextButton::labeled_icon(Icon::lucide().file(), lang::t("instance.logs.open_latest"), Variant::Ghost).on_press(Message::OpenLatest),
+            TextButton::labeled_icon(Icon::lucide().folder(), lang::t("instance.logs.reveal"), Variant::Ghost).on_press(Message::RevealLatest),
             TextButton::labeled_icon(Icon::lucide().download(), lang::t("instance.logs.export"), Variant::Ghost).on_press(Message::Export),
         ]
         .spacing(10)
         .align_y(alignment::Vertical::Center);
 
-        let rows: Vec<&LogLine> = match console {
+        let lines: Vec<&LogLine> = match console {
             Some(lines) => lines.iter().collect(),
             None => self.buffer.iter().collect(),
         };
+        let rows: Vec<&LogLine> = lines.into_iter().filter(|line| !self.hidden.contains(&line.level)).collect();
         let body: Element<'_, Message> = if rows.is_empty() {
             Text::new(lang::t("instance.logs.empty"))
                 .size(12)
@@ -178,6 +211,20 @@ impl State {
         .height(Fill)
         .into()
     }
+}
+
+/// A level's filter chip: lit in the level's colour while its lines show, and dimmed while they are hidden.
+fn level_chip<'a>(level: LogLevel, shown: bool) -> Element<'a, Message> {
+    let (ink, fill) = if shown {
+        (level_ink(level), rgb!(255, 255, 255, 6%))
+    } else {
+        (color::text_placeholder(), rgb!(255, 255, 255, 2%))
+    };
+    TextButton::content(Badge::new(level.name(), ink, fill))
+        .variant(Variant::Tab)
+        .padding(Padding::new(0.0))
+        .on_press(Message::ToggleLevel(level))
+        .into()
 }
 
 /// The LIVE/PAUSED pill; pressing it toggles following.

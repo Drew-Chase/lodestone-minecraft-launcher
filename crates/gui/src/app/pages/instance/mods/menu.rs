@@ -19,6 +19,8 @@ pub enum Action {
     Dependencies,
     /// Searches the platforms for the project the mod is, and records it.
     Associate,
+    /// Shows the jar in the file browser, with the jar selected.
+    Reveal,
     /// Moves the jar to the trash, once the user has said so.
     Delete,
 }
@@ -50,6 +52,7 @@ pub fn menu(row: &Row, busy: bool) -> Menu {
         actions.push(None);
     }
     actions.push(Some(Action::Associate));
+    actions.push(Some(Action::Reveal));
     actions.push(None);
     actions.push(Some(Action::Delete));
     let items = actions
@@ -69,6 +72,7 @@ fn item(action: Action, row: &Row) -> MenuItem {
         Action::Switch => (lang::t("instance.mods.menu.switch").to_owned(), Icon::lucide().repeat(), false),
         Action::Dependencies => (lang::t("instance.mods.menu.dependencies").to_owned(), Icon::lucide().layers(), false),
         Action::Associate => (lang::t("instance.mods.menu.associate").to_owned(), Icon::lucide().link(), false),
+        Action::Reveal => (lang::t("instance.mods.menu.reveal").to_owned(), Icon::lucide().folder(), false),
         Action::Delete => (lang::t("instance.mods.menu.delete").to_owned(), Icon::lucide().trash(), true),
     };
     MenuItem::Action {

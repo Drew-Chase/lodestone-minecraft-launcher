@@ -24,12 +24,15 @@ use crate::app::theme::{color, fonts, utility};
 
 /// The id of the scrollable the list sits in, so a filter change can scroll it back to the top.
 pub const SCROLL_ID: &str = "instance-mods-list";
-/// A row's height: the 36px menu trigger and its padding.
-pub const ROW_HEIGHT: f32 = 60.0;
+/// A row's height: its 44px icon with room either side, and the menu trigger.
+pub const ROW_HEIGHT: f32 = 72.0;
 /// A row and the hairline under it.
 pub const PITCH: f32 = ROW_HEIGHT + 1.0;
 /// The rows built past each edge of the window, so a scroll never reveals a gap before the next frame.
 const OVERSCAN: usize = 8;
+
+/// The side of a row's icon tile, in pixels.
+const TILE_SIZE: f32 = 44.0;
 
 /// The rows the list builds: the first one, and the one after the last. `total` is how many rows the list has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,10 +96,10 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
     // came from does, and failing that the tile holds the package glyph.
     let picture = file.icon.as_ref().or_else(|| state.project_icon(entry));
     let tile: Element<'_, Message> = match picture {
-        Some(icon) => image(icon.clone()).width(32).height(32).into(),
-        None => container(utility::icon(Icon::lucide().package(), 15.0, Some((ink, ink))))
-            .width(32)
-            .height(32)
+        Some(icon) => image(icon.clone()).width(TILE_SIZE).height(TILE_SIZE).into(),
+        None => container(utility::icon(Icon::lucide().package(), 20.0, Some((ink, ink))))
+            .width(TILE_SIZE)
+            .height(TILE_SIZE)
             .align_x(alignment::Horizontal::Center)
             .align_y(alignment::Vertical::Center)
             .style(move |_| tile_style(fill))
@@ -105,7 +108,7 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
 
     let mut title = row![
         Text::new(file.name.as_str())
-            .size(13)
+            .size(15)
             .font(fonts::Inter::SEMI_BOLD)
             .color(color::text_headline()),
     ]
@@ -118,7 +121,7 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
     let details = column![
         title,
         Text::new(subtitle(entry))
-            .size(11)
+            .size(13)
             .font(fonts::JetBrainsMono::REGULAR)
             .color(color::text_placeholder()),
     ]
@@ -138,7 +141,11 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
             action: Some(Action::Update),
         })
     });
-    let switch = Toggle::new(file.enabled).on_toggle_with(move |enabled| Message::Toggle { index, enabled });
+    let toggle_name = file.file_name.clone();
+    let switch = Toggle::new(file.enabled).disabled(busy).on_toggle_with(move |enabled| Message::Toggle {
+        file_name: toggle_name.clone(),
+        enabled,
+    });
     let more_name = file.file_name.clone();
     let more_actions = actions.clone();
     let more = Dropdown::new(Icon::lucide().ellipsis_vertical())
@@ -159,17 +166,40 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
         .spacing(14)
         .align_y(alignment::Vertical::Center)
         .height(Length::Fixed(ROW_HEIGHT));
+    let hovered = state.hovered.as_deref() == Some(file.file_name.as_str());
     let press = mouse_area(body)
         .interaction(mouse::Interaction::Pointer)
-        .on_press(Message::Open(file.file_name.clone()));
+        .on_press(Message::Open(file.file_name.clone()))
+        .on_enter(Message::Hover {
+            file_name: file.file_name.clone(),
+            hovered: true,
+        })
+        .on_exit(Message::Hover {
+            file_name: file.file_name.clone(),
+            hovered: false,
+        });
+    // The row lifts a little under the pointer, so it reads as the one a press opens.
+    let lifted = container(press).width(Fill).style(move |_| row_highlight(hovered));
 
     let key = file.file_name.clone();
     let menu_name = file.file_name.clone();
-    let context = ContextMenu::new(press, key).items(items).on_select(move |selected| Message::Menu {
+    let context = ContextMenu::new(lifted, key).items(items).on_select(move |selected| Message::Menu {
         file_name: menu_name.clone(),
         action: actions.get(selected).copied().flatten(),
     });
     column![context, hairline()].width(Fill).into()
+}
+
+/// The fill of a row under the pointer: a faint white wash over the panel, with the row's corners rounded.
+fn row_highlight(hovered: bool) -> container::Style {
+    container::Style {
+        background: hovered.then_some(Background::Color(rgb!(255, 255, 255, 4%))),
+        border: Border {
+            radius: 10.0.into(),
+            ..Border::default()
+        },
+        ..container::Style::default()
+    }
 }
 
 /// The line under a mod's name: its author and version, or its version alone, or the file name when the jar declares

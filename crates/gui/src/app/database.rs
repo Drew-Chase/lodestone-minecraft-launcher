@@ -451,6 +451,28 @@ impl Database {
         transaction.commit().await.map_err(|error| error.to_string())
     }
 
+    /// Renames the record and the cached hash of the jar `from` to `to`, in one transaction. A record still held under
+    /// `to` belongs to a jar that is no longer in the folder, so it is dropped first.
+    pub async fn rename_mod(&self, instance: &str, from: &str, to: &str) -> Result<(), String> {
+        let mut transaction = self.pool.begin().await.map_err(|error| error.to_string())?;
+        delete_jar(&mut transaction, instance, to).await?;
+        sqlx::query("UPDATE mod_sources SET file_name = ? WHERE instance_id = ? AND file_name = ?")
+            .bind(to)
+            .bind(instance)
+            .bind(from)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| error.to_string())?;
+        sqlx::query("UPDATE jar_hashes SET file_name = ? WHERE instance_id = ? AND file_name = ?")
+            .bind(to)
+            .bind(instance)
+            .bind(from)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| error.to_string())?;
+        transaction.commit().await.map_err(|error| error.to_string())
+    }
+
     /// Forgets the record and the cached hash of a jar that is gone.
     pub async fn forget_mod_source(&self, instance: &str, file_name: &str) -> Result<(), String> {
         let mut transaction = self.pool.begin().await.map_err(|error| error.to_string())?;

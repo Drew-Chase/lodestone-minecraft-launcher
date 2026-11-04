@@ -65,6 +65,19 @@ pub fn count(dir: &Path) -> usize {
     jars(dir).len()
 }
 
+/// The file name a mod jar takes when its switch is set to `enabled`. A jar switched off gains `.disabled`, and one
+/// switched on loses it. `None` when the name is not a mod jar, or already has the state asked for.
+pub fn switched_name(file_name: &str, enabled: bool) -> Option<String> {
+    if enabled {
+        let stem = strip_suffix_ignore_case(file_name, ".disabled")?;
+        strip_suffix_ignore_case(stem, ".jar")?;
+        Some(stem.to_string())
+    } else {
+        strip_suffix_ignore_case(file_name, ".jar")?;
+        Some(format!("{file_name}.disabled"))
+    }
+}
+
 /// The jars directly inside `dir`. Folders and other files are skipped.
 fn jars(dir: &Path) -> Vec<Jar> {
     let Ok(entries) = std::fs::read_dir(dir) else {

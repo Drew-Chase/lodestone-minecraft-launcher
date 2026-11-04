@@ -13,7 +13,6 @@ pub(crate) mod format;
 mod hero;
 pub(crate) mod logs;
 pub mod mods;
-mod overview;
 pub mod screenshots;
 pub mod settings;
 mod watch;
@@ -46,11 +45,10 @@ use watch::{Change, Update};
 /// The page's horizontal gutter — 28px, per the design.
 const GUTTER: f32 = 28.0;
 
-/// The page's tabs, in tab-bar order.
+/// The page's tabs, in tab-bar order. The page opens on the Mods tab.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Tab {
     #[default]
-    Overview,
     Mods,
     Worlds,
     Screenshots,
@@ -59,11 +57,10 @@ pub enum Tab {
 }
 
 impl Tab {
-    pub const ALL: [Tab; 6] = [Tab::Overview, Tab::Mods, Tab::Worlds, Tab::Screenshots, Tab::Logs, Tab::Settings];
+    pub const ALL: [Tab; 5] = [Tab::Mods, Tab::Worlds, Tab::Screenshots, Tab::Logs, Tab::Settings];
 
     pub fn label(self) -> &'static str {
         match self {
-            Tab::Overview => lang::t("instance.tab.overview"),
             Tab::Mods => lang::t("instance.tab.mods"),
             Tab::Worlds => lang::t("instance.tab.worlds"),
             Tab::Screenshots => lang::t("instance.tab.screenshots"),
@@ -187,7 +184,7 @@ impl InstancePage {
         self.worlds = worlds::State::default();
         self.screenshots = screenshots::State::default();
         self.logs = logs::State::default();
-        self.tab = Tab::Overview;
+        self.tab = Tab::Mods;
         self.console_run = None;
         self.watch_pending.clear();
         self.reading = false;
@@ -550,7 +547,7 @@ impl InstancePage {
         let page = column![
             hero::hero(instance, self.files.as_ref(), controls, viewport),
             self.tab_bar(),
-            self.tab_body(instance, game.console, install, pins),
+            self.tab_body(instance, game.console, pins),
         ]
         .width(Fill)
         .height(Fill);
@@ -605,15 +602,8 @@ impl InstancePage {
 
     /// The selected tab's content, padded to the page gutter. The log panel and the mod list fill the height
     /// and scroll themselves, so their headers and filter bars stay put; every other tab scrolls as a page.
-    fn tab_body<'a>(
-        &'a self,
-        instance: &'a Instance,
-        console: Option<&'a VecDeque<logs::LogLine>>,
-        install: Option<&'a Pending>,
-        pins: &'a WorldPins,
-    ) -> Element<'a, Message> {
+    fn tab_body<'a>(&'a self, instance: &'a Instance, console: Option<&'a VecDeque<logs::LogLine>>, pins: &'a WorldPins) -> Element<'a, Message> {
         let content: Element<'a, Message> = match self.tab {
-            Tab::Overview => overview::view(instance, &self.screenshots, install),
             Tab::Mods => self.mods.view(instance.loader != Loader::Vanilla).map(|message| match message {
                 mods::Message::Add => Message::AddMods,
                 other => Message::Mods(other),

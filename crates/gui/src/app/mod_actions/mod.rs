@@ -27,11 +27,13 @@ use super::pages::instance::files;
 use super::pages::instance::files::ModFile;
 use super::pages::instance::mods::{Action, Associate, Dependencies, Dialog, DialogMessage, Line, Picked, Switch, project_key, scroll_to_release};
 use super::pages::resource::{Listing, Load};
+use super::reveal::reveal_file;
 use super::shared_library::ModSource;
 mod delete;
 mod deps;
 mod link;
 mod replace;
+mod toggle;
 
 pub(crate) use replace::replace_jar;
 
@@ -39,6 +41,9 @@ pub(crate) use replace::replace_jar;
 const SEARCH_LIMIT: u32 = 20;
 /// How long a full check of an instance's mods is trusted before the platforms are asked again.
 const MOD_CHECK_TTL: Duration = Duration::from_secs(10 * 60);
+/// The least time between two checks of the Mods tab's mods against their platforms, across the whole launcher. The
+/// platforms rate-limit their answers, so a check asked for sooner waits until this has passed.
+const MOD_CHECK_INTERVAL: Duration = Duration::from_secs(120);
 
 /// When an instance's mods were last checked in full, and the newer release each checked mod has, by file name. Kept for
 /// the session, so reopening the Mods tab shows the updates it found without asking the platforms again.
@@ -122,6 +127,15 @@ pub enum Message {
         file_name: String,
         result: Result<Vec<Line>, String>,
     },
+    /// A mod's jar was renamed for its switch, or could not be. `result` is the name the jar has now.
+    Toggled {
+        generation: u64,
+        file_name: String,
+        enabled: bool,
+        result: Result<String, String>,
+    },
+    /// The wait for the next check of the Mods tab's mods, which came too soon after the last one, has ended.
+    ChecksDue,
 }
 
 /// The releases of a project picked for a link, the one that fits the jar best, and the jar's SHA-1.
@@ -193,20 +207,41 @@ impl LodestoneLauncher {
         Task::batch([read, self.mods_checks_due()])
     }
 
-    /// Starts the checks of the shown instance's mods, once the Mods tab is open and the folder has been read. They start
-    /// once for each reading of the folder. A full check is trusted for a while, so within that time the updates it found
-    /// are shown again and only the jars with no record are looked up. After that, every mod's update is checked.
+    /// Checks the shown instance's mods against their platforms, when the Mods tab is open and the folder has been read.
+    /// Entering the tab asks for a check each time. The launcher never starts two checks less than [`MOD_CHECK_INTERVAL`]
+    /// apart, so a check that comes too soon waits in a timer for the interval to pass, and then runs. Several requests in
+    /// that wait share one timer.
     pub(super) fn mods_checks_due(&mut self) -> Task<LodestoneAppMessage> {
         let shown = self.instance_page.mods();
-        if self.instance_page.tab() != Tab::Mods || shown.checks_started() || !shown.has_mods() {
+        if self.instance_page.tab() != Tab::Mods || shown.checking() || !shown.has_mods() {
             return Task::none();
         }
+        if let Some(started) = self.mod_check_started {
+            let elapsed = started.elapsed();
+            if elapsed < MOD_CHECK_INTERVAL {
+                if self.mod_check_timer {
+                    return Task::none();
+                }
+                self.mod_check_timer = true;
+                return Task::perform(tokio::time::sleep(MOD_CHECK_INTERVAL - elapsed), |()| {
+                    LodestoneAppMessage::ModActions(Message::ChecksDue)
+                });
+            }
+        }
+        self.start_mod_checks()
+    }
+
+    /// Starts a check of the shown instance's mods against their platforms now. A check with a full answer from the last
+    /// [`MOD_CHECK_TTL`] only looks up the jars with no record, and shows the updates it found before. Otherwise every
+    /// mod's update is checked.
+    fn start_mod_checks(&mut self) -> Task<LodestoneAppMessage> {
         let (Some(context), Some(db)) = (self.mods_context(), self.db.clone()) else {
             return Task::none();
         };
         let generation = self.instance_page.generation();
         let names = self.instance_page.mods().file_names();
-        self.instance_page.mods_mut().start_checks();
+        self.mod_check_started = Some(Instant::now());
+        self.instance_page.mods_mut().set_checking(true);
         match self
             .mod_checks
             .get(&context.instance.id)
@@ -279,6 +314,7 @@ impl LodestoneLauncher {
                 Task::none()
             }
             Message::Checked { generation, full, result } if self.mods_fresh(generation) => {
+                self.instance_page.mods_mut().set_checking(false);
                 match result {
                     Ok(checks) => self.apply_checks(full, checks),
                     Err(error) => warn!("checking the mods failed: {error}"),
@@ -336,6 +372,16 @@ impl LodestoneLauncher {
                 self.mod_dependencies(file_name, result);
                 Task::none()
             }
+            Message::Toggled {
+                generation,
+                file_name,
+                enabled,
+                result,
+            } if self.mods_fresh(generation) => self.mod_toggled(file_name, enabled, result),
+            Message::ChecksDue => {
+                self.mod_check_timer = false;
+                self.mods_checks_due()
+            }
             // An answer for an instance the page no longer shows.
             _ => Task::none(),
         }
@@ -372,6 +418,14 @@ impl LodestoneLauncher {
         })
     }
 
+    /// Shows a mod's jar in the file browser, with the jar selected.
+    fn reveal_mod(&self, file_name: &str) -> Task<LodestoneAppMessage> {
+        match self.mods_context() {
+            Some(context) => reveal_file(context.mods_dir().join(file_name)),
+            None => Task::none(),
+        }
+    }
+
     /// A row of a mod's menu was picked. A separator carries no action.
     pub(super) fn mod_menu_action(&mut self, file_name: String, action: Option<Action>) -> Task<LodestoneAppMessage> {
         match action {
@@ -382,6 +436,7 @@ impl LodestoneLauncher {
             Some(Action::Switch) => self.open_switch(file_name),
             Some(Action::Dependencies) => self.open_dependencies(file_name),
             Some(Action::Associate) => self.open_link(file_name),
+            Some(Action::Reveal) => self.reveal_mod(&file_name),
             Some(Action::Delete) => self.ask_mod_delete(file_name),
             None => Task::none(),
         }

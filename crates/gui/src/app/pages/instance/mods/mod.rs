@@ -82,13 +82,15 @@ pub struct State {
     busy: HashSet<String>,
     /// The dialog on top of the tab, when one is open.
     dialog: Option<Dialog>,
-    /// Whether the platforms have been asked about these mods since the folder was read.
-    checks_started: bool,
+    /// Whether a check of these mods against the platforms is in flight. A second check waits for it to end.
+    checking: bool,
     /// The picture of each platform project a linked mod came from, by [`project_key`]. It stands in for a jar that
     /// declares none.
     project_icons: HashMap<String, image::Handle>,
     /// The projects whose picture has been asked for, so each is asked once.
     icons_asked: HashSet<String>,
+    /// The file name of the row under the pointer, if any. The row lifts while it is set.
+    hovered: Option<String>,
 }
 
 /// The key of the platform project a record names, by platform and project id.
@@ -103,8 +105,10 @@ pub enum Message {
     Query(String),
     /// The updates chip was pressed. `true` narrows the list to the mods with a newer release.
     Updates(bool),
-    /// A mod's switch was flipped.
-    Toggle { index: usize, enabled: bool },
+    /// A mod's switch was flipped, by file name. The root renames the jar and answers with the new name.
+    Toggle { file_name: String, enabled: bool },
+    /// The pointer entered (`hovered`) or left the row of the mod with this file name.
+    Hover { file_name: String, hovered: bool },
     /// Add Mod was pressed. The root opens Discover on the instance's mods.
     Add,
     /// The list scrolled to this offset.
@@ -170,6 +174,11 @@ impl State {
             row.source = self.sources.get(&row.file.file_name).cloned();
             row.update = self.updates.get(&row.file.file_name).cloned();
         }
+    }
+
+    /// Whether an action on the mod `file_name` is in flight.
+    pub fn is_busy(&self, file_name: &str) -> bool {
+        self.busy.contains(file_name)
     }
 
     /// Marks a mod's action as in flight, or done.
@@ -243,17 +252,43 @@ impl State {
         self.rows.iter().map(|row| row.file.file_name.clone()).collect()
     }
 
-    /// Whether the platforms have been asked about these mods since the folder was read.
-    pub fn checks_started(&self) -> bool {
-        self.checks_started
+    /// Whether a check of these mods against the platforms is in flight.
+    pub fn checking(&self) -> bool {
+        self.checking
     }
 
-    /// Records that the platforms are being asked about these mods.
-    pub fn start_checks(&mut self) {
-        self.checks_started = true;
+    /// Records that a check of these mods against the platforms has started, or has ended.
+    pub fn set_checking(&mut self, checking: bool) {
+        self.checking = checking;
+    }
+
+    /// Moves a mod's row to the name its jar took when it was renamed, and to its new switch position. Its recorded
+    /// source and its update move with it, so the mod keeps what is known of it.
+    pub fn renamed(&mut self, from: &str, to: &str, enabled: bool) {
+        self.busy.remove(from);
+        if let Some(mut record) = self.sources.remove(from) {
+            record.file_name = to.to_string();
+            self.sources.insert(to.to_string(), record);
+        }
+        if let Some(release) = self.updates.remove(from) {
+            self.updates.insert(to.to_string(), release);
+        }
+        if self.hovered.as_deref() == Some(from) {
+            self.hovered = Some(to.to_string());
+        }
+        if let Some(row) = self.rows.iter_mut().find(|row| row.file.file_name == from) {
+            row.file.file_name = to.to_string();
+            row.file.enabled = enabled;
+            row.source = self.sources.get(to).cloned();
+            row.update = self.updates.get(to).cloned();
+        }
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
+        // Any message but a hover ends the hover: the row under the pointer may have moved, and its exit may never come.
+        if !matches!(message, Message::Hover { .. }) {
+            self.hovered = None;
+        }
         match message {
             Message::Query(query) => {
                 self.filter.query = query;
@@ -263,9 +298,13 @@ impl State {
                 self.filter.updates_only = updates_only;
                 self.filter_changed()
             }
-            Message::Toggle { index, enabled } => {
-                if let Some(row) = self.rows.get_mut(index) {
-                    row.file.enabled = enabled;
+            // The root renames the jar, and the row follows once the rename lands.
+            Message::Toggle { .. } => Task::none(),
+            Message::Hover { file_name, hovered } => {
+                if hovered {
+                    self.hovered = Some(file_name);
+                } else if self.hovered.as_deref() == Some(file_name.as_str()) {
+                    self.hovered = None;
                 }
                 Task::none()
             }

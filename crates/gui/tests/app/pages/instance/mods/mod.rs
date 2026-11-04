@@ -79,18 +79,42 @@ fn text_matches_names_and_authors_ignoring_case() {
 }
 
 #[test]
-fn toggling_changes_only_that_mod() {
+fn a_toggle_waits_for_the_root_to_rename_the_jar() {
     let mut state = sample();
-    let _ = state.update(Message::Toggle { index: 1, enabled: false });
-    let enabled: Vec<bool> = state.rows.iter().map(|row| row.file.enabled).collect();
-    assert_eq!(enabled, [true, false, false]);
+    let before: Vec<bool> = state.rows.iter().map(|row| row.file.enabled).collect();
+    let file_name = state.rows[1].file.file_name.clone();
+    let _ = state.update(Message::Toggle { file_name, enabled: false });
+    let after: Vec<bool> = state.rows.iter().map(|row| row.file.enabled).collect();
+    assert_eq!(before, after, "the row switches only once the jar has been renamed");
 }
 
 #[test]
-fn toggling_past_the_end_is_ignored() {
+fn renamed_moves_the_row_to_the_new_name_and_switch() {
     let mut state = sample();
-    let _ = state.update(Message::Toggle { index: 9, enabled: false });
-    assert_eq!(state.rows.iter().filter(|row| row.file.enabled).count(), 2);
+    let from = state.rows[1].file.file_name.clone();
+    let to = format!("{from}.disabled");
+    state.renamed(&from, &to, false);
+    assert!(state.row(&from).is_none(), "the old name is gone");
+    assert!(
+        state.row(&to).is_some_and(|row| !row.file.enabled),
+        "the new name is listed as switched off"
+    );
+}
+
+#[test]
+fn hovering_a_row_lifts_it_until_another_message_arrives() {
+    let mut state = sample();
+    let file_name = state.rows[0].file.file_name.clone();
+    let _ = state.update(Message::Hover {
+        file_name: file_name.clone(),
+        hovered: true,
+    });
+    assert_eq!(state.hovered.as_deref(), Some(file_name.as_str()));
+    let _ = state.update(Message::Scrolled(10.0));
+    assert!(
+        state.hovered.is_none(),
+        "a scroll ends the hover, since the row under the pointer may have moved"
+    );
 }
 
 #[test]

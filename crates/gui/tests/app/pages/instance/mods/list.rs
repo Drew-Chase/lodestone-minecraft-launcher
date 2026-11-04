@@ -3,12 +3,12 @@ use crate::app::pages::instance::files::ModFile;
 
 #[test]
 fn the_window_covers_the_viewport_with_overscan_on_both_sides() {
-    // 600px shows ten rows of 61px, and eight more are built past the bottom edge. Nothing lies above the top.
+    // 600px shows nine rows of 73px, and eight more are built past the bottom edge. Nothing lies above the top.
     assert_eq!(
         window(0.0, 600.0, 1_000),
         Window {
             first: 0,
-            end: 18,
+            end: 17,
             total: 1_000
         }
     );
@@ -16,12 +16,12 @@ fn the_window_covers_the_viewport_with_overscan_on_both_sides() {
 
 #[test]
 fn the_window_moves_with_the_scroll() {
-    // 6,100px down is row 100, so rows 92 to 117 are built.
+    // 6,100px down, at 73px a row, is row 83, so rows 75 to 99 are built.
     assert_eq!(
         window(6_100.0, 600.0, 1_000),
         Window {
-            first: 92,
-            end: 118,
+            first: 75,
+            end: 100,
             total: 1_000
         }
     );

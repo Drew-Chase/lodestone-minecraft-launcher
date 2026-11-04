@@ -1,9 +1,8 @@
 //! Screenshot tiles — a capture's thumbnail with a caption.
 //!
-//! [`Caption::Overlay`] writes the file name over the bottom-left corner with no
-//! frame (the Overview strip). [`Caption::Footer`] adds an opaque bar with the
-//! name and size inside a hairline frame (the Screenshots tab). A tile whose
-//! thumbnail has not decoded yet shows [`placeholder_art`].
+//! [`Caption::Footer`] adds an opaque bar with the name and size inside a hairline
+//! frame (the Screenshots tab). A tile whose thumbnail has not decoded yet shows
+//! [`placeholder_art`].
 
 use aurora_leaf::Icon;
 use iced::border::Radius;
@@ -22,8 +21,6 @@ const RADIUS: f32 = 14.0;
 /// What the tile prints over or beneath its art.
 #[derive(Debug, Clone, Copy)]
 pub enum Caption<'a> {
-    /// The name in small mono over the bottom-left corner.
-    Overlay(&'a str),
     /// A bar beneath the art with the name and the size, inside a hairline frame.
     Footer { name: &'a str, size: &'a str },
 }
@@ -82,18 +79,6 @@ pub fn placeholder_art<'a, M: 'a>(radius: f32) -> Element<'a, M> {
 /// The caption, pinned to the tile's bottom edge.
 fn caption_layer<'a, M: 'a>(caption: Caption<'a>) -> Element<'a, M> {
     match caption {
-        Caption::Overlay(name) => container(
-            Text::new(name)
-                .size(9)
-                .font(fonts::JetBrainsMono::REGULAR)
-                .color(rgb!(255, 255, 255, 70%)),
-        )
-        .width(Fill)
-        .height(Fill)
-        .align_x(alignment::Horizontal::Left)
-        .align_y(alignment::Vertical::Bottom)
-        .padding(Padding::new(0.0).left(8).bottom(6))
-        .into(),
         Caption::Footer { name, size } => container(footer_bar(name, size))
             .width(Fill)
             .height(Fill)

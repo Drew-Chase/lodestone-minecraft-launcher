@@ -10,6 +10,7 @@ use chrono::Utc;
 use iced::Task;
 use tracing::{info, warn};
 
+use super::reveal::{open_file, reveal_file};
 use super::{LodestoneAppMessage, LodestoneLauncher};
 use crate::app::components::alert::Alert;
 use crate::app::database::Database;
@@ -31,8 +32,12 @@ impl LodestoneLauncher {
         let Some(instance) = self.instance_page.instance() else {
             return Task::none();
         };
-        self.discover.prepare_mods(InstanceChoice::of(instance));
-        self.navigate(Page::Discover)
+        let choice = InstanceChoice::of(instance);
+        self.discover.prepare_mods(choice.clone());
+        let opened = self.navigate(Page::Discover);
+        // Set after the navigation, which forgets any earlier origin, so the page can return to this instance.
+        self.discover.set_origin(Some(choice));
+        opened
     }
 
     /// Opens an instance's detail page on `tab`. An id that is no longer loaded is ignored.
@@ -140,6 +145,16 @@ impl LodestoneLauncher {
             Some(instance) => reveal_folder(self.paths.instance(&instance.directory_name)),
             None => Task::none(),
         }
+    }
+
+    /// Opens the shown instance's `logs/latest.log` in its app, or shows it selected in the file browser. The file is
+    /// read by the app that opens it, so a log not yet written fails there, and the failure is reported.
+    pub(super) fn latest_log(&self, reveal: bool) -> Task<LodestoneAppMessage> {
+        let Some(instance) = self.instance_page.instance() else {
+            return Task::none();
+        };
+        let log = self.paths.instance(&instance.directory_name).join("logs").join("latest.log");
+        if reveal { reveal_file(log) } else { open_file(log) }
     }
 
     /// Opens the folder of the instance on the instance page.
@@ -260,7 +275,7 @@ impl LodestoneLauncher {
             Err(error) => {
                 warn!("Opening the instance folder failed: {error}");
                 self.alerts
-                    .show(Alert::error(lang::t_with("instance.reveal.failed", &[("error", error.as_str())])))
+                    .show(Alert::error(lang::t_with("common.open_failed", &[("error", error.as_str())])))
                     .discard()
             }
         }
