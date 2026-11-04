@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use semver::Version;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 use crate::REPOSITORY;
 use crate::error::Error;
@@ -16,6 +16,9 @@ pub struct Release {
     pub tag: String,
     /// The release's page on GitHub.
     pub html_url: String,
+    /// The release's notes, as GitHub's markdown. Empty when the release has none, which GitHub sends as `null`.
+    #[serde(default, deserialize_with = "notes_or_empty")]
+    pub body: String,
     /// The files attached to the release.
     #[serde(default)]
     pub assets: Vec<Asset>,
@@ -28,6 +31,11 @@ pub struct Asset {
     pub name: String,
     /// Where the file is downloaded from.
     pub browser_download_url: String,
+}
+
+/// Reads a release's notes, where a release with none sends `null`.
+fn notes_or_empty<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    Option::<String>::deserialize(deserializer).map(Option::unwrap_or_default)
 }
 
 impl Release {

@@ -29,6 +29,7 @@ fn a_release_without_an_installer_is_refused_before_any_download() {
     let release = Release {
         tag: "v0.2.0".to_string(),
         html_url: String::new(),
+        body: String::new(),
         assets: Vec::new(),
     };
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("a runtime");

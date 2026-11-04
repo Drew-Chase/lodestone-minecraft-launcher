@@ -4,17 +4,26 @@
 //! count.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
-use iced::Task;
+use aurora_leaf::Icon;
+use iced::widget::{Space, markdown, row, text};
+use iced::{Element, Fill, Task, Theme};
 use lodestone_updater::{Release, fetch_installer, installed_with_installer, run_silent_elevated};
 use tracing::{info, warn};
 
 use super::{LodestoneAppMessage, LodestoneLauncher};
+use crate::app::components::TextButton;
 use crate::app::components::alert::Alert;
+use crate::app::components::modal::Modal;
 use crate::app::lang;
+use crate::app::theme::{color, fonts};
 
 /// The User-Agent of the update check. GitHub's API refuses requests that carry none.
 const USER_AGENT: &str = concat!("lodestone_launcher/", env!("CARGO_PKG_VERSION"));
+
+/// How often the update check asks GitHub again while the launcher runs.
+pub const CHECK_EVERY: Duration = Duration::from_secs(120);
 
 /// The update check's messages.
 #[derive(Debug, Clone)]
@@ -23,8 +32,16 @@ pub enum Message {
     Checked(Result<Option<Release>, String>),
     /// The installer was downloaded and passed its checksum, or the download failed.
     Downloaded(Result<PathBuf, String>),
-    /// The update button was pressed.
+    /// The update button was pressed. A newer release opens its changelog.
     Pressed,
+    /// The changelog's Update button was pressed: the update starts.
+    Confirm,
+    /// The changelog was dismissed with Cancel, the scrim or Escape.
+    Dismiss,
+    /// A link in the changelog was clicked.
+    OpenLink(String),
+    /// The check's clock fell due. The check asks GitHub again unless an update is already under way.
+    CheckDue,
     /// The answer to "install while a game is running?".
     InstallConfirmed(bool),
     /// Windows started the installer, or did not.
@@ -62,6 +79,8 @@ pub enum Status {
 #[derive(Debug, Default)]
 pub struct Updater {
     status: Status,
+    /// The changelog of the newer release, parsed, while its dialog is open.
+    dialog: Option<markdown::Content>,
 }
 
 /// What the topbar's update button shows: its hint, and whether a press does anything.
@@ -85,6 +104,55 @@ impl Updater {
         };
         Some(Button { tooltip, enabled })
     }
+
+    /// The changelog dialog for a newer release, while it is open. Its footer has Update, which starts the update, and Cancel.
+    pub fn modal(&self) -> Option<Element<'_, Message>> {
+        let notes = self.dialog.as_ref()?;
+        let Status::Available(release) = &self.status else {
+            return None;
+        };
+        let body: Element<'_, Message> = if release.body.trim().is_empty() {
+            text(lang::t("updater.dialog.no_notes"))
+                .size(14)
+                .font(fonts::Inter::REGULAR)
+                .color(color::text_muted())
+                .into()
+        } else {
+            let links: Element<'_, markdown::Uri> = markdown::view(notes.items(), notes_settings());
+            links.map(Message::OpenLink)
+        };
+        let footer = row![
+            Space::new().width(Fill),
+            TextButton::ghost(lang::t("updater.dialog.cancel")).on_press(Message::Dismiss),
+            TextButton::primary(lang::t("updater.dialog.update")).on_press(Message::Confirm),
+        ]
+        .spacing(10)
+        .align_y(iced::alignment::Vertical::Center);
+        let title = lang::t_with("updater.dialog.title", &[("version", release.tag.as_str())]);
+        Some(
+            Modal::new(title, body)
+                .subtitle(lang::t("updater.dialog.subtitle"))
+                .icon(Icon::lucide().download(), color::primary(), color::primary_tint())
+                .footer(footer)
+                .on_close(Message::Dismiss)
+                .close_on_scrim(true)
+                .into(),
+        )
+    }
+
+    /// Whether the check should ask GitHub again: nothing is under way, so a newer release can only be found, not acted on.
+    fn awaiting_check(&self) -> bool {
+        matches!(self.status, Status::Idle | Status::Available(_))
+    }
+}
+
+/// The markdown settings of the changelog: body text at 14 px, and the platform's link colour.
+fn notes_settings() -> markdown::Settings {
+    let style = markdown::Style {
+        link_color: color::primary(),
+        ..markdown::Style::from(&Theme::Dark)
+    };
+    markdown::Settings::with_text_size(14, style)
 }
 
 /// Whether the update check runs. A portable launcher skips it, and so does a debug build unless
@@ -147,6 +215,13 @@ impl LodestoneLauncher {
                     .discard()
             }
             Message::Pressed => self.pressed(),
+            Message::Confirm => self.confirm(),
+            Message::Dismiss => {
+                self.updater.dialog = None;
+                Task::none()
+            }
+            Message::OpenLink(url) => super::instances::open_source(url),
+            Message::CheckDue => self.check_due(),
             Message::InstallConfirmed(true) => self.start_install(),
             Message::InstallConfirmed(false) => Task::none(),
             Message::Launched(Ok(())) => iced::exit(),
@@ -158,7 +233,10 @@ impl LodestoneLauncher {
     /// build, or one with Auto-update off, shows the button, and a press on an installed build downloads it then.
     fn newer_release(&mut self, release: Release) -> Task<LodestoneAppMessage> {
         if !installer_build() || !self.settings_values.auto_update {
-            info!("Update {} is available", release.tag);
+            // The check runs again every few minutes, so the release is logged the first time it is seen.
+            if self.updater.status != Status::Available(release.clone()) {
+                info!("Update {} is available", release.tag);
+            }
             self.updater.status = Status::Available(release);
             return Task::none();
         }
@@ -188,12 +266,15 @@ impl LodestoneLauncher {
         self.start_install()
     }
 
-    /// The button was pressed. A newer release opens its page, or downloads on an installed build that updates by hand.
-    /// A verified installer runs, after a question when a game is running.
+    /// The button was pressed. A newer release opens its changelog, where Update starts it. A verified installer runs, after a
+    /// question when a game is running.
     fn pressed(&mut self) -> Task<LodestoneAppMessage> {
         match self.updater.status.clone() {
-            Status::Available(release) if installer_build() => self.download(release),
-            Status::Available(release) => super::instances::open_source(release.html_url),
+            Status::Available(release) => {
+                info!("Showing the changelog of {}", release.tag);
+                self.updater.dialog = Some(markdown::Content::parse(&release.body));
+                Task::none()
+            }
             Status::Held(_) | Status::Ready(_) if self.games.any_active() => self
                 .alerts
                 .show(
@@ -205,6 +286,25 @@ impl LodestoneLauncher {
             Status::Held(_) | Status::Ready(_) => self.start_install(),
             _ => Task::none(),
         }
+    }
+
+    /// The changelog's Update button. An installed Windows build downloads the release, and any other build opens its page.
+    fn confirm(&mut self) -> Task<LodestoneAppMessage> {
+        self.updater.dialog = None;
+        match self.updater.status.clone() {
+            Status::Available(release) if installer_build() => self.download(release),
+            Status::Available(release) => super::instances::open_source(release.html_url),
+            _ => Task::none(),
+        }
+    }
+
+    /// The clock asked for a check. It runs when the launcher may hear of a newer release, and the updates are off for a
+    /// portable launcher and a debug build as they are at launch.
+    fn check_due(&mut self) -> Task<LodestoneAppMessage> {
+        if !enabled(self.portable.is_some()) || !self.updater.awaiting_check() {
+            return Task::none();
+        }
+        check(self.settings_values.beta_channel)
     }
 
     /// Runs the verified installer silently. Windows asks for administrator rights first, and the launcher closes once

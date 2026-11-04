@@ -10,6 +10,7 @@ use super::notifications;
 use super::pages::Page;
 use super::pages::skins::{Message as SkinsMessage, PREVIEW_FRAME};
 use super::servers;
+use super::updater;
 use super::{LodestoneAppMessage, LodestoneLauncher, perf};
 
 impl LodestoneLauncher {
@@ -27,6 +28,8 @@ impl LodestoneLauncher {
             self.servers_subscription(),
             // The update checks are due every few hours, so the clock wakes once an hour to see whether one is.
             iced::time::every(std::time::Duration::from_secs(60 * 60)).map(|_| LodestoneAppMessage::Notifications(notifications::Message::CheckDue)),
+            // The launcher checks GitHub for a newer release every couple of minutes while it runs.
+            iced::time::every(updater::CHECK_EVERY).map(|_| LodestoneAppMessage::Updater(updater::Message::CheckDue)),
             perf::subscription(&self.perf).map(LodestoneAppMessage::Perf),
         ])
     }

@@ -147,6 +147,11 @@ impl LodestoneLauncher {
         } else {
             Space::new().into()
         };
+        // The changelog of a newer launcher release covers the page the same way, above the Co-op Sync dialog.
+        let changelog: Element<'_, LodestoneAppMessage> = match self.updater.modal() {
+            Some(modal) => modal.map(LodestoneAppMessage::Updater),
+            None => Space::new().into(),
+        };
         // The screenshot viewer covers the whole window, under the alerts. It is open only on the instance page.
         let viewer: Element<'_, LodestoneAppMessage> = match self.router.current() {
             Page::Instance => match self.instance_page.viewer(self.window_size) {
@@ -177,6 +182,7 @@ impl LodestoneLauncher {
                 join,
                 servers_dialog,
                 coop,
+                changelog,
                 viewer,
                 alert,
                 moving,

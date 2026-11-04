@@ -46,7 +46,8 @@ impl LodestoneLauncher {
         }
         // Open the launcher database — migrations run on connect.
         tasks.push(Task::perform(Database::connect(), |result| LodestoneAppMessage::DatabaseReady(result)));
-        // The update check runs once per launch, in the background. `updater::enabled` says when it is skipped.
+        // The update check runs at launch, in the background, and then every `updater::CHECK_EVERY`. `updater::enabled` says when
+        // it is skipped.
         if updater::enabled(app.portable.is_some()) {
             tasks.push(updater::check(app.settings_values.beta_channel));
         }

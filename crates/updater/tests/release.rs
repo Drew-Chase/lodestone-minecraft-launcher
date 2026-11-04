@@ -4,6 +4,7 @@ fn release(tag: &str, names: &[&str]) -> Release {
     Release {
         tag: tag.to_string(),
         html_url: format!("https://example.test/releases/{tag}"),
+        body: String::new(),
         assets: names
             .iter()
             .map(|name| Asset {
