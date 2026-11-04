@@ -25,6 +25,9 @@ dmg:
 publish version="":
     uv -g commit-push-tag {{version}}
 
+dev:
+    cargo run --bin lodestone_launcher
+
 # Runs the launcher with the performance overlay (F3), the per-second report and the Chrome trace.
 perf:
     cargo run -p lodestone_launcher --features perf
