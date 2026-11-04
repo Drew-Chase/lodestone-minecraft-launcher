@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use iced::widget::{Space, Text, column, container, image, markdown, rich_text, row};
-use iced::{Element, Fill, Theme};
+use iced::{Element, Fill, Padding, Theme};
 
 use super::grid::{cover, kind_label};
 use super::{Message, Reading};
@@ -16,6 +16,9 @@ use crate::app::theme::{color, fonts};
 
 /// The height of the reader's picture.
 const HEIGHT: f32 = 260.0;
+
+/// The space under the body, so the last line clears the bottom of the scroll area.
+const BOTTOM: f32 = 32.0;
 
 /// The reader: the patch note at `reading`, or nothing when the feed no longer has it.
 pub fn view<'a>(reading: &'a Reading, feed: &'a Feed, pictures: &'a HashMap<String, image::Handle>) -> Element<'a, Message> {
@@ -41,6 +44,7 @@ pub fn view<'a>(reading: &'a Reading, feed: &'a Feed, pictures: &'a HashMap<Stri
     ]
     .spacing(16)
     .width(Fill)
+    .padding(Padding::new(0.0).bottom(BOTTOM))
     .into()
 }
 

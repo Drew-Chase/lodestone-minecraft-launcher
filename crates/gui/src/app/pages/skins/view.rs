@@ -53,7 +53,7 @@ pub(super) fn view<'a>(page: &'a Skins, account: Account<'a>, width: f32) -> Ele
     let columns = ((inner_width + GAP) / (TILE_WIDTH + GAP)).floor().max(1.0) as usize;
     let list = column![
         container(capes(page, account, inner_width)).padding(Padding::new(0.0).top(24.0).right(SCROLLBAR_INSET)),
-        scrollbar::scroll(container(sections(page, columns)).padding(Padding::new(0.0).top(12.0).bottom(24.0).right(SCROLLBAR_INSET)))
+        scrollbar::scroll(container(sections(page, columns)).padding(Padding::new(0.0).top(12.0).bottom(96.0).right(SCROLLBAR_INSET)))
             .width(Fill)
             .height(Fill),
     ]
