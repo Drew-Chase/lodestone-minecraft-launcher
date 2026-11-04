@@ -1,0 +1,30 @@
+/* ────── Showcase split ────── */
+.showcase-split {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; margin-top: 60px;
+}
+.showcase-split.reverse { direction: rtl; }
+.showcase-split.reverse > * { direction: ltr; }
+.showcase-split .copy h3 {
+  font-family: var(--display); font-size: 32px; font-weight: 700;
+  letter-spacing: -1px; line-height: 1.1; margin-bottom: 16px;
+}
+.showcase-split .copy p { font-size: 15px; color: var(--ink-2); line-height: 1.6; margin-bottom: 24px; }
+.showcase-split .checks { display: flex; flex-direction: column; gap: 10px; }
+.showcase-split .checks li {
+  list-style: none; display: flex; align-items: flex-start; gap: 10px;
+  font-size: 13.5px; color: var(--ink-1);
+}
+.showcase-split .checks .ic {
+  flex-shrink: 0; width: 18px; height: 18px; border-radius: 5px;
+  background: rgba(34,255,132,0.14); color: var(--mc-green);
+  display: flex; align-items: center; justify-content: center; margin-top: 1px;
+}
+.showcase-mock {
+  position: relative; border-radius: 14px; overflow: hidden;
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 30px 70px -20px rgba(0,0,0,0.7);
+  aspect-ratio: 1000 / 540;
+  background: var(--bg-1);
+}
+.showcase-mock .showcase-window { border-radius: 14px; height: 100%; }
+.showcase-mock .shot-screen { aspect-ratio: auto; height: calc(100% - 36px); }

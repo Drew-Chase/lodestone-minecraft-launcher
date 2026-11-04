@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://lodestonelauncher.com/sitemap.xml

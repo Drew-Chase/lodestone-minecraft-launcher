@@ -1,0 +1,82 @@
+/* ────── Nav ────── */
+.nav {
+  position: sticky; top: 0; z-index: 100;
+  height: 64px;
+  background: rgba(8,9,10,0.75);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border-bottom: 1px solid var(--line);
+}
+.nav-inner {
+  height: 100%;
+  display: flex; align-items: center; gap: 28px;
+}
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: -0.4px;
+}
+.brand-mark {
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  filter: drop-shadow(0 0 6px rgba(34,255,132,0.4));
+}
+.nav-links {
+  display: flex; gap: 4px; flex: 1;
+  font-size: 13px; color: var(--ink-2);
+}
+.nav-links a {
+  padding: 8px 12px; border-radius: 7px; transition: all 0.15s;
+}
+.nav-links a:hover { color: var(--ink-0); background: var(--line); }
+.nav-cta {
+  display: flex; align-items: center; gap: 10px;
+  margin-left: auto;
+}
+
+/* ────── Mobile nav burger & drawer ────── */
+.nav-burger {
+  display: none;
+  align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 8px;
+  color: var(--ink-1); transition: background 0.15s;
+}
+.nav-burger:hover { background: var(--line); }
+
+.mobile-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s;
+}
+.mobile-overlay.open { opacity: 1; pointer-events: auto; }
+
+.mobile-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 201;
+  width: min(320px, 85vw);
+  background: var(--bg-1); border-left: 1px solid var(--line);
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.mobile-drawer.open { transform: translateX(0); }
+
+.mobile-drawer-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.mobile-drawer-links {
+  flex: 1; overflow-y: auto; padding: 12px 8px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.mobile-drawer-links a {
+  display: block; padding: 14px 16px; border-radius: 10px;
+  font-size: 15px; font-weight: 500; color: var(--ink-1);
+  transition: background 0.15s;
+}
+.mobile-drawer-links a:hover { background: var(--line); }
+
+.mobile-drawer-cta {
+  padding: 16px 20px; border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 8px;
+}

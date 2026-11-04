@@ -1,0 +1,31 @@
+{
+  "name": "lodestone-website",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Lodestone Minecraft Launcher website: React frontend and PHP (Slim 4) API",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "dev": "concurrently \"pnpm dev:frontend\" \"pnpm dev:api\" --names \"React,PHP\" --prefix-colors \"cyan,magenta\"",
+    "dev:frontend": "vite",
+    "dev:api": "php -S localhost:8000 -t api scripts/dev-router.php",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "6.2.1",
+    "autoprefixer": "10.4.16",
+    "concurrently": "^9.2.1",
+    "postcss": "8.4.31",
+    "tailwindcss": "3.4.17",
+    "typescript": "6.0.3",
+    "vite": "8.0.14"
+  }
+}
