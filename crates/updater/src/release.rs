@@ -117,9 +117,19 @@ pub fn newer(current: &Version, release: Release) -> Result<Option<Release>, Err
     Ok((version > *current).then_some(release))
 }
 
-/// The release's Windows installer: the asset whose name ends in `-setup.exe`.
+/// The release's installer for this system: `installer.sh` on Linux, the `-setup.exe` on Windows.
 pub fn installer_asset(release: &Release) -> Option<&Asset> {
-    release.assets.iter().find(|asset| asset.name.ends_with("-setup.exe"))
+    release.assets.iter().find(|asset| is_installer(&asset.name))
+}
+
+#[cfg(target_os = "linux")]
+fn is_installer(name: &str) -> bool {
+    name == "installer.sh"
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_installer(name: &str) -> bool {
+    name.ends_with("-setup.exe")
 }
 
 #[cfg(test)]

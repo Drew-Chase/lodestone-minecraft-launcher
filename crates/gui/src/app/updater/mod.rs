@@ -188,9 +188,10 @@ async fn run_installer(installer: PathBuf) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
-/// Whether this launcher is an installed Windows build, which can install an update itself.
+/// Whether this launcher can install an update itself: any Linux build (its installer script runs in the user's
+/// folders), or an installed Windows build.
 fn installer_build() -> bool {
-    cfg!(windows) && std::env::current_exe().is_ok_and(|exe| installed_with_installer(&exe))
+    cfg!(target_os = "linux") || (cfg!(windows) && std::env::current_exe().is_ok_and(|exe| installed_with_installer(&exe)))
 }
 
 impl LodestoneLauncher {

@@ -14,7 +14,7 @@ use crate::release::{Asset, Release, installer_asset};
 /// Downloads the release's installer into `dir`, after checking it against the release's checksum list. Returns the
 /// path of the verified installer.
 pub async fn fetch_installer(client: &Client, release: &Release, dir: &Path) -> Result<PathBuf, Error> {
-    let asset = installer_asset(release).ok_or_else(|| Error::MissingAsset("a Windows installer".to_string()))?;
+    let asset = installer_asset(release).ok_or_else(|| Error::MissingAsset("an installer for this system".to_string()))?;
     let sums_asset = release
         .assets
         .iter()

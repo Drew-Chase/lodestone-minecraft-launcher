@@ -35,10 +35,25 @@ pub fn run_silent_elevated(installer: &Path) -> Result<(), Error> {
     }
 }
 
-/// Only Windows has the installer, so the other systems never reach it.
-#[cfg(not(windows))]
+/// Runs the release's `installer.sh` with `sh`. It installs into the user's own folders, so it needs no administrator
+/// rights, and it returns once the script has finished.
+#[cfg(target_os = "linux")]
+pub fn run_silent_elevated(installer: &Path) -> Result<(), Error> {
+    let status = std::process::Command::new("sh")
+        .arg(installer)
+        .status()
+        .map_err(|error| Error::Launch(format!("could not run sh: {error}")))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(Error::Launch(format!("the installer script exited with {status}")))
+    }
+}
+
+/// Only Windows and Linux have an installer, so the other systems never reach it.
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn run_silent_elevated(_installer: &Path) -> Result<(), Error> {
-    Err(Error::Launch("the Windows installer runs on Windows only".to_string()))
+    Err(Error::Launch("the installer runs on Windows and Linux only".to_string()))
 }
 
 /// `text` as a NUL-terminated UTF-16 string, the form the Windows calls take.
