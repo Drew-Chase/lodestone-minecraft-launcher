@@ -10,7 +10,12 @@ This is a **fully Rust project**. Assume this unless the codebase shows otherwis
 - **Libraries** — all application logic, services, and utilities are **Rust crates**
 - **Workspace** — the project is a **Cargo workspace**; check the root `Cargo.toml` for member crates (`crates/*`) and their dependency relationships. Keep an eye on how crates depend on each other; changes to a shared crate ripple through everything downstream.
 
-Languages: **Rust only**. **TypeScript is not used**, except possibly for incidental build/dev tooling — never for application or library code.
+Languages:
+- **Rust** for the launcher and its crates (`crates/`).
+- **TypeScript** (React, Vite) for the website's front end (`website/src/`).
+- **PHP 8.2** for the website's API (`website/api/`), with its tests in `website/tests/`.
+
+Each language stays in its own tree, and the launcher's Rust crates never depend on the website. Never use Python for tooling or scripts.
 
 Target platforms: **Windows, macOS, and Linux** (desktop only). This project does **not** target Android or iOS — do not factor mobile into analysis, recommendations, or dependency choices.
 
