@@ -2,7 +2,9 @@
 # Installs the latest Lodestone Minecraft Launcher release for Linux (x86_64) into ~/.local/bin, and adds a menu entry
 # (a .desktop file and icon) so KDE Plasma, and any other freedesktop desktop, lists it in the application launcher.
 #
-#   curl -fsSL https://github.com/Drew-Chase/lodestone-minecraft-launcher/releases/latest/download/installer.sh | sh
+#   curl -fsSL https://lodestonelauncher.com/install | sh
+#
+# The website serves this file at /install (see website/vite.config.ts), and the release ships it as installer.sh.
 #
 # Set BIN_DIR to install somewhere else. Set NO_DESKTOP_ENTRY=1 to skip the menu entry.
 

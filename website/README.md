@@ -5,6 +5,7 @@ The site at lodestonelauncher.com. It is a React 19 + TypeScript frontend (Vite)
 - `src/`: the one-page site. Sections are in `src/components`, and the release lookup is `src/hooks/useRelease.ts`.
 - `api/index.php`: the Slim app. `api/routes/ReleaseRoute.php` serves `GET /api/releases/latest` and `GET /api/stats`. `api/lib/GitHubReleases.php` reads the GitHub API and caches the result for 30 minutes in the system temp folder.
 - `public/`: files served as they are (favicons, OG image, `robots.txt`, `sitemap.xml`).
+- `/install` serves `res/installer.sh` (the repo's Linux installer, shipped with each release). `vite.config.ts` serves it in dev and copies it to `dist/install` at build, so `curl -fsSL https://lodestonelauncher.com/install | sh` runs the same file as the release.
 - `deploy/nginx.conf`: the server block for the VPS, installed once (see Deploy).
 
 ## Develop
@@ -26,7 +27,7 @@ just build     # writes dist/: the site, plus api/ and vendor/
 
 ## Deploy
 
-`.github/workflows/website.yml` builds the site for every change under `website/`. When the change lands on `master`, the workflow uploads `dist/` to `lodestonelauncher.com` over FTP. It reads two repository secrets: `WEBSITE_FTP_USERNAME` and `WEBSITE_FTP_PASSWORD`. The FTP login's starting folder is the web root, so the upload goes to `./`.
+`.github/workflows/website.yml` builds the site for every change under `website/` and to `res/installer.sh`. When the change lands on `master`, the workflow uploads `dist/` to `lodestonelauncher.com` over FTP. It reads two repository secrets: `WEBSITE_FTP_USERNAME` and `WEBSITE_FTP_PASSWORD`. The FTP login's starting folder is the web root, so the upload goes to `./`.
 
 The server runs nginx, not Apache, so `.htaccess` is not used. Install `deploy/nginx.conf` once:
 

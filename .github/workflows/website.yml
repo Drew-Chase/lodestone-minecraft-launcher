@@ -3,9 +3,9 @@ name: Website
 on:
   push:
     branches: [master]
-    paths: ['website/**', '.github/workflows/website.yml']
+    paths: ['website/**', 'res/installer.sh', '.github/workflows/website.yml']
   pull_request:
-    paths: ['website/**', '.github/workflows/website.yml']
+    paths: ['website/**', 'res/installer.sh', '.github/workflows/website.yml']
   workflow_dispatch:
 
 permissions:
@@ -67,6 +67,7 @@ jobs:
           test -f dist/index.html
           test -f dist/api/index.php
           test -f dist/vendor/autoload.php
+          test -f dist/install
           test ! -e dist/.env
 
       - name: Deploy over FTP
