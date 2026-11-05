@@ -12,6 +12,8 @@ use routes\BillingRoute;
 use routes\DeviceRoute;
 use routes\FriendsRoute;
 use routes\MinecraftRoute;
+use routes\ShareRoute;
+use routes\SyncRoute;
 use routes\OAuthRoute;
 use routes\ReleaseRoute;
 use Slim\Factory\AppFactory;
@@ -36,5 +38,7 @@ BillingRoute::configure($app);
 DeviceRoute::configure($app);
 FriendsRoute::configure($app);
 MinecraftRoute::configure($app);
+SyncRoute::configure($app);
+ShareRoute::configure($app);
 
 return $app;

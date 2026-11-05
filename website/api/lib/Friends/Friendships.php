@@ -6,6 +6,7 @@ namespace app\Friends;
 
 use app\Auth\AuthException;
 use app\Db\Database;
+use app\Sync\Shares;
 use app\Users\UserRepository;
 use PDO;
 
@@ -116,14 +117,24 @@ final class Friendships
      */
     public function remove(int $userId, int $friendshipId): void
     {
-        $statement = Database::pdo()->prepare(
-            'DELETE FROM friendships WHERE id = ? AND (requester_id = ? OR addressee_id = ?)'
-        );
-        $statement->execute([$friendshipId, $userId, $userId]);
+        Database::transaction(function (PDO $pdo) use ($userId, $friendshipId): void {
+            $select = $pdo->prepare(
+                'SELECT requester_id, addressee_id FROM friendships
+                 WHERE id = ? AND (requester_id = ? OR addressee_id = ?) FOR UPDATE'
+            );
+            $select->execute([$friendshipId, $userId, $userId]);
+            $pair = $select->fetch(PDO::FETCH_ASSOC);
 
-        if ($statement->rowCount() !== 1) {
-            throw new AuthException('not_found', 404);
-        }
+            if ($pair === false) {
+                throw new AuthException('not_found', 404);
+            }
+
+            $delete = $pdo->prepare('DELETE FROM friendships WHERE id = ?');
+            $delete->execute([$friendshipId]);
+
+            // Shares only ever go to friends, so a share between the pair ends with the friendship.
+            Shares::dropBetween($pdo, (int) $pair['requester_id'], (int) $pair['addressee_id']);
+        });
     }
 
     /**

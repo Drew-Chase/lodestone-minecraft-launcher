@@ -30,6 +30,7 @@ Each key is read from the first source that defines it. The mode is read once, w
 | `PASSWORD_BREACH_CHECK` | `off` skips the Pwned Passwords check. The test suite sets it. Leave it unset everywhere else. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Stripe API key and webhook signing secret. A billing endpoint answers `503 billing_unavailable` while a key it needs is missing or empty. |
 | `STRIPE_PRICE_SOLO_MONTHLY`, `STRIPE_PRICE_SOLO_YEARLY`, `STRIPE_PRICE_FRIENDS_MONTHLY`, `STRIPE_PRICE_FRIENDS_YEARLY`, `STRIPE_PRICE_UNLIMITED_MONTHLY`, `STRIPE_PRICE_UNLIMITED_YEARLY` | The Stripe price ids for the six paid plan and interval pairs. Checkout and the webhook need all six. |
+| `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Cloudflare R2 through its S3 API: the account endpoint (`https://<account-id>.r2.cloudflarestorage.com`), the bucket, and a token limited to that bucket. The storage routes answer `503 storage_unavailable` while one is missing. |
 
 ## Common rules
 
@@ -68,7 +69,7 @@ Each key is read from the first source that defines it. The mode is read once, w
 | `username_taken` | 409 | Another account has that username (case-insensitive). |
 | `username_required` | 409 | The account has no username yet. Set one first. |
 | `email_not_verified` | 403 | The route needs a verified email. |
-| `invalid_device` | 400 | The device name, os or app version is empty, too long, or has control characters. |
+| `invalid_device` | 400 | The device name, os or app version is empty, too long, or has control characters. On the sync routes it also means the device is not an active device of the caller. |
 | `invalid_device_code` | 400 | The device code is unknown. |
 | `authorization_pending` | 400 | The code is not approved yet. Poll again. |
 | `slow_down` | 400 or 429 | Polled too soon. Device sign-in answers 400 with `Retry-After: 5`. Minecraft answers 429 with the interval as `Retry-After`. |
@@ -91,6 +92,19 @@ Each key is read from the first source that defines it. The mode is read once, w
 | `no_billing_account` | 404 | The account has no Stripe customer yet. |
 | `invalid_signature` | 400 | A webhook signature is absent, wrong, or older than 300 seconds. |
 | `minecraft_unavailable` | 502 | Microsoft, Xbox or Minecraft could not be reached when a link started. Inside a link status it appears as `"status": "failed"` with status 200. |
+| `invalid_name` | 400 | An instance name is not 1 to 64 characters, or has control characters. |
+| `invalid_manifest` | 400 | A file list breaks a rule, the body is not JSON, or the body is larger than 64 MiB. |
+| `invalid_access` | 400 | A share's access is not `viewer` or `editor`. |
+| `invalid_share` | 400 | The share targets the caller. |
+| `forbidden` | 403 | The caller's role does not allow the action. A viewer may not upload or commit, and only the owner may share or delete. |
+| `plan_required` | 403 | The account's plan includes no storage. |
+| `sharing_not_allowed` | 403 | The owner's plan does not allow sharing. |
+| `storage_unavailable` | 503 | An R2 setting is missing, or the store cannot be reached. |
+| `quota_exceeded` | 409 | The owner's stored bytes would pass the plan's allowance. |
+| `upload_incomplete` | 409 | A commit found blobs this session has not stored. The body lists them in `missing`. |
+| `upload_committed` | 409 | The upload session has already written its version. |
+| `share_limit_reached` | 409 | The owner's plan has no free shared-instance slot. |
+| `upload_expired` | 410 | The upload session is past its one hour. |
 | `internal_error` | 500 | Unexpected failure. Details go to the server log only. |
 
 ## Endpoints
@@ -165,6 +179,7 @@ Counts are per fixed window. Bucket keys are stored hashed.
 | Friend invites per user | 30 invites | 15 minutes |
 | Checkout starts per user | 10 attempts | 1 hour |
 | Minecraft link starts per user | 10 attempts | 1 hour |
+| Upload starts per user | 30 starts | 1 hour |
 
 A successful login clears the address's login failure count.
 
@@ -337,6 +352,55 @@ A user links Minecraft Java accounts through Microsoft's device-code sign-in, us
 - Profile names must match `^[A-Za-z0-9_]{1,16}$`. A uuid is stored in its dashed form.
 
 Errors on the routes themselves: `not_found` 404, `slow_down` 429, `rate_limited` 429 on start, and `minecraft_unavailable` 502 on start when Microsoft cannot be reached.
+
+## Storage, sync and sharing
+
+Every route here needs a Bearer token. Creating an instance and beginning or committing an upload need a verified email. Those calls, and the commit, also need a plan that includes storage, so the free plan gets `403 plan_required`.
+
+Blobs are kept in Cloudflare R2 under `blobs/<sha256 hex>`. Each file is stored once, however many versions or owners name it.
+
+| Method | Path | Success |
+|---|---|---|
+| GET | `/api/storage` | 200 `{"used_bytes", "limit_bytes", "plan", "name"}` |
+| POST | `/api/instances` | 201 `{"instance"}`; body `{"name"}` |
+| GET | `/api/instances` | 200 `{"instances"}`: the caller's own and the shared ones |
+| GET | `/api/instances/{id}` | 200 `{"instance"}` |
+| DELETE | `/api/instances/{id}` | 204, owner only |
+| POST | `/api/instances/{id}/uploads` | 201 `{"upload_id", "expires_at", "reused", "uploads"}`; body `{"files", "device_id"?}` |
+| POST | `/api/instances/{id}/uploads/{uploadId}/commit` | 201 `{"version"}`, or 409 `upload_incomplete` with `"missing"` |
+| GET | `/api/instances/{id}/versions` | 200 `{"versions"}`, newest first, at most 100 |
+| GET | `/api/instances/{id}/versions/latest` | 200 `{"version", "files"}` |
+| GET | `/api/instances/{id}/versions/{versionId}` | 200 `{"version", "files"}` |
+| POST | `/api/instances/{id}/shares` | 201 for a new share, 200 for a changed access; body `{"username", "access"}` |
+| GET | `/api/instances/{id}/shares` | 200 `{"shares"}`, owner only |
+| DELETE | `/api/instances/{id}/shares/{username}` | 204, owner only |
+
+Roles: the owner has every right. An editor may upload, and those bytes count against the owner's allowance. A viewer may read. Any other account gets `404 not_found`, so the instance is not revealed.
+
+Manifest: `files` is a list of 1 to 50,000 entries `{path, sha256, size, mtime_ms}`.
+- A path is 1 to 512 bytes of valid UTF-8 with no control characters. It has no leading slash, no backslash, no drive letter, and no empty, `.` or `..` segment.
+- Paths are unique byte for byte, so a trailing space names another file.
+- `sha256` is 64 lowercase hex characters. `size` is 0 to 2,147,483,648. A digest has one size across the manifest.
+- The body is at most 64 MiB. Any breach is `400 invalid_manifest`.
+
+Uploads:
+- Begin presigns one PUT per blob that the owner's versions do not already hold. Each PUT is valid for 900 seconds. The client must send every header in the entry's `headers` object, or the signature fails. Those headers include `x-amz-meta-lodestone-upload`, which carries the session id.
+- A blob the owner's versions already hold is not uploaded again, and `reused` counts those.
+- A blob the store already has is still uploaded when the owner does not hold it. A stored object does not show who wrote it, so the commit cannot take it on trust.
+- A commit checks each blob the owner does not hold. The stored object must have the right size and checksum, and its last write must carry this session's id. Any blob that fails is listed in `missing`, and the session stays open so the client can PUT again.
+- The commit writes the version in one transaction. It locks the instance, then the owner, then the session, so commits for one owner run one at a time. The owner's bytes must still fit the allowance after the rows are written, or the commit rolls back with `quota_exceeded`.
+- A session lasts one hour, then answers `upload_expired`. A committed session answers `upload_committed`. Only the user who began a session may commit it. Anyone else gets `404 not_found`.
+- Starting an upload is limited to 30 an hour per user. The limit counts only starts that pass the access checks.
+- Not built yet: removing blobs that no version refers to, and deleting expired sessions. Deleting an instance removes its versions, but its blobs stay in the store.
+
+Downloads: each file in a version gets a presigned GET valid for 900 seconds. The download saves under the file's name.
+
+Quota: an owner's used bytes are the distinct blobs that any version of an instance they own refers to. Sizes are decimal: 100 GB is 100,000,000,000 bytes. The allowances come from the plan, as in the billing section.
+
+Sharing: the owner shares an instance with an accepted friend as `viewer` or `editor`.
+- A grant needs an accepted friendship, or the answer is `404 not_found`.
+- The plan sets the cap. Solo Sync has no sharing (`sharing_not_allowed`). Friends allows five instances that have at least one share, and a sixth gets `share_limit_reached`. Unlimited has no cap. Changing the access of an existing share uses no slot.
+- Removing a friendship drops every share between the pair, in either direction, in the same transaction. A grant checks the friendship under a lock on its row, so a removal that runs at the same time waits for the grant and then drops the new share.
 
 ## Running the tests
 
