@@ -1,0 +1,82 @@
+/* ────── Scroll-spy timeline ────── */
+/* A floating rail of section nodes. The fill runs with the scroll, the lit node is the section in view, and its label
+   slides out from the rail. */
+.timeline {
+  position: fixed; right: 22px; top: 50%; z-index: 90;
+  width: 12px; height: min(52vh, 380px);
+  transform: translateY(-50%);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+.timeline.on { opacity: 1; pointer-events: auto; }
+.tl-track { position: relative; height: 100%; }
+
+.tl-rail {
+  position: absolute; top: 0; bottom: 0; left: 5px; width: 2px;
+  border-radius: 2px; background: var(--line-strong); overflow: hidden;
+}
+.tl-fill {
+  position: absolute; inset: 0; transform-origin: top;
+  background: linear-gradient(180deg, var(--mc-green), var(--mc-green-dim));
+  box-shadow: 0 0 10px var(--mc-green-glow);
+  transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.tl-node {
+  position: absolute; left: 0; width: 12px; height: 12px;
+  transform: translateY(-50%);
+}
+.tl-node::before { content: ''; position: absolute; inset: -8px; }
+.tl-dot {
+  position: absolute; left: 50%; top: 50%;
+  width: 10px; height: 10px; margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--bg-0); border: 1px solid var(--ink-4);
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.tl-node.past .tl-dot { background: var(--mc-green-deep); border-color: var(--mc-green-dim); }
+.tl-node.current .tl-dot {
+  background: var(--mc-green); border-color: var(--mc-green);
+  transform: scale(1.5);
+  box-shadow: 0 0 14px var(--mc-green-glow);
+}
+.tl-node.current .tl-dot::after {
+  content: ''; position: absolute; inset: -5px; border-radius: 50%;
+  border: 1px solid var(--mc-green);
+  animation: tl-ping 1.8s ease-out infinite;
+}
+.tl-node:focus-visible { outline: none; }
+.tl-node:focus-visible .tl-dot { box-shadow: 0 0 0 3px rgba(34,255,132,0.4); }
+@keyframes tl-ping {
+  from { transform: scale(0.7); opacity: 0.9; }
+  to { transform: scale(2); opacity: 0; }
+}
+
+.tl-label {
+  position: absolute; right: 26px; top: 50%;
+  padding: 4px 10px; border-radius: 999px;
+  white-space: nowrap;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.4px; text-transform: uppercase;
+  color: var(--ink-3);
+  background: rgba(8,9,10,0.72); border: 1px solid var(--line);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  opacity: 0; transform: translate(10px, -50%);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.25s ease, border-color 0.25s ease;
+}
+.tl-node:hover .tl-label,
+.tl-node:focus-visible .tl-label,
+.tl-node.current .tl-label { opacity: 1; transform: translate(0, -50%); }
+.tl-node.current .tl-label {
+  color: var(--mc-green); border-color: rgba(34,255,132,0.3);
+  animation: tl-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes tl-in {
+  from { opacity: 0; transform: translate(18px, -50%); }
+  to { opacity: 1; transform: translate(0, -50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline, .tl-fill, .tl-dot, .tl-label { transition: none; }
+  .tl-node.current .tl-label, .tl-node.current .tl-dot::after { animation: none; }
+}

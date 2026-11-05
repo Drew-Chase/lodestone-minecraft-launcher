@@ -1,57 +1,7 @@
-import {useEffect, useState} from "react";
 import Logo from "./Logo.tsx";
 
 import discoverImg from "../img/screens/discover.webp";
 import libraryImg from "../img/screens/library.webp";
-
-const REPO_URL = "https://github.com/drew-chase/lodestone-minecraft-launcher";
-
-function formatCount(n: number): { value: string; suffix: string } {
-    if (n >= 1_000_000) return {value: (n / 1_000_000).toFixed(1), suffix: "M"};
-    if (n >= 1_000) return {value: (n / 1_000).toFixed(1), suffix: "k"};
-    return {value: String(n), suffix: ""};
-}
-
-function StatsStrip() {
-    const [stats, setStats] = useState<{ stars: number; total_downloads: number } | null>(null);
-
-    useEffect(() => {
-        fetch("/api/stats")
-            .then(r => r.ok ? r.json() : null)
-            .then(setStats)
-            .catch(() => setStats(null));
-    }, []);
-
-    const downloads = stats ? formatCount(stats.total_downloads) : null;
-    const stars = stats && stats.stars >= 1000 ? formatCount(stats.stars) : null;
-
-    return (
-        <div className="container" style={{marginTop: 80, marginBottom: 0}}>
-            <div className="stats">
-                <div className="stat">
-                    {downloads
-                        ? <div className="stat-num">{downloads.value}<small>{downloads.suffix}</small></div>
-                        : <div className="stat-num">--</div>}
-                    <div className="stat-lbl">Total downloads</div>
-                </div>
-                <div className="stat">
-                    {stars
-                        ? <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="stat-num">{stars.value}<small>{stars.suffix}</small></a>
-                        : <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="stat-num stat-link">Star on GitHub</a>}
-                    <div className="stat-lbl">GitHub stars</div>
-                </div>
-                <div className="stat">
-                    <div className="stat-num">800<small>ms</small></div>
-                    <div className="stat-lbl">Cold launch time</div>
-                </div>
-                <div className="stat">
-                    <div className="stat-num">38<small>MB</small></div>
-                    <div className="stat-lbl">Install footprint</div>
-                </div>
-            </div>
-        </div>
-    );
-}
 
 export default function Steps() {
     return (
@@ -87,7 +37,6 @@ export default function Steps() {
                         <div className="step-mock"><img src={libraryImg} alt="Library home" loading="lazy"/></div>
                     </div>
                 </div>
-                <StatsStrip/>
             </div>
         </section>
     );

@@ -4,6 +4,7 @@ import ReactDOM from "react-dom/client";
 import "./css/index.css";
 import Home from "./pages/Home.tsx";
 import Navigation from "./components/Navigation.tsx";
+import ScrollSpy from "./components/ScrollSpy.tsx";
 import {useRelease, ReleaseContext} from "./hooks/useRelease.ts";
 
 function App() {
@@ -12,6 +13,7 @@ function App() {
     return (
         <ReleaseContext.Provider value={release}>
             <Navigation/>
+            <ScrollSpy/>
             <Home/>
         </ReleaseContext.Provider>
     );

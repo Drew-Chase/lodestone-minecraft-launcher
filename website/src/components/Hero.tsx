@@ -1,7 +1,5 @@
 import {useEffect, useState} from "react";
-import {Ic} from "./Icons.tsx";
-import {useReleaseContext, formatBytes} from "../hooks/useRelease.ts";
-import DownloadButton from "./DownloadButton.tsx";
+import Downloads from "./Downloads.tsx";
 
 import libraryImg from "../img/screens/library.webp";
 import discoverImg from "../img/screens/discover.webp";
@@ -50,19 +48,11 @@ function HeroShowcaseReal() {
 }
 
 export default function Hero() {
-    const {available, version, installSize} = useReleaseContext();
-
     return (
         <section className="hero" id="top">
             <div className="hero-grid"/>
             <div className="hero-aurora"/>
             <div className="container hero-inner">
-                {available && (
-                    <div className="hero-tag">
-                        <span className="pulse"/>
-                        v{version} · NOW AVAILABLE
-                    </div>
-                )}
                 <h1>
                     The Minecraft launcher<br/>
                     you've been <span className="accent">crafting toward.</span>
@@ -72,23 +62,7 @@ export default function Hero() {
                     Browse 50,000+ mods from Modrinth and CurseForge, manage instances,
                     import any modpack, and sync instances with friends — all in one place.
                 </p>
-                <div className="hero-cta">
-                    <DownloadButton/>
-                    <a className="btn btn-ghost btn-lg" href="#demo">
-                        <Ic.play size={13}/> Watch the demo
-                    </a>
-                </div>
-                <div className="hero-meta">
-                    <span><Ic.shield size={11}/> Verified builds · code-signed</span>
-                    <span>·</span>
-                    <span><Ic.heart size={11}/> Free forever · MIT license</span>
-                    {available && (
-                        <>
-                            <span>·</span>
-                            <span>v{version}{installSize ? ` · ${formatBytes(installSize)}` : ""}</span>
-                        </>
-                    )}
-                </div>
+                <Downloads/>
                 <HeroShowcaseReal/>
             </div>
         </section>
