@@ -11,6 +11,12 @@
 }
 a.os-btn:hover { background: rgba(255,255,255,0.08); border-color: var(--line-strong); }
 .os-btn.is-disabled { opacity: 0.5; cursor: default; }
+.os-btn.is-primary {
+  background: var(--mc-green); border-color: transparent; color: #0a1f12; font-weight: 700;
+  box-shadow: 0 0 0 1px rgba(34,255,132,0.4), 0 6px 18px -6px rgba(34,255,132,0.6);
+}
+a.os-btn.is-primary:hover { background: #34ff90; border-color: transparent; }
+.os-btn.is-primary .os-meta { color: rgba(10,31,18,0.7); }
 .os-btn .os-meta { font-size: 11px; color: var(--ink-3); font-family: var(--mono); margin-left: 4px; }
 
 .install-cmd {

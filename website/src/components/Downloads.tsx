@@ -1,6 +1,6 @@
 import {useRef, useState} from "react";
 import {Ic} from "./Icons.tsx";
-import {useReleaseContext, pickPrimaryAsset} from "../hooks/useRelease.ts";
+import {useReleaseContext, pickPrimaryAsset, detectOS} from "../hooks/useRelease.ts";
 
 const INSTALL_COMMAND = "curl -fsSL https://lodestonelauncher.com/install | sh";
 
@@ -16,10 +16,12 @@ export default function Downloads() {
         return new Date(iso).toLocaleDateString("en-US", {month: "long", day: "numeric", year: "numeric"});
     };
 
+    // The visitor's own OS gets the primary style.
+    const current = detectOS();
     const platforms = [
-        {label: "macOS", meta: "14+ · ARM64 + Intel", icon: Ic.apple, asset: pickPrimaryAsset(macos)},
-        {label: "Windows", meta: "10+ · x64", icon: Ic.win, asset: pickPrimaryAsset(windows)},
-        {label: "Linux", meta: ".deb · .rpm · AppImage", icon: Ic.linux, asset: pickPrimaryAsset(linux)},
+        {os: "macos", label: "macOS", meta: "14+ · ARM64 + Intel", icon: Ic.apple, asset: pickPrimaryAsset(macos)},
+        {os: "windows", label: "Windows", meta: "10+ · x64", icon: Ic.win, asset: pickPrimaryAsset(windows)},
+        {os: "linux", label: "Linux", meta: "x86_64 · tar.gz", icon: Ic.linux, asset: pickPrimaryAsset(linux)},
     ];
 
     const copyCommand = async () => {
@@ -42,7 +44,8 @@ export default function Downloads() {
     return (
         <div className="downloads" id="download">
             <div className="os-buttons">
-                {platforms.map(({label, meta, icon: Icon, asset}) => {
+                {platforms.map(({os, label, meta, icon: Icon, asset}) => {
+                    const tone = os === current ? " is-primary" : "";
                     const content = (
                         <>
                             <Icon size={16}/>
@@ -50,8 +53,8 @@ export default function Downloads() {
                         </>
                     );
                     return available && asset
-                        ? <a key={label} className="os-btn" href={asset.download_url}>{content}</a>
-                        : <span key={label} className="os-btn is-disabled">{content}</span>;
+                        ? <a key={label} className={`os-btn${tone}`} href={asset.download_url}>{content}</a>
+                        : <span key={label} className={`os-btn is-disabled${tone}`}>{content}</span>;
                 })}
             </div>
 
