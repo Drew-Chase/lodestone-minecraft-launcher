@@ -1,0 +1,22 @@
+services:
+  db:
+    image: mysql:8.0
+    ports:
+      - "127.0.0.1:13006:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: lodestone
+      MYSQL_USER: lodestone
+      MYSQL_PASSWORD: lodestone
+    volumes:
+      - lodestone-mysql:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    command: --innodb-use-native-aio=0
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  lodestone-mysql:

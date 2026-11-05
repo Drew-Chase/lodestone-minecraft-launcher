@@ -7,13 +7,30 @@
         "php": "^8.2",
         "ext-curl": "*",
         "ext-json": "*",
+        "ext-mbstring": "*",
         "slim/slim": "^4.15",
-        "slim/psr7": "^1.8"
+        "slim/psr7": "^1.8",
+        "firebase/php-jwt": "^7.2",
+        "symfony/mailer": "^7.4",
+        "stripe/stripe-php": "^22.1"
     },
     "autoload": {
         "psr-4": {
             "routes\\": "api/routes/",
             "app\\": "api/lib/"
         }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "tests\\": "tests/"
+        }
+    },
+    "config": {
+        "platform": {
+            "php": "8.2.99"
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.5"
     }
 }

@@ -90,3 +90,9 @@ dist
 .yarn/install-state.gz
 .pnp.*
 *claude*
+
+# Local API secrets, production config and runtime data
+/api/.env
+/api/config/production.php
+/api/var/
+/.phpunit.cache/

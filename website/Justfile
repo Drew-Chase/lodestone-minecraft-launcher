@@ -20,12 +20,14 @@ dev: install
 build: clean install
     pnpm run build
     @Copy-Item ./api, ./vendor ./dist/ -Recurse -Force
+    @Remove-Item ./dist/api/.env, ./dist/api/var -Recurse -Force -ErrorAction SilentlyContinue
 
 [linux]
 [macos]
 build: clean install
     pnpm run build
     @cp -r ./api ./vendor ./dist/
+    @rm -rf ./dist/api/.env ./dist/api/var
 
 [windows]
 clean:
@@ -35,3 +37,32 @@ clean:
 [macos]
 clean:
     @rm -rf ./dist
+
+# Write the local .env for the API from the dev defaults
+env:
+    php scripts/dev-env.php
+
+# Start the local MySQL container and wait until it is healthy
+db-up:
+    docker compose -f ../.docker/mysql.compose.yaml up -d --wait
+
+# Stop the local MySQL container, keeping its data
+db-down:
+    docker compose -f ../.docker/mysql.compose.yaml down
+
+# Wipe the local MySQL data and start a fresh container
+db-reset:
+    docker compose -f ../.docker/mysql.compose.yaml down -v
+    docker compose -f ../.docker/mysql.compose.yaml up -d --wait
+
+# Apply the database migrations
+migrate:
+    php scripts/migrate.php
+
+# Load the development seed data
+seed:
+    php scripts/seed.php
+
+# Run the PHPUnit test suite
+test:
+    php vendor/bin/phpunit

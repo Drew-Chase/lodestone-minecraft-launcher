@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         cacheDirectory=".phpunit.cache"
+         colors="true"
+         failOnRisky="true"
+         failOnWarning="true">
+    <testsuites>
+        <testsuite name="api">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+    <php>
+        <!-- force="true": the suite always uses the local test database, whatever the runner's environment holds.
+             CI starts its MySQL service on the same port and user (see .github/workflows/website.yml). -->
+        <env name="APP_ENV" value="test" force="true"/>
+        <env name="APP_URL" value="http://localhost:3000" force="true"/>
+        <env name="JWT_SECRET" value="phpunit-only-secret-0123456789abcdef0123456789" force="true"/>
+        <env name="DB_HOST" value="127.0.0.1" force="true"/>
+        <env name="DB_PORT" value="13006" force="true"/>
+        <env name="DB_NAME" value="lodestone_test" force="true"/>
+        <env name="DB_USER" value="lodestone" force="true"/>
+        <env name="DB_PASSWORD" value="lodestone" force="true"/>
+        <env name="MAIL_TRANSPORT" value="memory" force="true"/>
+        <env name="PASSWORD_BREACH_CHECK" value="off" force="true"/>
+    </php>
+</phpunit>
