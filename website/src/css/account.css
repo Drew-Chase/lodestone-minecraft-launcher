@@ -1,0 +1,362 @@
+/* ────── Account, sign-in and legal pages ────── */
+
+/* Split layout: brand panel left, form card right. Stacks below 860px. */
+.acct-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(280px, 5fr) 7fr;
+  background:
+    radial-gradient(900px 500px at 75% -10%, rgba(34,255,132,0.07), transparent 70%),
+    var(--bg-0);
+}
+
+.acct-brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 48px;
+  padding: 48px 56px;
+  background: var(--bg-1);
+  border-right: 1px solid var(--line);
+}
+
+.acct-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-0);
+}
+
+.acct-brand-name {
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.acct-tagline {
+  font-family: var(--display);
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+  color: var(--ink-1);
+  max-width: 340px;
+}
+
+.acct-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 32px;
+}
+
+.acct-card {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Plain pages: a brand bar and one centred column. */
+.acct-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(900px 500px at 75% -10%, rgba(34,255,132,0.07), transparent 70%),
+    var(--bg-0);
+}
+
+.acct-topbar {
+  border-bottom: 1px solid var(--line);
+}
+
+.acct-topbar-inner {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 18px 32px;
+}
+
+.acct-content {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 56px 32px 96px;
+}
+
+.acct-content-wide {
+  max-width: 880px;
+}
+
+/* Type */
+.acct-title {
+  font-family: var(--display);
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  line-height: 1.1;
+  color: var(--ink-0);
+}
+
+.acct-subtitle {
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--ink-0);
+}
+
+.acct-body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.acct-strong {
+  color: var(--ink-0);
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.acct-hint {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.acct-legal-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+.acct-legal-note a,
+.acct-footer-link a,
+.acct-footer-links a {
+  color: var(--mc-green);
+}
+
+.acct-legal-note a:hover,
+.acct-footer-link a:hover,
+.acct-footer-links a:hover {
+  text-decoration: underline;
+}
+
+.acct-footer-link {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.acct-footer-links {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+}
+
+/* Forms */
+.acct-form,
+.acct-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.acct-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.acct-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+.acct-input {
+  width: 100%;
+  padding: 11px 12px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink-0);
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.acct-input::placeholder {
+  color: var(--ink-4);
+}
+
+.acct-input:focus-visible {
+  border-color: var(--mc-green);
+  box-shadow: 0 0 0 3px rgba(34,255,132,0.18);
+}
+
+.acct-submit {
+  width: 100%;
+  justify-content: center;
+  padding: 12px 16px;
+  font-size: 14px;
+}
+
+.acct-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.acct-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: acct-spin 0.8s linear infinite;
+}
+
+@keyframes acct-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Messages */
+.acct-alert {
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--red);
+  background: rgba(255,90,122,0.08);
+  border: 1px solid rgba(255,90,122,0.3);
+  border-radius: 8px;
+}
+
+.acct-status {
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--mc-green);
+  background: rgba(34,255,132,0.08);
+  border: 1px solid rgba(34,255,132,0.25);
+  border-radius: 8px;
+}
+
+.acct-notice {
+  align-self: flex-start;
+  padding: 6px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--amber);
+  background: rgba(255,181,69,0.1);
+  border: 1px solid rgba(255,181,69,0.25);
+  border-radius: 6px;
+}
+
+/* Account page */
+.acct-account {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.acct-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.acct-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 12px 24px;
+  font-size: 14px;
+}
+
+.acct-details dt {
+  color: var(--ink-3);
+}
+
+.acct-details dd {
+  color: var(--ink-1);
+  word-break: break-all;
+}
+
+/* Narrow screens: stack the panels, brand first. */
+@media (max-width: 860px) {
+  .acct-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .acct-brand {
+    gap: 24px;
+    padding: 32px 24px;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .acct-main {
+    padding: 32px 20px 56px;
+  }
+
+  .acct-topbar-inner,
+  .acct-content {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+/* Sessions card */
+.acct-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acct-session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.acct-session-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.acct-session-name {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+.acct-session-badge {
+  font-size: 11px;
+}
+
+.acct-session-action {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.acct-session-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -1,0 +1,337 @@
+/* ────── Dashboard shell ────── */
+
+.dash-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  background:
+    radial-gradient(900px 500px at 75% -10%, rgba(34,255,132,0.05), transparent 70%),
+    var(--bg-0);
+}
+
+.dash-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 28px 20px;
+  background: var(--bg-1);
+  border-right: 1px solid var(--line);
+}
+
+.dash-brand {
+  padding: 0 8px;
+}
+
+.dash-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dash-link {
+  display: block;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+  border: 1px solid transparent;
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
+}
+
+.dash-link:hover {
+  color: var(--ink-0);
+  background: rgba(255,255,255,0.04);
+}
+
+.dash-link.is-active {
+  color: var(--ink-0);
+  background: rgba(34,255,132,0.08);
+  border-color: rgba(34,255,132,0.25);
+}
+
+.dash-main {
+  min-width: 0;
+  padding: 48px 48px 96px;
+}
+
+@media (max-width: 760px) {
+  .dash-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-sidebar {
+    gap: 16px;
+    padding: 20px;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .dash-nav-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .dash-main {
+    padding: 32px 20px 64px;
+  }
+}
+
+/* ────── Shared billing pieces ────── */
+
+.bill-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--line);
+  align-self: flex-start;
+}
+
+.bill-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+}
+
+.bill-toggle button.is-on {
+  background: var(--mc-green);
+  color: #0a1f12;
+}
+
+.bill-save {
+  display: inline-flex;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--mc-green);
+  background: rgba(34,255,132,0.18);
+  border: 1px solid rgba(34,255,132,0.35);
+}
+
+.bill-toggle button.is-on .bill-save {
+  color: #0a1f12;
+  background: rgba(0,0,0,0.18);
+  border-color: transparent;
+}
+
+.bill-toggle button:focus-visible,
+.bill-plan:focus-visible {
+  outline: 2px solid var(--mc-green);
+  outline-offset: 3px;
+}
+
+/* ────── Subscribe ────── */
+
+.bill-subscribe {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.bill-plans {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bill-plan {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 26px 24px;
+  border-radius: 16px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  color: var(--ink-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, transform 0.2s;
+}
+
+.bill-plan:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
+}
+
+.bill-plan.is-selected {
+  border-color: var(--mc-green);
+  background: linear-gradient(180deg, rgba(34,255,132,0.07) 0%, var(--bg-1) 70%);
+  box-shadow: 0 0 0 1px rgba(34,255,132,0.2), 0 24px 60px -30px rgba(34,255,132,0.45);
+}
+
+.bill-plan-name {
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--mc-green);
+}
+
+.bill-plan-solo .bill-plan-name { color: var(--cyan); }
+.bill-plan-unlimited .bill-plan-name { color: var(--violet); }
+
+.bill-plan-price {
+  font-family: var(--display);
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  color: var(--ink-0);
+}
+
+.bill-plan-billing {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: -8px;
+}
+
+.bill-plan-allowances {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.bill-plan-allowances li::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 10px;
+  border-radius: 50%;
+  background: var(--mc-green);
+  vertical-align: middle;
+}
+
+.bill-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 360px;
+}
+
+/* ────── Billing ────── */
+
+.bill-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 720px;
+}
+
+.bill-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px;
+  border-radius: 16px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+}
+
+.bill-eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.bill-plan-title {
+  font-family: var(--display);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.7px;
+  color: var(--ink-0);
+}
+
+.bill-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+
+.bill-interval {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--line);
+}
+
+.bill-allowances {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bill-allowances li {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+
+.bill-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.bill-actions .acct-body {
+  margin-right: 4px;
+}
+
+@media (max-width: 860px) {
+  .bill-plans {
+    grid-template-columns: 1fr;
+  }
+
+  .bill-card {
+    padding: 22px;
+  }
+}

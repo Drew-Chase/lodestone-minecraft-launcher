@@ -1,0 +1,57 @@
+/* ────── Single sign-on buttons and divider ────── */
+
+.sso {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sso-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sso-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 11px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-2);
+  color: var(--ink-1);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.sso-button:hover {
+  background: var(--bg-3);
+  border-color: var(--mc-green);
+  color: var(--ink-0);
+}
+
+.sso-button:focus-visible {
+  outline: 2px solid var(--mc-green);
+  outline-offset: 2px;
+}
+
+.sso-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.sso-divider::before,
+.sso-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}

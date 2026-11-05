@@ -1,0 +1,11 @@
+/* ────── Legal pages: Terms, Privacy and the not-found notice ────── */
+
+.acct-legal {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.acct-legal a {
+  color: var(--mc-green);
+}

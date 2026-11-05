@@ -1,4 +1,5 @@
 import {useLayoutEffect, useRef, useState} from "react";
+import {Link} from "react-router";
 import {Ic} from "./Icons.tsx";
 
 export default function Pricing() {
@@ -17,7 +18,7 @@ export default function Pricing() {
 
     const tiers = [
         {
-            cls: "solo", name: "Solo Sync", monthly: 3, yearly: 29,
+            cls: "solo", plan: "solo", name: "Solo Sync", monthly: 3, yearly: 29,
             tag: "Sync your instances across every device you own.", cta: "Start Solo Sync",
             feats: [
                 {t: "Sync up to 5 of your devices", on: true}, {t: "100 GB cloud storage", on: true},
@@ -27,26 +28,26 @@ export default function Pricing() {
             ],
         },
         {
-            cls: "featured", name: "Friends", monthly: 6, yearly: 58,
+            cls: "featured", plan: "friends", name: "Friends", monthly: 6, yearly: 58,
             tag: "Run modpacks with the people you actually play with.", cta: "Get Friends Sync", badge: "MOST POPULAR",
             feats: [
                 {t: "Everything in Solo Sync", on: true}, {t: "250 GB cloud storage", on: true},
                 {t: "Share up to 5 instances with friends", on: true},
-                {t: "Auto-match versions across the party", on: true}, {t: "Synced world saves for SMP groups", on: true},
-                {t: "Live mod-update notifications", on: true}, {t: "Priority server bandwidth", on: true},
+                {t: "Synced world saves for SMP groups", on: true},
             ],
         },
         {
-            cls: "unlimited", name: "Unlimited", monthly: 12, yearly: 115,
+            cls: "unlimited", plan: "unlimited", name: "Unlimited", monthly: 12, yearly: 115,
             tag: "For modpack authors, communities, and overengineers.", cta: "Go Unlimited",
             feats: [
                 {t: "Everything in Friends", on: true}, {t: "500 GB cloud storage", on: true},
                 {t: "Unlimited shared instances", on: true},
-                {t: "Unlimited devices", on: true}, {t: "Custom CDN — push updates to thousands", on: true},
-                {t: "Modpack analytics & crash reports", on: true}, {t: "Priority support · early features", on: true},
+                {t: "Unlimited devices", on: true},
             ],
         },
     ];
+
+    const interval = yearly ? "yearly" : "monthly";
 
     const fmtMo = (n: number) => { const v = n / 12; return v % 1 === 0 ? String(v) : v.toFixed(2); };
 
@@ -89,7 +90,7 @@ export default function Pricing() {
                                         </li>
                                     ))}
                                 </ul>
-                                <a className="price-cta" href="#signup"><Ic.arrowR size={13}/>{t.cta}</a>
+                                <Link className="price-cta" to={`/subscribe?plan=${t.plan}&interval=${interval}`}><Ic.arrowR size={13}/>{t.cta}</Link>
                             </div>
                         );
                     })}

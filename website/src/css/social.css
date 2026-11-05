@@ -1,0 +1,213 @@
+/* ────── Friends, devices and the account link cards ────── */
+
+.soc-page {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 720px;
+}
+
+.soc-page > .acct-title {
+  margin-bottom: 8px;
+}
+
+.soc-subhead {
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.soc-gate {
+  font-size: 14px;
+  color: var(--amber);
+}
+
+.soc-gate a {
+  color: var(--mc-green);
+}
+
+/* Friend code and invite link */
+
+.soc-code-row,
+.soc-actions-row,
+.soc-result {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.soc-code {
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--ink-0);
+  font-variant-numeric: tabular-nums;
+}
+
+.soc-result {
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.soc-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-1);
+  overflow-wrap: anywhere;
+}
+
+.soc-name-muted {
+  color: var(--ink-3);
+  font-style: italic;
+  font-weight: 500;
+}
+
+/* Forms with a field and a button on one line */
+
+.soc-form {
+  margin-top: 4px;
+}
+
+.soc-inline {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.soc-inline .acct-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.soc-inline-button {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+.soc-url {
+  font-family: var(--mono);
+  font-size: 13px;
+  cursor: text;
+}
+
+.soc-invite {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Lists of people and requests */
+
+.soc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.soc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.soc-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.soc-action {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.soc-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Devices */
+
+.soc-usage {
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink-0);
+}
+
+.soc-device {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.soc-device-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.soc-device-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-1);
+  overflow-wrap: anywhere;
+}
+
+/* The Minecraft link, shown while the Microsoft page is open */
+
+.soc-link {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--bg-1);
+  border: 1px solid rgba(34,255,132,0.25);
+  border-radius: 8px;
+}
+
+.soc-link a {
+  color: var(--mc-green);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+  .soc-inline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .soc-row,
+  .soc-device {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .soc-row-actions {
+    width: 100%;
+  }
+}
