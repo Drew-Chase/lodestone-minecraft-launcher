@@ -1,0 +1,423 @@
+/* ────── Files: instances, storage, sharing and the file browser ────── */
+
+.fs-page {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 720px;
+}
+
+.fs-page-wide {
+  max-width: 1200px;
+}
+
+.fs-page > .acct-title {
+  margin-bottom: 8px;
+}
+
+.fs-back {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mc-green);
+}
+
+.fs-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.fs-header .acct-title {
+  margin-bottom: 0;
+}
+
+.fs-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* Role badges */
+
+.fs-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--line-strong);
+}
+
+.fs-badge-owner {
+  color: var(--mc-green);
+  background: rgba(34,255,132,0.08);
+  border-color: rgba(34,255,132,0.3);
+}
+
+.fs-badge-editor {
+  color: var(--cyan);
+  background: rgba(71,217,255,0.08);
+  border-color: rgba(71,217,255,0.3);
+}
+
+/* Storage meter */
+
+.fs-meter {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+}
+
+.fs-meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--mc-green);
+  border-radius: 999px;
+  transition: width 0.3s;
+}
+
+/* List rows */
+
+.fs-row {
+  align-items: center;
+}
+
+.fs-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fs-row-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.fs-row-name {
+  text-decoration: none;
+}
+
+.fs-row-name:hover {
+  color: var(--mc-green);
+}
+
+.fs-access {
+  flex: 0 0 150px;
+}
+
+.soc-inline .fs-access.acct-field {
+  flex: 0 0 150px;
+}
+
+.fs-share-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fs-manage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 720px;
+}
+
+.fs-manage > .acct-subtitle {
+  margin-top: 16px;
+}
+
+/* Destructive actions */
+
+.btn.fs-danger {
+  color: var(--red);
+  background: rgba(255,90,122,0.08);
+  border: 1px solid rgba(255,90,122,0.35);
+}
+
+.btn.fs-danger:hover {
+  background: rgba(255,90,122,0.16);
+  border-color: rgba(255,90,122,0.6);
+}
+
+.btn.fs-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fs-confirm-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* Version picker and header */
+
+.fs-version-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+}
+
+.fs-version-field {
+  min-width: 260px;
+  max-width: 420px;
+  flex: 1 1 260px;
+}
+
+.fs-select {
+  cursor: pointer;
+}
+
+/* Folder tree, listing and table */
+
+.fs-browser {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.fs-tree {
+  padding: 12px 8px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.fs-tree-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fs-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fs-tree-toggle,
+.fs-tree-spacer {
+  flex-shrink: 0;
+  width: 20px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fs-tree-toggle {
+  color: var(--ink-3);
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+.fs-tree-toggle:hover {
+  color: var(--ink-0);
+  background: rgba(255,255,255,0.06);
+}
+
+.fs-tree-name {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--ink-2);
+  border-radius: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fs-tree-name:hover {
+  color: var(--ink-0);
+  background: rgba(255,255,255,0.04);
+}
+
+.fs-tree-name[aria-current="true"] {
+  color: var(--ink-0);
+  background: rgba(34,255,132,0.08);
+}
+
+.fs-listing {
+  min-width: 0;
+}
+
+.fs-table-wrap {
+  overflow-x: auto;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.fs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.fs-table th,
+.fs-table td {
+  padding: 9px 12px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+
+.fs-table th {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.fs-table tbody tr {
+  cursor: pointer;
+}
+
+.fs-table tbody tr:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.fs-table tbody tr.is-selected {
+  background: rgba(34,255,132,0.06);
+}
+
+.fs-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.fs-sort {
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  padding: 0;
+}
+
+.fs-sort:hover {
+  color: var(--ink-0);
+}
+
+.fs-file-name {
+  padding: 0;
+  font: inherit;
+  color: var(--ink-1);
+  text-align: left;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.fs-file-name[aria-pressed="true"] {
+  color: var(--mc-green);
+}
+
+.fs-cell-muted {
+  color: var(--ink-3);
+}
+
+.fs-hash {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+/* Preview */
+
+.fs-preview {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.fs-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.fs-preview-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fs-preview-image {
+  display: block;
+  max-width: 100%;
+  max-height: 480px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  align-self: flex-start;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg-0);
+}
+
+.fs-preview-text {
+  margin: 0;
+  max-height: 420px;
+  overflow: auto;
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+@media (max-width: 860px) {
+  .fs-browser {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fs-tree {
+    max-height: 240px;
+  }
+
+  .soc-inline .fs-access.acct-field {
+    flex: 1;
+  }
+}

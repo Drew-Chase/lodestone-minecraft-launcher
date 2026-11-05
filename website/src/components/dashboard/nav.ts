@@ -5,4 +5,5 @@ export const dashboardNav: readonly DashboardNavItem[] = [
     {to: "/dashboard/billing", label: "Billing"},
     {to: "/dashboard/friends", label: "Friends"},
     {to: "/dashboard/devices", label: "Devices"},
+    {to: "/dashboard/files", label: "Files"},
 ];

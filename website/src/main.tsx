@@ -17,6 +17,8 @@ import LinkPage from "./pages/link/LinkPage.tsx";
 import FriendsPage from "./pages/friends/FriendsPage.tsx";
 import InvitePage from "./pages/friends/InvitePage.tsx";
 import DevicesPage from "./pages/devices/DevicesPage.tsx";
+import FilesPage from "./pages/files/FilesPage.tsx";
+import InstanceBrowserPage from "./pages/files/InstanceBrowserPage.tsx";
 import Landing from "./pages/Landing.tsx";
 import RegisterPage from "./pages/auth/RegisterPage.tsx";
 import LoginPage from "./pages/auth/LoginPage.tsx";
@@ -48,6 +50,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                         <Route path="/dashboard/billing" element={<BillingPage/>}/>
                         <Route path="/dashboard/friends" element={<FriendsPage/>}/>
                         <Route path="/dashboard/devices" element={<DevicesPage/>}/>
+                        <Route path="/dashboard/files" element={<FilesPage/>}/>
+                        <Route path="/dashboard/files/:id" element={<InstanceBrowserPage/>}/>
                     </Route>
                 </Route>
                 <Route path="/terms" element={<TermsPage/>}/>

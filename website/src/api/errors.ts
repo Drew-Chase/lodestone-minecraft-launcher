@@ -58,6 +58,19 @@ const MESSAGES: Readonly<Record<string, string>> = {
     billing_failed: "Billing failed. Try again.",
     invalid_plan: "That plan is not available. Choose another plan.",
     no_billing_account: "No billing account yet.",
+    storage_unavailable: "Storage is not available right now. Try again later.",
+    quota_exceeded: "This would go over your storage limit. Free up space or change your plan.",
+    plan_required: "Sync needs a plan. Choose one to continue.",
+    upload_incomplete: "The upload did not finish. Try again.",
+    upload_expired: "The upload took too long and expired. Try again.",
+    upload_committed: "This upload was already saved.",
+    sharing_not_allowed: "Sharing needs a plan that allows it.",
+    share_limit_reached: "You have reached the number of instances you can share.",
+    invalid_share: "You cannot share with that account.",
+    invalid_access: "Choose viewer or editor.",
+    invalid_name: "That name is not allowed. Choose another.",
+    invalid_manifest: "This version could not be read. Try again.",
+    forbidden: "You do not have permission to do that.",
 };
 
 /** The copy for one API error code. */
