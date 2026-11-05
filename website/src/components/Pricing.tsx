@@ -20,7 +20,8 @@ export default function Pricing() {
             cls: "solo", name: "Solo Sync", monthly: 3, yearly: 29,
             tag: "Sync your instances across every device you own.", cta: "Start Solo Sync",
             feats: [
-                {t: "Sync up to 5 of your devices", on: true}, {t: "Unlimited personal instances", on: true},
+                {t: "Sync up to 5 of your devices", on: true}, {t: "100 GB cloud storage", on: true},
+                {t: "Unlimited personal instances", on: true},
                 {t: "Mods, configs, saves, screenshots", on: true}, {t: "Per-instance world cloud snapshots", on: true},
                 {t: "Resume where you left off, anywhere", on: true}, {t: "Share instances with friends", on: false},
             ],
@@ -29,7 +30,8 @@ export default function Pricing() {
             cls: "featured", name: "Friends", monthly: 6, yearly: 58,
             tag: "Run modpacks with the people you actually play with.", cta: "Get Friends Sync", badge: "MOST POPULAR",
             feats: [
-                {t: "Everything in Solo Sync", on: true}, {t: "Share up to 5 instances with friends", on: true},
+                {t: "Everything in Solo Sync", on: true}, {t: "250 GB cloud storage", on: true},
+                {t: "Share up to 5 instances with friends", on: true},
                 {t: "Auto-match versions across the party", on: true}, {t: "Synced world saves for SMP groups", on: true},
                 {t: "Live mod-update notifications", on: true}, {t: "Priority server bandwidth", on: true},
             ],
@@ -38,7 +40,8 @@ export default function Pricing() {
             cls: "unlimited", name: "Unlimited", monthly: 12, yearly: 115,
             tag: "For modpack authors, communities, and overengineers.", cta: "Go Unlimited",
             feats: [
-                {t: "Everything in Friends", on: true}, {t: "Unlimited shared instances", on: true},
+                {t: "Everything in Friends", on: true}, {t: "500 GB cloud storage", on: true},
+                {t: "Unlimited shared instances", on: true},
                 {t: "Unlimited devices", on: true}, {t: "Custom CDN — push updates to thousands", on: true},
                 {t: "Modpack analytics & crash reports", on: true}, {t: "Priority support · early features", on: true},
             ],
