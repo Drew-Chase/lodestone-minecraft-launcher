@@ -44,7 +44,7 @@
   .os-btn { width: 100%; justify-content: center; }
   .cmd { width: 100%; }
   .cmd code { white-space: normal; word-break: break-all; }
-  .downloads-meta { font-size: 10px; }
+  .downloads-meta { font-size: 12px; }
 
   /* Showcase window */
   .showcase-window { border-radius: 10px; }

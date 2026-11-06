@@ -72,7 +72,7 @@ export default function Downloads() {
 
             {available && (
                 <div className="downloads-meta">
-                    v{version}{publishedAt ? ` · Released ${fmtDate(publishedAt)}` : ""} · <a href={`https://github.com/drew-chase/lodestone-minecraft-launcher/releases/tag/${version}`} target="_blank" rel="noopener noreferrer">changelog</a>
+                    v{version}{publishedAt ? ` · Released ${fmtDate(publishedAt)}` : ""} · <a href={`https://github.com/drew-chase/lodestone-minecraft-launcher/releases/tag/v${version}`} target="_blank" rel="noopener noreferrer">changelog</a>
                 </div>
             )}
             {!available && !loading && (

@@ -17,13 +17,13 @@ a.os-btn:hover { background: rgba(255,255,255,0.08); border-color: var(--line-st
 }
 a.os-btn.is-primary:hover { background: #34ff90; border-color: transparent; }
 .os-btn.is-primary .os-meta { color: rgba(10,31,18,0.7); }
-.os-btn .os-meta { font-size: 11px; color: var(--ink-3); font-family: var(--mono); margin-left: 4px; }
+.os-btn .os-meta { font-size: 12px; color: var(--ink-3); font-family: var(--mono); margin-left: 4px; }
 
 .install-cmd {
   display: flex; flex-direction: column; align-items: center; gap: 10px;
   margin-top: 16px;
 }
-.install-label { font-family: var(--mono); font-size: 11px; color: var(--ink-3); letter-spacing: 0.4px; }
+.install-label { font-family: var(--mono); font-size: 12px; color: var(--ink-3); letter-spacing: 0.4px; }
 .cmd {
   display: flex; align-items: center; gap: 12px;
   max-width: 100%; padding: 8px 8px 8px 16px;
@@ -38,12 +38,12 @@ a.os-btn.is-primary:hover { background: #34ff90; border-color: transparent; }
 .cmd-copy {
   display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
   padding: 7px 10px; border-radius: 7px;
-  font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--ink-1);
+  font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink-1);
   background: rgba(255,255,255,0.06); border: 1px solid var(--line);
   transition: all 0.2s;
 }
 .cmd-copy:hover { background: rgba(255,255,255,0.1); border-color: var(--line-strong); }
 .cmd-copy.is-done { color: var(--mc-green); border-color: rgba(34,255,132,0.35); background: rgba(34,255,132,0.1); }
 
-.downloads-meta { margin-top: 18px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.downloads-meta { margin-top: 18px; font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
 .downloads-meta a { color: var(--mc-green); }
