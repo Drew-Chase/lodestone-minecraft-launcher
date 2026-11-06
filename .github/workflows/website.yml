@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FTP_SERVER: lodestonelauncher.com
+  FTP_SERVER: 198.74.56.197
   FTP_SERVER_DIR: ./
 
 jobs:
