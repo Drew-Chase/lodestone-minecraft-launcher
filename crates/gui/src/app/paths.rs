@@ -120,25 +120,57 @@ static PORTABLE_ROOTS: OnceLock<PortableRoots> = OnceLock::new();
 struct PortableRoots {
     config: PathBuf,
     data: PathBuf,
+    cache: PathBuf,
 }
 
-/// Moves the launcher's folders under the portable roots of the package `id`. A portable launcher then never shares a
-/// library, a database or a sign-in with the launcher installed beside it.
-pub fn use_portable_roots(id: &str) {
-    let config = dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("lodestone-portable")
-        .join(id);
-    let data = dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("lodestone-portable").join(id);
-    let _ = PORTABLE_ROOTS.set(PortableRoots { config, data });
+/// The app bundle that a macOS launcher runs from: `Lodestone.app` for `Lodestone.app/Contents/MacOS/<launcher>`. None for
+/// any other file.
+pub fn app_bundle(executable: &Path) -> Option<PathBuf> {
+    let folder = executable.parent()?;
+    let bundle = folder.parent()?.parent()?;
+    let inside = cfg!(target_os = "macos") && folder.ends_with("Contents/MacOS") && bundle.extension()? == "app";
+    inside.then(|| bundle.to_path_buf())
+}
+
+/// The folder a portable launcher keeps all of its files in: `lodestone-portable/<id>` beside the launcher. On macOS the
+/// launcher runs from inside its app bundle, and writing into the bundle would break its code signature, so the folder
+/// goes beside the bundle instead.
+pub fn portable_root(executable: &Path, id: &str) -> PathBuf {
+    let beside = match app_bundle(executable) {
+        Some(bundle) => bundle.parent().map(Path::to_path_buf),
+        None => executable.parent().map(Path::to_path_buf),
+    };
+    beside.unwrap_or_else(|| PathBuf::from(".")).join("lodestone-portable").join(id)
+}
+
+/// Moves the launcher's folders under the portable root of the package `id`, beside the launcher. A portable launcher then
+/// never shares a library, a database or a sign-in with the launcher installed beside it, and it keeps nothing outside its
+/// own folder.
+pub fn use_portable_roots(id: &str, executable: &Path) {
+    let root = portable_root(executable, id);
+    let roots = PortableRoots {
+        config: root.join("config"),
+        data: root.join("data"),
+        cache: root.join("cache"),
+    };
+    let _ = PORTABLE_ROOTS.set(roots);
 }
 
 /// The folder the launcher keeps its settings, its sign-in, its database and the records of its running games in:
-/// `<config dir>/lodestone`, or the portable root when the launcher is portable.
+/// `<config dir>/lodestone`, or the portable root's `config` folder when the launcher is portable.
 pub fn config_dir() -> Option<PathBuf> {
     match PORTABLE_ROOTS.get() {
         Some(roots) => Some(roots.config.clone()),
         None => dirs::config_dir().map(|dir| dir.join("lodestone")),
+    }
+}
+
+/// The folder the launcher keeps caches in, such as the news feed, downloaded pictures and staged updates:
+/// `<cache dir>/lodestone`, or the portable root's `cache` folder when the launcher is portable.
+pub fn cache_dir() -> Option<PathBuf> {
+    match PORTABLE_ROOTS.get() {
+        Some(roots) => Some(roots.cache.clone()),
+        None => dirs::cache_dir().map(|dir| dir.join("lodestone")),
     }
 }
 

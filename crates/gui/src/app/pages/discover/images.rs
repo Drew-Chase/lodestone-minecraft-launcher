@@ -36,13 +36,12 @@ pub struct Picture {
     pub banner: image::Handle,
 }
 
-/// Where a downloaded picture is kept: `<cache dir>/lodestone/discover-art/<hash of the url>`.
+/// Where a downloaded picture is kept: `discover-art/<hash of the url>` in the launcher's cache folder.
 fn cache_path(url: &str) -> Option<PathBuf> {
     let mut hasher = DefaultHasher::new();
     url.hash(&mut hasher);
     Some(
-        dirs::cache_dir()?
-            .join("lodestone")
+        crate::app::paths::cache_dir()?
             .join("discover-art")
             .join(format!("{:016x}", hasher.finish())),
     )

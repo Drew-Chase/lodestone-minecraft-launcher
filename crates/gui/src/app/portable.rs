@@ -111,7 +111,7 @@ pub fn prepare() {
             return;
         }
     };
-    paths::use_portable_roots(&manifest.id);
+    paths::use_portable_roots(&manifest.id, &executable);
     let _ = PACKAGE.set(Portable {
         manifest,
         located,

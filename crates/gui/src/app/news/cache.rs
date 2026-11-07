@@ -9,9 +9,9 @@ const NEWS_FILE: &str = "news.json";
 /// The file the Java patch notes are kept in, inside the cache folder.
 const PATCHES_FILE: &str = "javaPatchNotes.json";
 
-/// The folder the feed is cached in: `<cache dir>/lodestone/news`.
+/// The folder the feed is cached in: `news` in the launcher's cache folder.
 fn folder() -> Option<PathBuf> {
-    dirs::cache_dir().map(|dir| dir.join("lodestone").join("news"))
+    crate::app::paths::cache_dir().map(|dir| dir.join("news"))
 }
 
 /// The cached documents, and the time they were written.

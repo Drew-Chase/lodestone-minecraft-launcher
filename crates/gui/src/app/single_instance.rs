@@ -71,6 +71,7 @@ fn requests() -> impl Stream<Item = ()> {
 /// behind when it ended.
 #[cfg(unix)]
 mod platform {
+    use std::hash::{DefaultHasher, Hash, Hasher};
     use std::io::{self, Write};
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::{Path, PathBuf};
@@ -81,9 +82,25 @@ mod platform {
 
     use super::Claim;
 
-    /// The socket's path, in the config folder.
+    /// A Unix socket path holds fewer than 104 bytes, so a deeper folder, which a portable launcher's can be, gets a short
+    /// name in the temp folder instead. Both paths name the same socket for the same folder.
+    const SOCKET_PATH_LIMIT: usize = 100;
+
+    /// The socket's path: `launcher.sock` in the config folder, or a name in the temp folder when that path is too long.
     pub fn endpoint() -> Option<PathBuf> {
-        crate::app::paths::config_dir().map(|dir| dir.join("launcher.sock"))
+        let dir = crate::app::paths::config_dir()?;
+        let path = dir.join("launcher.sock");
+        if path.as_os_str().len() < SOCKET_PATH_LIMIT {
+            return Some(path);
+        }
+        Some(short_socket_path(&dir))
+    }
+
+    /// The socket's name in the temp folder for the config folder `dir`, unique to that folder.
+    fn short_socket_path(dir: &Path) -> PathBuf {
+        let mut hasher = DefaultHasher::new();
+        dir.hash(&mut hasher);
+        std::env::temp_dir().join(format!("lodestone-{:016x}.sock", hasher.finish()))
     }
 
     pub fn claim(path: &Path, requests: UnboundedSender<()>) -> io::Result<Claim> {
