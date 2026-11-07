@@ -1,32 +1,40 @@
 //! The Discover sidebar: the filters the platform offers for the tab on screen, beside the results. Every section is drawn
-//! from the platform's own lists, so a platform that offers no filter shows no section.
+//! from the platform's own lists, so a platform that offers no filter shows no section. The sidebar keeps its place while
+//! the results scroll, and its sections scroll inside it under a scrollbar of their own.
 
 use aurora_leaf::Icon;
-use iced::widget::{Space, Text, column, container, row, text_input};
-use iced::{Element, Fill, Length, Padding, alignment};
+use iced::widget::{Space, Text, button, column, container, row, text_input};
+use iced::{Background, Border, Color, Element, Fill, Length, Padding, alignment};
 use lodestone_platforms::{CategoryGroup, Facets, Side};
 
-use super::card::glyph;
+use super::card::{CARD_RADIUS, glyph, panel};
 use super::filters::{FilterMessage, Kind};
-use super::{Discover, Message};
-use crate::app::components::button::Variant;
+use super::{BOTTOM, Discover, GAP, Message, SIDE};
 use crate::app::components::checkbox::{self, State};
-use crate::app::components::{TextButton, input};
+use crate::app::components::{input, scrollbar};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
 
-/// The width of the sidebar.
-pub(super) const WIDTH: f32 = 240.0;
-/// The space between the sidebar and the results.
-pub(super) const COLUMN_GAP: f32 = 24.0;
+/// The width of a section's card. The scrollbar's track sits beside the cards, in the width `scrollbar::TRACK_WIDTH` takes.
+const WIDTH: f32 = 240.0;
+/// The space between the sidebar's scrollbar and the results.
+const COLUMN_GAP: f32 = 16.0;
 /// How many choices a section lists before its "Show more" switch.
 const SHOWN: usize = 8;
 /// How many Minecraft versions the version section lists before its "Show more" switch.
 const SHOWN_VERSIONS: usize = 10;
-/// The space between two sections.
-const SECTION_GAP: f32 = 22.0;
+/// The space between two sections' cards.
+const SECTION_GAP: f32 = 10.0;
 /// The space between a section's title and its rows.
-const TITLE_GAP: f32 = 8.0;
+const TITLE_GAP: f32 = 6.0;
+/// The padding inside a section's card, which its title and rows sit inside.
+const CARD_PAD: f32 = 8.0;
+/// The padding either side of a row's label, measured from the row's own edge.
+const ROW_PAD_X: f32 = 8.0;
+/// The padding above and below a row's label.
+const ROW_PAD_Y: f32 = 7.0;
+/// The corner radius of a row. It is the card's radius less the card's padding, so the two corners are concentric.
+const ROW_RADIUS: f32 = CARD_RADIUS - CARD_PAD;
 
 /// Whether the platform offers any filter at all.
 fn has_sections(facets: &Facets) -> bool {
@@ -39,17 +47,8 @@ fn has_sections(facets: &Facets) -> bool {
         || facets.exclusions
 }
 
-/// Whether the sidebar is on screen for the tab.
-pub(super) fn shown(page: &Discover) -> bool {
-    page.facets().is_some_and(has_sections)
-}
-
-/// The width the sidebar and its gap take beside the results, or nothing when the sidebar is not shown.
-pub(super) fn width_taken(page: &Discover) -> f32 {
-    if shown(page) { WIDTH + COLUMN_GAP } else { 0.0 }
-}
-
-/// The sidebar, or nothing when the platform offers no filter for the tab.
+/// The sidebar, or nothing when the platform offers no filter for the tab. It runs beside the scrolling part of the page,
+/// from the top gap down to the foot of the results, and its sections scroll inside it.
 pub(super) fn view(page: &Discover) -> Option<Element<'_, Message>> {
     let facets = page.facets().filter(|facets| has_sections(facets))?;
     let mut sections = column![].spacing(SECTION_GAP).width(Fill);
@@ -74,7 +73,11 @@ pub(super) fn view(page: &Discover) -> Option<Element<'_, Message>> {
     if !page.filters.is_empty() {
         sections = sections.push(clear());
     }
-    Some(container(sections).width(Length::Fixed(WIDTH)).into())
+    // The cards end where the scrollbar's track begins, so the track floats over the padding and never over a card.
+    let cards = container(sections).padding(Padding::new(0.0).right(scrollbar::TRACK_WIDTH)).width(Fill);
+    let scrolled = scrollbar::scroll(cards).width(Length::Fixed(WIDTH + scrollbar::TRACK_WIDTH)).height(Fill);
+    let margins = Padding::new(0.0).top(GAP).bottom(BOTTOM).left(SIDE).right(COLUMN_GAP);
+    Some(container(scrolled).padding(margins).height(Fill).into())
 }
 
 /// One choice in a list: what it shows, whether it is picked, and what pressing it sends.
@@ -84,26 +87,57 @@ struct Choice {
     message: Message,
 }
 
-/// A section: its title over its body.
+/// A section's card: its title over its body.
 fn section<'a>(title: String, body: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
-    let title = Text::new(title).size(12).font(fonts::Inter::SEMI_BOLD).color(color::text_muted());
-    column![title, body.into()].spacing(TITLE_GAP).width(Fill).into()
+    let title = container(Text::new(title).size(12).font(fonts::Inter::SEMI_BOLD).color(color::text_muted()))
+        .padding(Padding::new(0.0).top(4.0).left(ROW_PAD_X).right(ROW_PAD_X));
+    card(column![title, body.into()].spacing(TITLE_GAP).width(Fill))
+}
+
+/// A card that holds a section's title and rows. It is the panel the results use, and its rows sit inside its padding.
+fn card<'a>(body: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    container(body).padding(CARD_PAD).width(Fill).style(panel).into()
 }
 
 /// One row of a sidebar list: a box that shows whether it is picked, and the label. The whole row is the button.
 fn option<'a>(label: String, picked: bool, message: Message) -> Element<'a, Message> {
     let state = if picked { State::Checked } else { State::Unchecked };
     let ink = if picked { color::text_headline() } else { color::text_default() };
-    TextButton::content(
-        row![checkbox::mark(state), Text::new(label).size(13).font(fonts::Inter::REGULAR).color(ink)]
-            .spacing(10)
-            .align_y(alignment::Vertical::Center),
-    )
-    .variant(Variant::Ghost)
-    .width(Fill)
-    .padding(Padding::new(0.0).top(4.0).bottom(4.0).left(2.0).right(2.0))
-    .on_press(message)
-    .into()
+    let content = row![checkbox::mark(state), Text::new(label).size(13).font(fonts::Inter::REGULAR).color(ink)]
+        .spacing(10)
+        .align_y(alignment::Vertical::Center);
+    row_button(content, picked, message)
+}
+
+/// A pressable row, padded so its content does not touch its edge. The row lightens under the pointer. A picked row is
+/// tinted in the accent, and that tint deepens under the pointer.
+fn row_button<'a>(content: impl Into<Element<'a, Message>>, picked: bool, message: Message) -> Element<'a, Message> {
+    button(container(content).width(Fill))
+        .width(Fill)
+        .padding(Padding::new(0.0).top(ROW_PAD_Y).bottom(ROW_PAD_Y).left(ROW_PAD_X).right(ROW_PAD_X))
+        .style(move |_, status| row_style(picked, status))
+        .on_press(message)
+        .into()
+}
+
+/// The look of a row in `status`. An idle row has no fill, so its card shows through.
+fn row_style(picked: bool, status: button::Status) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    let background = match (picked, hovered) {
+        (true, true) => Color { a: 0.18, ..color::primary() },
+        (true, false) => color::primary_tint(),
+        (false, true) => color::surface_bg4(),
+        (false, false) => return button::Style::default(),
+    };
+    button::Style {
+        background: Some(Background::Color(background)),
+        text_color: color::text_default(),
+        border: Border {
+            radius: ROW_RADIUS.into(),
+            ..Border::default()
+        },
+        ..button::Style::default()
+    }
 }
 
 /// A list of choices: the first `shown` of them, and a switch that shows the rest. The list is named `section`, so its
@@ -122,7 +156,8 @@ fn list<'a>(page: &Discover, section: &str, choices: Vec<Choice>, shown: usize) 
     rows.into()
 }
 
-/// The switch under a list that is cut short, or that shows every item and can cut itself short again.
+/// The switch under a list that is cut short, or that shows every item and can cut itself short again. Its label sits in
+/// the middle of the row.
 fn show_more<'a>(section: &str, expanded: bool, hidden: usize) -> Element<'a, Message> {
     let (label, next) = if expanded {
         (lang::t("discover.sidebar.show_fewer").to_string(), false)
@@ -130,14 +165,16 @@ fn show_more<'a>(section: &str, expanded: bool, hidden: usize) -> Element<'a, Me
         let count = hidden.to_string();
         (lang::t_with("discover.sidebar.show_more", &[("count", count.as_str())]).to_string(), true)
     };
-    TextButton::content(Text::new(label).size(12).font(fonts::Inter::MEDIUM).color(color::text_muted()))
-        .variant(Variant::Ghost)
-        .padding(Padding::new(0.0).top(4.0).bottom(4.0).left(2.0).right(2.0))
-        .on_press(Message::Filter(FilterMessage::Expand {
+    let label = Text::new(label).size(12).font(fonts::Inter::MEDIUM).color(color::text_muted());
+    let centred = container(label).width(Fill).align_x(alignment::Horizontal::Center);
+    row_button(
+        centred,
+        false,
+        Message::Filter(FilterMessage::Expand {
             section: section.to_string(),
             expanded: next,
-        }))
-        .into()
+        }),
+    )
 }
 
 /// The Minecraft versions: a search over them, the release versions, and a switch that adds the others.
@@ -249,7 +286,7 @@ fn exclusions<'a>(page: &'a Discover, facets: &'a Facets) -> Element<'a, Message
     } else {
         Icon::lucide().chevron_right()
     };
-    let head = TextButton::content(
+    let head = row_button(
         row![
             Text::new(lang::t("discover.sidebar.exclusions").to_string())
                 .size(12)
@@ -260,16 +297,14 @@ fn exclusions<'a>(page: &'a Discover, facets: &'a Facets) -> Element<'a, Message
         ]
         .align_y(alignment::Vertical::Center)
         .width(Fill),
-    )
-    .variant(Variant::Ghost)
-    .width(Fill)
-    .padding(Padding::new(0.0).top(2.0).bottom(2.0))
-    .on_press(Message::Filter(FilterMessage::Expand {
-        section: "exclusions".to_string(),
-        expanded: !open,
-    }));
+        false,
+        Message::Filter(FilterMessage::Expand {
+            section: "exclusions".to_string(),
+            expanded: !open,
+        }),
+    );
     if !open {
-        return head.into();
+        return card(head);
     }
     let categories = facets
         .category_groups
@@ -295,21 +330,20 @@ fn exclusions<'a>(page: &'a Discover, facets: &'a Facets) -> Element<'a, Message
             .collect();
         body = body.push(list(page, "exclusion-loaders", loaders, SHOWN));
     }
-    body.into()
+    card(body)
 }
 
-/// The button that clears every pick.
+/// The button that clears every pick. It sits under the cards, inset to the rows' edges.
 fn clear<'a>() -> Element<'a, Message> {
-    TextButton::content(
-        Text::new(lang::t("discover.sidebar.clear").to_string())
-            .size(12)
-            .font(fonts::Inter::MEDIUM)
-            .color(color::text_default()),
-    )
-    .variant(Variant::Ghost)
-    .padding(Padding::new(0.0).top(4.0).bottom(4.0).left(2.0).right(2.0))
-    .on_press(Message::Filter(FilterMessage::Clear))
-    .into()
+    let label = Text::new(lang::t("discover.sidebar.clear").to_string())
+        .size(12)
+        .font(fonts::Inter::MEDIUM)
+        .color(color::text_default());
+    let centred = container(label).width(Fill).align_x(alignment::Horizontal::Center);
+    container(row_button(centred, false, Message::Filter(FilterMessage::Clear)))
+        .padding(Padding::new(0.0).left(CARD_PAD).right(CARD_PAD))
+        .width(Fill)
+        .into()
 }
 
 /// The title of a category group, from the header the platform files it under.
@@ -344,3 +378,7 @@ fn capitalize(text: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/app/pages/discover/sidebar.rs"]
+mod tests;

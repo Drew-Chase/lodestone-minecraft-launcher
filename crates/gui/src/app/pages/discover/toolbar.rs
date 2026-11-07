@@ -6,7 +6,7 @@ use aurora_leaf::Icon;
 use iced::widget::{Space, Text, container, opaque, row};
 use iced::{Background, Element, Fill, Length, Padding, alignment};
 
-use super::{Discover, DiscoverView, GAP, Message, SIDE, sidebar, target};
+use super::{Discover, DiscoverView, GAP, Message, SIDE, target};
 use crate::app::components::{Select, scrollbar, segmented, select};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
@@ -45,9 +45,9 @@ pub(super) fn view(page: &Discover) -> Element<'_, Message> {
 }
 
 /// The toolbar pinned over the results, once the page has scrolled past it. Its background is the page's, so the results
-/// pass beneath it. It starts beside the sidebar, which stays where it is, and stops short of the scrollbar's track, which
-/// stays clear. `opaque` stops presses over the bar, so no card beneath can be pressed through it. The wheel still reaches
-/// the page.
+/// pass beneath it. It spans the results' column, which starts beside the sidebar that stays where it is, and stops short
+/// of the scrollbar's track, which stays clear. `opaque` stops presses over the bar, so no card beneath can be pressed
+/// through it. The wheel still reaches the page.
 pub(super) fn pinned(page: &Discover) -> Element<'_, Message> {
     let bar = container(view(page))
         .padding(Padding::new(GAP).left(0.0).right(SIDE - scrollbar::TRACK_WIDTH).bottom(GAP))
@@ -57,7 +57,7 @@ pub(super) fn pinned(page: &Discover) -> Element<'_, Message> {
             ..container::Style::default()
         });
     container(opaque(bar))
-        .padding(Padding::new(0.0).left(SIDE + sidebar::width_taken(page)).right(scrollbar::TRACK_WIDTH))
+        .padding(Padding::new(0.0).right(scrollbar::TRACK_WIDTH))
         .width(Fill)
         .into()
 }

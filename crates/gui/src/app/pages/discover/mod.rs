@@ -62,6 +62,9 @@ const GAP: f32 = 18.0;
 /// The margin either side of the page, shared by the header and the scrolling content.
 const SIDE: f32 = 28.0;
 
+/// The space below the results. The sidebar keeps the same space, so the two end on the same line.
+const BOTTOM: f32 = 40.0;
+
 /// The Discover page's state.
 pub struct Discover {
     pub(super) source: Source,
@@ -636,9 +639,9 @@ impl Discover {
         self.icon_queue.drain(..started).collect()
     }
 
-    /// The page. The header, with the source and tab rows, stays where it is, and the hero, the filters
-    /// and the results scroll beneath it. Once the page scrolls up to the filters, they pin to the top of
-    /// the scrolling part, and the results pass beneath them.
+    /// The page. The header, with the source and tab rows, stays where it is. Beside the scrolling part, the sidebar keeps
+    /// its place with a scrollbar of its own. The hero, the filters and the results scroll beneath the header, and once
+    /// the page scrolls up to the filters they pin to the top of the scrolling part, with the results passing beneath.
     pub fn view(&self) -> Element<'_, Message> {
         let fixed = container(column![header::view(self), header::source_row(self), header::tabs(self)].spacing(18))
             .padding(Padding::new(0.0).top(22).left(SIDE).right(SIDE))
@@ -655,16 +658,9 @@ impl Discover {
         } else {
             toolbar::view(self)
         };
-        // The sidebar sits beside the toolbar and the results, and takes the whole height of them.
-        let results = column![filters, results::view(self)].spacing(GAP).width(Fill);
-        let body: Element<'_, Message> = match sidebar::view(self) {
-            Some(sidebar) => row![sidebar, results].spacing(sidebar::COLUMN_GAP).width(Fill).into(),
-            None => results.into(),
-        };
-        page = page.push(body);
-        let content = container(page)
-            .padding(Padding::new(0.0).top(GAP).left(SIDE).right(SIDE).bottom(40))
-            .width(Fill);
+        // The toolbar and the results form one column, which starts where the sidebar's margin and track end.
+        page = page.push(column![filters, results::view(self)].spacing(GAP).width(Fill));
+        let content = container(page).padding(Padding::new(0.0).top(GAP).right(SIDE).bottom(BOTTOM)).width(Fill);
         let scrolled = scrollbar::scroll(content).id(CONTENT_ID).width(Fill).height(Fill).on_scroll(|viewport| {
             let content = viewport.content_bounds();
             let bounds = viewport.bounds();
@@ -678,7 +674,13 @@ impl Discover {
         // not the row is pinned, so the scrollable keeps its place and its scroll position when the row pins.
         let overlay: Element<'_, Message> = if pinned { toolbar::pinned(self) } else { Space::new().into() };
         let layers = stack![scrolled, overlay].width(Fill).height(Fill);
-        column![fixed, layers].width(Fill).height(Fill).into()
+        // The sidebar, or a space of the page's margin where there is none. The row has the same shape either way, so the
+        // results keep their scroll position when the sidebar comes or goes.
+        let side: Element<'_, Message> = sidebar::view(self).unwrap_or_else(|| Space::new().width(SIDE).into());
+        column![fixed, row![side, layers].width(Fill).height(Fill)]
+            .width(Fill)
+            .height(Fill)
+            .into()
     }
 }
 
