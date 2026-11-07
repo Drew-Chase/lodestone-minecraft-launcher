@@ -281,7 +281,7 @@ impl Default for LodestoneLauncher {
             import: None,
             datapacks: None,
             portable: portable::launch(),
-            updater: updater::Updater::default(),
+            updater: updater::Updater::new(updater::Target::detect(portable::launch().is_some())),
             art: components::art_cache::ArtCache::default(),
             perf: perf::Hud::default(),
             data_move: None,

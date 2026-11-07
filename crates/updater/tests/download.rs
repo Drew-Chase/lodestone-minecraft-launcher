@@ -1,4 +1,5 @@
 use super::*;
+use crate::Payload;
 use std::fs;
 
 /// The SHA-256 of the bytes `abc`.
@@ -24,7 +25,7 @@ fn a_file_is_checked_against_its_hash() {
 }
 
 #[test]
-fn a_release_without_an_installer_is_refused_before_any_download() {
+fn a_release_without_the_named_file_is_refused_before_any_download() {
     let client = crate::client("lodestone-updater-tests").expect("a client");
     let release = Release {
         tag: "v0.2.0".to_string(),
@@ -33,6 +34,7 @@ fn a_release_without_an_installer_is_refused_before_any_download() {
         assets: Vec::new(),
     };
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("a runtime");
-    let result = runtime.block_on(fetch_installer(&client, &release, &scratch("refuse")));
+    let name = Payload::LinuxArchive.file_name(&release.tag);
+    let result = runtime.block_on(fetch_asset(&client, &release, &name, &scratch("refuse")));
     assert!(matches!(result, Err(Error::MissingAsset(_))));
 }

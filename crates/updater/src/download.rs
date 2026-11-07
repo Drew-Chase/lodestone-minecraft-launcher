@@ -1,4 +1,4 @@
-//! Downloads the Windows installer and checks it against the release's checksum before anything runs it.
+//! Downloads a release's file and checks it against the release's checksum before anything unpacks or runs it.
 
 use std::path::{Path, PathBuf};
 
@@ -9,12 +9,16 @@ use tokio::io::AsyncWriteExt;
 use crate::CHECKSUMS;
 use crate::checksum::checksum_for;
 use crate::error::{Error, io_error};
-use crate::release::{Asset, Release, installer_asset};
+use crate::release::{Asset, Release};
 
-/// Downloads the release's installer into `dir`, after checking it against the release's checksum list. Returns the
-/// path of the verified installer.
-pub async fn fetch_installer(client: &Client, release: &Release, dir: &Path) -> Result<PathBuf, Error> {
-    let asset = installer_asset(release).ok_or_else(|| Error::MissingAsset("an installer for this system".to_string()))?;
+/// Downloads the release's file called `name` into `dir`, after checking it against the release's checksum list. Returns
+/// the path of the verified file.
+pub async fn fetch_asset(client: &Client, release: &Release, name: &str, dir: &Path) -> Result<PathBuf, Error> {
+    let asset = release
+        .assets
+        .iter()
+        .find(|candidate| candidate.name == name)
+        .ok_or_else(|| Error::MissingAsset(name.to_string()))?;
     let sums_asset = release
         .assets
         .iter()
@@ -33,7 +37,7 @@ pub async fn fetch_installer(client: &Client, release: &Release, dir: &Path) -> 
 
 /// Streams `asset` into `dir` and checks its SHA-256 against `expected`, as lowercase hex. The bytes go to a `.part`
 /// file that is renamed only once the hash matches, so an interrupted download never looks finished.
-pub async fn download_verified(client: &Client, asset: &Asset, expected: &str, dir: &Path) -> Result<PathBuf, Error> {
+async fn download_verified(client: &Client, asset: &Asset, expected: &str, dir: &Path) -> Result<PathBuf, Error> {
     tokio::fs::create_dir_all(dir).await.map_err(|source| io_error(dir, source))?;
     let target = dir.join(&asset.name);
     let partial = dir.join(format!("{}.part", asset.name));

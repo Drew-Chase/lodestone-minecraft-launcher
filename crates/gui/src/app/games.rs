@@ -375,9 +375,6 @@ impl LodestoneLauncher {
         }
         if restart {
             tasks.push(Task::done(LodestoneAppMessage::Game(GameMessage::LaunchNew(id))));
-        } else {
-            // An update held for the games installs now, if this was the last of them.
-            tasks.push(self.resume_held_update());
         }
         let batch = Task::batch(tasks);
         if quit { batch.chain(iced::exit()) } else { batch }

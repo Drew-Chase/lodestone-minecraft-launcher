@@ -410,6 +410,7 @@ impl LodestoneLauncher {
                     &self.speed,
                     &self.credentials,
                     self.face.as_ref(),
+                    self.updater.installs(),
                 )
                 .map(LodestoneAppMessage::Settings),
             Page::Discover => self.discover.view().map(LodestoneAppMessage::Discover),

@@ -31,38 +31,10 @@ fn only_a_newer_release_is_offered() {
 }
 
 #[test]
-#[cfg(not(target_os = "linux"))]
-fn the_installer_is_the_setup_asset() {
-    let found = release(
-        "v0.2.0",
-        &[
-            "Lodestone-v0.2.0-linux-x86_64.tar.gz",
-            "installer.sh",
-            "Lodestone-v0.2.0-setup.exe",
-            "SHA256SUMS.txt",
-        ],
-    );
-    assert_eq!(
-        installer_asset(&found).map(|asset| asset.name.as_str()),
-        Some("Lodestone-v0.2.0-setup.exe")
-    );
-    assert!(installer_asset(&release("v0.2.0", &["SHA256SUMS.txt"])).is_none());
-}
-
-#[test]
-#[cfg(target_os = "linux")]
-fn the_installer_is_the_install_script() {
-    let found = release(
-        "v0.2.0",
-        &[
-            "Lodestone-v0.2.0-linux-x86_64.tar.gz",
-            "Lodestone-v0.2.0-setup.exe",
-            "installer.sh",
-            "SHA256SUMS.txt",
-        ],
-    );
-    assert_eq!(installer_asset(&found).map(|asset| asset.name.as_str()), Some("installer.sh"));
-    assert!(installer_asset(&release("v0.2.0", &["Lodestone-v0.2.0-setup.exe"])).is_none());
+fn each_system_takes_the_file_the_release_workflow_names() {
+    assert_eq!(Payload::WindowsInstaller.file_name("v0.2.0"), "Lodestone-v0.2.0-setup.exe");
+    assert_eq!(Payload::LinuxArchive.file_name("v0.2.0"), "Lodestone-v0.2.0-linux-x86_64.tar.gz");
+    assert_eq!(Payload::MacosArchive.file_name("v0.2.0"), "Lodestone-v0.2.0-macos-universal.zip");
 }
 
 #[test]

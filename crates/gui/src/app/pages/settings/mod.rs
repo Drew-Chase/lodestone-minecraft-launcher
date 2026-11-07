@@ -414,6 +414,7 @@ impl Settings {
         meter: &'a Meter,
         accounts: &'a StoredCredentials,
         face: Option<&'a image::Handle>,
+        can_update: bool,
     ) -> Element<'a, Message> {
         let shown = Shown {
             values: &self.values,
@@ -422,7 +423,10 @@ impl Settings {
             ceiling_gb: self.ceiling_gb,
         };
         let sections = column![
-            block(Tab::General, general::view(shown, &self.resolution, self.draft.current(), &self.paths),),
+            block(
+                Tab::General,
+                general::view(shown, &self.resolution, self.draft.current(), &self.paths, can_update),
+            ),
             block(Tab::Accounts, accounts::view(accounts, face)),
             block(Tab::JavaMemory, java_memory::view(shown, &self.jvm, &self.runtimes)),
             block(Tab::Appearance, appearance::view(self.draft.current(), &self.custom_hex)),

@@ -425,6 +425,12 @@ impl Downloads {
             .any(|job| job.install().is_some() && matches!(job.state, JobState::Queued | JobState::Running))
     }
 
+    /// Whether any job is queued or running: an install, a mod, an export or a reinstall. Closing the launcher stops them, so
+    /// the update asks first. A paused job waits for the user, and does not count.
+    pub fn has_work(&self) -> bool {
+        self.jobs.iter().any(|job| matches!(job.state, JobState::Queued | JobState::Running))
+    }
+
     /// Takes the bytes job `id` moved in its current run, so each run's bytes are counted once.
     pub fn take_bytes(&mut self, id: u64) -> u64 {
         self.job_mut(id).map_or(0, |job| std::mem::take(&mut job.bytes))

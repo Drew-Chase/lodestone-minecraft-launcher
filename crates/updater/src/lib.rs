@@ -1,17 +1,20 @@
-//! The launcher's update check. It asks GitHub for the newest release, downloads the Windows installer, checks it
-//! against the release's `SHA256SUMS.txt`, and runs it silently. The launcher decides when each step runs.
+//! The launcher's update check. It asks GitHub for the newest release, downloads the file that this system installs from,
+//! and checks it against the release's `SHA256SUMS.txt` before anything unpacks or runs it. The launcher decides when each
+//! step runs: the download in the background, and the install once the user asks for it.
 
+mod apply;
 mod checksum;
 mod download;
 mod error;
 mod install;
 mod release;
 
+pub use apply::{can_write_to, extract_bundle, extract_executable, relaunch_after_exit, replace_bundle, replace_executable};
 pub use checksum::checksum_for;
-pub use download::{download_verified, fetch_installer, verify_file};
+pub use download::{fetch_asset, verify_file};
 pub use error::Error;
 pub use install::{installed_with_installer, run_silent_elevated};
-pub use release::{Asset, Release, installer_asset, latest, latest_for, newer};
+pub use release::{Answer, Asset, Payload, Release, check, newer};
 
 /// The repository whose releases are checked.
 pub const REPOSITORY: &str = "Drew-Chase/lodestone-minecraft-launcher";

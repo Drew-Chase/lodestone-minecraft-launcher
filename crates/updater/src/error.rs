@@ -21,12 +21,15 @@ pub enum Error {
         #[source]
         source: std::io::Error,
     },
-    /// The downloaded installer does not match the release's checksum. It has been deleted.
+    /// The downloaded file does not match the release's checksum. It has been deleted.
     #[error("the download does not match its checksum")]
     Checksum,
-    /// Windows did not start the installer, for example because the administrator prompt was declined.
+    /// The launcher could not start the installer, or start itself again after an update.
     #[error("{0}")]
     Launch(String),
+    /// The archive could not be unpacked, or it does not hold the file the update needs.
+    #[error("{0}")]
+    Unpack(String),
 }
 
 /// An `Io` error for `path`.

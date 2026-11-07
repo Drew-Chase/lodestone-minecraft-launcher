@@ -26,7 +26,13 @@ const SELECT_WIDTH: f32 = 240.0;
 const FOLDER_PATH_WIDTH: f32 = 300.0;
 
 /// The General tab: the startup and folder rows, the update switches and the window.
-pub fn view<'a>(shown: Shown<'a>, resolution: &'a ResolutionDraft, settings: &'a SettingsValues, paths: &'a LauncherPaths) -> Element<'a, Message> {
+pub fn view<'a>(
+    shown: Shown<'a>,
+    resolution: &'a ResolutionDraft,
+    settings: &'a SettingsValues,
+    paths: &'a LauncherPaths,
+    can_update: bool,
+) -> Element<'a, Message> {
     let startup = vec![
         folder_row(paths),
         startup_row(settings.startup_page),
@@ -38,7 +44,7 @@ pub fn view<'a>(shown: Shown<'a>, resolution: &'a ResolutionDraft, settings: &'a
         card(
             lang::t("settings.general.updates"),
             lang::t("settings.general.updates_subtitle"),
-            divided(update_rows(settings)),
+            divided(update_rows(settings, can_update)),
         ),
         card(
             lang::t("instance.settings.section.window"),
@@ -113,24 +119,30 @@ fn game_exit_row<'a>(quit: bool) -> Element<'a, Message> {
     described_setting(lang::t("settings.general.on_exit"), lang::t("settings.general.on_exit_hint"), select)
 }
 
-/// The three update switches.
-fn update_rows<'a>(settings: &SettingsValues) -> Vec<Element<'a, Message>> {
-    vec![
+/// The update switches. Auto-update Lodestone appears only where this copy can install an update itself. Anywhere else the
+/// switch would do nothing, so it is not shown.
+fn update_rows<'a>(settings: &SettingsValues, can_update: bool) -> Vec<Element<'a, Message>> {
+    let auto_update = can_update.then(|| {
         described_setting(
             lang::t("settings.general.auto_update"),
             lang::t("settings.general.auto_update_hint"),
             Toggle::new(settings.auto_update).on_toggle(Message::Edit(Edit::AutoUpdate(!settings.auto_update))),
-        ),
-        described_setting(
-            lang::t("settings.general.beta"),
-            lang::t("settings.general.beta_hint"),
-            Toggle::new(settings.beta_channel).on_toggle(Message::Edit(Edit::BetaChannel(!settings.beta_channel))),
-        ),
-        described_setting(
-            lang::t("settings.general.auto_update_versions"),
-            lang::t("settings.general.auto_update_versions_hint"),
-            Toggle::new(settings.auto_update_game_versions)
-                .on_toggle(Message::Edit(Edit::AutoUpdateGameVersions(!settings.auto_update_game_versions))),
-        ),
-    ]
+        )
+    });
+    auto_update
+        .into_iter()
+        .chain([
+            described_setting(
+                lang::t("settings.general.beta"),
+                lang::t("settings.general.beta_hint"),
+                Toggle::new(settings.beta_channel).on_toggle(Message::Edit(Edit::BetaChannel(!settings.beta_channel))),
+            ),
+            described_setting(
+                lang::t("settings.general.auto_update_versions"),
+                lang::t("settings.general.auto_update_versions_hint"),
+                Toggle::new(settings.auto_update_game_versions)
+                    .on_toggle(Message::Edit(Edit::AutoUpdateGameVersions(!settings.auto_update_game_versions))),
+            ),
+        ])
+        .collect()
 }

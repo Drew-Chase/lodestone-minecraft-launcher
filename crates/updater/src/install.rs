@@ -1,4 +1,4 @@
-//! Starting the installer. A launcher from the Windows installer runs the downloaded installer elevated and silent.
+//! Starting the Windows installer. A launcher from the Windows installer runs the downloaded setup elevated and silent.
 
 use std::path::Path;
 
@@ -10,8 +10,8 @@ pub fn installed_with_installer(exe: &Path) -> bool {
     exe.parent().is_some_and(|dir| dir.join("uninstall.exe").is_file())
 }
 
-/// Runs the installer with `/S`, which installs without a window. Windows asks for administrator rights first, so
-/// the call returns once the prompt is answered and the installer has started, or once the prompt is declined.
+/// Runs the setup with `/S`, which installs without a window. Windows asks for administrator rights first, so the call
+/// returns once the prompt is answered and the setup has started, or once the prompt is declined.
 #[cfg(windows)]
 pub fn run_silent_elevated(installer: &Path) -> Result<(), Error> {
     use std::ffi::OsStr;
@@ -35,25 +35,10 @@ pub fn run_silent_elevated(installer: &Path) -> Result<(), Error> {
     }
 }
 
-/// Runs the release's `installer.sh` with `sh`. It installs into the user's own folders, so it needs no administrator
-/// rights, and it returns once the script has finished.
-#[cfg(target_os = "linux")]
-pub fn run_silent_elevated(installer: &Path) -> Result<(), Error> {
-    let status = std::process::Command::new("sh")
-        .arg(installer)
-        .status()
-        .map_err(|error| Error::Launch(format!("could not run sh: {error}")))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(Error::Launch(format!("the installer script exited with {status}")))
-    }
-}
-
-/// Only Windows and Linux have an installer, so the other systems never reach it.
-#[cfg(not(any(windows, target_os = "linux")))]
+/// Only Windows runs the installer, so the other systems never reach it.
+#[cfg(not(windows))]
 pub fn run_silent_elevated(_installer: &Path) -> Result<(), Error> {
-    Err(Error::Launch("the installer runs on Windows and Linux only".to_string()))
+    Err(Error::Launch("the installer runs on Windows only".to_string()))
 }
 
 /// `text` as a NUL-terminated UTF-16 string, the form the Windows calls take.

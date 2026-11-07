@@ -49,7 +49,7 @@ impl LodestoneLauncher {
         // The update check runs at launch, in the background, and then every `updater::CHECK_EVERY`. `updater::enabled` says when
         // it is skipped.
         if updater::enabled(app.portable.is_some()) {
-            tasks.push(updater::check(app.settings_values.beta_channel));
+            tasks.push(updater::check(app.settings_values.beta_channel, None));
         }
         // The Minecraft version list loads at launch when Auto-update game versions is on, so New Instance opens with it.
         if app.settings_values.auto_update_game_versions {
