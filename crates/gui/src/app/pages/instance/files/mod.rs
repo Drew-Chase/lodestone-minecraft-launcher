@@ -8,6 +8,7 @@
 mod backups;
 mod log;
 mod mods;
+mod packs;
 mod screenshots;
 pub mod world_archive;
 mod worlds;
@@ -22,6 +23,7 @@ use super::logs::{LogLine, MAX_LINES};
 
 pub use backups::BackupFile;
 pub use mods::{ModFile, switched_name};
+pub use packs::{PackFile, name_of as pack_name};
 pub use screenshots::ScreenshotFile;
 pub use worlds::{Difficulty, GameMode, WorldFile};
 
@@ -32,6 +34,10 @@ pub struct InstanceFiles {
     pub folder_bytes: u64,
     /// The mod jars, enabled and disabled, sorted by name.
     pub mods: Vec<ModFile>,
+    /// The resource packs in `resourcepacks/`, sorted by name.
+    pub resource_packs: Vec<PackFile>,
+    /// The shader packs in `shaderpacks/`, sorted by name.
+    pub shader_packs: Vec<PackFile>,
     /// The saved worlds, most recently saved first.
     pub worlds: Vec<WorldFile>,
     /// The captures, most recent first.
@@ -73,6 +79,8 @@ pub fn scan(folder: &Path) -> InstanceFiles {
     InstanceFiles {
         folder_bytes: dir_size(folder),
         mods: mods::scan(&folder.join("mods")),
+        resource_packs: packs::scan(&folder.join("resourcepacks")),
+        shader_packs: packs::scan(&folder.join("shaderpacks")),
         worlds: worlds::scan(&folder.join("saves")),
         screenshots: screenshots::scan(&folder.join("screenshots")),
         log: read_log(folder),
@@ -95,6 +103,20 @@ pub fn count_mods(folder: &Path) -> usize {
 pub fn scan_mods(folder: &Path) -> Vec<ModFile> {
     let _scope = perf::scope("io.scan_mods");
     mods::scan(&folder.join("mods"))
+}
+
+/// The datapacks a world holds in its `datapacks/` folder, sorted by name. The datapack dialog reads them again after it adds
+/// or removes one.
+pub fn scan_datapacks(world: &Path) -> Vec<PackFile> {
+    let _scope = perf::scope("io.scan_datapacks");
+    packs::scan(&world.join("datapacks"))
+}
+
+/// The resource packs and the shader packs the instance folder holds, each sorted by name. The Content tab reads them
+/// again after it adds or removes one.
+pub fn scan_packs(folder: &Path) -> (Vec<PackFile>, Vec<PackFile>) {
+    let _scope = perf::scope("io.scan_packs");
+    (packs::scan(&folder.join("resourcepacks")), packs::scan(&folder.join("shaderpacks")))
 }
 
 /// Decodes the image at `path`, scaled down to fit `bounds` when given. `None`

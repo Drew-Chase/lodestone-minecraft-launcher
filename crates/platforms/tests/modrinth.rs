@@ -3,9 +3,9 @@ use super::*;
 #[test]
 fn the_project_type_leads_and_each_filter_follows_as_its_own_group() {
     let query = SearchQuery {
-        category: Some("magic".to_string()),
-        loader: Some("fabric".to_string()),
-        game_version: Some("1.20.1".to_string()),
+        categories: vec!["magic".to_string()],
+        loaders: vec!["fabric".to_string()],
+        game_versions: vec!["1.20.1".to_string()],
         ..SearchQuery::new(ContentType::Modpack)
     };
     let groups = facet_groups(&query, "modpack");
@@ -14,6 +14,96 @@ fn the_project_type_leads_and_each_filter_follows_as_its_own_group() {
     assert_eq!(groups[1], ["categories:magic"]);
     assert_eq!(groups[2], ["categories:fabric"]);
     assert_eq!(groups[3], ["versions:1.20.1"]);
+}
+
+#[test]
+fn each_category_is_its_own_group_so_a_hit_must_carry_all_of_them() {
+    let query = SearchQuery {
+        categories: vec!["adventure".to_string(), "magic".to_string()],
+        ..SearchQuery::new(ContentType::Mod)
+    };
+    let groups = facet_groups(&query, "mod");
+    assert_eq!(
+        groups,
+        vec![
+            vec!["project_type:mod".to_string()],
+            vec!["categories:adventure".to_string()],
+            vec!["categories:magic".to_string()],
+        ]
+    );
+}
+
+#[test]
+fn loaders_and_versions_are_one_group_each_so_any_of_them_will_do() {
+    let query = SearchQuery {
+        loaders: vec!["fabric".to_string(), "quilt".to_string()],
+        game_versions: vec!["1.20.1".to_string(), "1.20.2".to_string()],
+        ..SearchQuery::new(ContentType::Mod)
+    };
+    let groups = facet_groups(&query, "mod");
+    assert_eq!(groups[1], ["categories:fabric", "categories:quilt"]);
+    assert_eq!(groups[2], ["versions:1.20.1", "versions:1.20.2"]);
+}
+
+#[test]
+fn each_side_is_required_or_optional_and_open_source_is_a_group_of_its_own() {
+    let query = SearchQuery {
+        environments: vec![Side::Client, Side::Server],
+        open_source: true,
+        ..SearchQuery::new(ContentType::Mod)
+    };
+    let groups = facet_groups(&query, "mod");
+    assert_eq!(groups[1], ["client_side:required", "client_side:optional"]);
+    assert_eq!(groups[2], ["server_side:required", "server_side:optional"]);
+    assert_eq!(groups[3], ["open_source:true"]);
+}
+
+#[test]
+fn excluded_categories_and_loaders_are_negated_groups() {
+    let query = SearchQuery {
+        excluded_categories: vec!["optimization".to_string()],
+        excluded_loaders: vec!["forge".to_string()],
+        ..SearchQuery::new(ContentType::Mod)
+    };
+    let groups = facet_groups(&query, "mod");
+    assert_eq!(groups[1], ["categories!=optimization"]);
+    assert_eq!(groups[2], ["categories!=forge"]);
+}
+
+#[test]
+fn categories_are_grouped_by_header_and_loader_names_are_left_out() {
+    let category = |name: &str, header: &str| ModrinthCategory {
+        name: name.to_string(),
+        project_type: "resourcepack".to_string(),
+        header: header.to_string(),
+    };
+    let categories = vec![
+        category("16x", "resolutions"),
+        category("fabric", "categories"),
+        category("audio", "features"),
+        category("gui", "features"),
+    ];
+    let groups = category_groups(categories, "resourcepack", &["fabric".to_string()]);
+    let headers: Vec<&str> = groups.iter().map(|group| group.header.as_str()).collect();
+    assert_eq!(headers, ["resolutions", "features"]);
+    let features: Vec<&str> = groups[1].categories.iter().map(|facet| facet.id.as_str()).collect();
+    assert_eq!(features, ["audio", "gui"]);
+}
+
+#[test]
+fn releases_and_other_versions_are_split_and_keep_the_platforms_order() {
+    let version = |version: &str, version_type: &str| ModrinthGameVersion {
+        version: version.to_string(),
+        version_type: version_type.to_string(),
+    };
+    let versions = vec![
+        version("26.3", "release"),
+        version("26.3-snapshot-1", "snapshot"),
+        version("1.21.11", "release"),
+    ];
+    let (releases, others) = split_versions(versions);
+    assert_eq!(releases, ["26.3", "1.21.11"]);
+    assert_eq!(others, ["26.3-snapshot-1"]);
 }
 
 #[test]

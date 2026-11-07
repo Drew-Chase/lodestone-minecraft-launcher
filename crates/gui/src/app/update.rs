@@ -124,7 +124,7 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Library(LibraryMessage::LaunchNew(id)) => self.launch_new_game(&id),
             // Opening a card/hero hands the instance to the detail page and
             // pushes the route — the page itself never owns navigation.
-            LodestoneAppMessage::Library(LibraryMessage::OpenInstance(id)) => self.open_instance_page(&id, Tab::Mods),
+            LodestoneAppMessage::Library(LibraryMessage::OpenInstance(id)) => self.open_instance_page(&id, Tab::Content),
             LodestoneAppMessage::Library(LibraryMessage::EditInstance(id)) => self.open_instance_page(&id, Tab::Settings),
             LodestoneAppMessage::Library(LibraryMessage::RevealInstance(id)) => self.reveal_instance(&id),
             LodestoneAppMessage::Library(LibraryMessage::InstanceMenu { instance, action }) => self.instance_menu_action(&instance, action),
@@ -158,6 +158,15 @@ impl LodestoneLauncher {
                 warn!("Loading the mods from platforms failed: {error}");
                 Task::none()
             }
+            LodestoneAppMessage::AddedContentLoaded(Ok(records)) => {
+                info!("Loaded {} added content record(s)", records.len());
+                self.discover.set_placed(&records);
+                Task::none()
+            }
+            LodestoneAppMessage::AddedContentLoaded(Err(error)) => {
+                warn!("Loading the added content failed: {error}");
+                Task::none()
+            }
             LodestoneAppMessage::SharedLoaded(Ok(records)) => {
                 info!("Loaded {} shared download(s)", records.len());
                 self.discover.set_library(&records);
@@ -187,6 +196,9 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Instance(InstanceMessage::OpenSource) => self.open_current_source(),
             // The Mods tab's Add opens Discover on the instance's mods.
             LodestoneAppMessage::Instance(InstanceMessage::AddMods) => self.add_mods_from_instance(),
+            LodestoneAppMessage::Instance(InstanceMessage::Packs(message)) => self.instance_packs(message),
+            LodestoneAppMessage::PackActions(message) => self.pack_actions(message),
+            LodestoneAppMessage::Datapacks(message) => self.datapack_message(message),
             LodestoneAppMessage::Instance(InstanceMessage::Menu(action)) => self.current_instance_menu(action),
             LodestoneAppMessage::SourceOpened(result) => self.source_opened(result),
             LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::RevealFolder)) => self.reveal_current_instance(),
@@ -302,6 +314,7 @@ impl LodestoneLauncher {
                     reattach,
                     self.load_shared(),
                     self.load_mod_sources(),
+                    self.load_added_content(),
                     self.load_world_pins(),
                     self.load_notifications(),
                     self.portable_database_ready(),

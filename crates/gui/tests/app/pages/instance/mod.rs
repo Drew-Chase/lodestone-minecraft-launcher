@@ -30,6 +30,8 @@ fn idle_game() -> GameView<'static> {
 fn sample_files() -> InstanceFiles {
     InstanceFiles {
         folder_bytes: 1_200_000_000,
+        resource_packs: Vec::new(),
+        shader_packs: Vec::new(),
         mods: vec![files::ModFile {
             file_name: "sodium.jar".to_string(),
             enabled: true,
@@ -77,7 +79,7 @@ fn sample_files() -> InstanceFiles {
 #[test]
 fn all_tabs_have_labels() {
     let labels: Vec<_> = Tab::ALL.iter().map(|tab| tab.label()).collect();
-    assert_eq!(labels, ["Mods", "Worlds", "Screenshots", "Logs", "Settings"]);
+    assert_eq!(labels, ["Content", "Worlds", "Screenshots", "Logs", "Settings"]);
 }
 
 #[test]
@@ -95,7 +97,7 @@ fn show_resets_the_tab() {
     assert_eq!(page.tab, Tab::Logs);
 
     let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
-    assert_eq!(page.tab, Tab::Mods, "opening another instance starts on Mods");
+    assert_eq!(page.tab, Tab::Content, "opening another instance starts on Content");
 }
 
 #[test]
@@ -107,7 +109,7 @@ fn game_controls_are_left_to_the_root() {
     let _ = page.update(Message::Restart);
     assert_eq!(
         page.tab,
-        Tab::Mods,
+        Tab::Content,
         "the root starts, stops and restarts the game, so the page keeps its tab"
     );
 }
@@ -135,17 +137,17 @@ fn the_menu_and_the_source_link_are_left_to_the_root() {
     let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
     let _ = page.update(Message::Menu(None));
     let _ = page.update(Message::OpenSource);
-    assert_eq!(page.tab, Tab::Mods, "the root carries these out, so the page keeps its tab");
+    assert_eq!(page.tab, Tab::Content, "the root carries these out, so the page keeps its tab");
 }
 
 #[test]
 fn back_and_navigation_are_left_to_the_root() {
     let mut page = InstancePage::default();
     let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
-    let _ = page.update(Message::TabSelected(Tab::Mods));
+    let _ = page.update(Message::TabSelected(Tab::Content));
     let _ = page.update(Message::Back);
     let _ = page.update(Message::Navigate(Page::Library));
-    assert_eq!(page.tab, Tab::Mods, "the root handles Back and Navigate, so the page keeps its tab");
+    assert_eq!(page.tab, Tab::Content, "the root handles Back and Navigate, so the page keeps its tab");
 }
 
 #[test]

@@ -90,12 +90,21 @@ pub struct SearchQuery {
     pub offset: u32,
     /// How many hits to return at most.
     pub limit: u32,
-    /// A category id, from [`Facets::categories`].
-    pub category: Option<String>,
-    /// A loader name, from [`Facets::loaders`].
-    pub loader: Option<String>,
-    /// A Minecraft version, from [`Facets::game_versions`].
-    pub game_version: Option<String>,
+    /// Category ids a hit must all be filed under, from the [`Facet::id`]s of [`Facets::category_groups`].
+    pub categories: Vec<String>,
+    /// Loader names a hit may run on: any of them, from [`Facets::loaders`].
+    pub loaders: Vec<String>,
+    /// Minecraft versions a hit may support: any of them, from [`Facets::game_versions`] or
+    /// [`Facets::snapshot_versions`].
+    pub game_versions: Vec<String>,
+    /// Sides a hit must run on: each of them. Only a platform with [`Facets::environments`] filters by it.
+    pub environments: Vec<Side>,
+    /// Whether a hit must be open source. Only a platform with [`Facets::open_source`] filters by it.
+    pub open_source: bool,
+    /// Category ids a hit must not be filed under. Only a platform with [`Facets::exclusions`] honours them.
+    pub excluded_categories: Vec<String>,
+    /// Loader names a hit must not run on. Only a platform with [`Facets::exclusions`] honours them.
+    pub excluded_loaders: Vec<String>,
 }
 
 impl SearchQuery {
@@ -107,9 +116,13 @@ impl SearchQuery {
             sort: SearchSort::Relevance,
             offset: 0,
             limit: 20,
-            category: None,
-            loader: None,
-            game_version: None,
+            categories: Vec::new(),
+            loaders: Vec::new(),
+            game_versions: Vec::new(),
+            environments: Vec::new(),
+            open_source: false,
+            excluded_categories: Vec::new(),
+            excluded_loaders: Vec::new(),
         }
     }
 }
@@ -132,16 +145,36 @@ pub struct Facet {
     pub name: String,
 }
 
-/// The filters a platform offers for one content type. An empty list means the
-/// platform has no such filter.
+/// One header's categories, such as a mod's categories or a resource pack's features.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CategoryGroup {
+    /// The header the platform files the categories under, as it names it, such as `categories` or `features`.
+    pub header: String,
+    /// The categories under the header.
+    pub categories: Vec<Facet>,
+}
+
+/// The filters a platform offers for one content type. An empty list, or a flag that is off, means the platform has
+/// no such filter.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Facets {
-    /// The categories a project can be filed under.
-    pub categories: Vec<Facet>,
+    /// The categories a project can be filed under, grouped by the header the platform files them under.
+    pub category_groups: Vec<CategoryGroup>,
     /// The mod loaders, named as `lodestone_loaders` names them.
     pub loaders: Vec<String>,
-    /// The Minecraft versions, newest first.
+    /// The release Minecraft versions, newest first.
     pub game_versions: Vec<String>,
+    /// Every other Minecraft version the platform lists, such as snapshots, betas and alphas, newest first.
+    pub snapshot_versions: Vec<String>,
+    /// Whether one filter takes several values at once. A platform whose search takes one value per filter answers
+    /// `false`, and the page then keeps one pick per section.
+    pub multiple: bool,
+    /// Whether the platform filters by the sides a project runs on.
+    pub environments: bool,
+    /// Whether the platform filters by whether a project is open source.
+    pub open_source: bool,
+    /// Whether the platform excludes projects by category or loader.
+    pub exclusions: bool,
 }
 
 /// A display name for a platform id: `kitchen-sink` becomes `Kitchen Sink`.

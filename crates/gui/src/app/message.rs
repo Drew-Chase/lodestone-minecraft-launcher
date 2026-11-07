@@ -123,6 +123,12 @@ pub enum LodestoneAppMessage {
     SharedLoaded(Result<Vec<SharedRecord>, String>),
     /// The mods the Discover page added to instances, as they were recorded.
     ModSourcesLoaded(Result<Vec<ModSource>, String>),
+    /// The packs, datapacks and worlds the Discover page added to instances and worlds, as they were recorded.
+    AddedContentLoaded(Result<Vec<crate::app::shared_library::AddedContent>, String>),
+    /// The outcome of a pack action on the Content tab: a copy, a removal, or the answer to its confirmation.
+    PackActions(crate::app::instance_packs::Message),
+    /// The datapack dialog of a world: its reads, the user's choices, and the outcome of each change.
+    Datapacks(crate::app::world_datapacks::Message),
     /// What the platforms and the disk answered for the Mods tab.
     ModActions(mod_actions::Message),
     /// The delete alert was answered for `instance`.

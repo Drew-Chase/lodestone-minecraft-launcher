@@ -29,7 +29,7 @@ impl LodestoneLauncher {
                 name: record.name.clone(),
                 web_url: None,
                 icon_url: None,
-                game_version: None,
+                game_versions: Vec::new(),
                 version_id: Some(release.id.clone()),
             },
             instance: context.instance.clone(),

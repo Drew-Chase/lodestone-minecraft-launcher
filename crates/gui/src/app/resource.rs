@@ -82,7 +82,7 @@ impl LodestoneLauncher {
             name: listing.name.clone(),
             web_url: listing.web_url.clone(),
             icon_url: listing.icon_url.clone(),
-            game_version: None,
+            game_versions: Vec::new(),
             version_id,
         };
         let effects: Vec<DiscoverEffect> = match action {
@@ -100,6 +100,8 @@ impl LodestoneLauncher {
             }
             Action::OpenInstance(id) => vec![DiscoverEffect::OpenInstance(id)],
             Action::PickInstance(index) => self.discover.select_instance(index),
+            Action::Place(version) => self.discover.place_with(project(version)),
+            Action::PickWorld(index) => self.discover.select_world(index),
             Action::OpenWeb => listing.web_url.map(DiscoverEffect::Open).into_iter().collect(),
         };
         Task::batch(effects.into_iter().map(|effect| self.discover_effect(effect)))

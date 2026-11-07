@@ -88,11 +88,11 @@ pub(super) fn picture<'a, M: 'a>(handle: Option<&image::Handle>, size: f32) -> E
 }
 
 /// A filled button with an icon: the action the page is for.
-pub(super) fn primary<'a>(label: &'static str, markup: &'static str, action: Action) -> Element<'a, Message> {
+pub(super) fn primary<'a>(label: impl Into<String>, markup: &'static str, action: Action) -> Element<'a, Message> {
     TextButton::content(
         row![
             glyph(markup, 12.0, color::primary_on()),
-            Text::new(label).size(12).font(fonts::Inter::BOLD).color(color::primary_on()),
+            Text::new(label.into()).size(12).font(fonts::Inter::BOLD).color(color::primary_on()),
         ]
         .spacing(6)
         .align_y(alignment::Vertical::Center),

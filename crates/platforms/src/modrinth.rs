@@ -19,8 +19,9 @@ use crate::PlatformKind;
 use crate::error::PlatformError;
 use crate::http::{download_files, get_json, with_query};
 use crate::meta::{
-    BundledProject, Channel, ContentDetails, ContentFile, ContentType, ContentVersion, Creator, DependencyKind, DescriptionFormat, Facet, Facets,
-    GalleryImage, ProjectInfo, ProjectLinks, SearchPage, SearchQuery, SearchResult, SearchSort, Side, VersionDependency, banner_from, display_name,
+    BundledProject, CategoryGroup, Channel, ContentDetails, ContentFile, ContentType, ContentVersion, Creator, DependencyKind, DescriptionFormat,
+    Facet, Facets, GalleryImage, ProjectInfo, ProjectLinks, SearchPage, SearchQuery, SearchResult, SearchSort, Side, VersionDependency, banner_from,
+    display_name,
 };
 use crate::sealed;
 
@@ -70,19 +71,70 @@ fn sort_index(sort: SearchSort) -> &'static str {
 /// The facet groups of a search. Each inner list is one OR group, and the
 /// groups are ANDed. The project type always leads, and the facet values must
 /// be lowercase (`project_type:mod`), which is why this is hand-rolled.
+///
+/// A hit must carry every category picked, may run on any loader or version picked, and must support every side
+/// picked. Each excluded category or loader is a negated group of its own.
 fn facet_groups(query: &SearchQuery, project_type: &str) -> Vec<Vec<String>> {
     let mut groups = vec![vec![format!("project_type:{project_type}")]];
-    if let Some(category) = &query.category {
-        groups.push(vec![format!("categories:{category}")]);
-    }
+    groups.extend(query.categories.iter().map(|category| vec![format!("categories:{category}")]));
     // Modrinth files loaders under categories as well.
-    if let Some(loader) = &query.loader {
-        groups.push(vec![format!("categories:{loader}")]);
+    if !query.loaders.is_empty() {
+        groups.push(query.loaders.iter().map(|loader| format!("categories:{loader}")).collect());
     }
-    if let Some(version) = &query.game_version {
-        groups.push(vec![format!("versions:{version}")]);
+    if !query.game_versions.is_empty() {
+        groups.push(query.game_versions.iter().map(|version| format!("versions:{version}")).collect());
+    }
+    for side in &query.environments {
+        let key = match side {
+            Side::Client => "client_side",
+            Side::Server => "server_side",
+        };
+        groups.push(vec![format!("{key}:required"), format!("{key}:optional")]);
+    }
+    if query.open_source {
+        groups.push(vec!["open_source:true".to_string()]);
+    }
+    groups.extend(
+        query
+            .excluded_categories
+            .iter()
+            .chain(&query.excluded_loaders)
+            .map(|category| vec![format!("categories!={category}")]),
+    );
+    groups
+}
+
+/// The categories of one project type, grouped by the header the platform files them under, in the order the
+/// platform lists them. Loader names are left out, since they have their own filter.
+fn category_groups(categories: Vec<ModrinthCategory>, project_type: &str, loaders: &[String]) -> Vec<CategoryGroup> {
+    let mut groups: Vec<CategoryGroup> = Vec::new();
+    for category in categories
+        .into_iter()
+        .filter(|category| category.project_type == project_type && !loaders.contains(&category.name))
+    {
+        let facet = Facet {
+            name: display_name(&category.name),
+            id: category.name,
+        };
+        match groups.iter_mut().find(|group| group.header == category.header) {
+            Some(group) => group.categories.push(facet),
+            None => groups.push(CategoryGroup {
+                header: category.header,
+                categories: vec![facet],
+            }),
+        }
     }
     groups
+}
+
+/// The platform's Minecraft versions, split into the release versions and every other version. Each keeps the
+/// platform's order, newest first.
+fn split_versions(versions: Vec<ModrinthGameVersion>) -> (Vec<String>, Vec<String>) {
+    let (releases, others): (Vec<_>, Vec<_>) = versions.into_iter().partition(|version| version.version_type == "release");
+    (
+        releases.into_iter().map(|version| version.version).collect(),
+        others.into_iter().map(|version| version.version).collect(),
+    )
 }
 
 /// The search response of `/v2/search`.
@@ -449,22 +501,17 @@ impl PlatformKind for Modrinth {
             .filter(|loader| loader.supported_project_types.iter().any(|kind| kind == project_type))
             .map(|loader| loader.name)
             .collect();
+        let (game_versions, snapshot_versions) = split_versions(versions);
         Ok(Facets {
-            categories: categories
-                .into_iter()
-                .filter(|category| category.project_type == project_type && category.header == "categories")
-                .filter(|category| !loader_names.contains(&category.name))
-                .map(|category| Facet {
-                    name: display_name(&category.name),
-                    id: category.name,
-                })
-                .collect(),
+            category_groups: category_groups(categories, project_type, &loader_names),
             loaders: loader_names,
-            game_versions: versions
-                .into_iter()
-                .filter(|version| version.version_type == "release")
-                .map(|version| version.version)
-                .collect(),
+            game_versions,
+            snapshot_versions,
+            // Modrinth takes any number of values per filter, and every filter below is one it searches.
+            multiple: true,
+            environments: content == ContentType::Mod,
+            open_source: true,
+            exclusions: true,
         })
     }
 

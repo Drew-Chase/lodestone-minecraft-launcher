@@ -157,7 +157,7 @@ pub async fn from_url(text: String, paths: LauncherPaths, taken: Vec<String>) ->
         name: hit.name,
         web_url: Some(page.project_url()),
         icon_url: hit.icon_url,
-        game_version: None,
+        game_versions: Vec::new(),
         version_id: page.file_id.clone(),
     };
     let (request, bytes) = prepare_modpack(project, paths, taken).await?;

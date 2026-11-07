@@ -23,13 +23,24 @@ pub enum State {
 
 /// A checkbox in `state` that sends `on_press` when it is pressed.
 pub fn checkbox<'a, Message: Clone + 'a>(state: State, on_press: Message) -> Element<'a, Message> {
+    button(mark(state))
+        .width(Length::Fixed(SIZE))
+        .height(Length::Fixed(SIZE))
+        .padding(0)
+        .style(|_, _| button::Style::default())
+        .on_press(on_press)
+        .into()
+}
+
+/// The box alone, drawn in `state`. A row that is pressed as a whole draws its box with this, inside a button of its own.
+pub fn mark<'a, Message: 'a>(state: State) -> Element<'a, Message> {
     let glyph = match state {
         State::Checked => Some(Icon::lucide().check()),
         State::Partial => Some(Icon::lucide().minus()),
         State::Unchecked => None,
     };
     let filled = state != State::Unchecked;
-    let mark = glyph.map(|markup| {
+    let drawn = glyph.map(|markup| {
         svg(svg::Handle::from_memory(markup.as_bytes()))
             .width(GLYPH)
             .height(GLYPH)
@@ -37,24 +48,22 @@ pub fn checkbox<'a, Message: Clone + 'a>(state: State, on_press: Message) -> Ele
                 color: Some(color::primary_on()),
             })
     });
-    let inner = container(mark)
+    let inner = container(drawn)
         .width(SIZE)
         .height(SIZE)
         .align_x(alignment::Horizontal::Center)
         .align_y(alignment::Vertical::Center);
-    button(inner)
+    container(inner)
         .width(Length::Fixed(SIZE))
         .height(Length::Fixed(SIZE))
-        .padding(0)
-        .style(move |_, _| button::Style {
+        .style(move |_| container::Style {
             background: Some(Background::Color(if filled { color::primary() } else { rgb!(255, 255, 255, 4%) })),
             border: Border {
                 radius: 4.0.into(),
                 width: 1.0,
                 color: if filled { color::primary() } else { color::surface_line_strong() },
             },
-            ..button::Style::default()
+            ..container::Style::default()
         })
-        .on_press(on_press)
         .into()
 }

@@ -12,6 +12,7 @@ pub mod face;
 mod games;
 mod import;
 mod install;
+mod instance_packs;
 mod instances;
 mod lang;
 mod launch;
@@ -44,6 +45,7 @@ mod update;
 mod updater;
 mod view;
 mod world_actions;
+mod world_datapacks;
 mod world_pins;
 pub mod writes;
 
@@ -205,6 +207,8 @@ pub struct LodestoneLauncher {
     export: Option<export::Dialog>,
     /// The Import Instance dialog, while it is open. It sits above the page, beside the export dialog.
     import: Option<import::Dialog>,
+    /// The datapack dialog of a world, while it is open.
+    datapacks: Option<world_datapacks::Dialog>,
     /// The package this launcher carries, when it is a portable launcher. Its launch replaces the library.
     portable: Option<portable::Portable>,
     /// The update check: the newest release, and what the update is doing. See `updater`.
@@ -275,6 +279,7 @@ impl Default for LodestoneLauncher {
             coop_sync_open: false,
             export: None,
             import: None,
+            datapacks: None,
             portable: portable::launch(),
             updater: updater::Updater::default(),
             art: components::art_cache::ArtCache::default(),

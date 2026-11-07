@@ -7,9 +7,7 @@ fn search(text: &str) -> Key {
         content: ContentType::Modpack,
         text: text.to_string(),
         sort: SearchSort::Relevance,
-        category: None,
-        loader: None,
-        game_version: None,
+        filters: Filters::default(),
     }
 }
 
@@ -49,7 +47,10 @@ fn a_filter_or_a_sort_makes_a_different_search() {
     let mut cache = Cache::default();
     cache.put_at(search("sodium"), 0, page(40), 12, now);
     let filtered = Key {
-        category: Some("optimization".to_string()),
+        filters: Filters {
+            categories: vec!["optimization".to_string()],
+            ..Filters::default()
+        },
         ..search("sodium")
     };
     let newest = Key {

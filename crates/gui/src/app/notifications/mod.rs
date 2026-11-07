@@ -394,8 +394,8 @@ impl LodestoneLauncher {
     fn notification_action(&mut self, action: Action) -> Task<LodestoneAppMessage> {
         match action {
             Action::Logs(id) => self.open_instance_page(&id, Tab::Logs),
-            Action::Instance(id) => self.open_instance_page(&id, Tab::Mods),
-            Action::Mods(id) => self.open_instance_page(&id, Tab::Mods),
+            Action::Instance(id) => self.open_instance_page(&id, Tab::Content),
+            Action::Mods(id) => self.open_instance_page(&id, Tab::Content),
             Action::OpenFile(path) => open_path(path),
             Action::ShowFolder(path) => match path.parent() {
                 Some(folder) => reveal_folder(folder.to_path_buf()),

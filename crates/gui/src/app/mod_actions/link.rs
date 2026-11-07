@@ -237,8 +237,8 @@ impl LodestoneLauncher {
 async fn search_mods(source: Source, text: String, loader: String, minecraft: String) -> Result<SearchPage, String> {
     let query = SearchQuery {
         text,
-        loader: Some(loader),
-        game_version: Some(minecraft),
+        loaders: vec![loader],
+        game_versions: vec![minecraft],
         limit: SEARCH_LIMIT,
         ..SearchQuery::new(ContentType::Mod)
     };

@@ -1,34 +1,34 @@
-//! The filter row: the category, loader, version and sort selectors, the count
-//! of results, and the layout switcher. Once the page scrolls past it, the same
-//! row is pinned over the results.
+//! The toolbar over the results: the instance the results are added to, the sort selector, the count of results, and the
+//! layout switcher. The filters are in the sidebar beside it. Once the page scrolls past the toolbar, the same row is
+//! pinned over the results.
 
 use aurora_leaf::Icon;
 use iced::widget::{Space, Text, container, opaque, row};
 use iced::{Background, Element, Fill, Length, Padding, alignment};
 
-use super::{Discover, DiscoverView, GAP, Message, SIDE};
+use super::{Discover, DiscoverView, GAP, Message, SIDE, sidebar, target};
 use crate::app::components::{Select, scrollbar, segmented, select};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
-use lodestone_platforms::{ContentType, Facets, SearchSort};
+use lodestone_platforms::{ContentType, SearchSort};
 
-/// The width of each filter selector.
+/// The width of the sort selector.
 const SELECT_WIDTH: f32 = 176.0;
-/// The width of the Mods tab's instance selector, which carries the instance's name.
+/// The width of the instance selector, which carries the instance's name.
 const INSTANCE_SELECT_WIDTH: f32 = 220.0;
 
-/// The height of the filter row. It is the selectors' trigger height. The row keeps it wherever it sits, so
-/// a pinned row leaves a gap of the same height behind.
+/// The height of the toolbar. It is the selectors' trigger height. The row keeps it wherever it sits, so a pinned row
+/// leaves a gap of the same height behind.
 pub(super) const HEIGHT: f32 = select::TRIGGER_HEIGHT;
 
-/// The filter selectors, the count and the layout switcher.
+/// The instance selector, the sort selector, the count and the layout switcher.
 pub(super) fn view(page: &Discover) -> Element<'_, Message> {
     let mut controls: Vec<Element<'_, Message>> = Vec::new();
-    if page.content == ContentType::Mod {
+    if target::takes_target(page.content) {
         controls.push(instance_select(page));
     }
-    if let Some(facets) = page.facets().filter(|_| page.source.has_filters()) {
-        controls.extend(filters(page, facets));
+    if page.content == ContentType::DataPack {
+        controls.push(world_select(page));
     }
     controls.push(sort_select(page));
     row![
@@ -44,68 +44,22 @@ pub(super) fn view(page: &Discover) -> Element<'_, Message> {
     .into()
 }
 
-/// The filter row pinned over the results, once the page has scrolled past it. Its background is the
-/// page's, so the results pass beneath it. It stops short of the scrollbar's track, which stays clear, and
-/// its right padding makes up the track's width, so the selectors line up with where they sit in the page.
-/// `opaque` stops presses over the bar, so no card beneath can be pressed through it. The wheel still
-/// reaches the page.
+/// The toolbar pinned over the results, once the page has scrolled past it. Its background is the page's, so the results
+/// pass beneath it. It starts beside the sidebar, which stays where it is, and stops short of the scrollbar's track, which
+/// stays clear. `opaque` stops presses over the bar, so no card beneath can be pressed through it. The wheel still reaches
+/// the page.
 pub(super) fn pinned(page: &Discover) -> Element<'_, Message> {
     let bar = container(view(page))
-        .padding(Padding::new(GAP).left(SIDE).right(SIDE - scrollbar::TRACK_WIDTH).bottom(GAP))
+        .padding(Padding::new(GAP).left(0.0).right(SIDE - scrollbar::TRACK_WIDTH).bottom(GAP))
         .width(Fill)
         .style(|_| container::Style {
             background: Some(Background::Color(color::surface_application())),
             ..container::Style::default()
         });
     container(opaque(bar))
-        .padding(Padding::new(0.0).right(scrollbar::TRACK_WIDTH))
+        .padding(Padding::new(0.0).left(SIDE + sidebar::width_taken(page)).right(scrollbar::TRACK_WIDTH))
         .width(Fill)
         .into()
-}
-
-/// The category, loader and version selectors, each shown only when the platform has such filters.
-fn filters<'a>(page: &'a Discover, facets: &'a Facets) -> Vec<Element<'a, Message>> {
-    let mut selects = Vec::new();
-    if !facets.categories.is_empty() {
-        let selected = page
-            .category
-            .as_ref()
-            .and_then(|id| facets.categories.iter().position(|facet| &facet.id == id))
-            .map(|index| index + 1)
-            .unwrap_or(0);
-        let mut options = vec![lang::t("discover.filter.any_category").to_string()];
-        options.extend(facets.categories.iter().map(|facet| facet.name.clone()));
-        selects.push(select(options, selected, Message::CategorySelected));
-    }
-    if !facets.loaders.is_empty() {
-        let selected = page
-            .loader
-            .as_ref()
-            .and_then(|name| facets.loaders.iter().position(|loader| loader == name))
-            .map(|index| index + 1)
-            .unwrap_or(0);
-        let mut options = vec![lang::t("discover.filter.any_loader").to_string()];
-        options.extend(facets.loaders.iter().map(|loader| loader_label(loader)));
-        selects.push(select(options, selected, Message::LoaderSelected));
-    }
-    if !facets.game_versions.is_empty() {
-        let selected = page
-            .game_version
-            .as_ref()
-            .and_then(|version| facets.game_versions.iter().position(|known| known == version))
-            .map(|index| index + 1)
-            .unwrap_or(0);
-        let mut options = vec![lang::t("discover.filter.any_version").to_string()];
-        options.extend(facets.game_versions.iter().cloned());
-        selects.push(
-            Select::new(options, Some(selected))
-                .searchable()
-                .on_select(Message::VersionSelected)
-                .width(Length::Fixed(SELECT_WIDTH))
-                .into(),
-        );
-    }
-    selects
 }
 
 /// A selector over `options`, with `selected` lit and `message` sent with the picked index.
@@ -116,8 +70,8 @@ fn select<'a>(options: Vec<String>, selected: usize, message: fn(usize) -> Messa
         .into()
 }
 
-/// The Mods tab's selector for the instance mods are added to. It lists the instances the library holds, and it is
-/// dimmed when there are none.
+/// The selector for the instance the results are added to. It lists the instances the library holds, and it is dimmed
+/// when there are none.
 fn instance_select(page: &Discover) -> Element<'_, Message> {
     let names: Vec<String> = page.instances.iter().map(|choice| choice.name.clone()).collect();
     let selected = page
@@ -132,6 +86,30 @@ fn instance_select(page: &Discover) -> Element<'_, Message> {
         picker.placeholder(lang::t("discover.mods.no_instances")).disabled(true).into()
     } else {
         picker.placeholder(lang::t("discover.mods.choose_instance")).into()
+    }
+}
+
+/// The selector for the world the datapacks go to. It lists the worlds of the target instance, and it is dimmed until an
+/// instance is picked, and while that instance has no worlds.
+fn world_select(page: &Discover) -> Element<'_, Message> {
+    let names: Vec<String> = page.worlds.iter().map(|world| world.name.clone()).collect();
+    let selected = page
+        .target_world
+        .as_ref()
+        .and_then(|folder| page.worlds.iter().position(|world| &world.folder == folder));
+    let picker = Select::new(names.clone(), selected)
+        .leading_icon(Icon::lucide().globe())
+        .on_select(Message::WorldSelected)
+        .width(Length::Fixed(INSTANCE_SELECT_WIDTH));
+    if page.target().is_none() {
+        picker
+            .placeholder(lang::t("discover.placement.pick_instance_first"))
+            .disabled(true)
+            .into()
+    } else if names.is_empty() {
+        picker.placeholder(lang::t("discover.placement.no_worlds")).disabled(true).into()
+    } else {
+        picker.placeholder(lang::t("discover.placement.choose_world")).into()
     }
 }
 
@@ -150,20 +128,6 @@ fn sort_label(sort: SearchSort) -> &'static str {
         SearchSort::Popular => lang::t("discover.sort.popular"),
         SearchSort::Updated => lang::t("discover.sort.updated"),
         SearchSort::Newest => lang::t("discover.sort.newest"),
-    }
-}
-
-/// A loader's name as it is shown: `fabric` is `Fabric`, and `neoforge` is `NeoForge`.
-fn loader_label(name: &str) -> String {
-    match name {
-        "neoforge" => "NeoForge".to_string(),
-        other => {
-            let mut chars = other.chars();
-            match chars.next() {
-                Some(first) => first.to_uppercase().chain(chars).collect(),
-                None => String::new(),
-            }
-        }
     }
 }
 

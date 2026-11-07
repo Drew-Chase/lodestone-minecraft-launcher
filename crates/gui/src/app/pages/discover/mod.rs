@@ -8,12 +8,15 @@
 //! messages.
 
 mod card;
+mod filters;
 mod header;
 mod hero;
 mod hover;
 pub(crate) mod images;
+mod place;
 mod query;
 mod results;
+mod sidebar;
 mod source;
 mod target;
 mod toolbar;
@@ -24,18 +27,20 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::app::components::scrollbar;
 use crate::app::lang;
 use crate::app::pages::resource::Listing;
-use crate::app::shared_library::{self, ModSource, SharedRecord};
-use iced::widget::{Space, column, container, stack};
+use crate::app::shared_library::{self, AddedContent, ModSource, SharedRecord};
+use iced::widget::{Space, column, container, row, stack};
 use iced::{Element, Fill, Padding};
 use lodestone_platforms::{ContentType, Facets, SearchPage, SearchSort};
 
 pub use card::{date_only, scene_for, short_count};
 pub use images::{Picture, load as load_icon, load_image, pack_art};
 pub use source::Source;
-pub use target::{AddRequest, InstanceChoice};
+pub use target::{AddRequest, InstanceChoice, WorldChoice, takes_target};
 
 use types::Artwork;
-pub use types::{DiscoverView, Effect, InstallState, Message, Project, ProjectStatus, Search, TABS};
+pub use types::{
+    Destination, DiscoverView, Effect, InstallState, Message, PlaceOutcome, PlaceRequest, Placement, Project, ProjectStatus, Search, TABS,
+};
 
 /// The id of the search field, which the root focuses for Ctrl/⌘K.
 pub const SEARCH_ID: &str = "discover-search";
@@ -65,9 +70,10 @@ pub struct Discover {
     /// The search field's placeholder, which names the platform.
     pub(super) placeholder: String,
     pub(super) sort: SearchSort,
-    pub(super) category: Option<String>,
-    pub(super) loader: Option<String>,
-    pub(super) game_version: Option<String>,
+    /// The picks the sidebar makes, which every search asks the platform for.
+    pub(super) filters: filters::Filters,
+    /// What the sidebar shows beyond the picks.
+    pub(super) panel: filters::Panel,
     pub(super) view: DiscoverView,
     pub(super) results: query::Results,
     /// Bumped with every change to the search, so answers to older searches are dropped.
@@ -87,8 +93,8 @@ pub struct Discover {
     remaining: f32,
     /// How far the content has scrolled down, as of the last scroll. The filter row pins once it reaches the top.
     scroll_y: f32,
-    /// The downloads on disk, by (shared folder, platform key, project id).
-    library: HashSet<(String, String, String)>,
+    /// The downloads on disk, by (shared folder, platform key, project id), with the record of the release each holds.
+    library: HashMap<(String, String, String), SharedRecord>,
     /// The installs the page knows of, by (platform key, project id).
     installs: HashMap<(String, String), InstallState>,
     /// The downloads still running, by (shared folder, platform key, project id).
@@ -101,6 +107,14 @@ pub struct Discover {
     added: HashMap<(String, String, String), ModSource>,
     /// The mods being added or replaced now, by the same key.
     adding: HashSet<(String, String, String)>,
+    /// The worlds of the target instance, for the world picker of the datapack section.
+    worlds: Vec<WorldChoice>,
+    /// The world the datapacks go to, by its folder name, once one is picked.
+    target_world: Option<String>,
+    /// The projects placed into an instance or world, by place, with the record of what was placed.
+    placed: HashMap<Placement, AddedContent>,
+    /// The projects being placed now, by place.
+    placing: HashSet<Placement>,
     /// The project whose grid card the pointer is over, if any.
     hovered: Option<String>,
     /// The instance the page was opened from to add mods to. The page shows a way back to it while this is set.
@@ -116,9 +130,8 @@ impl Discover {
             text: String::new(),
             placeholder: placeholder(source),
             sort: source.sorts()[0],
-            category: None,
-            loader: None,
-            game_version: None,
+            filters: filters::Filters::default(),
+            panel: filters::Panel::default(),
             view: DiscoverView::default(),
             results: query::Results::default(),
             generation: 0,
@@ -131,13 +144,17 @@ impl Discover {
             icons_loading: 0,
             remaining: f32::MAX,
             scroll_y: 0.0,
-            library: HashSet::new(),
+            library: HashMap::new(),
             installs: HashMap::new(),
             busy: HashSet::new(),
             instances: Vec::new(),
             target: None,
             added: HashMap::new(),
             adding: HashSet::new(),
+            worlds: Vec::new(),
+            target_world: None,
+            placed: HashMap::new(),
+            placing: HashSet::new(),
             hovered: None,
             origin: None,
         }
@@ -167,7 +184,7 @@ impl Discover {
     pub fn set_library(&mut self, records: &[SharedRecord]) {
         self.library = records
             .iter()
-            .map(|record| (record.kind.clone(), record.platform.clone(), record.project_id.clone()))
+            .map(|record| ((record.kind.clone(), record.platform.clone(), record.project_id.clone()), record.clone()))
             .collect();
     }
 
@@ -207,7 +224,7 @@ impl Discover {
     /// Whether the project is already in its shared folder for the current tab.
     pub(super) fn in_library(&self, project_id: &str) -> bool {
         self.library
-            .contains(&(self.folder(), self.source.key().to_string(), project_id.to_string()))
+            .contains_key(&(self.folder(), self.source.key().to_string(), project_id.to_string()))
     }
 
     /// Whether a download of the project is running for the current tab.
@@ -236,7 +253,7 @@ impl Discover {
             name: hit.map_or_else(|| project_id.to_string(), |hit| hit.name.clone()),
             web_url: hit.and_then(|hit| hit.web_url.clone()),
             icon_url: hit.and_then(|hit| hit.icon_url.clone()),
-            game_version: self.game_version.clone(),
+            game_versions: self.filters.game_versions.clone(),
             version_id: version_id.map(str::to_string),
         }
     }
@@ -266,7 +283,7 @@ impl Discover {
             project.source.key().to_string(),
             project.project_id.clone(),
         );
-        if self.library.contains(&key) || self.busy.contains(&key) {
+        if self.library.contains_key(&key) || self.busy.contains(&key) {
             return Vec::new();
         }
         self.busy.insert(key);
@@ -290,24 +307,40 @@ impl Discover {
         let platform = source.key().to_string();
         let project = project_id.to_string();
         let target = self.target().cloned();
-        // The project's key in the target instance, when one is picked.
-        let key = target.as_ref().map(|choice| (choice.id.clone(), platform.clone(), project.clone()));
-        let added = key.as_ref().and_then(|key| self.added.get(key));
-        let adding = key.as_ref().is_some_and(|key| self.adding.contains(key));
+        // What the target holds of the project: a mod's record in the instance, or the record of a pack, a datapack or a
+        // world in the place the tab names.
+        let (added_version, adding) = if content == ContentType::Mod {
+            let key = target.as_ref().map(|choice| (choice.id.clone(), platform.clone(), project.clone()));
+            let added = key.as_ref().and_then(|key| self.added.get(key)).map(|record| record.version_id.clone());
+            (added, key.as_ref().is_some_and(|key| self.adding.contains(key)))
+        } else {
+            let placement = self.placement_for(source, content, project_id);
+            let placed = placement
+                .as_ref()
+                .and_then(|key| self.placed.get(key))
+                .map(|record| record.version_id.clone());
+            (placed, placement.as_ref().is_some_and(|key| self.placing.contains(key)))
+        };
         let target_index = self
             .target
             .as_ref()
             .and_then(|id| self.instances.iter().position(|choice| &choice.id == id));
         ProjectStatus {
-            in_library: self.library.contains(&(folder.clone(), platform.clone(), project.clone())),
+            in_library: self.library.contains_key(&(folder.clone(), platform.clone(), project.clone())),
             downloading: self.busy.contains(&(folder, platform.clone(), project.clone())),
             install: self.installs.get(&(platform.clone(), project.clone())).cloned(),
-            added: added.is_some(),
-            added_version: added.map(|record| record.version_id.clone()),
+            added: added_version.is_some(),
+            added_version,
             adding,
             instances: self.instances.iter().map(|choice| choice.name.clone()).collect(),
             target_index,
             target,
+            target_world: self.target_world_name().map(str::to_string),
+            worlds: self.worlds.iter().map(|world| world.name.clone()).collect(),
+            world_index: self
+                .target_world
+                .as_ref()
+                .and_then(|folder| self.worlds.iter().position(|world| &world.folder == folder)),
         }
     }
 
@@ -318,9 +351,7 @@ impl Discover {
             content: self.content,
             text: self.text.trim().to_string(),
             sort: self.sort,
-            category: self.category.clone(),
-            loader: self.loader.clone(),
-            game_version: self.game_version.clone(),
+            filters: self.filters.clone(),
         }
     }
 
@@ -328,9 +359,8 @@ impl Discover {
     /// back to the default when the new platform cannot express the old one. On the
     /// Mods tab the instance's loader and Minecraft version are set again.
     fn reset_filters(&mut self) {
-        self.category = None;
-        self.loader = None;
-        self.game_version = None;
+        self.filters = filters::Filters::default();
+        self.panel.version_search.clear();
         if !self.source.sorts().contains(&self.sort) {
             self.sort = self.source.sorts()[0];
         }
@@ -339,7 +369,7 @@ impl Discover {
 
     /// Asks for the filters of the selected platform and tab, unless they are already known.
     fn facet_request(&self) -> Vec<Effect> {
-        if !self.source.has_filters() || self.facets.contains_key(&(self.source, self.content)) {
+        if self.facets.contains_key(&(self.source, self.content)) {
             Vec::new()
         } else {
             vec![Effect::Facets(self.source, self.content)]
@@ -444,27 +474,11 @@ impl Discover {
                 }
                 _ => Vec::new(),
             },
-            Message::CategorySelected(index) => {
-                self.category = self
-                    .facets()
-                    .and_then(|facets| index.checked_sub(1).and_then(|index| facets.categories.get(index)))
-                    .map(|facet| facet.id.clone());
-                self.start(false)
-            }
-            Message::LoaderSelected(index) => {
-                self.loader = self
-                    .facets()
-                    .and_then(|facets| index.checked_sub(1).and_then(|index| facets.loaders.get(index)))
-                    .cloned();
-                self.start(false)
-            }
-            Message::VersionSelected(index) => {
-                self.game_version = self
-                    .facets()
-                    .and_then(|facets| index.checked_sub(1).and_then(|index| facets.game_versions.get(index)))
-                    .cloned();
-                self.start(false)
-            }
+            Message::Filter(message) => self.filter_changed(message),
+            Message::Place(project_id) => self.place(&project_id),
+            Message::Placed { key, result } => self.placed_result(key, result),
+            Message::WorldsLoaded { instance, worlds } => self.set_worlds(&instance, worlds),
+            Message::WorldSelected(index) => self.select_world(index),
             Message::ViewSelected(view) => {
                 self.view = view;
                 vec![Effect::RememberView(view)]
@@ -557,7 +571,7 @@ impl Discover {
                 self.busy.remove(&(kind.clone(), platform.clone(), project_id.clone()));
                 match result {
                     Ok(record) => {
-                        self.library.insert((kind, platform, project_id));
+                        self.library.insert((kind, platform, project_id), record.clone());
                         vec![Effect::Record(record)]
                     }
                     Err(error) => vec![Effect::Notify(error)],
@@ -641,7 +655,13 @@ impl Discover {
         } else {
             toolbar::view(self)
         };
-        page = page.push(filters).push(results::view(self));
+        // The sidebar sits beside the toolbar and the results, and takes the whole height of them.
+        let results = column![filters, results::view(self)].spacing(GAP).width(Fill);
+        let body: Element<'_, Message> = match sidebar::view(self) {
+            Some(sidebar) => row![sidebar, results].spacing(sidebar::COLUMN_GAP).width(Fill).into(),
+            None => results.into(),
+        };
+        page = page.push(body);
         let content = container(page)
             .padding(Padding::new(0.0).top(GAP).left(SIDE).right(SIDE).bottom(40))
             .width(Fill);

@@ -100,6 +100,12 @@ impl LodestoneLauncher {
             Some(Action::CopySeed) => self.copy_seed(instance, &path),
             Some(Action::Pin) => self.set_world_pinned(instance, &path, true),
             Some(Action::Unpin) => self.set_world_pinned(instance, &path, false),
+            Some(Action::Datapacks) => {
+                let name = self
+                    .world_file(instance, &path)
+                    .map_or_else(|| file_name(&path), |world| world.name.clone());
+                self.open_datapacks(instance.to_string(), path, name)
+            }
             Some(Action::BackUp) => self.back_up_world(instance, path),
             Some(Action::Delete) => self.ask_world_delete(instance, path),
             None => Task::none(),

@@ -193,6 +193,11 @@ impl LodestoneLauncher {
             Some(modal) => modal.map(LodestoneAppMessage::Updater),
             None => Space::new().into(),
         };
+        // The datapack dialog of a world covers the page the same way, above the changelog.
+        let datapacks: Element<'_, LodestoneAppMessage> = match self.datapacks.as_ref() {
+            Some(dialog) => super::world_datapacks::view(dialog).map(LodestoneAppMessage::Datapacks),
+            None => Space::new().into(),
+        };
         // The screenshot viewer covers the whole window, under the alerts. It is open only on the instance page.
         let viewer: Element<'_, LodestoneAppMessage> = match self.router.current() {
             Page::Instance => match self.instance_page.viewer(self.window_size) {
@@ -224,6 +229,7 @@ impl LodestoneLauncher {
                 servers_dialog,
                 coop,
                 changelog,
+                datapacks,
                 viewer,
                 alert,
                 moving,

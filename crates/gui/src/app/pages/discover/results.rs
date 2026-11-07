@@ -239,6 +239,9 @@ fn action<'a>(page: &Discover, hit: &'a SearchResult) -> Element<'a, Message> {
             ),
         };
     }
+    if super::target::takes_target(page.content) && page.target().is_some() {
+        return place_action(page, hit);
+    }
     if page.in_library(&hit.id) {
         return disabled(lang::t("discover.action.in_library"));
     }
@@ -250,6 +253,31 @@ fn action<'a>(page: &Discover, hit: &'a SearchResult) -> Element<'a, Message> {
         Icon::lucide().download(),
         Message::Download(hit.id.clone()),
     )
+}
+
+/// The button a pack's, a datapack's or a world's card shows once the page has a target: the project is placed there, and
+/// the button then says it is there. A datapack goes into a world, so its button waits until one is picked.
+fn place_action<'a>(page: &Discover, hit: &'a SearchResult) -> Element<'a, Message> {
+    if page.placed_in_target(&hit.id).is_some() {
+        return disabled(lang::t("discover.action.added"));
+    }
+    if page.placing_in_target(&hit.id) {
+        return disabled(lang::t("discover.action.adding"));
+    }
+    if page.destination().is_none() {
+        return disabled(lang::t("discover.action.choose_world"));
+    }
+    let name = match page.content {
+        ContentType::DataPack => page.target_world_name().unwrap_or_default(),
+        _ => page.target().map_or("", |choice| choice.name.as_str()),
+    };
+    if page.content == ContentType::World {
+        let label = lang::t_with("discover.action.import_to", &[("name", name)]).to_string();
+        primary(label, Icon::lucide().download(), Message::Place(hit.id.clone()))
+    } else {
+        let label = lang::t_with("discover.action.add_to", &[("name", name)]).to_string();
+        primary(label, Icon::lucide().plus(), Message::Place(hit.id.clone()))
+    }
 }
 
 /// The button a mod's card shows: it adds the mod to the instance the Mods tab picked, and then says it is there.
@@ -268,11 +296,11 @@ fn mod_action<'a>(page: &Discover, hit: &'a SearchResult) -> Element<'a, Message
 }
 
 /// A filled button with an icon: the action a card is for.
-fn primary<'a>(label: &'static str, markup: &'static str, message: Message) -> Element<'a, Message> {
+fn primary<'a>(label: impl Into<String>, markup: &'static str, message: Message) -> Element<'a, Message> {
     TextButton::content(
         row![
             glyph(markup, 12.0, color::primary_on()),
-            Text::new(label).size(12).font(fonts::Inter::BOLD).color(color::primary_on()),
+            Text::new(label.into()).size(12).font(fonts::Inter::BOLD).color(color::primary_on()),
         ]
         .spacing(6)
         .align_y(alignment::Vertical::Center),
@@ -284,8 +312,8 @@ fn primary<'a>(label: &'static str, markup: &'static str, message: Message) -> E
 }
 
 /// A dimmed label standing in for a button that cannot be pressed now.
-fn disabled<'a>(label: &'static str) -> Element<'a, Message> {
-    TextButton::content(Text::new(label).size(12).font(fonts::Inter::MEDIUM).color(color::text_muted()))
+fn disabled<'a>(label: impl Into<String>) -> Element<'a, Message> {
+    TextButton::content(Text::new(label.into()).size(12).font(fonts::Inter::MEDIUM).color(color::text_muted()))
         .variant(Variant::Ghost)
         .padding(Padding::new(0.0).left(12).right(12).top(7).bottom(7))
         .disabled(true)

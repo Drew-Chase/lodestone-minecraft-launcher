@@ -101,6 +101,10 @@ pub enum Action {
     OpenInstance(String),
     /// Pick the instance the mods go to, by its index in the selector.
     PickInstance(usize),
+    /// Place the release in the instance or world the page picked: a pack, a datapack, or a world imported as a save.
+    Place(Option<String>),
+    /// Pick the world the datapacks go to, by its index in the world selector.
+    PickWorld(usize),
     /// Open the project's page on its platform.
     OpenWeb,
 }

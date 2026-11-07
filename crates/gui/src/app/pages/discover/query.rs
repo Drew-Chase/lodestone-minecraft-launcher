@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use lodestone_platforms::{ContentType, SearchPage, SearchQuery, SearchResult, SearchSort};
 
 use super::Source;
+use super::filters::Filters;
 
 /// How many hits one request asks for.
 pub const PAGE_SIZE: u32 = 20;
@@ -25,24 +26,21 @@ pub struct Key {
     pub content: ContentType,
     pub text: String,
     pub sort: SearchSort,
-    pub category: Option<String>,
-    pub loader: Option<String>,
-    pub game_version: Option<String>,
+    pub filters: Filters,
 }
 
 impl Key {
     /// The query this key asks the platform, at `offset`.
     pub fn query(&self, offset: u32) -> SearchQuery {
-        SearchQuery {
+        let mut query = SearchQuery {
             text: self.text.clone(),
-            content: self.content,
             sort: self.sort,
             offset,
             limit: PAGE_SIZE,
-            category: self.category.clone(),
-            loader: self.loader.clone(),
-            game_version: self.game_version.clone(),
-        }
+            ..SearchQuery::new(self.content)
+        };
+        self.filters.apply(&mut query);
+        query
     }
 }
 

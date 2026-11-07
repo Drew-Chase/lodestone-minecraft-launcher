@@ -17,8 +17,8 @@ use crate::PlatformKind;
 use crate::error::PlatformError;
 use crate::http::{download_files, get_json, with_query};
 use crate::meta::{
-    Channel, ContentDetails, ContentFile, ContentType, ContentVersion, Creator, DependencyKind, DescriptionFormat, Facet, Facets, GalleryImage,
-    ProjectInfo, ProjectLinks, SearchPage, SearchQuery, SearchResult, SearchSort, VersionDependency, banner_from,
+    CategoryGroup, Channel, ContentDetails, ContentFile, ContentType, ContentVersion, Creator, DependencyKind, DescriptionFormat, Facet, Facets,
+    GalleryImage, ProjectInfo, ProjectLinks, SearchPage, SearchQuery, SearchResult, SearchSort, VersionDependency, banner_from,
 };
 use crate::sealed;
 
@@ -397,17 +397,18 @@ impl PlatformKind for CurseForge {
         if !query.text.is_empty() {
             path = with_query(&path, "searchFilter", &query.text);
         }
-        if let Some(category) = &query.category {
+        // CurseForge's search takes one category, one loader and one version, so only the first of each is sent.
+        if let Some(category) = query.categories.first() {
             path = with_query(&path, "categoryId", category);
         }
         if let Some((_, id)) = query
-            .loader
-            .as_deref()
-            .and_then(|loader| LOADERS.iter().find(|(name, _)| *name == loader))
+            .loaders
+            .first()
+            .and_then(|loader| LOADERS.iter().find(|(name, _)| *name == loader.as_str()))
         {
             path = format!("{path}&modLoaderType={id}");
         }
-        if let Some(version) = &query.game_version {
+        if let Some(version) = query.game_versions.first() {
             path = with_query(&path, "gameVersion", version);
         }
         let (url, client) = request(credential, &path)?;
@@ -430,17 +431,33 @@ impl PlatformKind for CurseForge {
         let (url, client) = request(credential, "/minecraft/version")?;
         let versions: CfGameVersionList =
             serde_json::from_value(get_json(&client, &url).await?).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
+        let categories: Vec<Facet> = categories
+            .data
+            .into_iter()
+            .map(|category| Facet {
+                id: category.id.to_string(),
+                name: category.name,
+            })
+            .collect();
+        // CurseForge files every category under one header.
+        let category_groups = if categories.is_empty() {
+            Vec::new()
+        } else {
+            vec![CategoryGroup {
+                header: "categories".to_string(),
+                categories,
+            }]
+        };
         Ok(Facets {
-            categories: categories
-                .data
-                .into_iter()
-                .map(|category| Facet {
-                    id: category.id.to_string(),
-                    name: category.name,
-                })
-                .collect(),
+            category_groups,
             loaders: LOADERS.iter().map(|(name, _)| (*name).to_string()).collect(),
             game_versions: versions.data.into_iter().map(|version| version.version_string).collect(),
+            snapshot_versions: Vec::new(),
+            // CurseForge's search takes one value per filter, so the page keeps one pick per section.
+            multiple: false,
+            environments: false,
+            open_source: false,
+            exclusions: false,
         })
     }
 

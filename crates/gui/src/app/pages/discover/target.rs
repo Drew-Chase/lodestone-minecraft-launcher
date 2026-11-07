@@ -1,12 +1,20 @@
-//! The Mods tab: the instance mods are added to, the filters that follow it, and the mods already added to it.
-//! Adding a mod is a download into the instance's own folder, so the page keeps the instances it can add to and
-//! the mods it has added there.
+//! The target instance: the instance a tab's projects are added to, the filters that follow it, and the projects already
+//! added to it. Mods are written into the instance's `mods/` folder, and packs into its own pack folders, so the page
+//! keeps the instances it can add to and what it has added there.
 
 use lodestone_platforms::ContentType;
 
 use super::{Discover, Effect, Project, Source, placeholder};
 use crate::app::pages::library::instance::{Instance, Loader};
 use crate::app::shared_library::ModSource;
+
+/// Whether a tab adds its projects to an instance, so it shows the instance selector. Datapacks also name a world in it.
+pub fn takes_target(content: ContentType) -> bool {
+    matches!(
+        content,
+        ContentType::Mod | ContentType::ResourcePack | ContentType::Shader | ContentType::DataPack | ContentType::World
+    )
+}
 
 /// An instance a mod can be added to, with what the Mods tab takes from it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,15 +103,21 @@ impl Discover {
         self.target_key(project_id).is_some_and(|key| self.adding.contains(&key))
     }
 
-    /// Picks the instance the mods go to, from the Mods tab or a resource page. On the Mods tab the instance's loader
-    /// and Minecraft version become the filters, and the search starts again.
+    /// Picks the instance the projects go to, from the tab or a resource page. The instance's Minecraft version becomes
+    /// a filter, and on the Mods tab its loader too, and the search starts again.
     pub fn select_instance(&mut self, index: usize) -> Vec<Effect> {
         self.target = self.instances.get(index).map(|choice| choice.id.clone());
-        if self.content != ContentType::Mod {
-            return Vec::new();
-        }
+        self.target_world = None;
+        self.worlds.clear();
         self.apply_target_filters();
-        self.start(false)
+        let mut effects = self.start(false);
+        // A datapack goes into a world, so the page reads the worlds of the instance it was given.
+        if self.content == ContentType::DataPack
+            && let Some(instance) = self.target.clone()
+        {
+            effects.push(Effect::LoadWorlds(instance));
+        }
+        effects
     }
 
     /// Starts adding a mod, or one of its releases, to the target instance. Nothing starts without a target
@@ -162,35 +176,60 @@ impl Discover {
         }
     }
 
-    /// On the Mods tab, the filters follow the target instance: its loader and Minecraft version. Other tabs keep
-    /// the filters the user picked.
+    /// The filters follow the target instance: its Minecraft version, and on the Mods tab its loader too. The other picks
+    /// stay as the user made them.
     pub(super) fn apply_target_filters(&mut self) {
-        if self.content != ContentType::Mod {
+        if !self.takes_target_version() {
             return;
         }
         let Some(choice) = self.target().cloned() else {
             return;
         };
-        self.loader = choice.loader_filter();
-        self.game_version = Some(choice.mc_version);
+        if self.content == ContentType::Mod {
+            self.filters.loaders = choice.loader_filter().into_iter().collect();
+        }
+        self.filters.game_versions = vec![choice.mc_version];
+        self.filters.tidy();
     }
 
-    /// Points the page at the Mods tab for an instance, as the instance page's Add button does. The platform moves
-    /// to one that hosts mods when the current one does not, and the filters take the instance's loader and version.
-    /// The search starts when the page opens.
+    /// Points the page at the Mods tab for an instance, as the instance page's Add button does.
     pub fn prepare_mods(&mut self, choice: InstanceChoice) {
+        self.prepare_content(choice, ContentType::Mod);
+    }
+
+    /// Points the page at a tab for an instance, as the instance page's Add buttons do. The platform moves to one that hosts
+    /// the tab when the current one does not, and the filters take the instance's version (and loader, on mods). The search
+    /// starts when the page opens. A tab no platform in this build hosts is left as it is.
+    pub fn prepare_content(&mut self, choice: InstanceChoice, content: ContentType) {
+        let Some(source) = Source::ALL
+            .into_iter()
+            .find(|candidate| candidate.enabled() && candidate.supports(content))
+        else {
+            return;
+        };
         match self.instances.iter_mut().find(|known| known.id == choice.id) {
             Some(known) => *known = choice.clone(),
             None => self.instances.push(choice.clone()),
         }
         self.target = Some(choice.id);
-        if !self.source.supports(ContentType::Mod) {
-            self.source = Source::Modrinth;
-            self.placeholder = placeholder(self.source);
+        self.target_world = None;
+        self.worlds.clear();
+        if source != self.source {
+            self.source = source;
+            self.placeholder = placeholder(source);
         }
-        self.content = ContentType::Mod;
+        self.content = content;
         self.reset_filters();
     }
+}
+
+/// A world of an instance, as the world picker of the datapack section lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorldChoice {
+    /// The save's folder name in the instance's `saves/`.
+    pub folder: String,
+    /// The world's name, as the game shows it.
+    pub name: String,
 }
 
 #[cfg(test)]

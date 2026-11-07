@@ -1,13 +1,14 @@
 //! The Discover page's types: what the page shows and asks for, and the messages and effects it trades with the root.
 
 use super::Source;
+use super::filters::FilterMessage;
 use super::images::Picture;
 use super::query;
-use super::target::{AddRequest, InstanceChoice};
+use super::target::{AddRequest, InstanceChoice, WorldChoice};
 use crate::app::install::InstallRequest;
 use crate::app::lang;
 use crate::app::pages::resource::Listing;
-use crate::app::shared_library::{ModSource, SharedRecord};
+use crate::app::shared_library::{self, AddedContent, ModSource, SharedRecord};
 use lodestone_platforms::{ContentType, Facets, SearchPage};
 
 /// The art a project shows while the page is open.
@@ -99,12 +100,19 @@ pub enum Message {
     SearchDue(u64),
     /// A sort was picked, by its index in the platform's sorts.
     SortSelected(usize),
-    /// A category was picked. Index 0 means any.
-    CategorySelected(usize),
-    /// A loader was picked. Index 0 means any.
-    LoaderSelected(usize),
-    /// A Minecraft version was picked. Index 0 means any.
-    VersionSelected(usize),
+    /// A pick, or a change to the panel, from the sidebar.
+    Filter(FilterMessage),
+    /// The card's add button was pressed for the project with this id: it goes into the target instance or world.
+    Place(String),
+    /// A project was placed, or could not be. `key` names the place it went to.
+    Placed {
+        key: Placement,
+        result: Result<Box<PlaceOutcome>, String>,
+    },
+    /// The worlds of an instance were read, for the world picker of the datapack section.
+    WorldsLoaded { instance: String, worlds: Vec<WorldChoice> },
+    /// A world was picked in the world picker, by its index in the page's list.
+    WorldSelected(usize),
     /// The layout changed. The root saves it, so the page opens on it next time.
     ViewSelected(DiscoverView),
     /// The back button was pressed: the page returns to the instance it was opened from.
@@ -190,8 +198,8 @@ pub struct Project {
     pub web_url: Option<String>,
     /// The project's picture on the platform, when the search gave one.
     pub icon_url: Option<String>,
-    /// The Minecraft version the filters ask for, when they ask for one.
-    pub game_version: Option<String>,
+    /// The Minecraft versions the filters ask for. A release is chosen when it supports any of them.
+    pub game_versions: Vec<String>,
     /// The release the user picked, when they picked one. `None` takes the newest that fits the filters.
     pub version_id: Option<String>,
 }
@@ -211,12 +219,79 @@ pub struct ProjectStatus {
     pub instances: Vec<String>,
     /// The index of the target among the instances, when one is picked.
     pub target_index: Option<usize>,
+    /// The name of the target world, when the datapacks go to one.
+    pub target_world: Option<String>,
+    /// The names of the worlds of the target instance, in the order the world picker lists them.
+    pub worlds: Vec<String>,
+    /// The index of the target world among the worlds, when one is picked.
+    pub world_index: Option<usize>,
     /// Whether the project is already in the target instance, at any release.
     pub added: bool,
     /// The release of the project the target instance has, when it has one.
     pub added_version: Option<String>,
     /// Whether the project is being added to the target instance now.
     pub adding: bool,
+}
+
+/// Where a placed project is kept: the instance, the world's folder for a datapack (empty otherwise), the shared folder's
+/// name for the kind, the platform's key, and the project's id. The page keys what it added by it.
+pub type Placement = (String, String, String, String, String);
+
+/// Where a project goes: the instance and the world, by their ids.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Destination {
+    /// The pack folder of an instance: `resourcepacks` for a resource pack, and `shaderpacks` for a shader.
+    Pack { instance: String },
+    /// The datapacks of a world, by its folder name in the instance's saves.
+    Datapacks { instance: String, world: String },
+    /// The instance's saves, where a world is imported as a save of its own.
+    World { instance: String },
+}
+
+impl Destination {
+    /// The instance the project goes into.
+    pub fn instance(&self) -> &str {
+        match self {
+            Destination::Pack { instance } | Destination::Datapacks { instance, .. } | Destination::World { instance } => instance,
+        }
+    }
+}
+
+/// A project to place into a target instance or world.
+#[derive(Debug, Clone)]
+pub struct PlaceRequest {
+    /// The project, with the release the user picked when they picked one.
+    pub project: Project,
+    /// The Minecraft version of the instance the project goes into. The release is the newest that supports it.
+    pub minecraft: String,
+    /// Where the project goes.
+    pub destination: Destination,
+    /// The download the shared folder already holds for the project. It is used again when it is the release chosen.
+    pub shared: Option<SharedRecord>,
+}
+
+impl PlaceRequest {
+    /// The place this request fills, which the page keeps its record of the project under.
+    pub fn placement(&self) -> Placement {
+        let scope = match &self.destination {
+            Destination::Datapacks { world, .. } => world.clone(),
+            Destination::Pack { .. } | Destination::World { .. } => String::new(),
+        };
+        (
+            self.destination.instance().to_string(),
+            scope,
+            shared_library::folder_name(self.project.content).to_string(),
+            self.project.source.key().to_string(),
+            self.project.project_id.clone(),
+        )
+    }
+}
+
+/// What a placement left behind: the record of the content placed, and the download made for it when one was made.
+#[derive(Debug, Clone)]
+pub struct PlaceOutcome {
+    pub added: AddedContent,
+    pub shared: Option<SharedRecord>,
 }
 
 /// What the root does for the page after an update.
@@ -258,4 +333,10 @@ pub enum Effect {
     RememberView(DiscoverView),
     /// Return to the instance the page was opened from.
     Back,
+    /// Place a project into a target instance or world, and answer with `Placed`.
+    Place(Box<PlaceRequest>),
+    /// Read the worlds of an instance, for the world picker, and answer with `WorldsLoaded`.
+    LoadWorlds(String),
+    /// Save the content a placement added, so the page still shows it as added after a restart.
+    RecordAdded(AddedContent),
 }

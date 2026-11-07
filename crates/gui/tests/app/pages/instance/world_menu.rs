@@ -18,6 +18,7 @@ fn copy_seed_is_listed_only_for_a_world_with_a_seed() {
             None,
             Some(Action::Reveal),
             Some(Action::Pin),
+            Some(Action::Datapacks),
             Some(Action::BackUp),
             None,
             Some(Action::Delete),

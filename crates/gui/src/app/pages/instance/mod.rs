@@ -8,11 +8,13 @@
 //! the tabs show is read from the instance folder by [`files`], on the blocking
 //! pool, and applied when it lands.
 
+pub mod content;
 pub mod files;
 pub(crate) mod format;
 mod hero;
 pub(crate) mod logs;
 pub mod mods;
+pub mod packs;
 pub mod screenshots;
 pub mod settings;
 mod watch;
@@ -45,11 +47,11 @@ use watch::{Change, Update};
 /// The page's horizontal gutter — 28px, per the design.
 const GUTTER: f32 = 28.0;
 
-/// The page's tabs, in tab-bar order. The page opens on the Mods tab.
+/// The page's tabs, in tab-bar order. The page opens on the Content tab, which holds the instance's mods and its packs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Tab {
     #[default]
-    Mods,
+    Content,
     Worlds,
     Screenshots,
     Logs,
@@ -57,11 +59,11 @@ pub enum Tab {
 }
 
 impl Tab {
-    pub const ALL: [Tab; 5] = [Tab::Mods, Tab::Worlds, Tab::Screenshots, Tab::Logs, Tab::Settings];
+    pub const ALL: [Tab; 5] = [Tab::Content, Tab::Worlds, Tab::Screenshots, Tab::Logs, Tab::Settings];
 
     pub fn label(self) -> &'static str {
         match self {
-            Tab::Mods => lang::t("instance.tab.mods"),
+            Tab::Content => lang::t("instance.tab.content"),
             Tab::Worlds => lang::t("instance.tab.worlds"),
             Tab::Screenshots => lang::t("instance.tab.screenshots"),
             Tab::Logs => lang::t("instance.tab.logs"),
@@ -98,6 +100,10 @@ pub enum Message {
     /// `update` runs (the `<Link>` of this framework).
     Navigate(Page),
     Mods(mods::Message),
+    /// The Content tab's switch between its mods and its packs.
+    Content(content::Message),
+    /// The resource packs and shader packs of the Content tab. The root carries out the copies and removals.
+    Packs(packs::Message),
     Worlds(worlds::Message),
     Screenshots(screenshots::Message),
     Logs(logs::Message),
@@ -146,6 +152,9 @@ pub struct InstancePage {
     /// What the folder held at the last scan; `None` until that scan lands.
     files: Option<InstanceFiles>,
     mods: mods::State,
+    /// The section the Content tab shows.
+    content_section: content::Section,
+    packs: packs::State,
     worlds: worlds::State,
     screenshots: screenshots::State,
     logs: logs::State,
@@ -181,10 +190,12 @@ impl InstancePage {
         self.folder = folder.clone();
         self.files = None;
         self.mods = mods::State::default();
+        self.content_section = content::Section::default();
+        self.packs = packs::State::default();
         self.worlds = worlds::State::default();
         self.screenshots = screenshots::State::default();
         self.logs = logs::State::default();
-        self.tab = Tab::Mods;
+        self.tab = Tab::Content;
         self.console_run = None;
         self.watch_pending.clear();
         self.reading = false;
@@ -227,6 +238,12 @@ impl InstancePage {
                 }
             }
             Message::Mods(message) => self.mods.update(message).map(Message::Mods),
+            Message::Content(content::Message::Section(section)) => {
+                self.content_section = section;
+                Task::none()
+            }
+            // The root keeps the packs' state and carries out their actions before the page sees them.
+            Message::Packs(_) => Task::none(),
             Message::Worlds(worlds::Message::Rescanned { generation, worlds }) if generation == self.generation => self.rescanned_worlds(worlds),
             Message::Worlds(message) => {
                 self.worlds.update(message);
@@ -309,6 +326,9 @@ impl InstancePage {
         if let Some(dialog) = self.mods.dialog_view() {
             return Some(dialog.map(Message::Mods));
         }
+        if let Some(dialog) = self.packs.dialog_view() {
+            return Some(dialog.map(Message::Packs));
+        }
         if self.tab == Tab::Settings
             && let Some(overlay) = self.settings.overlay()
         {
@@ -335,6 +355,16 @@ impl InstancePage {
     /// The Mods tab's state, for the root to fill in as the platforms answer.
     pub fn mods_mut(&mut self) -> &mut mods::State {
         &mut self.mods
+    }
+
+    /// The packs of the Content tab, for the root to keep up to date.
+    pub fn packs_mut(&mut self) -> &mut packs::State {
+        &mut self.packs
+    }
+
+    /// The packs of the Content tab, as the page shows them.
+    pub fn packs(&self) -> &packs::State {
+        &self.packs
     }
 
     /// Handles the Screenshots tab's messages the page owns. The root carries out the rest: the
@@ -433,6 +463,7 @@ impl InstancePage {
 
     /// Hands a scan's results to the tabs and starts the thumbnails.
     fn apply(&mut self, files: InstanceFiles) -> Task<Message> {
+        self.packs.set_packs(files.resource_packs.clone(), files.shader_packs.clone());
         self.mods.set_mods(files.mods.clone());
         self.worlds.set_worlds(files.worlds.clone());
         self.screenshots.set_shots(files.screenshots.clone());
@@ -600,14 +631,27 @@ impl InstancePage {
         .into()
     }
 
+    /// The Content tab: the switch over its sections, and the section it picked, which is the mod list or a pack list.
+    fn content_body<'a>(&'a self, instance: &'a Instance) -> Element<'a, Message> {
+        let body: Element<'a, Message> = match self.content_section.pack_kind() {
+            None => self.mods.view(instance.loader != Loader::Vanilla).map(|message| match message {
+                mods::Message::Add => Message::AddMods,
+                other => Message::Mods(other),
+            }),
+            Some(kind) => self.packs.view(kind).map(Message::Packs),
+        };
+        // The switch keeps the page's gutters. The mod list and the pack lists pad their own.
+        let switch = container(content::switch(self.content_section).map(Message::Content))
+            .width(Fill)
+            .padding(Padding::new(0.0).left(GUTTER).right(GUTTER));
+        column![switch, body].spacing(18).width(Fill).height(Fill).into()
+    }
+
     /// The selected tab's content, padded to the page gutter. The log panel and the mod list fill the height
     /// and scroll themselves, so their headers and filter bars stay put; every other tab scrolls as a page.
     fn tab_body<'a>(&'a self, instance: &'a Instance, console: Option<&'a VecDeque<logs::LogLine>>, pins: &'a WorldPins) -> Element<'a, Message> {
         let content: Element<'a, Message> = match self.tab {
-            Tab::Mods => self.mods.view(instance.loader != Loader::Vanilla).map(|message| match message {
-                mods::Message::Add => Message::AddMods,
-                other => Message::Mods(other),
-            }),
+            Tab::Content => self.content_body(instance),
             Tab::Worlds => self.worlds.view(&instance.id, pins).map(Message::Worlds),
             Tab::Screenshots => screenshots::view(&self.screenshots).map(Message::Screenshots),
             Tab::Logs => self.logs.view(console).map(Message::Logs),
@@ -616,14 +660,14 @@ impl InstancePage {
         // The mod list pads its own gutters, so its scrollbar sits in the page's gutter. The settings page scrolls its
         // sections beside its sidebar, so it takes the room the page leaves and pads its own bottom.
         let padding = match self.tab {
-            Tab::Mods => Padding::new(0.0).top(22.0),
+            Tab::Content => Padding::new(0.0).top(22.0),
             Tab::Settings => Padding::new(0.0).left(GUTTER).right(GUTTER).top(22.0),
             _ => Padding::new(0.0).left(GUTTER).right(GUTTER).top(22.0).bottom(40.0),
         };
         let padded = container(content).width(Fill).padding(padding);
 
         match self.tab {
-            Tab::Logs | Tab::Mods | Tab::Settings => padded.height(Fill).into(),
+            Tab::Logs | Tab::Content | Tab::Settings => padded.height(Fill).into(),
             _ => scrollbar::scroll(padded).width(Fill).height(Fill).into(),
         }
     }

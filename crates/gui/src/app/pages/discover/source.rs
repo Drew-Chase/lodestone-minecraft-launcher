@@ -81,11 +81,6 @@ impl Source {
         }
     }
 
-    /// Whether the platform offers category, loader and Minecraft version filters.
-    pub fn has_filters(self) -> bool {
-        matches!(self, Source::Modrinth | Source::CurseForge)
-    }
-
     /// Whether the platform can be searched in this build. CurseForge needs its key.
     pub fn enabled(self) -> bool {
         match self {

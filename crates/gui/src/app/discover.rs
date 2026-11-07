@@ -28,12 +28,15 @@ use super::install::pack::{self, Page};
 use super::lang;
 use super::mod_actions::replace_jar;
 use super::pages::discover::{
-    self, AddRequest, CONTENT_ID, DiscoverView, Effect, InstallState, InstanceChoice, Message, Project, SEARCH_ID, Search, Source,
+    self, AddRequest, CONTENT_ID, DiscoverView, Effect, InstallState, InstanceChoice, Message, PlaceOutcome, PlaceRequest, Placement, Project,
+    SEARCH_ID, Search, Source, WorldChoice,
 };
 use super::pages::instance::Tab;
 use super::paths::LauncherPaths;
 use super::preferences::Preferences;
-use super::shared_library::{self, ModSource, SharedRecord};
+use super::shared_library::{self, AddedContent, ModSource, SharedRecord};
+
+mod place;
 
 /// How long the page waits after the last keystroke before it searches.
 const DEBOUNCE: Duration = Duration::from_millis(300);
@@ -139,7 +142,7 @@ pub(super) async fn bundled_of(version: &ContentVersion) -> Result<Vec<BundledPr
 fn chosen_release(versions: Vec<ContentVersion>, project: &Project) -> Option<ContentVersion> {
     match project.version_id.as_deref() {
         Some(id) => versions.into_iter().find(|version| version.id == id),
-        None => pick_version(versions, project.game_version.as_deref()),
+        None => pick_version(versions, &project.game_versions),
     }
 }
 
@@ -154,15 +157,15 @@ pub(super) async fn download_version(source: Source, version: &ContentVersion, i
     }
 }
 
-/// The newest version that fits the Minecraft version the filters ask for, or the newest of all.
-/// Platforms list their versions newest first.
-fn pick_version(versions: Vec<ContentVersion>, game_version: Option<&str>) -> Option<ContentVersion> {
-    match game_version {
-        Some(wanted) => versions
-            .into_iter()
-            .find(|version| version.minecraft_versions.iter().any(|known| known == wanted)),
-        None => versions.into_iter().next(),
+/// The newest version that supports any of the Minecraft versions the filters ask for, or the newest of all when they
+/// ask for none. Platforms list their versions newest first.
+fn pick_version(versions: Vec<ContentVersion>, game_versions: &[String]) -> Option<ContentVersion> {
+    if game_versions.is_empty() {
+        return versions.into_iter().next();
     }
+    versions
+        .into_iter()
+        .find(|version| version.minecraft_versions.iter().any(|known| game_versions.contains(known)))
 }
 
 /// The folder one download is written into, named for its platform, project and version.
@@ -344,6 +347,14 @@ fn mod_answer(job: u64, instance: String, platform: String, project_id: String, 
 }
 
 /// The effects that need nothing from the launcher's state.
+/// The answer to a placement, as the page takes it.
+fn place_answer(key: Placement, result: Result<PlaceOutcome, String>) -> LodestoneAppMessage {
+    LodestoneAppMessage::Discover(Message::Placed {
+        key,
+        result: result.map(Box::new),
+    })
+}
+
 fn plain_effect(effect: Effect) -> Task<LodestoneAppMessage> {
     match effect {
         Effect::Debounce(generation) => Task::perform(
@@ -400,13 +411,16 @@ impl LodestoneLauncher {
             Effect::Queue(request) => self.queue_install(*request),
             Effect::Record(record) => self.record_download(record),
             Effect::Notify(error) => self.notify_discover(error),
-            Effect::OpenInstance(id) => self.open_instance_page(&id, Tab::Mods),
+            Effect::OpenInstance(id) => self.open_instance_page(&id, Tab::Content),
             Effect::RememberView(view) => self.remember_discover_view(view),
             Effect::Back => self.back_from_discover(),
             Effect::OpenResource(listing) => self.open_resource(listing),
             Effect::AddMod(request) => self.add_mod_task(*request),
             Effect::ReplaceMod { request, old_file } => self.replace_mod_task(*request, old_file),
             Effect::RecordModSources(records) => self.record_mod_sources(records),
+            Effect::Place(request) => self.place_task(*request),
+            Effect::LoadWorlds(instance) => self.load_worlds_task(instance),
+            Effect::RecordAdded(record) => self.record_added(record),
             effect => plain_effect(effect),
         }
     }
@@ -571,6 +585,67 @@ impl LodestoneLauncher {
             }
         })
         .discard()
+    }
+
+    /// Places a project into a target instance or world. The answer comes back as `Placed`.
+    fn place_task(&self, request: PlaceRequest) -> Task<LodestoneAppMessage> {
+        let key = request.placement();
+        let Some(directory) = self.library.instance(request.destination.instance()).map(|found| found.directory_name) else {
+            return Task::done(place_answer(key, Err(lang::t("discover.mods.gone").to_string())));
+        };
+        let paths = self.paths.clone();
+        Task::perform(place::place_project(request, paths, directory), move |result| place_answer(key, result))
+    }
+
+    /// Reads the worlds of an instance, for the world picker of the datapack section. The answer comes back as
+    /// `WorldsLoaded`.
+    fn load_worlds_task(&self, instance: String) -> Task<LodestoneAppMessage> {
+        let Some(directory) = self.library.instance(&instance).map(|found| found.directory_name) else {
+            return Task::none();
+        };
+        let folder = self.paths.instance(&directory);
+        Task::perform(
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    super::pages::instance::files::scan_worlds(&folder)
+                        .into_iter()
+                        .map(|world| WorldChoice {
+                            folder: world.path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default(),
+                            name: world.name,
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .await
+                .unwrap_or_default()
+            },
+            move |worlds| {
+                LodestoneAppMessage::Discover(Message::WorldsLoaded {
+                    instance: instance.clone(),
+                    worlds,
+                })
+            },
+        )
+    }
+
+    /// Saves the content a placement added, so the page still shows it as added after a restart.
+    fn record_added(&self, record: AddedContent) -> Task<LodestoneAppMessage> {
+        let Some(db) = self.db.clone() else {
+            return Task::none();
+        };
+        Task::future(async move {
+            if let Err(error) = db.record_added(&record).await {
+                warn!("recording the added content failed: {error}");
+            }
+        })
+        .discard()
+    }
+
+    /// Loads the content placed into instances and worlds, once the database is open.
+    pub(super) fn load_added_content(&self) -> Task<LodestoneAppMessage> {
+        let Some(db) = self.db.clone() else {
+            return Task::none();
+        };
+        Task::perform(async move { db.added_content().await }, LodestoneAppMessage::AddedContentLoaded)
     }
 
     /// Shows a problem with a Discover action to the user.

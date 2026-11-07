@@ -213,7 +213,7 @@ impl LodestoneLauncher {
     /// that wait share one timer.
     pub(super) fn mods_checks_due(&mut self) -> Task<LodestoneAppMessage> {
         let shown = self.instance_page.mods();
-        if self.instance_page.tab() != Tab::Mods || shown.checking() || !shown.has_mods() {
+        if self.instance_page.tab() != Tab::Content || shown.checking() || !shown.has_mods() {
             return Task::none();
         }
         if let Some(started) = self.mod_check_started {

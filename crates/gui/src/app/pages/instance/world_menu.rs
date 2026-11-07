@@ -19,6 +19,8 @@ pub enum Action {
     Pin,
     /// Unpins the world.
     Unpin,
+    /// Adds datapacks from the shared folder to the world, or removes the ones it has.
+    Datapacks,
     /// Zips the world into the instance's `backups/` folder.
     BackUp,
     /// Moves the world to the trash, once the user has said so.
@@ -40,6 +42,7 @@ pub fn menu(has_seed: bool, pinned: bool) -> Menu {
         actions.push(Some(Action::CopySeed));
     }
     actions.push(Some(if pinned { Action::Unpin } else { Action::Pin }));
+    actions.push(Some(Action::Datapacks));
     actions.push(Some(Action::BackUp));
     actions.push(None);
     actions.push(Some(Action::Delete));
@@ -61,6 +64,7 @@ fn item(action: Action) -> MenuItem {
         Action::CopySeed => (lang::t("instance.worlds.menu.copy_seed"), Icon::lucide().copy(), false),
         Action::Pin => (lang::t("instance.worlds.menu.pin"), Icon::lucide().pin(), false),
         Action::Unpin => (lang::t("instance.worlds.menu.unpin"), Icon::lucide().pin_off(), false),
+        Action::Datapacks => (lang::t("instance.worlds.menu.datapacks"), Icon::lucide().layers(), false),
         Action::BackUp => (lang::t("instance.worlds.menu.back_up"), Icon::lucide().archive(), false),
         Action::Delete => (lang::t("instance.worlds.menu.delete"), Icon::lucide().trash(), true),
     };

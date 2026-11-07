@@ -74,9 +74,9 @@ pub use curseforge::CurseForge;
 pub use error::PlatformError;
 pub use ftb::Ftb;
 pub use meta::{
-    BundledProject, Channel, ContentDetails, ContentFile, ContentType, ContentVersion, Creator, DependencyKind, DescriptionFormat, Facet, Facets,
-    GalleryImage, Modpack, ModpackArchive, ModpackFile, ProjectInfo, ProjectLinks, SearchPage, SearchQuery, SearchResult, SearchSort, Side,
-    VersionDependency,
+    BundledProject, CategoryGroup, Channel, ContentDetails, ContentFile, ContentType, ContentVersion, Creator, DependencyKind, DescriptionFormat,
+    Facet, Facets, GalleryImage, Modpack, ModpackArchive, ModpackFile, ProjectInfo, ProjectLinks, SearchPage, SearchQuery, SearchResult, SearchSort,
+    Side, VersionDependency,
 };
 pub use modrinth::Modrinth;
 pub use simple_download_utility::DownloadProgress;

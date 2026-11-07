@@ -1,6 +1,7 @@
+use super::filters::{FilterMessage, Kind};
 use super::query::{PAGE_SIZE, Results};
 use super::*;
-use lodestone_platforms::{Facet, SearchResult};
+use lodestone_platforms::{CategoryGroup, Facet, SearchResult};
 
 /// A hit with `id` and no details.
 fn hit(id: &str) -> SearchResult {
@@ -175,27 +176,32 @@ fn a_platform_that_reports_no_total_has_more_only_while_pages_are_full() {
 }
 
 #[test]
-fn the_filters_follow_the_facets_the_platform_offers() {
+fn the_sidebar_picks_follow_the_facets_the_platform_offers() {
     let mut page = answered(0, 0);
     page.update(Message::FacetsLoaded {
         source: Source::Modrinth,
         content: ContentType::Modpack,
         result: Ok(Facets {
-            categories: vec![Facet {
-                id: "magic".to_string(),
-                name: "Magic".to_string(),
+            category_groups: vec![CategoryGroup {
+                header: "categories".to_string(),
+                categories: vec![Facet {
+                    id: "magic".to_string(),
+                    name: "Magic".to_string(),
+                }],
             }],
             loaders: vec!["fabric".to_string()],
             game_versions: vec!["1.20.1".to_string()],
+            multiple: true,
+            ..Facets::default()
         }),
     });
-    let effects = page.update(Message::CategorySelected(1));
-    assert_eq!(page.category.as_deref(), Some("magic"));
+    let effects = page.update(Message::Filter(FilterMessage::Pick(Kind::Category, "magic".to_string())));
+    assert_eq!(page.filters.categories, ["magic"]);
     assert!(search_of(&effects).is_some());
-    page.update(Message::CategorySelected(0));
-    assert_eq!(page.category, None, "index 0 is any category");
-    page.update(Message::LoaderSelected(1));
-    assert_eq!(page.loader.as_deref(), Some("fabric"));
+    page.update(Message::Filter(FilterMessage::Pick(Kind::Category, "magic".to_string())));
+    assert!(page.filters.categories.is_empty(), "picking a picked category drops it");
+    page.update(Message::Filter(FilterMessage::Pick(Kind::Loader, "fabric".to_string())));
+    assert_eq!(page.filters.loaders, ["fabric"]);
 }
 
 /// Answers the search `effects` ask for, with `hits` hits out of `total`.

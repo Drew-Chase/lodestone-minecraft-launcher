@@ -15,7 +15,9 @@ fn a_new_query_starts_at_the_first_page_with_no_filters() {
     assert_eq!(query.sort, SearchSort::Relevance);
     assert_eq!((query.offset, query.limit), (0, 20));
     assert!(query.text.is_empty());
-    assert!(query.category.is_none() && query.loader.is_none() && query.game_version.is_none());
+    assert!(query.categories.is_empty() && query.loaders.is_empty() && query.game_versions.is_empty());
+    assert!(query.environments.is_empty() && !query.open_source);
+    assert!(query.excluded_categories.is_empty() && query.excluded_loaders.is_empty());
 }
 
 #[test]

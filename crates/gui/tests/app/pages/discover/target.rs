@@ -20,7 +20,7 @@ fn project(project_id: &str) -> Project {
         name: "Sodium".to_string(),
         web_url: None,
         icon_url: None,
-        game_version: None,
+        game_versions: Vec::new(),
         version_id: None,
     }
 }
@@ -61,8 +61,8 @@ fn picking_an_instance_sets_its_loader_and_version_as_the_filters() {
     page.set_instances(vec![choice("a", Loader::Fabric, "1.21.1")]);
     let effects = page.update(Message::InstanceSelected(0));
     assert_eq!(page.target.as_deref(), Some("a"));
-    assert_eq!(page.loader.as_deref(), Some("fabric"));
-    assert_eq!(page.game_version.as_deref(), Some("1.21.1"));
+    assert_eq!(page.filters.loaders, ["fabric"]);
+    assert_eq!(page.filters.game_versions, ["1.21.1"]);
     assert!(
         effects.iter().any(|effect| matches!(effect, Effect::Search(_))),
         "the filtered search starts"
@@ -82,8 +82,8 @@ fn the_filters_of_another_tab_are_left_alone_by_the_instance() {
     let mut page = Discover::new(Source::Modrinth);
     page.set_instances(vec![choice("a", Loader::Fabric, "1.21.1")]);
     page.update(Message::InstanceSelected(0));
-    assert_eq!(page.loader, None, "the modpack tab keeps its own filters");
-    assert_eq!(page.game_version, None);
+    assert!(page.filters.loaders.is_empty(), "the modpack tab keeps its own filters");
+    assert!(page.filters.game_versions.is_empty());
 }
 
 #[test]
@@ -177,8 +177,8 @@ fn preparing_mods_from_an_instance_moves_to_a_platform_that_hosts_them() {
     assert_eq!(page.source, Source::Modrinth);
     assert_eq!(page.content, ContentType::Mod);
     assert_eq!(page.target.as_deref(), Some("a"));
-    assert_eq!(page.loader.as_deref(), Some("forge"));
-    assert_eq!(page.game_version.as_deref(), Some("1.20.1"));
+    assert_eq!(page.filters.loaders, ["forge"]);
+    assert_eq!(page.filters.game_versions, ["1.20.1"]);
 }
 
 #[test]

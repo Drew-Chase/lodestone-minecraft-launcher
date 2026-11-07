@@ -10,7 +10,7 @@ use crate::app::components::hint::hint;
 use crate::app::components::icon_button::ghost_button_style;
 use crate::app::components::{IconButton, Select};
 use crate::app::lang;
-use crate::app::pages::discover::{InstallState, ProjectStatus, date_only, short_count};
+use crate::app::pages::discover::{InstallState, ProjectStatus, date_only, short_count, takes_target};
 use crate::app::theme::{color, fonts};
 use lodestone_platforms::ContentType;
 
@@ -90,8 +90,11 @@ pub(super) fn view<'a>(page: &'a ResourcePage, status: &ProjectStatus) -> Elemen
 /// The header's actions: the instance selector for a mod, the action the project offers, and the link to its page.
 fn actions<'a>(listing: &'a Listing, status: &ProjectStatus) -> Element<'a, Message> {
     let mut rows: Vec<Element<'a, Message>> = Vec::new();
-    if listing.content == ContentType::Mod {
+    if takes_target(listing.content) {
         rows.push(instance_select(status));
+    }
+    if listing.content == ContentType::DataPack {
+        rows.push(world_select(status));
     }
     let web = IconButton::new(Icon::lucide().external_link())
         .size(36.0)
@@ -142,7 +145,9 @@ pub(super) fn primary_action<'a>(content: ContentType, status: &ProjectStatus, v
             ModState::Unavailable => dimmed(lang::t("resource.action.add")),
         },
         ContentType::ResourcePack | ContentType::Shader | ContentType::DataPack | ContentType::World => {
-            if status.in_library {
+            if takes_target(content) && status.target.is_some() {
+                place_button(content, status, version)
+            } else if status.in_library {
                 dimmed(lang::t("resource.action.in_library"))
             } else if status.downloading {
                 dimmed(lang::t("resource.action.downloading"))
@@ -153,7 +158,51 @@ pub(super) fn primary_action<'a>(content: ContentType, status: &ProjectStatus, v
     }
 }
 
-/// The selector for the instance a mod goes to. Dimmed while the library holds none.
+/// The button a pack's, a datapack's or a world's page shows once the page has a target: it places the release there, and
+/// then says it is there. A datapack waits until its world is picked.
+fn place_button<'a>(content: ContentType, status: &ProjectStatus, version: Option<String>) -> Element<'a, Message> {
+    if status.added {
+        dimmed(lang::t("resource.action.added"))
+    } else if status.adding {
+        dimmed(lang::t("resource.action.adding"))
+    } else if content == ContentType::DataPack && status.target_world.is_none() {
+        dimmed(lang::t("discover.action.choose_world"))
+    } else {
+        let name = match content {
+            ContentType::DataPack => status.target_world.clone(),
+            _ => status.target.as_ref().map(|target| target.name.clone()),
+        }
+        .unwrap_or_default();
+        if content == ContentType::World {
+            let label = lang::t_with("discover.action.import_to", &[("name", name.as_str())]).to_string();
+            primary(label, Icon::lucide().download(), Action::Place(version))
+        } else {
+            let label = lang::t_with("discover.action.add_to", &[("name", name.as_str())]).to_string();
+            primary(label, Icon::lucide().plus(), Action::Place(version))
+        }
+    }
+}
+
+/// The selector for the world the datapacks go to. It is dimmed until an instance is picked, and while that instance has no
+/// worlds.
+fn world_select<'a>(status: &ProjectStatus) -> Element<'a, Message> {
+    let picker = Select::new(status.worlds.clone(), status.world_index)
+        .leading_icon(Icon::lucide().globe())
+        .on_select(|index| Message::Act(Action::PickWorld(index)))
+        .width(Length::Fixed(SELECT_WIDTH));
+    if status.target.is_none() {
+        picker
+            .placeholder(lang::t("discover.placement.pick_instance_first"))
+            .disabled(true)
+            .into()
+    } else if status.worlds.is_empty() {
+        picker.placeholder(lang::t("discover.placement.no_worlds")).disabled(true).into()
+    } else {
+        picker.placeholder(lang::t("discover.placement.choose_world")).into()
+    }
+}
+
+/// The selector for the instance the page's release goes to. Dimmed while the library holds none.
 fn instance_select<'a>(status: &ProjectStatus) -> Element<'a, Message> {
     let picker = Select::new(status.instances.clone(), status.target_index)
         .leading_icon(Icon::lucide().package())
