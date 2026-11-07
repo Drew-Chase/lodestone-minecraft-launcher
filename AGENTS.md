@@ -102,6 +102,8 @@ You may create commits. When you do, follow this rule exactly:
 
 Do not add "Co-Authored-By", "Generated with", or any other AI attribution to commit messages — write only the message content.
 
+Do not create new branches unless the user explicitly asks for one. Commit on the branch that is checked out, and ask before creating one.
+
 ## Agent Memory
 
 Update your persistent agent memory as you discover codepaths, dependency relationships, architectural patterns, platform-specific implementations, and performance-critical sections. This builds institutional knowledge across conversations. Write concise notes about what you found and where.
