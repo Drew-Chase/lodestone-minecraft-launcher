@@ -85,6 +85,27 @@ fn each_linked_mod_is_recorded_with_the_platform_it_came_from() {
 }
 
 #[test]
+fn each_linked_pack_in_a_resource_or_shader_folder_is_recorded_as_content() {
+    let files = vec![
+        record("resourcepacks/Fresh.zip", false, modrinth("https://cdn.example/fresh.zip")),
+        record("shaderpacks/Shade.zip", false, curseforge()),
+        record("resourcepacks/nested/deep.zip", false, modrinth("https://cdn.example/deep.zip")),
+        record("config/options.toml", true, Links::default()),
+    ];
+    let payload = payload(&manifest(files), None);
+    assert_eq!(payload.packs.len(), 2, "a pack nested below its folder is not one of the folder's packs");
+    assert_eq!(payload.packs[0].kind, "resourcepacks");
+    assert_eq!(payload.packs[0].platform, "modrinth");
+    assert_eq!(payload.packs[0].project_id, "AANobbMI");
+    assert_eq!(payload.packs[0].version_id, "V1");
+    assert_eq!(payload.packs[0].file_name, "Fresh.zip");
+    assert_eq!(payload.packs[1].kind, "shaderpacks");
+    assert_eq!(payload.packs[1].platform, "curseforge");
+    assert_eq!(payload.packs[1].version_id, "4123456");
+    assert!(payload.sources.is_empty(), "a pack is recorded as content, not as a mod");
+}
+
+#[test]
 fn a_bundled_file_is_left_to_the_extraction() {
     let files = vec![
         record("config/options.toml", true, Links::default()),

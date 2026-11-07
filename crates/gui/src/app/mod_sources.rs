@@ -8,7 +8,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use lodestone_platforms::{ContentVersion, ModpackFile};
+use lodestone_platforms::{ContentType, ContentVersion, ModpackFile};
 use sha1::{Digest, Sha1};
 use tokio::task::JoinSet;
 use tracing::warn;
@@ -18,15 +18,20 @@ use crate::app::discover::{MODRINTH, curseforge};
 use crate::app::install::mods::fitting;
 use crate::app::pages::discover::Source;
 use crate::app::perf;
-use crate::app::shared_library::{JarHash, ModSource};
+use crate::app::shared_library::{self, AddedContent, JarHash, ModSource};
 
 /// How many CurseForge projects are asked for their releases at once.
 const CURSEFORGE_AT_ONCE: usize = 4;
 
+/// The name of a file that sits directly in `folder` of a modpack, such as a jar in `mods/`, or `None` for any other path.
+pub(crate) fn direct_child<'a>(path: &'a str, folder: &str) -> Option<&'a str> {
+    let name = path.strip_prefix(folder)?.strip_prefix('/')?;
+    (!name.is_empty() && !name.contains('/')).then_some(name)
+}
+
 /// The name of a jar that sits directly in a modpack's `mods/` folder, or `None` for any other path.
 pub(crate) fn mod_jar_name(path: &str) -> Option<&str> {
-    let name = path.strip_prefix("mods/")?;
-    (!name.is_empty() && !name.contains('/')).then_some(name)
+    direct_child(path, shared_library::folder_name(ContentType::Mod))
 }
 
 /// A jar's name without its extension: the name a record shows when the platform's is not known.
@@ -34,50 +39,150 @@ pub(crate) fn stem(file_name: &str) -> String {
     file_name.rsplit_once('.').map_or(file_name, |(stem, _)| stem).to_string()
 }
 
-/// The records of a Modrinth modpack's mods. A jar's SHA-1 names its release on Modrinth, and the release names its
-/// project. A jar Modrinth does not know gets no record, and nor does one whose release names no project. A failed
-/// lookup is logged and leaves the pack's mods unrecorded, so the install still runs.
-pub(crate) async fn modrinth_sources(files: &[ModpackFile]) -> Vec<ModSource> {
-    let jars: Vec<(&str, String)> = files
+/// The records a Modrinth modpack's files give. Its mods are recorded against the instance's `mods/` folder, and its packs
+/// as the instance's content, under the folder kind each pack is in.
+#[derive(Debug, Default)]
+pub(crate) struct ModrinthRecords {
+    /// The mods, each with the project and release its jar was installed as.
+    pub mods: Vec<ModSource>,
+    /// The packs, each with the project and release it was installed as.
+    pub packs: Vec<AddedContent>,
+}
+
+/// A file a modpack places in one of the recorded folders, with the folder and the hash the pack gives it, in lowercase.
+struct Placed<'a> {
+    folder: &'static str,
+    file_name: &'a str,
+    sha1: String,
+}
+
+/// The project and release a hash names on Modrinth.
+struct Release {
+    project_id: String,
+    version_id: String,
+}
+
+/// The folders whose files a modpack records: the mods' folder, and the folder of each kind of pack.
+fn recorded_folders() -> [&'static str; 3] {
+    [
+        shared_library::folder_name(ContentType::Mod),
+        shared_library::folder_name(ContentType::ResourcePack),
+        shared_library::folder_name(ContentType::Shader),
+    ]
+}
+
+/// The name of a pack a modpack or package keeps directly in a resource or shader folder, with that kind's folder, or `None`
+/// for any other path.
+pub(crate) fn pack_file(path: &str) -> Option<(&'static str, &str)> {
+    [ContentType::ResourcePack, ContentType::Shader].into_iter().find_map(|kind| {
+        let folder = shared_library::folder_name(kind);
+        Some((folder, direct_child(path, folder)?))
+    })
+}
+
+/// The records of a Modrinth modpack's mods and packs, from each file's path in the instance and the SHA-1 of its bytes. A
+/// file's SHA-1 names its release on Modrinth, and the release names its project. A file Modrinth does not know gets no
+/// record, and nor does one whose release names no project. A failed lookup is logged and leaves the files unrecorded, so
+/// the install still runs.
+pub(crate) async fn modrinth_records(hashed: &[(String, String)]) -> ModrinthRecords {
+    let folders = recorded_folders();
+    let placed: Vec<Placed> = hashed
         .iter()
-        .filter_map(|file| Some((mod_jar_name(&file.path)?, file.sha1.as_deref()?.to_ascii_lowercase())))
+        .filter_map(|(path, sha1)| {
+            let (folder, file_name) = folders.iter().find_map(|folder| Some((*folder, direct_child(path, folder)?)))?;
+            Some(Placed {
+                folder,
+                file_name,
+                sha1: sha1.to_ascii_lowercase(),
+            })
+        })
         .collect();
-    let hashes: Vec<String> = jars.iter().map(|(_, sha1)| sha1.clone()).collect();
-    let releases = match MODRINTH.versions_by_hashes(&hashes).await {
-        Ok(releases) => releases,
+    if placed.is_empty() {
+        return ModrinthRecords::default();
+    }
+    let hashes: Vec<String> = placed.iter().map(|file| file.sha1.clone()).collect();
+    let found = match MODRINTH.versions_by_hashes(&hashes).await {
+        Ok(found) => found,
         Err(error) => {
-            warn!("identifying the modpack's mods on Modrinth failed: {error}");
-            return Vec::new();
+            warn!("identifying the modpack's files on Modrinth failed: {error}");
+            return ModrinthRecords::default();
         }
     };
+    let releases: HashMap<String, Release> = found
+        .into_iter()
+        .filter_map(|(sha1, release)| {
+            let project_id = release.project_id?;
+            Some((
+                sha1,
+                Release {
+                    project_id,
+                    version_id: release.id,
+                },
+            ))
+        })
+        .collect();
     let project_ids: Vec<String> = releases
         .values()
-        .filter_map(|release| release.project_id.clone())
+        .map(|release| release.project_id.clone())
         .collect::<HashSet<String>>()
         .into_iter()
         .collect();
     let names = match MODRINTH.project_names(&project_ids).await {
         Ok(names) => names,
         Err(error) => {
-            warn!("reading the names of the modpack's mods on Modrinth failed: {error}");
+            warn!("reading the names of the modpack's files on Modrinth failed: {error}");
             Default::default()
         }
     };
-    jars.into_iter()
-        .filter_map(|(file_name, sha1)| {
-            let release = releases.get(&sha1)?;
-            let project_id = release.project_id.clone()?;
-            Some(ModSource {
+    records_of(&placed, &releases, &names)
+}
+
+/// The records the releases name for the placed files: each mod a record of its jar, and each pack a record under the folder
+/// kind it is in. The name is the project's when the platform gives one, and the file's own otherwise.
+fn records_of(placed: &[Placed], releases: &HashMap<String, Release>, names: &HashMap<String, String>) -> ModrinthRecords {
+    let mut records = ModrinthRecords::default();
+    for file in placed {
+        let Some(release) = releases.get(&file.sha1) else {
+            continue;
+        };
+        let name = names.get(&release.project_id).cloned().unwrap_or_else(|| stem(file.file_name));
+        if file.folder == shared_library::folder_name(ContentType::Mod) {
+            records.mods.push(ModSource {
                 instance: String::new(),
                 platform: Source::Modrinth.key().to_string(),
-                name: names.get(&project_id).cloned().unwrap_or_else(|| stem(file_name)),
-                project_id,
-                version_id: release.id.clone(),
-                file_name: file_name.to_string(),
-                sha1: Some(sha1),
-            })
-        })
-        .collect()
+                project_id: release.project_id.clone(),
+                version_id: release.version_id.clone(),
+                name,
+                file_name: file.file_name.to_string(),
+                sha1: Some(file.sha1.clone()),
+            });
+        } else {
+            records.packs.push(pack_record(
+                file.folder,
+                Source::Modrinth,
+                &release.project_id,
+                &release.version_id,
+                &name,
+                file.file_name,
+            ));
+        }
+    }
+    records
+}
+
+/// The record of a pack a modpack places in `folder`, a kind's folder, as the release of `platform` it was installed as. The
+/// record names no instance until the install has one.
+pub(crate) fn pack_record(folder: &str, platform: Source, project_id: &str, version_id: &str, name: &str, file_name: &str) -> AddedContent {
+    AddedContent {
+        instance: String::new(),
+        scope: String::new(),
+        kind: folder.to_string(),
+        platform: platform.key().to_string(),
+        project_id: project_id.to_string(),
+        version_id: version_id.to_string(),
+        name: name.to_string(),
+        file_name: file_name.to_string(),
+    }
 }
 
 /// The records of a CurseForge modpack's mods. Each file names its project and file, and its jar was named when the
@@ -335,11 +440,15 @@ async fn newer_releases(context: &CheckContext, records: &[ModSource]) -> Result
 /// The SHA-1 of the file at `path`, as lowercase hex.
 pub(crate) fn sha1_of_file(path: &Path) -> Result<String, String> {
     let _scope = perf::scope("io.hash");
-    let mut file = std::fs::File::open(path).map_err(|error| error.to_string())?;
+    sha1_of_reader(std::fs::File::open(path).map_err(|error| error.to_string())?)
+}
+
+/// The SHA-1 of everything `reader` yields, as lowercase hex.
+pub(crate) fn sha1_of_reader(mut reader: impl Read) -> Result<String, String> {
     let mut hasher = Sha1::new();
     let mut buffer = vec![0u8; 64 * 1024];
     loop {
-        let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
+        let read = reader.read(&mut buffer).map_err(|error| error.to_string())?;
         if read == 0 {
             break;
         }

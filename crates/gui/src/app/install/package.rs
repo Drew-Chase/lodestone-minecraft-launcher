@@ -10,7 +10,7 @@ use lodestone_platforms::ModpackFile;
 use super::modpack::{Origin, Payload, Unpack};
 use super::{IconSource, InstallRequest};
 use crate::app::components::instance_icon;
-use crate::app::mod_sources::stem;
+use crate::app::mod_sources::{pack_file, pack_record, stem};
 use crate::app::pages::discover::Source;
 use crate::app::pages::library::instance::{Biome, Loader};
 use crate::app::pages::library::new_instance::naming;
@@ -30,14 +30,16 @@ const BIOMES: [Biome; 8] = [
 ];
 
 /// The package's linked files as an install takes them. A Modrinth file comes with its download; a CurseForge file
-/// comes by its ids, and its download is resolved before the install. Each mod also becomes a record of where it came
-/// from, which the install keeps for the instance. When `package` is given, the install lays its bundled files over
-/// the instance; without it, the caller adds them itself.
+/// comes by its ids, and its download is resolved before the install. Each mod, and each pack in a resource or shader
+/// folder, also becomes a record of where it came from, which the install keeps for the instance. When `package` is
+/// given, the install lays its bundled files over the instance; without it, the caller adds them itself.
 pub(crate) fn payload(manifest: &Manifest, package: Option<&Path>) -> Payload {
     let mut files = Vec::new();
     let mut sources = Vec::new();
+    let mut packs = Vec::new();
     for record in manifest.files.iter().filter(|record| !record.bundled) {
         let file_name = record.path.strip_prefix("mods/").map(str::to_string);
+        let pack = pack_file(&record.path);
         if let Some(link) = &record.links.modrinth {
             files.push(ModpackFile {
                 path: record.path.clone(),
@@ -57,6 +59,8 @@ pub(crate) fn payload(manifest: &Manifest, package: Option<&Path>) -> Payload {
                     file_name,
                     sha1: Some(record.sha1.clone()),
                 });
+            } else if let Some((folder, name)) = pack {
+                packs.push(pack_record(folder, Source::Modrinth, &link.project, &link.version, &stem(name), name));
             }
         } else if let Some(link) = &record.links.curseforge {
             files.push(ModpackFile {
@@ -77,6 +81,8 @@ pub(crate) fn payload(manifest: &Manifest, package: Option<&Path>) -> Payload {
                     file_name,
                     sha1: Some(record.sha1.clone()),
                 });
+            } else if let Some((folder, name)) = pack {
+                packs.push(pack_record(folder, Source::CurseForge, &link.project, &link.file, &stem(name), name));
             }
         }
     }
@@ -89,7 +95,12 @@ pub(crate) fn payload(manifest: &Manifest, package: Option<&Path>) -> Payload {
         })
         .into_iter()
         .collect();
-    Payload { files, unpacks, sources }
+    Payload {
+        files,
+        unpacks,
+        sources,
+        packs,
+    }
 }
 
 /// A scene picked at random, for an instance whose modpack has no page to take one from.

@@ -200,6 +200,8 @@ impl LodestoneLauncher {
                 self.downloads.finish(job, Ok(()));
                 self.library.add_instance(*instance);
                 tasks.push(self.load_instances());
+                // The install recorded the packs it placed, so the Discover page reads its records again to show them as added.
+                tasks.push(self.load_added_content());
                 tasks.push(self.portable_install_ended(job, Ok(())));
             }
             Err(error) => {

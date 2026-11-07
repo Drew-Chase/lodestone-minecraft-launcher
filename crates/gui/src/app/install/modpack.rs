@@ -18,7 +18,7 @@ use super::download::{self, Part, PartReport};
 use super::{InstallProgress, Stage, Totals, drive, fraction, report};
 use crate::app::lang;
 use crate::app::launch::libraries::Item;
-use crate::app::shared_library::ModSource;
+use crate::app::shared_library::{AddedContent, ModSource};
 
 /// The folder under the instance that a remote archive is fetched into until it is unpacked.
 const FETCHED: &str = ".modpack";
@@ -34,6 +34,9 @@ pub struct Payload {
     /// The platform project and release of each mod the pack places, recorded against the instance once it is
     /// installed. The records name no instance until then.
     pub sources: Vec<ModSource>,
+    /// The platform project and release of each pack the pack places in its resource or shader folder, recorded as the
+    /// instance's content once it is installed. The records name no instance until then.
+    pub packs: Vec<AddedContent>,
 }
 
 /// An archive the install lays into the instance. The entries under `folder` go to `target`, except
@@ -97,6 +100,7 @@ impl Payload {
             files: modpack.files.clone(),
             unpacks,
             sources: Vec::new(),
+            packs: Vec::new(),
         }
     }
 }
@@ -271,7 +275,7 @@ impl Drop for Abandon {
 
 /// The prefix the entries of `folder` carry in an archive: none for the archive's root, and `folder/`
 /// otherwise.
-fn folder_prefix(folder: &str) -> String {
+pub(super) fn folder_prefix(folder: &str) -> String {
     match folder.trim_matches('/') {
         "" => String::new(),
         trimmed => format!("{trimmed}/"),

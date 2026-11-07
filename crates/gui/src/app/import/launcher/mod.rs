@@ -337,6 +337,7 @@ fn request(paths: &LauncherPaths, meta: &Meta, directory_name: String) -> Instal
                 skip: Vec::new(),
             }],
             sources: Vec::new(),
+            packs: Vec::new(),
         }),
         settings: Default::default(),
     }

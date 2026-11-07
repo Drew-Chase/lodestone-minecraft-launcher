@@ -62,3 +62,98 @@ async fn the_folder_avoids_the_names_already_taken() {
         .expect("a pack with no files needs no network");
     assert_ne!(install.directory_name, base);
 }
+
+/// A scratch folder unique to this test run, holding the archive a test writes.
+fn scratch(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("lodestone-pack-bundled-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("scratch folder created");
+    dir
+}
+
+/// Writes an archive at `path` holding each `(name, text)` entry, in order.
+fn write_archive(path: &Path, entries: &[(&str, &str)]) {
+    let file = std::fs::File::create(path).expect("archive created");
+    let mut archive = zip::ZipWriter::new(file);
+    for (name, text) in entries {
+        archive
+            .start_file(*name, zip::write::SimpleFileOptions::default())
+            .expect("entry started");
+        std::io::Write::write_all(&mut archive, text.as_bytes()).expect("entry written");
+    }
+    archive.finish().expect("archive finished");
+}
+
+#[test]
+fn a_modpacks_overrides_name_each_pack_they_bundle_with_the_hash_of_its_bytes() {
+    let dir = scratch("overrides");
+    let archive = dir.join("pack.zip");
+    write_archive(
+        &archive,
+        &[
+            ("overrides/resourcepacks/Fresh.zip", "abc"),
+            ("overrides/config/options.txt", "abc"),
+            ("overrides/resourcepacks/nested/deep.zip", "abc"),
+            ("overrides/shaderpacks/Shade.zip", "abc"),
+            ("elsewhere/resourcepacks/Outside.zip", "abc"),
+        ],
+    );
+    let abc = "a9993e364706816aba3e25717850c26c9cd0d89d";
+    assert_eq!(
+        read_bundled_packs(&archive, "overrides", false),
+        vec![
+            BundledPack {
+                path: "resourcepacks/Fresh.zip".to_string(),
+                sha1: abc.to_string(),
+                fingerprint: None,
+            },
+            BundledPack {
+                path: "shaderpacks/Shade.zip".to_string(),
+                sha1: abc.to_string(),
+                fingerprint: None,
+            },
+        ]
+    );
+    std::fs::remove_dir_all(&dir).expect("scratch folder removed");
+}
+
+#[test]
+fn a_bundled_pack_carries_the_curseforge_fingerprint_of_its_bytes_when_one_is_asked_for() {
+    let dir = scratch("fingerprints");
+    let archive = dir.join("pack.zip");
+    // The fingerprint leaves out the whitespace, so the first pack fingerprints as "abcd" does.
+    write_archive(
+        &archive,
+        &[
+            ("overrides/resourcepacks/Spaced.zip", "a b\tc\r\nd"),
+            ("overrides/shaderpacks/Plain.zip", "abc"),
+        ],
+    );
+    let fingerprints: Vec<Option<u32>> = read_bundled_packs(&archive, "overrides", true)
+        .iter()
+        .map(|pack| pack.fingerprint)
+        .collect();
+    assert_eq!(fingerprints, vec![Some(3_376_380_438), Some(1_621_425_345)]);
+    std::fs::remove_dir_all(&dir).expect("scratch folder removed");
+}
+
+#[test]
+fn an_archive_that_cannot_be_opened_bundles_no_packs() {
+    assert!(read_bundled_packs(Path::new("/nonexistent/lodestone/pack.zip"), "overrides", true).is_empty());
+}
+
+#[tokio::test]
+async fn a_pack_with_no_archive_or_no_overrides_folder_has_no_bundled_packs() {
+    let dir = scratch("nothing");
+    let archive = dir.join("pack.zip");
+    write_archive(&archive, &[("overrides/resourcepacks/Fresh.zip", "abc")]);
+    assert!(
+        bundled_packs(None, Some("overrides".to_string()), true).await.is_empty(),
+        "no archive is read"
+    );
+    assert!(
+        bundled_packs(Some(archive), None, true).await.is_empty(),
+        "no overrides folder names the packs"
+    );
+    std::fs::remove_dir_all(&dir).expect("scratch folder removed");
+}

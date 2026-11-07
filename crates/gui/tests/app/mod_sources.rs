@@ -21,6 +21,70 @@ fn a_mod_jar_is_a_file_directly_in_the_mods_folder() {
 }
 
 #[test]
+fn a_file_directly_in_a_folder_is_named_only_when_it_is_not_nested_deeper() {
+    assert_eq!(direct_child("resourcepacks/Fresh.zip", "resourcepacks"), Some("Fresh.zip"));
+    assert_eq!(direct_child("shaderpacks/Shade.zip", "shaderpacks"), Some("Shade.zip"));
+    assert_eq!(direct_child("resourcepacks/nested/Fresh.zip", "resourcepacks"), None);
+    assert_eq!(direct_child("shaderpacks/Shade.zip", "resourcepacks"), None);
+    assert_eq!(direct_child("resourcepacks/", "resourcepacks"), None);
+}
+
+/// A placed file of a modpack, in `folder`, whose hash is `sha1`.
+fn placed_file<'a>(folder: &'static str, file_name: &'a str, sha1: &str) -> Placed<'a> {
+    Placed {
+        folder,
+        file_name,
+        sha1: sha1.to_string(),
+    }
+}
+
+/// The release a hash names on Modrinth, of `project_id`.
+fn release(project_id: &str, version_id: &str) -> Release {
+    Release {
+        project_id: project_id.to_string(),
+        version_id: version_id.to_string(),
+    }
+}
+
+#[test]
+fn a_mod_and_a_pack_are_recorded_under_their_own_folders() {
+    let placed = [
+        placed_file("mods", "sodium.jar", "aa"),
+        placed_file("resourcepacks", "Fresh.zip", "bb"),
+        placed_file("shaderpacks", "Shade.zip", "cc"),
+    ];
+    let releases = HashMap::from([
+        ("aa".to_string(), release("p1", "v1")),
+        ("bb".to_string(), release("p2", "v2")),
+        ("cc".to_string(), release("p3", "v3")),
+    ]);
+    let names = HashMap::from([
+        ("p1".to_string(), "Sodium".to_string()),
+        ("p2".to_string(), "Fresh Animations".to_string()),
+    ]);
+    let records = records_of(&placed, &releases, &names);
+
+    assert_eq!(records.mods.len(), 1);
+    assert_eq!(records.mods[0].name, "Sodium");
+    assert_eq!(records.mods[0].file_name, "sodium.jar");
+    assert_eq!(records.mods[0].version_id, "v1");
+    assert_eq!(records.packs.len(), 2);
+    assert_eq!(records.packs[0].kind, "resourcepacks");
+    assert_eq!(records.packs[0].platform, "modrinth");
+    assert_eq!(records.packs[0].name, "Fresh Animations");
+    assert_eq!(records.packs[1].kind, "shaderpacks");
+    assert_eq!(records.packs[1].name, "Shade", "a pack whose project has no name keeps its file's name");
+}
+
+#[test]
+fn a_file_no_release_names_is_recorded_as_nothing() {
+    let placed = [placed_file("resourcepacks", "Own.zip", "dd")];
+    let records = records_of(&placed, &HashMap::new(), &HashMap::new());
+    assert!(records.mods.is_empty());
+    assert!(records.packs.is_empty());
+}
+
+#[test]
 fn a_stem_drops_only_the_last_extension() {
     assert_eq!(stem("sodium-0.5.8.jar"), "sodium-0.5.8");
     assert_eq!(stem("jar.disabled.jar"), "jar.disabled");
