@@ -46,11 +46,28 @@ url=$(printf '%s\n' "$release_json" \
   | sed 's/.*"\(https[^"]*\)"$/\1/')
 [ -n "$url" ] || die "the latest release has no Linux x86_64 archive."
 
+# The release's SHA256SUMS.txt lists the archive's hash. The archive is checked against it before it is unpacked.
+sums_url=$(printf '%s\n' "$release_json" \
+  | grep -o '"browser_download_url": *"[^"]*SHA256SUMS\.txt"' \
+  | head -n 1 \
+  | sed 's/.*"\(https[^"]*\)"$/\1/')
+[ -n "$sums_url" ] || die "the latest release has no SHA256SUMS.txt, so the download cannot be checked."
+
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-printf 'Downloading %s\n' "$(basename "$url")"
+archive_name=$(basename "$url")
+printf 'Downloading %s\n' "$archive_name"
 fetch "$url" "$tmp/archive.tar.gz" || die "the download failed."
+fetch "$sums_url" "$tmp/SHA256SUMS.txt" || die "the checksums could not be downloaded."
+expected=$(awk -v name="$archive_name" '{ file = $2; sub(/^\*/, "", file); if (file == name) { print $1; exit } }' "$tmp/SHA256SUMS.txt")
+[ -n "$expected" ] || die "the checksums do not list $archive_name."
+if command -v sha256sum >/dev/null 2>&1; then
+  actual=$(sha256sum "$tmp/archive.tar.gz" | awk '{ print $1 }')
+else
+  actual=$(shasum -a 256 "$tmp/archive.tar.gz" | awk '{ print $1 }')
+fi
+[ "$actual" = "$expected" ] || die "the download does not match its checksum."
 tar -xzf "$tmp/archive.tar.gz" -C "$tmp"
 [ -f "$tmp/$BINARY" ] || die "the archive does not contain $BINARY."
 
