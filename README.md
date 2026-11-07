@@ -178,7 +178,7 @@ Every release on the [Releases page](https://github.com/Drew-Chase/lodestone-min
 curl -fsSL https://github.com/Drew-Chase/lodestone-minecraft-launcher/releases/latest/download/installer.sh | sh
 ```
 
-The launcher checks for a newer release each time it starts. An installed Windows build downloads and runs the update itself, after the administrator prompt. Other builds show an update button that opens the release page.
+The launcher checks for a newer release when it starts, and every half hour after that. Where it can install an update itself, the release downloads in the background when **Auto-update Lodestone** is on, and the update button installs it when you press it. That covers an installed Windows build (the setup runs after the administrator prompt), a Linux build in a folder you can write to, and a macOS app in a folder you can write to, such as Applications for an administrator. Every file is checked against the release's `SHA256SUMS.txt` before it is used. Any other build shows the update button, which opens the release page.
 
 ### Build
 
