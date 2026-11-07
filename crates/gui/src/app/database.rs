@@ -2,6 +2,7 @@
 //! database file next to the credential store, schema versioned through
 //! sqlx migrations.
 
+mod added_content;
 mod notifications;
 pub mod servers;
 
@@ -225,10 +226,15 @@ impl Database {
             .map_err(|error| error.to_string())
     }
 
-    /// Deletes an instance's row, and the mod records, cached hashes and world pins it holds. The caller removes
-    /// its folder; nothing else refers to the row.
+    /// Deletes an instance's row, and the mod records, cached hashes, world pins and added content it holds. The caller
+    /// removes its folder; nothing else refers to the row.
     pub async fn delete_instance(&self, id: &str) -> Result<(), String> {
         sqlx::query("DELETE FROM mod_sources WHERE instance_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+        sqlx::query("DELETE FROM added_content WHERE instance_id = ?")
             .bind(id)
             .execute(&self.pool)
             .await
