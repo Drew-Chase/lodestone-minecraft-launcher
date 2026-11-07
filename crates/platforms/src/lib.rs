@@ -61,6 +61,7 @@
 mod atlauncher;
 mod curseforge;
 mod error;
+pub mod fingerprint;
 mod ftb;
 mod http;
 mod meta;
@@ -70,7 +71,7 @@ mod modrinth;
 mod technic;
 
 pub use atlauncher::AtLauncher;
-pub use curseforge::CurseForge;
+pub use curseforge::{CurseForge, FingerprintMatch};
 pub use error::PlatformError;
 pub use ftb::Ftb;
 pub use meta::{
@@ -297,6 +298,14 @@ impl Platform<Ftb> {
     /// [`Platform::versions`], which names its pack.
     pub async fn modpack(&self, version: &ContentVersion) -> Result<Modpack, PlatformError> {
         ftb::modpack(&self.http, version).await
+    }
+}
+
+impl Platform<CurseForge> {
+    /// The CurseForge file a fingerprint names, when CurseForge has one: the file's project and its own id. The fingerprint is
+    /// [`fingerprint::fingerprint`] of the file's bytes.
+    pub async fn fingerprint_match(&self, fingerprint: u32) -> Result<Option<FingerprintMatch>, PlatformError> {
+        curseforge::fingerprint_match(self.credential.as_deref(), fingerprint).await
     }
 }
 

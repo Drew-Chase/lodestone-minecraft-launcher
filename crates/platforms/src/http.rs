@@ -127,6 +127,30 @@ async fn get_text(http: &Client, url: &str) -> Result<String, PlatformError> {
     })
 }
 
+/// POSTs `body` as JSON to `url` and deserializes the JSON answer, mapping failures onto [`PlatformError`] with the url
+/// attached. A POST asks something of the platform each time, so its answer is never cached.
+pub(crate) async fn post_json(http: &Client, url: &str, body: &serde_json::Value) -> Result<serde_json::Value, PlatformError> {
+    let response = http.post(url).json(body).send().await.map_err(|source| PlatformError::Network {
+        url: url.to_string(),
+        source,
+    })?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(PlatformError::UnexpectedResponse {
+            url: url.to_string(),
+            status: status.as_u16(),
+        });
+    }
+    let text = response.text().await.map_err(|source| PlatformError::Network {
+        url: url.to_string(),
+        source,
+    })?;
+    serde_json::from_str(&text).map_err(|source| PlatformError::Json {
+        url: url.to_string(),
+        source,
+    })
+}
+
 /// Downloads `(url, destination)` pairs sequentially, creating parent
 /// directories as needed, and returns the destination paths in order.
 ///

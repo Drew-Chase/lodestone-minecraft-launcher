@@ -211,3 +211,54 @@ fn a_file_detail_names_the_jar_and_its_sha1_and_size() {
     assert_eq!(envelope.data.file_length, 123456);
     assert!(envelope.data.download_url.is_none());
 }
+
+const FINGERPRINT_URL: &str = "https://api.curseforge.com/v1/fingerprints/432";
+
+#[test]
+fn a_fingerprint_names_the_project_and_file_of_its_exact_match() {
+    let answer = serde_json::json!({
+        "data": {
+            "isCacheBuilt": true,
+            "exactMatches": [
+                { "id": 4123456, "file": { "id": 4123456, "modId": 238222, "fileName": "pack.zip" }, "latestFiles": [] }
+            ],
+            "exactFingerprints": [1540447798],
+            "unmatchedFingerprints": []
+        }
+    });
+    assert_eq!(
+        fingerprint_match_of(answer, FINGERPRINT_URL).expect("answer parses"),
+        Some(FingerprintMatch {
+            project_id: "238222".to_string(),
+            file_id: "4123456".to_string(),
+        })
+    );
+}
+
+#[test]
+fn an_answer_with_no_exact_match_names_no_file() {
+    let answer = serde_json::json!({
+        "data": { "isCacheBuilt": true, "exactMatches": [], "unmatchedFingerprints": [1540447798] }
+    });
+    assert_eq!(fingerprint_match_of(answer, FINGERPRINT_URL).expect("answer parses"), None);
+}
+
+#[test]
+fn an_exact_match_with_no_file_record_is_passed_over() {
+    let answer = serde_json::json!({
+        "data": { "exactMatches": [{ "id": 9 }, { "id": 10, "file": { "id": 10, "modId": 77 } }] }
+    });
+    assert_eq!(
+        fingerprint_match_of(answer, FINGERPRINT_URL).expect("answer parses"),
+        Some(FingerprintMatch {
+            project_id: "77".to_string(),
+            file_id: "10".to_string(),
+        })
+    );
+}
+
+#[test]
+fn an_answer_that_is_not_a_fingerprint_answer_is_an_error_and_not_a_match() {
+    let answer = serde_json::json!({ "unexpected": true });
+    assert!(fingerprint_match_of(answer, FINGERPRINT_URL).is_err());
+}
