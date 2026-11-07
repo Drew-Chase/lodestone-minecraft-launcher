@@ -316,6 +316,30 @@ async fn forgetting_a_jar_removes_its_record_and_its_hash() {
 }
 
 #[tokio::test]
+async fn forgetting_a_download_keeps_the_other_downloads_recorded() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    let download = |project_id: &str| SharedRecord {
+        kind: "resourcepacks".to_string(),
+        platform: "modrinth".to_string(),
+        project_id: project_id.to_string(),
+        version_id: format!("{project_id}-release"),
+        name: format!("Project {project_id}"),
+        path: format!("modrinth-{project_id}-release"),
+        size: Some(10),
+    };
+    db.record_shared_content(&download("chat")).await.expect("the download is recorded");
+    db.record_shared_content(&download("fresh"))
+        .await
+        .expect("the other download is recorded");
+
+    db.forget_shared_content("resourcepacks", "modrinth-chat-release")
+        .await
+        .expect("the download is forgotten");
+
+    assert_eq!(db.shared_content().await.expect("records load"), vec![download("fresh")]);
+}
+
+#[tokio::test]
 async fn cached_hashes_are_replaced_by_their_file_name() {
     let db = Database::connect_in_memory().await.expect("in-memory db opens");
     db.record_jar_hashes("mods-a", &[hash("a.jar")]).await.expect("caches");

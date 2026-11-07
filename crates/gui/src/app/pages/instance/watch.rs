@@ -1,7 +1,7 @@
-//! Watches the instance's `saves/`, `screenshots/` and `mods/` folders, so the Worlds, Screenshots and Mods tabs follow
-//! the game as it writes them. A game writes in bursts, so the events are gathered into a batch that is read back once
-//! the folders go quiet. The page applies what the batch reads; this module only reports which saves, captures and mod
-//! jars changed.
+//! Watches the instance's `saves/`, `screenshots/`, `mods/`, `resourcepacks/` and `shaderpacks/` folders, so the Worlds,
+//! Screenshots, Mods and Content tabs follow the game and the files put in them. A game writes in bursts, so the events are
+//! gathered into a batch that is read back once the folders go quiet. The page applies what the batch reads; this module
+//! only reports which saves, captures, mod jars and packs changed.
 
 use std::collections::{BTreeSet, HashSet};
 use std::ffi::OsStr;
@@ -17,10 +17,10 @@ use tokio::time::Instant;
 use tracing::warn;
 
 use super::Message;
-use super::files::{self, ModFile, ScreenshotFile, WorldFile};
+use super::files::{self, ModFile, PackFile, ScreenshotFile, WorldFile};
 
 /// The folders the watch follows, each recursively once it exists.
-const FOLDERS: [&str; 3] = ["saves", "screenshots", "mods"];
+const FOLDERS: [&str; 5] = ["saves", "screenshots", "mods", "resourcepacks", "shaderpacks"];
 /// The lock a running game holds on a save, written inside the save's folder.
 const SESSION_LOCK: &str = "session.lock";
 /// How long the folders must stay quiet before a batch is read: half a second.
@@ -41,6 +41,9 @@ pub enum Change {
     Shot(PathBuf),
     /// The `mods` folder itself, or a mod jar in it, changed: every mod is read again.
     Mods,
+    /// The `resourcepacks` or `shaderpacks` folder itself, or an entry directly inside one, changed: both pack lists are read
+    /// again.
+    Packs,
 }
 
 /// What reading a change back from disk found. A save or capture that is gone reads as `None`.
@@ -56,9 +59,12 @@ pub enum Update {
     Shot(PathBuf, Option<ScreenshotFile>),
     /// Every mod jar in `mods/`, sorted by name.
     Mods(Vec<ModFile>),
+    /// Every resource pack in `resourcepacks/`, then every shader pack in `shaderpacks/`, each sorted by name.
+    Packs(Vec<PackFile>, Vec<PackFile>),
 }
 
-/// The change a path reports, or `None` when it lies outside the three folders, or is neither a capture nor a mod jar.
+/// The change a path reports, or `None` when it lies outside the five folders, or is neither a capture, a mod jar nor a
+/// pack's own entry.
 pub fn classify(folder: &Path, path: &Path) -> Option<Change> {
     let relative = path.strip_prefix(folder).ok()?;
     let parts: Vec<&OsStr> = relative.components().map(|part| part.as_os_str()).collect();
@@ -71,6 +77,8 @@ pub fn classify(folder: &Path, path: &Path) -> Option<Change> {
         [root, _] if *root == OsStr::new("screenshots") && is_png(path) => Some(Change::Shot(path.to_path_buf())),
         [root] if *root == OsStr::new("mods") => Some(Change::Mods),
         [root, _] if *root == OsStr::new("mods") && is_mod_jar(path) => Some(Change::Mods),
+        // A pack is an entry of its folder, zip or folder alike, so any entry directly inside one counts, as the folder does.
+        [root] | [root, _] if is_pack_folder(root) => Some(Change::Packs),
         _ => None,
     }
 }
@@ -85,7 +93,7 @@ pub fn coalesce(changes: impl IntoIterator<Item = Change>) -> Vec<Change> {
         .filter(|change| match change {
             Change::World(_) => !worlds,
             Change::Shot(_) => !shots,
-            Change::Worlds | Change::Shots | Change::Mods => true,
+            Change::Worlds | Change::Shots | Change::Mods | Change::Packs => true,
         })
         .collect()
 }
@@ -107,6 +115,10 @@ pub fn read(folder: &Path, changes: Vec<Change>) -> Vec<Update> {
                 Update::Shot(path, shot)
             }
             Change::Mods => Update::Mods(files::scan_mods(folder)),
+            Change::Packs => {
+                let (resource, shader) = files::scan_packs(folder);
+                Update::Packs(resource, shader)
+            }
         })
         .collect()
 }
@@ -226,7 +238,7 @@ fn rebase(folder: &Path, canonical: &Path, path: &Path) -> PathBuf {
     }
 }
 
-/// Whether `path` is one of the two folders that the watch follows, directly inside `folder`.
+/// Whether `path` is one of the folders that the watch follows, directly inside `folder`.
 fn is_folder(folder: &Path, path: &Path) -> bool {
     path.parent() == Some(folder) && FOLDERS.iter().any(|name| path.file_name() == Some(OsStr::new(name)))
 }
@@ -253,6 +265,11 @@ fn is_mod_jar(path: &Path) -> bool {
         let name = name.to_ascii_lowercase();
         name.ends_with(".jar") || name.ends_with(".jar.disabled")
     })
+}
+
+/// Whether `name` is the resource packs folder or the shader packs folder.
+fn is_pack_folder(name: &OsStr) -> bool {
+    name == OsStr::new("resourcepacks") || name == OsStr::new("shaderpacks")
 }
 
 #[cfg(test)]

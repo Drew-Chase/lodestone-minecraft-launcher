@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::shared_library::SharedRecord;
 use sqlx::sqlite::SqlitePoolOptions;
 
 /// An in-memory database with the migrations applied.
@@ -68,4 +69,52 @@ async fn deleting_an_instance_removes_its_added_content_and_no_others() {
     db.record_added(&added("b", "", "p1", "v1", "fresh.zip")).await.expect("recorded");
     db.delete_instance("a").await.expect("deleted");
     assert_eq!(db.added_content().await.expect("listed"), vec![added("b", "", "p1", "v1", "fresh.zip")]);
+}
+
+#[tokio::test]
+async fn a_pack_copied_from_a_shared_download_takes_the_platform_of_that_download() {
+    let db = connect_in_memory().await;
+    db.record_shared_content(&SharedRecord {
+        kind: "resourcepacks".to_string(),
+        platform: "modrinth".to_string(),
+        project_id: "p1".to_string(),
+        version_id: "v1".to_string(),
+        name: "Fresh Animations".to_string(),
+        path: "modrinth-p1-v1".to_string(),
+        size: None,
+    })
+    .await
+    .expect("shared");
+    db.record_shared_origin("a", "resourcepacks", "modrinth-p1-v1", "fresh.zip")
+        .await
+        .expect("recorded");
+    assert_eq!(
+        db.added_content_of("a").await.expect("listed"),
+        vec![added("a", "", "p1", "v1", "fresh.zip")]
+    );
+}
+
+#[tokio::test]
+async fn a_shared_file_with_no_download_record_records_nothing() {
+    let db = connect_in_memory().await;
+    db.record_shared_origin("a", "resourcepacks", "loose-folder", "fresh.zip")
+        .await
+        .expect("no error");
+    assert!(db.added_content_of("a").await.expect("listed").is_empty());
+}
+
+#[tokio::test]
+async fn an_instances_added_content_is_listed_apart_from_the_others() {
+    let db = connect_in_memory().await;
+    db.record_added(&added("a", "", "p1", "v1", "fresh.zip")).await.expect("recorded");
+    db.record_added(&added("a", "world-one", "p2", "v1", "other.zip"))
+        .await
+        .expect("recorded");
+    db.record_added(&added("b", "", "p3", "v1", "third.zip")).await.expect("recorded");
+    let mut listed = db.added_content_of("a").await.expect("listed");
+    listed.sort_by(|left, right| left.file_name.cmp(&right.file_name));
+    assert_eq!(
+        listed,
+        vec![added("a", "", "p1", "v1", "fresh.zip"), added("a", "world-one", "p2", "v1", "other.zip")]
+    );
 }

@@ -171,6 +171,15 @@ pub fn entries(folder: &Path) -> Vec<SharedEntry> {
     entries
 }
 
+/// The path that deleting an entry takes away. A file in a download goes with the rest of its download, so the download's
+/// folder is the path. A loose file is its own path.
+pub fn delete_target(entry: &SharedEntry) -> PathBuf {
+    match (&entry.download, entry.path.parent()) {
+        (Some(_), Some(download)) => download.to_path_buf(),
+        _ => entry.path.clone(),
+    }
+}
+
 /// Copies `from`, a file or a folder, into the folder `into` under its own name, and returns that name. A name that is
 /// already in `into` is left as it is, so a pack already there is never overwritten.
 pub fn copy_into(from: &Path, into: &Path) -> Result<String, String> {

@@ -7,9 +7,11 @@ use iced::{Element, Fill, alignment};
 use lodestone_platforms::ContentType;
 
 use super::Message;
-use crate::app::components::TextButton;
 use crate::app::components::button::Variant;
+use crate::app::components::hint::hint;
+use crate::app::components::icon_button::ghost_button_style;
 use crate::app::components::modal::Modal;
+use crate::app::components::{IconButton, TextButton};
 use crate::app::lang;
 use crate::app::pages::instance::files::pack_name;
 use crate::app::shared_library::SharedEntry;
@@ -55,7 +57,8 @@ pub fn view(dialog: &Dialog) -> Element<'_, Message> {
         .into()
 }
 
-/// One pack in the shared folder: its name, where it came from, and the button that adds it, or says it is there.
+/// One pack in the shared folder: its name, where it came from, the button that adds it or says it is there, and the button
+/// that moves it to the trash.
 fn entry_row<'a>(kind: ContentType, index: usize, entry: &'a SharedEntry, present: bool) -> Element<'a, Message> {
     let origin = if entry.download.is_some() {
         lang::t("instance.packs.shared.downloaded")
@@ -86,5 +89,18 @@ fn entry_row<'a>(kind: ContentType, index: usize, entry: &'a SharedEntry, presen
             .on_press(Message::Add { kind, index })
             .into()
     };
-    row![details, action].spacing(12).align_y(alignment::Vertical::Center).width(Fill).into()
+    let delete = hint(
+        IconButton::new(Icon::lucide().trash())
+            .size(32.0)
+            .radius(8.0)
+            .icon_size(14.0)
+            .style(ghost_button_style())
+            .on_press(Message::DeleteShared { kind, index }),
+        lang::t("instance.packs.shared.delete_hint"),
+    );
+    row![details, action, delete]
+        .spacing(12)
+        .align_y(alignment::Vertical::Center)
+        .width(Fill)
+        .into()
 }

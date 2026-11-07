@@ -715,11 +715,11 @@ impl LodestoneLauncher {
     }
 
     /// Returns from the Discover page to the instance it was opened from. The instance's page is still as it was left, so
-    /// it is shown again and its mods are read again, since the page may have added some.
+    /// it is shown again and its mods and packs are read again, since the page may have added some.
     fn back_from_discover(&mut self) -> Task<LodestoneAppMessage> {
         self.discover.set_origin(None);
         let back = self.navigate(super::pages::Page::Instance);
-        Task::batch([back, self.rescan_mods_on_return()])
+        Task::batch([back, self.rescan_on_return()])
     }
 
     /// Writes the page's platform to the preferences on the blocking pool, keeping the other choices.

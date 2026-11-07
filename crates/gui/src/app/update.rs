@@ -99,14 +99,14 @@ impl LodestoneLauncher {
             LodestoneAppMessage::NavBack => {
                 if self.router.go_back() {
                     info!("Navigated back to {}", self.router.current().title());
-                    return self.rescan_mods_on_return();
+                    return self.rescan_on_return();
                 }
                 Task::none()
             }
             LodestoneAppMessage::NavForward => {
                 if self.router.go_forward() {
                     info!("Navigated forward to {}", self.router.current().title());
-                    return self.rescan_mods_on_return();
+                    return self.rescan_on_return();
                 }
                 Task::none()
             }
@@ -184,7 +184,7 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Instance(InstanceMessage::Back) => {
                 if self.router.go_back() {
                     info!("Navigated back to {}", self.router.current().title());
-                    return self.rescan_mods_on_return();
+                    return self.rescan_on_return();
                 }
                 Task::none()
             }
@@ -274,13 +274,14 @@ impl LodestoneLauncher {
                 self.worlds.update(message);
                 Task::none()
             }
-            // The Mods tab's folder reads are checked against the platforms here, and its actions are carried out here.
+            // The Mods tab's folder reads are checked against the platforms here, and its actions are carried out here. The packs'
+            // platforms are read here too, for their chips.
             LodestoneAppMessage::Instance(InstanceMessage::Scanned { generation, files }) if generation == self.instance_page.generation() => {
                 let apply = self
                     .instance_page
                     .update(InstanceMessage::Scanned { generation, files })
                     .map(LodestoneAppMessage::Instance);
-                Task::batch([apply, self.mods_scanned(generation)])
+                Task::batch([apply, self.mods_scanned(generation), self.packs_sources(generation)])
             }
             LodestoneAppMessage::Instance(InstanceMessage::TabSelected(tab)) => {
                 let select = self

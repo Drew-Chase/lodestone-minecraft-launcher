@@ -183,6 +183,35 @@ fn a_scan_for_an_earlier_instance_is_dropped() {
 }
 
 #[test]
+fn packs_read_by_the_watch_replace_the_packs_the_scan_held() {
+    let mut page = InstancePage::default();
+    let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
+    let generation = page.generation;
+    let _ = page.update(Message::Scanned {
+        generation,
+        files: sample_files(),
+    });
+
+    let _ = page.update(Message::FilesRead {
+        generation,
+        updates: vec![Update::Packs(
+            vec![files::PackFile {
+                file_name: "Faithful.zip".to_string(),
+                name: "Faithful".to_string(),
+                size: Some(1),
+                is_dir: false,
+            }],
+            Vec::new(),
+        )],
+    });
+
+    let files = page.files.as_ref().expect("the scan landed");
+    assert_eq!(files.resource_packs.first().map(|pack| pack.name.as_str()), Some("Faithful"));
+    assert!(files.shader_packs.is_empty(), "the shader folder was read too, and it holds none");
+    assert_eq!(files.mods.len(), 1, "a pack read leaves the mods the scan held as they were");
+}
+
+#[test]
 fn every_tab_builds_at_narrow_and_wide_widths() {
     let mut page = InstancePage::default();
     let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());

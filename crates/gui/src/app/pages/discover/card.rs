@@ -79,7 +79,7 @@ pub fn date_only(updated: Option<&str>) -> &str {
 
 /// The platform's mark and name in a small rounded chip.
 pub fn chip<'a>(source: Source) -> Element<'a, Message> {
-    container(
+    platform_logo::pill(
         row![
             platform_logo::logo(source.logo(), 12.0),
             Text::new(source.name().to_uppercase())
@@ -88,19 +88,9 @@ pub fn chip<'a>(source: Source) -> Element<'a, Message> {
                 .color(color::text_headline()),
         ]
         .spacing(6)
-        .align_y(alignment::Vertical::Center),
+        .align_y(alignment::Vertical::Center)
+        .into(),
     )
-    .padding(Padding::new(0.0).left(8).right(8).top(4).bottom(4))
-    .style(|_| container::Style {
-        background: Some(Background::Color(Color::from_rgba(0.03, 0.04, 0.05, 0.82))),
-        border: Border {
-            radius: 999.0.into(),
-            width: 1.0,
-            color: color::surface_line_strong(),
-        },
-        ..container::Style::default()
-    })
-    .into()
 }
 
 /// A line icon in `tint`.

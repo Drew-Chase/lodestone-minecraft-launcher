@@ -78,3 +78,25 @@ fn a_folder_is_copied_with_everything_in_it() {
     assert_eq!(std::fs::read(into.join("Pack").join("assets").join("icon.png")).unwrap(), b"png");
     std::fs::remove_dir_all(&root).ok();
 }
+
+#[test]
+fn deleting_a_file_from_a_download_takes_its_download_folder() {
+    let entry = SharedEntry {
+        name: "Chat.zip".to_string(),
+        path: PathBuf::from("/shared/resourcepacks/modrinth-chat-1/Chat.zip"),
+        is_dir: false,
+        download: Some("modrinth-chat-1".to_string()),
+    };
+    assert_eq!(delete_target(&entry), PathBuf::from("/shared/resourcepacks/modrinth-chat-1"));
+}
+
+#[test]
+fn deleting_a_loose_file_takes_only_that_file() {
+    let entry = SharedEntry {
+        name: "Loose.zip".to_string(),
+        path: PathBuf::from("/shared/resourcepacks/Loose.zip"),
+        is_dir: false,
+        download: None,
+    };
+    assert_eq!(delete_target(&entry), PathBuf::from("/shared/resourcepacks/Loose.zip"));
+}

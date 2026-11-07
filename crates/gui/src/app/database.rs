@@ -540,6 +540,18 @@ impl Database {
         .map(|_| ())
         .map_err(|error| error.to_string())
     }
+
+    /// Forgets a download whose folder left the shared folders, so the Discover page no longer lists it as downloaded.
+    /// Nothing changes when no record names that folder.
+    pub async fn forget_shared_content(&self, kind: &str, path: &str) -> Result<(), String> {
+        sqlx::query("DELETE FROM shared_content WHERE kind = ? AND path = ?")
+            .bind(kind)
+            .bind(path)
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
 }
 
 /// The launch overrides a row holds. A missing or unreadable value means none, so the instance inherits every

@@ -60,12 +60,27 @@ fn a_mod_jar_change_names_the_mods_folder_enabled_or_disabled() {
 }
 
 #[test]
+fn a_pack_change_names_a_pack_folder_or_an_entry_directly_inside_it() {
+    let folder = folder();
+    assert_eq!(classify(&folder, &folder.join("resourcepacks/Faithful.zip")), Some(Change::Packs));
+    assert_eq!(classify(&folder, &folder.join("resourcepacks/Faithful")), Some(Change::Packs));
+    assert_eq!(classify(&folder, &folder.join("shaderpacks/Complementary.zip")), Some(Change::Packs));
+    assert_eq!(classify(&folder, &folder.join("shaderpacks")), Some(Change::Packs));
+    assert_eq!(classify(&folder, &folder.join("resourcepacks")), Some(Change::Packs));
+    assert_eq!(classify(&folder, &folder.join("resourcepacks/Faithful/pack.mcmeta")), None);
+    assert_eq!(classify(&folder, &folder.join("shaderpacks/Complementary/shaders/x.glsl")), None);
+}
+
+#[test]
 fn the_watched_folders_are_recognised_directly_inside_the_instance() {
     let folder = folder();
     assert!(is_folder(&folder, &folder.join("saves")));
     assert!(is_folder(&folder, &folder.join("screenshots")));
     assert!(is_folder(&folder, &folder.join("mods")));
+    assert!(is_folder(&folder, &folder.join("resourcepacks")));
+    assert!(is_folder(&folder, &folder.join("shaderpacks")));
     assert!(!is_folder(&folder, &folder.join("saves/Hub")));
+    assert!(!is_folder(&folder, &folder.join("resourcepacks/Faithful.zip")));
     assert!(!is_folder(&folder, &folder.join("logs")));
 }
 
@@ -99,6 +114,12 @@ fn a_mods_change_is_read_once_and_kept_beside_the_others() {
 }
 
 #[test]
+fn a_packs_change_is_read_once_and_kept_beside_the_others() {
+    let changes = coalesce([Change::Packs, Change::Packs, Change::Mods]);
+    assert_eq!(changes, [Change::Mods, Change::Packs]);
+}
+
+#[test]
 fn writes_are_changes_and_reads_are_not() {
     assert!(relevant(&EventKind::Create(CreateKind::File)));
     assert!(relevant(&EventKind::Access(AccessKind::Close(AccessMode::Write))));
@@ -129,28 +150,26 @@ fn scratch(name: &str) -> PathBuf {
     std::fs::canonicalize(&path).expect("scratch folder resolves")
 }
 
-/// A capture written into the watched folder reaches the page as a change, after the folder goes quiet.
-#[test]
-fn a_capture_written_to_the_folder_is_reported_as_a_change() {
-    let root = scratch("capture");
-    let shot = root.join("screenshots/2026-10-30_09.00.00.png");
+/// Watches `root`, writes `file` once the watch has registered its folders, and reports whether a batch carrying `change`
+/// reaches the page after the folder goes quiet. The folder `file` is in must already exist.
+fn reports_written(root: &Path, file: PathBuf, change: Change) -> bool {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("a runtime starts");
 
-    let reported = runtime.block_on(async {
+    runtime.block_on(async {
         let (mut output, mut messages) = iced::futures::channel::mpsc::channel::<Message>(16);
-        let watched = root.clone();
+        let watched = root.to_path_buf();
         let watch = tokio::spawn(async move { run(&watched, &mut output).await });
-        // The watch registers its folders as it starts, so the capture is written once it has.
+        // The watch registers its folders as it starts, so the file is written once it has.
         tokio::time::sleep(Duration::from_millis(300)).await;
-        std::fs::write(&shot, b"capture").expect("the capture writes");
+        std::fs::write(&file, b"written").expect("the file writes");
 
         let found = tokio::time::timeout(Duration::from_secs(5), async {
             while let Some(message) = messages.next().await {
                 if let Message::FilesChanged { changes, .. } = message
-                    && changes.contains(&Change::Shot(shot.clone()))
+                    && changes.contains(&change)
                 {
                     return true;
                 }
@@ -159,10 +178,17 @@ fn a_capture_written_to_the_folder_is_reported_as_a_change() {
         })
         .await;
         watch.abort();
-        found
-    });
+        matches!(found, Ok(true))
+    })
+}
 
-    assert!(matches!(reported, Ok(true)), "the new capture is reported: {reported:?}");
+/// A capture written into the watched folder reaches the page as a change, after the folder goes quiet.
+#[test]
+fn a_capture_written_to_the_folder_is_reported_as_a_change() {
+    let root = scratch("capture");
+    let shot = root.join("screenshots/2026-10-30_09.00.00.png");
+    let reported = reports_written(&root, shot.clone(), Change::Shot(shot));
+    assert!(reported, "the new capture is reported");
     std::fs::remove_dir_all(&root).ok();
 }
 
@@ -172,34 +198,19 @@ fn a_mod_jar_written_to_the_folder_is_reported_as_a_change() {
     let root = scratch("mods");
     std::fs::create_dir_all(root.join("mods")).expect("the mods folder is made");
     let jar = root.join("mods/sodium.jar");
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("a runtime starts");
+    let reported = reports_written(&root, jar, Change::Mods);
+    assert!(reported, "the new jar is reported");
+    std::fs::remove_dir_all(&root).ok();
+}
 
-    let reported = runtime.block_on(async {
-        let (mut output, mut messages) = iced::futures::channel::mpsc::channel::<Message>(16);
-        let watched = root.clone();
-        let watch = tokio::spawn(async move { run(&watched, &mut output).await });
-        // The watch registers its folders as it starts, so the jar is written once it has.
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        std::fs::write(&jar, b"jar").expect("the jar writes");
-
-        let found = tokio::time::timeout(Duration::from_secs(5), async {
-            while let Some(message) = messages.next().await {
-                if let Message::FilesChanged { changes, .. } = message
-                    && changes.contains(&Change::Mods)
-                {
-                    return true;
-                }
-            }
-            false
-        })
-        .await;
-        watch.abort();
-        found
-    });
-
-    assert!(matches!(reported, Ok(true)), "the new jar is reported: {reported:?}");
+/// A resource pack written into the watched `resourcepacks/` folder reaches the page as a change, so the Content tab's
+/// list follows the folder as it follows the mods.
+#[test]
+fn a_resource_pack_written_to_the_folder_is_reported_as_a_change() {
+    let root = scratch("resource-packs");
+    std::fs::create_dir_all(root.join("resourcepacks")).expect("the packs folder is made");
+    let pack = root.join("resourcepacks/Faithful.zip");
+    let reported = reports_written(&root, pack, Change::Packs);
+    assert!(reported, "the new resource pack is reported");
     std::fs::remove_dir_all(&root).ok();
 }

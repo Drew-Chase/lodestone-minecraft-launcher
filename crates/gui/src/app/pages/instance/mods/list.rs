@@ -17,8 +17,10 @@ use crate::app::components::button::Variant;
 use crate::app::components::context_menu::ContextMenu;
 use crate::app::components::dropdown::Dropdown;
 use crate::app::components::panel::{hairline, panel_with_padding};
+use crate::app::components::platform_logo;
 use crate::app::components::{TextButton, Toggle};
 use crate::app::lang;
+use crate::app::pages::discover::Source;
 use crate::app::perf;
 use crate::app::theme::{color, fonts, utility};
 
@@ -114,6 +116,10 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
     ]
     .spacing(8)
     .align_y(alignment::Vertical::Center);
+    // The platform the mod was taken from, when a record names one, goes beside its name as a chip.
+    if let Some(source) = entry.source.as_ref().and_then(|record| Source::from_key(&record.platform)) {
+        title = title.push(platform_logo::chip(source.logo()));
+    }
     if !file.enabled {
         title = title.push(Badge::new(lang::t("instance.mods.disabled"), color::text_muted(), rgb!(255, 255, 255, 6%)).compact());
     }

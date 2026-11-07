@@ -183,12 +183,12 @@ impl LodestoneLauncher {
         generation == self.instance_page.generation()
     }
 
-    /// Reads the mods folder again, and the instances the library counts their mods by, when history brings the instance
-    /// page back. The watch runs only while the page is on screen, so a jar added while another page showed is not in the
-    /// list until this read.
-    pub(super) fn rescan_mods_on_return(&mut self) -> Task<LodestoneAppMessage> {
+    /// Reads the mods and the packs folders again, and the instances the library counts their mods by, when history brings
+    /// the instance page back. The watch runs only while the page is on screen, so a jar or pack added while another page
+    /// showed is not in the lists until this read.
+    pub(super) fn rescan_on_return(&mut self) -> Task<LodestoneAppMessage> {
         if self.router.current() == Page::Instance {
-            Task::batch([self.rescan_mods(), self.load_instances()])
+            Task::batch([self.rescan_mods(), self.reread_packs(), self.load_instances()])
         } else {
             Task::none()
         }

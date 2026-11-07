@@ -4,6 +4,8 @@
 
 mod shared;
 
+use std::collections::HashMap;
+
 use aurora_leaf::Icon;
 use iced::widget::{Text, column, container, row, text_input};
 use iced::{Element, Fill, Padding, alignment};
@@ -16,9 +18,11 @@ use crate::app::components::button::Variant;
 use crate::app::components::hint::hint;
 use crate::app::components::icon_button::ghost_button_style;
 use crate::app::components::panel::panel;
+use crate::app::components::platform_logo;
 use crate::app::components::{IconButton, TextButton, input, scrollbar};
 use crate::app::lang;
-use crate::app::shared_library::SharedEntry;
+use crate::app::pages::discover::Source;
+use crate::app::shared_library::{self, AddedContent, SharedEntry};
 use crate::app::theme::{color, fonts};
 
 pub use shared::Dialog;
@@ -36,21 +40,39 @@ pub enum Message {
     CloseShared,
     /// Add was pressed for the pack at `index` of the dialog's list. The root copies it into the instance.
     Add { kind: ContentType, index: usize },
+    /// Delete was pressed for the shared pack at `index` of the dialog's list. The root asks first, then moves it to the trash.
+    DeleteShared { kind: ContentType, index: usize },
     /// Find on Discover was pressed for a kind of pack. The root opens Discover on it, for this instance.
     Find(ContentType),
     /// Show in file browser was pressed for the pack with this file name.
     Reveal { kind: ContentType, file_name: String },
     /// Remove was pressed for the pack with this file name. The root asks first, then moves it to the trash.
     Remove { kind: ContentType, file_name: String },
-    /// The folders were read again, after a pack was added or removed. The root sends it.
-    Rescanned { resource: Vec<PackFile>, shader: Vec<PackFile> },
+    /// The folders were read again, after a pack was added or removed, or the page came back to the instance. The root
+    /// sends it with the generation of the page it was read for.
+    Rescanned {
+        generation: u64,
+        resource: Vec<PackFile>,
+        shader: Vec<PackFile>,
+    },
+    /// The platforms the packs were taken from, as the database holds them for the shown instance, or the error that stopped
+    /// the read. The root sends it with the generation of the page it was read for.
+    Sources {
+        generation: u64,
+        result: Result<Vec<AddedContent>, String>,
+    },
 }
 
-/// The packs the Content tab lists, the filter they are listed under, and the dialog that adds packs.
+/// The packs the Content tab lists, the platform each was taken from, the filter they are listed under, and the dialog that
+/// adds packs.
 #[derive(Debug, Default)]
 pub struct State {
     resource: Vec<PackFile>,
     shader: Vec<PackFile>,
+    /// The platform each resource pack was taken from, by file name. A pack with no entry was not taken from a platform.
+    resource_sources: HashMap<String, Source>,
+    /// The platform each shader pack was taken from, by file name.
+    shader_sources: HashMap<String, Source>,
     query: String,
     dialog: Option<Dialog>,
 }
@@ -62,8 +84,34 @@ impl State {
         self.shader = shader;
     }
 
-    /// Carries out the messages the tab keeps for itself: the filter, the dialog's list and its closing, and the packs the
-    /// folders hold. The rest are the root's.
+    /// Keeps the platform each pack in the instance's own folders was taken from. A record of another scope, such as a
+    /// world's datapacks, is not one of these packs.
+    fn set_sources(&mut self, records: &[AddedContent]) {
+        self.resource_sources.clear();
+        self.shader_sources.clear();
+        for record in records.iter().filter(|record| record.scope.is_empty()) {
+            let Some(source) = Source::from_key(&record.platform) else {
+                continue;
+            };
+            if record.kind == shared_library::folder_name(ContentType::ResourcePack) {
+                self.resource_sources.insert(record.file_name.clone(), source);
+            } else if record.kind == shared_library::folder_name(ContentType::Shader) {
+                self.shader_sources.insert(record.file_name.clone(), source);
+            }
+        }
+    }
+
+    /// The platform the pack `file_name` of `kind` was taken from, when a record names one.
+    fn source_of(&self, kind: ContentType, file_name: &str) -> Option<Source> {
+        let sources = match kind {
+            ContentType::ResourcePack => &self.resource_sources,
+            _ => &self.shader_sources,
+        };
+        sources.get(file_name).copied()
+    }
+
+    /// Carries out the messages the tab keeps for itself: the filter, the dialog's list and its closing, the packs the
+    /// folders hold, and the platforms they were taken from. The rest are the root's.
     pub fn update(&mut self, message: &Message) {
         match message {
             Message::Query(query) => self.query.clone_from(query),
@@ -74,8 +122,19 @@ impl State {
                 });
             }
             Message::CloseShared => self.dialog = None,
-            Message::Rescanned { resource, shader } => self.set_packs(resource.clone(), shader.clone()),
-            Message::OpenShared(_) | Message::Add { .. } | Message::Find(_) | Message::Reveal { .. } | Message::Remove { .. } => {}
+            Message::Rescanned { resource, shader, .. } => self.set_packs(resource.clone(), shader.clone()),
+            // A failed read keeps the platforms the packs had, rather than dropping every chip for one bad read.
+            Message::Sources { result, .. } => {
+                if let Ok(records) = result {
+                    self.set_sources(records);
+                }
+            }
+            Message::OpenShared(_)
+            | Message::Add { .. }
+            | Message::DeleteShared { .. }
+            | Message::Find(_)
+            | Message::Reveal { .. }
+            | Message::Remove { .. } => {}
         }
     }
 
@@ -129,7 +188,7 @@ impl State {
         } else {
             let mut rows = column![].spacing(6).width(Fill);
             for pack in shown {
-                rows = rows.push(pack_row(kind, pack));
+                rows = rows.push(pack_row(kind, pack, self.source_of(kind, &pack.file_name)));
             }
             panel(rows)
         };
@@ -146,17 +205,26 @@ impl State {
     }
 }
 
-/// One pack: its name and size, and buttons that show it in the file browser and move it to the trash.
-fn pack_row<'a>(kind: ContentType, pack: &PackFile) -> Element<'a, Message> {
+/// One pack: its name, with the platform it was taken from as a chip beside it when a record names one, its size, and buttons
+/// that show it in the file browser and move it to the trash.
+fn pack_row<'a>(kind: ContentType, pack: &PackFile, source: Option<Source>) -> Element<'a, Message> {
     let size = match pack.size {
         Some(bytes) => format_bytes(bytes),
         None => lang::t("instance.packs.folder").to_string(),
     };
-    let details = column![
+    let mut title = row![
         Text::new(pack.name.clone())
             .size(13)
             .font(fonts::Inter::MEDIUM)
             .color(color::text_default()),
+    ]
+    .spacing(8)
+    .align_y(alignment::Vertical::Center);
+    if let Some(source) = source {
+        title = title.push(platform_logo::chip(source.logo()));
+    }
+    let details = column![
+        title,
         Text::new(size).size(11).font(fonts::JetBrainsMono::REGULAR).color(color::text_muted()),
     ]
     .spacing(2)

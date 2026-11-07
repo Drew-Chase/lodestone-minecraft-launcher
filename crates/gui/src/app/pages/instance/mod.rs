@@ -500,12 +500,13 @@ impl InstancePage {
         )
     }
 
-    /// Merges what a read found into the instance's copy of its saves, captures and mods, then hands each list to
+    /// Merges what a read found into the instance's copy of its saves, captures, mods and packs, then hands each list to
     /// its tab. A save or capture the watch did not report keeps its state, and so keeps its thumbnail.
     fn files_read(&mut self, updates: Vec<Update>) -> Task<Message> {
         self.reading = false;
         if let Some(files) = &mut self.files {
             let mut mods_changed = false;
+            let mut packs_changed = false;
             for update in updates {
                 match update {
                     Update::Worlds(worlds) => files.worlds = worlds,
@@ -522,6 +523,11 @@ impl InstancePage {
                         files.mods = mods;
                         mods_changed = true;
                     }
+                    Update::Packs(resource, shader) => {
+                        files.resource_packs = resource;
+                        files.shader_packs = shader;
+                        packs_changed = true;
+                    }
                 }
             }
             files.worlds.sort_by_key(|world| std::cmp::Reverse(world.saved));
@@ -530,6 +536,9 @@ impl InstancePage {
             self.screenshots.set_shots(files.screenshots.clone());
             if mods_changed {
                 self.mods.set_mods(files.mods.clone());
+            }
+            if packs_changed {
+                self.packs.set_packs(files.resource_packs.clone(), files.shader_packs.clone());
             }
         }
         Task::batch([self.read_pending(), self.decode_viewer(), self.decode_next_thumbnail()])

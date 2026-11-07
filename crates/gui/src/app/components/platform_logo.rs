@@ -5,8 +5,10 @@
 
 use std::sync::OnceLock;
 
-use iced::widget::{Space, image, svg};
-use iced::{Element, Length};
+use iced::widget::{Space, container, image, svg};
+use iced::{Background, Border, Color, Element, Length, Padding};
+
+use crate::app::theme::color;
 
 /// One platform's mark.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +55,29 @@ pub fn logo<'a, Message: 'a>(logo: Logo, size: f32) -> Element<'a, Message> {
             None => Space::new().width(Length::Fixed(size)).height(Length::Fixed(size)).into(),
         },
     }
+}
+
+/// The mark alone in a small chip, which a row carries to say which platform its resource was taken from. Its colours are
+/// the mark's own, so each platform reads as its brand.
+pub fn chip<'a, Message: 'a>(mark: Logo) -> Element<'a, Message> {
+    pill(logo(mark, 12.0))
+}
+
+/// The dark pill the platform chips sit in: a translucent wash with a hairline ring, so it reads over art and over a panel
+/// alike. The Discover cards put the platform's name beside its mark in one.
+pub fn pill<'a, Message: 'a>(content: Element<'a, Message>) -> Element<'a, Message> {
+    container(content)
+        .padding(Padding::new(0.0).left(8).right(8).top(4).bottom(4))
+        .style(|_| container::Style {
+            background: Some(Background::Color(Color::from_rgba(0.03, 0.04, 0.05, 0.82))),
+            border: Border {
+                radius: 999.0.into(),
+                width: 1.0,
+                color: color::surface_line_strong(),
+            },
+            ..container::Style::default()
+        })
+        .into()
 }
 
 /// The SVG handle for `source`, built once. A monochrome source takes `ink` in
