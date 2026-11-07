@@ -10,6 +10,7 @@ use std::rc::Rc;
 use crate::app::components::anim;
 use crate::app::components::context_menu::ContextMenu;
 use crate::app::components::hover_scale::HoverScale;
+use crate::app::components::hover_track::HoverTrack;
 use crate::app::components::instance_art;
 use crate::app::components::instance_icon;
 use crate::app::lang;
@@ -31,6 +32,10 @@ use crate::app::downloads::{JobState, Pending};
 /// The grid card's art box height. The art sits one pixel inside the card's border, so its top edge is one
 /// pixel down.
 pub const CARD_ART_HEIGHT: f32 = 180.0;
+/// The art's inset from the card's border, on its top, left and right.
+const ART_INSET: f32 = 1.0;
+/// The box the banner fills: the art's height less its inset at the top.
+const ART_BOX_HEIGHT: f32 = CARD_ART_HEIGHT - ART_INSET;
 /// The grid card's footer, under its one-pixel rule.
 const FOOTER_HEIGHT: f32 = 43.0;
 /// The grid card's fixed height: the art box, the rule and the footer. Fixed so the virtualized rows keep an
@@ -184,9 +189,10 @@ fn install_progress<Message: 'static>(pending: &Pending) -> Element<'static, Mes
 
 /// The art of a card: the instance's banner, dimmed while its install has not ended.
 fn card_art<Message: 'static>(instance: &Instance, install: Option<&Pending>, banner: Option<Handle>) -> Element<'static, Message> {
+    let art = instance_art::card_banner(instance, banner, ART_BOX_HEIGHT);
     match install {
-        Some(_) => stack![instance_art::card_banner(instance, banner), install_scrim()].into(),
-        None => instance_art::card_banner(instance, banner),
+        Some(_) => stack![art, install_scrim()].into(),
+        None => art,
     }
 }
 
@@ -353,7 +359,7 @@ pub fn instance_card<Message: Clone + 'static>(
         .width(Fill)
         .height(Fill),
     ])
-    .padding(Padding::new(1.0).bottom(0.0))
+    .padding(Padding::new(ART_INSET).bottom(0.0))
     .width(Fill)
     .height(CARD_ART_HEIGHT);
 
@@ -371,11 +377,12 @@ pub fn instance_card<Message: Clone + 'static>(
 
     // The hover grows the press area, so hit-testing follows the grown card. The menu wraps the
     // growth, so the menu itself does not grow.
-    let pressable = mouse_area(body)
-        .on_press(messages.open)
-        .on_enter(messages.enter)
-        .on_exit(messages.exit)
-        .interaction(mouse::Interaction::Pointer);
+    let pressable = HoverTrack::new(
+        mouse_area(body).on_press(messages.open).interaction(mouse::Interaction::Pointer),
+        hovered,
+        messages.enter,
+        messages.exit,
+    );
     let grown = HoverScale::new(pressable, hovered).ring(CARD_CORNER, anim::fade(color::primary(), 0.6));
     with_menu(grown, instance, menu, messages.menu)
 }

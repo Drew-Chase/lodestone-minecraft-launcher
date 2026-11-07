@@ -15,6 +15,7 @@ pub mod game_controls;
 pub mod grid;
 pub mod hint;
 pub mod hover_scale;
+pub mod hover_track;
 pub mod icon_button;
 pub mod input;
 pub mod instance_art;

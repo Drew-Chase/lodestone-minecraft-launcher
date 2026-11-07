@@ -298,7 +298,7 @@ fn an_exit_clears_only_the_card_it_was_for() {
 }
 
 #[test]
-fn any_other_message_ends_the_hover() {
+fn a_scroll_keeps_the_hover_while_the_pointer_stays_over_the_card() {
     let mut page = answered(3, 3);
     page.update(Message::Hover {
         project_id: "1".to_string(),
@@ -308,7 +308,7 @@ fn any_other_message_ends_the_hover() {
         remaining: 2000.0,
         offset: 10.0,
     });
-    assert!(!page.is_hovered("1"), "a card that scrolled away never sends its exit");
+    assert!(page.is_hovered("1"), "the card is still under the pointer");
 }
 
 #[test]

@@ -15,7 +15,7 @@ use crate::app::components::hint::hint;
 use crate::app::components::icon_button::secondary_button_style;
 use crate::app::components::page::content_width;
 use crate::app::components::world_card::{
-    BUTTON_SIZE, CARD_HEIGHT, TABLE_ROW_HEIGHT, THUMB_SIZE, WorldLabels, WorldMessages, table_header, table_row, thumbnail, world_card,
+    BUTTON_SIZE, CARD_HEIGHT, GRID_GAP, TABLE_ROW_HEIGHT, THUMB_SIZE, WorldLabels, WorldMessages, table_header, table_row, thumbnail, world_card,
 };
 use crate::app::components::{IconButton, TextButton};
 use crate::app::lang;
@@ -25,7 +25,7 @@ use crate::app::theme::{color, fonts};
 use crate::app::world_actions::WorldMessage;
 
 /// The gap between cards, and between their rows.
-const GAP: f32 = 16.0;
+const GAP: f32 = GRID_GAP;
 /// The least width a card takes before the grid wraps to fewer columns, and the most columns it shows.
 const CARD_MIN_WIDTH: f32 = 340.0;
 const MAX_COLUMNS: usize = 4;
@@ -286,8 +286,14 @@ fn messages(entry: &WorldEntry) -> WorldMessages<Message> {
                 action,
             })
         }),
-        enter: Message::Hovered(Some(path.clone())),
-        exit: Message::Hovered(None),
+        enter: Message::Hover {
+            path: path.clone(),
+            hovered: true,
+        },
+        exit: Message::Hover {
+            path: path.clone(),
+            hovered: false,
+        },
     }
 }
 

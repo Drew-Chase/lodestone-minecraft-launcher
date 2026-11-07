@@ -43,8 +43,11 @@ pub enum Message {
     Sort(WorldSort),
     View(WorldView),
     Scrolled(f32),
-    /// The pointer entered (`Some`) or left (`None`) the card of the save at this path.
-    Hovered(Option<PathBuf>),
+    /// The pointer entered (`hovered`) or left the card of the save at this path.
+    Hover {
+        path: PathBuf,
+        hovered: bool,
+    },
     /// A menu's trigger was pressed: the menu opens, or closes when it is open.
     ToggleMenu(Menu),
     /// A press landed outside the open menu, or Escape was pressed.
@@ -158,11 +161,6 @@ impl State {
     }
 
     pub fn update(&mut self, message: Message) {
-        // Any message but a hover ends the hover: the card under the pointer may have moved or gone, and then its
-        // exit would never arrive.
-        if !matches!(message, Message::Hovered(_)) {
-            self.hovered = None;
-        }
         match message {
             Message::Search(query) => {
                 self.query = query;
@@ -180,7 +178,14 @@ impl State {
             }
             Message::View(view) => self.view = view,
             Message::Scrolled(offset) => self.scroll_y = offset.max(0.0),
-            Message::Hovered(path) => self.hovered = path,
+            // An exit clears only the card it was for, so enter and exit can arrive in any order.
+            Message::Hover { path, hovered } => {
+                if hovered {
+                    self.hovered = Some(path);
+                } else if self.hovered.as_deref() == Some(path.as_path()) {
+                    self.hovered = None;
+                }
+            }
             Message::ToggleMenu(menu) => self.menu = if self.menu == Some(menu) { None } else { Some(menu) },
             Message::DismissMenu | Message::Pick { .. } => self.menu = None,
             Message::Scanned { generation, scan } => {

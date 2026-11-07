@@ -427,11 +427,6 @@ impl Discover {
     /// Carries out one message. Display state changes here; anything that needs
     /// the network comes back as an [`Effect`] for the root to run.
     pub fn update(&mut self, message: Message) -> Vec<Effect> {
-        // Any message but a hover ends the hover: the card under the pointer may have moved or gone, and then its
-        // exit would never arrive.
-        if !matches!(message, Message::Hover { .. }) {
-            self.hovered = None;
-        }
         match message {
             Message::SourceSelected(source) => {
                 if source == self.source || !source.enabled() {

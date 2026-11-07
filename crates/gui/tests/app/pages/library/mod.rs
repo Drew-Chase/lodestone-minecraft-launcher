@@ -133,9 +133,10 @@ fn an_exit_clears_only_the_card_it_was_for() {
 }
 
 #[test]
-fn any_other_message_ends_the_hover() {
+fn a_scroll_keeps_the_hover_while_the_pointer_stays_over_the_card() {
+    // Clearing the hover on every scroll tick made the card under a still pointer shrink and regrow.
     let mut library = library_with(sample());
     library.update(hover("aether", true));
     library.update(Message::Scrolled(40.0));
-    assert_eq!(library.hovered, None, "a scroll can move the card away with no exit to follow");
+    assert_eq!(library.hovered.as_deref(), Some("aether"), "the card is still under the pointer");
 }

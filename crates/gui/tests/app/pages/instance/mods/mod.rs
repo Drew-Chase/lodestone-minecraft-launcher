@@ -102,7 +102,7 @@ fn renamed_moves_the_row_to_the_new_name_and_switch() {
 }
 
 #[test]
-fn hovering_a_row_lifts_it_until_another_message_arrives() {
+fn a_scroll_keeps_the_hover_while_the_pointer_stays_over_the_row() {
     let mut state = sample();
     let file_name = state.rows[0].file.file_name.clone();
     let _ = state.update(Message::Hover {
@@ -111,9 +111,10 @@ fn hovering_a_row_lifts_it_until_another_message_arrives() {
     });
     assert_eq!(state.hovered.as_deref(), Some(file_name.as_str()));
     let _ = state.update(Message::Scrolled(10.0));
-    assert!(
-        state.hovered.is_none(),
-        "a scroll ends the hover, since the row under the pointer may have moved"
+    assert_eq!(
+        state.hovered.as_deref(),
+        Some(file_name.as_str()),
+        "the row is still under the pointer, and a row the scroll moves away reports its own exit"
     );
 }
 

@@ -210,11 +210,6 @@ impl Library {
     /// intercepted by the root before reaching here. The scroll offset is
     /// owned by the page scroll alone — filter changes must not jump it.
     pub fn update(&mut self, message: Message) {
-        // Any message but a hover ends the hover: the card under the pointer may have moved or
-        // gone, and then its exit would never arrive.
-        if !matches!(message, Message::Hover { .. }) {
-            self.hovered = None;
-        }
         match message {
             Message::SearchChanged(search) => self.search = search,
             Message::FilterChanged(filter) => self.filter = filter,

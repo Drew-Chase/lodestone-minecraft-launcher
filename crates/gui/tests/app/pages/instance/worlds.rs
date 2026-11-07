@@ -97,12 +97,34 @@ fn a_removed_world_leaves_the_list_and_the_search() {
 }
 
 #[test]
-fn a_hover_ends_with_the_next_other_message() {
+fn a_hover_is_set_and_cleared_by_its_own_card() {
     let mut state = State::default();
-    state.update(Message::Hovered(Some(PathBuf::from("/saves/Aether Hub"))));
-    assert!(state.hovered.is_some());
+    let hub = PathBuf::from("/saves/Aether Hub");
+    state.update(Message::Hover {
+        path: hub.clone(),
+        hovered: true,
+    });
+    assert_eq!(state.hovered.as_deref(), Some(hub.as_path()));
 
-    // A card that scrolls away never sends its exit, so any other message ends the hover.
-    state.update(Message::Search(String::new()));
+    // An exit for another card leaves this one hovered: enter and exit can arrive in any order.
+    state.update(Message::Hover {
+        path: PathBuf::from("/saves/Other"),
+        hovered: false,
+    });
+    assert_eq!(state.hovered.as_deref(), Some(hub.as_path()));
+
+    state.update(Message::Hover { path: hub, hovered: false });
     assert!(state.hovered.is_none());
+}
+
+#[test]
+fn other_messages_keep_the_hover_while_the_pointer_stays_over_the_card() {
+    let mut state = State::default();
+    state.update(Message::Hover {
+        path: PathBuf::from("/saves/Aether Hub"),
+        hovered: true,
+    });
+
+    state.update(Message::Search(String::new()));
+    assert!(state.hovered.is_some(), "the card is still under the pointer");
 }

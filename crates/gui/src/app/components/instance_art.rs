@@ -8,7 +8,7 @@ use std::path::Path;
 use iced::border::Radius;
 use iced::widget::image::Handle;
 use iced::widget::{Space, container, image, stack};
-use iced::{Background, Border, Color, ContentFit, Element, Fill, Gradient, gradient};
+use iced::{Background, Border, Color, ContentFit, Element, Fill, Gradient, Length, gradient};
 use iced_color_extension::rgb;
 
 use crate::app::components::scene_art::{CARD_RADIUS, HERO_RADIUS};
@@ -23,22 +23,23 @@ pub fn custom_banner<'a, M: 'a>(path: &Path) -> Element<'a, M> {
         .into()
 }
 
-/// The banner a grid card shows: the uploaded image, or the scene picture `rendered` at the box's size,
-/// which already has its top corners rounded. Until the picture renders, a dark panel shows.
-pub fn card_banner<'a, M: 'a>(instance: &Instance, rendered: Option<Handle>) -> Element<'a, M> {
+/// The banner a grid card shows in a box `height` tall: the uploaded image, or the scene picture `rendered` at the
+/// box's size, which already has its top corners rounded. Until the picture renders, a dark panel shows. Both round
+/// to the card's inner edge, [`CARD_RADIUS`], so they sit inside the border's curve.
+pub fn card_banner<'a, M: 'a>(instance: &Instance, rendered: Option<Handle>, height: f32) -> Element<'a, M> {
     match &instance.art_path {
-        Some(path) => image(image::Handle::from_path(path))
-            .width(Fill)
-            .height(Fill)
-            .content_fit(ContentFit::Cover)
-            .border_radius(Radius {
-                top_left: CARD_RADIUS,
-                top_right: CARD_RADIUS,
-                bottom_right: 0.0,
-                bottom_left: 0.0,
-            })
-            .into(),
-        None => picture(rendered, Radius::default()),
+        Some(path) => {
+            // iced rounds an image's four corners from one radius, and a radius on the top corners alone rounds the
+            // bottom ones instead. So the picture is drawn a radius taller, its rounded bottom corners fall below the
+            // box, and the box clips them.
+            let photo = image(image::Handle::from_path(path))
+                .width(Fill)
+                .height(Length::Fixed(height + CARD_RADIUS))
+                .content_fit(ContentFit::Cover)
+                .border_radius(Radius::from(CARD_RADIUS));
+            container(photo).width(Fill).height(Length::Fixed(height)).clip(true).into()
+        }
+        None => picture(rendered, Radius::from(CARD_RADIUS)),
     }
 }
 

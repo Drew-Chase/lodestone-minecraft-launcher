@@ -14,6 +14,7 @@ use crate::app::components::anim;
 use crate::app::components::badge::Badge;
 use crate::app::components::context_menu::ContextMenu;
 use crate::app::components::hover_scale::HoverScale;
+use crate::app::components::hover_track::HoverTrack;
 use crate::app::components::icon_button::secondary_button_style;
 use crate::app::components::instance_card::{art_shade, stat};
 use crate::app::components::screenshot_tile::placeholder_art;
@@ -33,6 +34,8 @@ pub const CARD_HEIGHT: f32 = BANNER_HEIGHT + 1.0 + FOOTER_HEIGHT;
 /// The widest a grid card is drawn: the reference's card width, so a card reads the same on the Worlds page and on
 /// an instance's Worlds tab. A caller that gives a card more room keeps it at this width.
 pub const CARD_MAX_WIDTH: f32 = 374.0;
+/// The gap between cards in a grid, on every page that lays them out.
+pub const GRID_GAP: f32 = 16.0;
 /// The card's corner radius. The hover ring follows it.
 const CARD_CORNER: f32 = 14.0;
 /// The side of the icon on the banner: twice its 64px, so every pixel of the icon stays whole.
@@ -120,10 +123,12 @@ pub fn world_card<Message: Clone + 'static>(
 
     // The hover grows the press area, so hit-testing follows the grown card. The menu wraps the growth, so the
     // menu itself does not grow.
-    let pressable = mouse_area(body)
-        .on_enter(messages.enter)
-        .on_exit(messages.exit)
-        .interaction(mouse::Interaction::Pointer);
+    let pressable = HoverTrack::new(
+        mouse_area(body).interaction(mouse::Interaction::Pointer),
+        hovered,
+        messages.enter,
+        messages.exit,
+    );
     let grown = HoverScale::new(pressable, hovered).ring(CARD_CORNER, anim::fade(color::primary(), 0.6));
     context(grown, world, menu, messages.menu)
 }

@@ -285,10 +285,6 @@ impl State {
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
-        // Any message but a hover ends the hover: the row under the pointer may have moved, and its exit may never come.
-        if !matches!(message, Message::Hover { .. }) {
-            self.hovered = None;
-        }
         match message {
             Message::Query(query) => {
                 self.filter.query = query;

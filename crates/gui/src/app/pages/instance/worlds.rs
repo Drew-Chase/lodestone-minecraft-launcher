@@ -21,7 +21,7 @@ use crate::app::components::button::Variant;
 use crate::app::components::grid::grid;
 use crate::app::components::input;
 use crate::app::components::panel::panel;
-use crate::app::components::world_card::{CARD_MAX_WIDTH, WorldLabels, WorldMessages, world_card};
+use crate::app::components::world_card::{CARD_MAX_WIDTH, GRID_GAP, WorldLabels, WorldMessages, world_card};
 use crate::app::lang;
 use crate::app::theme::{color, fonts, utility};
 use crate::app::world_pins::WorldPins;
@@ -54,8 +54,11 @@ pub enum Message {
         path: PathBuf,
         action: Option<Action>,
     },
-    /// The pointer entered (`Some`) or left (`None`) the card of the save at this path.
-    Hovered(Option<PathBuf>),
+    /// The pointer entered (`hovered`) or left the card of the save at this path.
+    Hover {
+        path: PathBuf,
+        hovered: bool,
+    },
     /// The saves were read again. Stale when `generation` has moved on.
     Rescanned {
         generation: u64,
@@ -88,17 +91,19 @@ impl State {
     }
 
     pub fn update(&mut self, message: Message) {
-        // Any message but a hover ends the hover: the card under the pointer may have moved or gone, and then its
-        // exit would never arrive.
-        if !matches!(message, Message::Hovered(_)) {
-            self.hovered = None;
-        }
         match message {
             Message::Search(query) => {
                 self.query = query;
                 self.refilter();
             }
-            Message::Hovered(path) => self.hovered = path,
+            // An exit clears only the card it was for, so enter and exit can arrive in any order.
+            Message::Hover { path, hovered } => {
+                if hovered {
+                    self.hovered = Some(path);
+                } else if self.hovered.as_deref() == Some(path.as_path()) {
+                    self.hovered = None;
+                }
+            }
             // The root carries these out, and the page reads its saves again on `Rescanned`, which the page
             // applies before this point.
             Message::Import | Message::NewWorld | Message::Menu { .. } | Message::Rescanned { .. } => {}
@@ -129,10 +134,7 @@ impl State {
                     pinned: pins.contains(instance, &world.folder()),
                 };
                 let hovered = self.hovered.as_deref() == Some(world.path.as_path());
-                // A card stops at the reference width, so one card on a wide page does not stretch across it.
-                container(world_card(world, labels, hovered, messages(&world.path)))
-                    .max_width(CARD_MAX_WIDTH)
-                    .into()
+                world_card(world, labels, hovered, messages(&world.path))
             })
             .collect();
         let body = if cards.is_empty() {
@@ -143,7 +145,12 @@ impl State {
             };
             panel(Text::new(message).size(12).font(fonts::Inter::REGULAR).color(color::text_muted()))
         } else {
-            grid(cards, 2, 14.0)
+            // Two reference-width cards and their gap, at most. Each card keeps the reference width and the gap stays
+            // GRID_GAP however wide the page is: any width past the cap falls at the grid's right, not between cards.
+            container(grid(cards, 2, GRID_GAP))
+                .width(Fill)
+                .max_width(2.0 * CARD_MAX_WIDTH + GRID_GAP)
+                .into()
         };
 
         column![self.toolbar(), body].spacing(16).width(Fill).into()
@@ -205,8 +212,14 @@ fn messages(path: &Path) -> WorldMessages<Message> {
             path: menu_path.clone(),
             action,
         }),
-        enter: Message::Hovered(Some(path.to_path_buf())),
-        exit: Message::Hovered(None),
+        enter: Message::Hover {
+            path: path.to_path_buf(),
+            hovered: true,
+        },
+        exit: Message::Hover {
+            path: path.to_path_buf(),
+            hovered: false,
+        },
     }
 }
 

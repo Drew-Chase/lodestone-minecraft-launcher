@@ -16,6 +16,7 @@ use crate::app::components::badge::Badge;
 use crate::app::components::button::Variant;
 use crate::app::components::context_menu::ContextMenu;
 use crate::app::components::dropdown::Dropdown;
+use crate::app::components::hover_track::HoverTrack;
 use crate::app::components::panel::{hairline, panel_with_padding};
 use crate::app::components::platform_logo;
 use crate::app::components::{TextButton, Toggle};
@@ -173,17 +174,20 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
         .align_y(alignment::Vertical::Center)
         .height(Length::Fixed(ROW_HEIGHT));
     let hovered = state.hovered.as_deref() == Some(file.file_name.as_str());
-    let press = mouse_area(body)
-        .interaction(mouse::Interaction::Pointer)
-        .on_press(Message::Open(file.file_name.clone()))
-        .on_enter(Message::Hover {
+    let press = HoverTrack::new(
+        mouse_area(body)
+            .interaction(mouse::Interaction::Pointer)
+            .on_press(Message::Open(file.file_name.clone())),
+        hovered,
+        Message::Hover {
             file_name: file.file_name.clone(),
             hovered: true,
-        })
-        .on_exit(Message::Hover {
+        },
+        Message::Hover {
             file_name: file.file_name.clone(),
             hovered: false,
-        });
+        },
+    );
     // The row lifts a little under the pointer, so it reads as the one a press opens.
     let lifted = container(press).width(Fill).style(move |_| row_highlight(hovered));
 

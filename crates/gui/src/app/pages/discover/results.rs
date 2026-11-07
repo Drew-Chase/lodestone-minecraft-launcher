@@ -12,6 +12,7 @@ use super::card::{CARD_RADIUS, compact_row, glyph, grid_card, panel, skeleton_ca
 use super::{Discover, DiscoverView, InstallState, Message, Source};
 use crate::app::components::button::Variant;
 use crate::app::components::hover_scale::HoverScale;
+use crate::app::components::hover_track::HoverTrack;
 use crate::app::components::{TextButton, anim, grid};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
@@ -171,18 +172,23 @@ fn pending(page: &Discover) -> usize {
 /// little, so the row reads as the one a press opens. The buttons inside take their own presses.
 fn pressable<'a>(page: &Discover, content: Element<'a, Message>, project_id: &str) -> Element<'a, Message> {
     let hovered = page.is_hovered(project_id);
-    let area = mouse_area(content)
-        .on_press(Message::OpenResource(project_id.to_string()))
-        .on_enter(Message::Hover {
-            project_id: project_id.to_string(),
-            hovered: true,
-        })
-        .on_exit(Message::Hover {
-            project_id: project_id.to_string(),
-            hovered: false,
-        })
-        .interaction(mouse::Interaction::Pointer);
+    let area = HoverTrack::new(
+        mouse_area(content)
+            .on_press(Message::OpenResource(project_id.to_string()))
+            .interaction(mouse::Interaction::Pointer),
+        hovered,
+        hover_message(project_id, true),
+        hover_message(project_id, false),
+    );
     container(area).width(Fill).style(move |_| lift(hovered)).into()
+}
+
+/// The message that reports the pointer entering (`hovered`) or leaving the card or row of `project_id`.
+fn hover_message(project_id: &str, hovered: bool) -> Message {
+    Message::Hover {
+        project_id: project_id.to_string(),
+        hovered,
+    }
 }
 
 /// The fill of a row under the pointer: a faint white wash, with its corners rounded.
@@ -200,18 +206,16 @@ fn lift(hovered: bool) -> container::Style {
 /// A grid card that opens its project's resource page when it is pressed. While the pointer is over it, it grows and
 /// lights a ring as a library card does. The buttons inside take their own presses.
 fn hoverable<'a>(card: Element<'a, Message>, page: &Discover, project_id: &str) -> Element<'a, Message> {
-    let pressable = mouse_area(card)
-        .on_press(Message::OpenResource(project_id.to_string()))
-        .on_enter(Message::Hover {
-            project_id: project_id.to_string(),
-            hovered: true,
-        })
-        .on_exit(Message::Hover {
-            project_id: project_id.to_string(),
-            hovered: false,
-        })
-        .interaction(mouse::Interaction::Pointer);
-    HoverScale::new(pressable, page.is_hovered(project_id))
+    let hovered = page.is_hovered(project_id);
+    let pressable = HoverTrack::new(
+        mouse_area(card)
+            .on_press(Message::OpenResource(project_id.to_string()))
+            .interaction(mouse::Interaction::Pointer),
+        hovered,
+        hover_message(project_id, true),
+        hover_message(project_id, false),
+    );
+    HoverScale::new(pressable, hovered)
         .ring(CARD_RADIUS, anim::fade(color::primary(), 0.6))
         .into()
 }
