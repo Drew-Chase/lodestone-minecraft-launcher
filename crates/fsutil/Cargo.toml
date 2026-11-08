@@ -1,6 +1,6 @@
 [package]
 name = "lodestone_fs"
-version = "0.1.3"
+version = "0.2.0"
 edition = "2024"
 # Tests mirror src/ under tests/ and are wired in with #[path], so top-level files there are not
 # separate test targets.

@@ -1,7 +1,7 @@
 {
   "name": "lodestone-website",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Lodestone Minecraft Launcher website: React frontend and PHP (Slim 4) API",
   "license": "GPL-3.0-or-later",
   "type": "module",
