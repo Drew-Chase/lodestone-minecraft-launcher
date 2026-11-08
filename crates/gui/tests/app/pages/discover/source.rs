@@ -19,7 +19,8 @@ fn each_platform_hosts_the_content_its_capability_matrix_declares() {
     assert!(Source::Modrinth.supports(ContentType::DataPack));
     assert!(!Source::Modrinth.supports(ContentType::World));
     assert!(Source::CurseForge.supports(ContentType::World));
-    assert!(!Source::CurseForge.supports(ContentType::Shader));
+    assert!(Source::CurseForge.supports(ContentType::Shader));
+    assert!(Source::CurseForge.supports(ContentType::DataPack));
     for pack_only in [Source::AtLauncher, Source::Technic, Source::Ftb] {
         assert!(pack_only.supports(ContentType::Modpack));
         assert!(!pack_only.supports(ContentType::ResourcePack));

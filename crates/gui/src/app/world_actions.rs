@@ -21,6 +21,7 @@ use crate::app::pages::instance::files;
 use crate::app::pages::instance::files::WorldFile;
 use crate::app::pages::instance::world_menu::Action;
 use crate::app::pages::worlds::{Menu, Message as WorldsMessage, Scan, Source};
+use crate::app::shared_library::SharedEntry;
 
 /// A world request from a Worlds page, or the answer to one. The instance is named by its id.
 #[derive(Debug, Clone)]
@@ -59,6 +60,22 @@ pub enum WorldMessage {
         pinned: bool,
         result: Result<(), String>,
     },
+    /// From shared files was pressed on the Worlds tab: reads the shared worlds for its dialog.
+    SharedOpen { instance: String },
+    /// Add was pressed in the shared-worlds dialog for the world at `index`: it is extracted into the instance's `saves/`.
+    SharedAdd { instance: String, index: usize },
+    /// A shared world was extracted into the instance's `saves/` under this folder name, or could not be.
+    SharedAdded { instance: String, result: Result<String, String> },
+    /// Delete was pressed in the shared-worlds dialog for the world at `index`. The root asks before anything is trashed.
+    SharedDelete { instance: String, index: usize },
+    /// The user answered the confirmation of a shared download's deletion.
+    SharedDeleteAnswered { instance: String, entry: SharedEntry, confirmed: bool },
+    /// A shared download went to the trash, or could not.
+    SharedDeleted {
+        instance: String,
+        entry: SharedEntry,
+        result: Result<(), String>,
+    },
 }
 
 impl LodestoneLauncher {
@@ -80,6 +97,12 @@ impl LodestoneLauncher {
                 pinned,
                 result,
             } => self.world_pin_saved(instance, folder, pinned, result),
+            WorldMessage::SharedOpen { instance } => self.read_shared_worlds(instance),
+            WorldMessage::SharedAdd { instance, index } => self.add_shared_world(instance, index),
+            WorldMessage::SharedAdded { instance, result } => self.shared_world_added(instance, result),
+            WorldMessage::SharedDelete { instance, index } => self.ask_shared_world_delete(instance, index),
+            WorldMessage::SharedDeleteAnswered { instance, entry, confirmed } => self.answer_shared_world_delete(instance, entry, confirmed),
+            WorldMessage::SharedDeleted { instance, entry, result } => self.shared_world_deleted(instance, entry, result),
         }
     }
 
@@ -360,7 +383,7 @@ impl LodestoneLauncher {
 
     /// Reads the saves again on the lists that show `instance`: the instance page while it shows that instance, and
     /// the Worlds page while it is open.
-    fn rescan_worlds_of(&mut self, instance: &str) -> Task<LodestoneAppMessage> {
+    pub(super) fn rescan_worlds_of(&mut self, instance: &str) -> Task<LodestoneAppMessage> {
         let mut tasks = Vec::new();
         if self.instance_page.instance().is_some_and(|shown| shown.id == instance) {
             tasks.push(self.instance_page.rescan_worlds().map(LodestoneAppMessage::Instance));

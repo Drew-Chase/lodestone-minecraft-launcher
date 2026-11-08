@@ -23,8 +23,13 @@ use crate::app::components::input;
 use crate::app::components::panel::panel;
 use crate::app::components::world_card::{CARD_MAX_WIDTH, GRID_GAP, WorldLabels, WorldMessages, world_card};
 use crate::app::lang;
+use crate::app::shared_library::SharedEntry;
 use crate::app::theme::{color, fonts, utility};
 use crate::app::world_pins::WorldPins;
+
+mod shared;
+
+pub use shared::Dialog;
 
 /// The "Saved …" caption: relative to `now` for the last few weeks, and a calendar date after that. The hero shows
 /// it for the newest save.
@@ -64,6 +69,22 @@ pub enum Message {
         generation: u64,
         worlds: Vec<WorldFile>,
     },
+    /// From shared files was pressed. The root reads the shared worlds for the dialog.
+    OpenShared,
+    /// The shared worlds were read: each one, and whether the instance has a save of its name already. The root sends it.
+    SharedLoaded {
+        entries: Vec<(SharedEntry, bool)>,
+    },
+    /// The dialog was closed.
+    CloseShared,
+    /// Add was pressed for the shared world at `index` of the dialog's list. The root extracts it into the instance's saves.
+    AddShared {
+        index: usize,
+    },
+    /// Delete was pressed for the shared world at `index` of the dialog's list. The root asks first, then trashes it.
+    DeleteShared {
+        index: usize,
+    },
 }
 
 /// The Worlds tab's state.
@@ -75,6 +96,8 @@ pub struct State {
     visible: Vec<usize>,
     /// The save whose card the pointer is over, if any.
     hovered: Option<PathBuf>,
+    /// The dialog that adds shared worlds, while it is open.
+    dialog: Option<Dialog>,
 }
 
 impl State {
@@ -88,6 +111,16 @@ impl State {
     pub fn remove(&mut self, path: &Path) {
         self.worlds.retain(|world| world.path.as_path() != path);
         self.refilter();
+    }
+
+    /// The dialog that adds shared worlds, when one is open.
+    pub fn dialog(&self) -> Option<&Dialog> {
+        self.dialog.as_ref()
+    }
+
+    /// The dialog over the tab, when one is open.
+    pub fn dialog_view(&self) -> Option<Element<'_, Message>> {
+        self.dialog.as_ref().map(shared::view)
     }
 
     pub fn update(&mut self, message: Message) {
@@ -104,9 +137,17 @@ impl State {
                     self.hovered = None;
                 }
             }
+            Message::SharedLoaded { entries } => self.dialog = Some(Dialog { entries }),
+            Message::CloseShared => self.dialog = None,
             // The root carries these out, and the page reads its saves again on `Rescanned`, which the page
             // applies before this point.
-            Message::Import | Message::NewWorld | Message::Menu { .. } | Message::Rescanned { .. } => {}
+            Message::Import
+            | Message::NewWorld
+            | Message::Menu { .. }
+            | Message::Rescanned { .. }
+            | Message::OpenShared
+            | Message::AddShared { .. }
+            | Message::DeleteShared { .. } => {}
         }
     }
 
@@ -191,6 +232,7 @@ impl State {
         row![
             search,
             Space::new().width(Fill),
+            TextButton::labeled_icon(Icon::lucide().download(), lang::t("instance.worlds.from_shared"), Variant::Ghost).on_press(Message::OpenShared),
             TextButton::labeled_icon(Icon::lucide().upload(), lang::t("instance.worlds.import"), Variant::Ghost).on_press(Message::Import),
             TextButton::labeled_icon(Icon::lucide().plus(), lang::t("instance.worlds.new"), Variant::Ghost).on_press(Message::NewWorld),
         ]

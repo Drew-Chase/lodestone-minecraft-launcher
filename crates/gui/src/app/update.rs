@@ -271,6 +271,15 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::NewWorld)) => {
                 self.shown_world(|instance| WorldMessage::NewWorld { instance })
             }
+            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::OpenShared)) => {
+                self.shown_world(|instance| WorldMessage::SharedOpen { instance })
+            }
+            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::AddShared { index })) => {
+                self.shown_world(|instance| WorldMessage::SharedAdd { instance, index })
+            }
+            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::DeleteShared { index })) => {
+                self.shown_world(|instance| WorldMessage::SharedDelete { instance, index })
+            }
             LodestoneAppMessage::World(message) => self.world_message(message),
             LodestoneAppMessage::WorldPinsLoaded(rows) => self.world_pins_loaded(rows),
             LodestoneAppMessage::Worlds(WorldsMessage::World(message)) => self.world_message(message),

@@ -47,6 +47,7 @@ mod view;
 mod world_actions;
 mod world_datapacks;
 mod world_pins;
+mod world_shared;
 pub mod writes;
 
 use crate::app::components::Alerts;

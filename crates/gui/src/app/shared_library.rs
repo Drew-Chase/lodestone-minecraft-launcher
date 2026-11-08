@@ -180,6 +180,13 @@ pub fn delete_target(entry: &SharedEntry) -> PathBuf {
     }
 }
 
+/// The name a shared world goes by: its file's name without the extension, as the Worlds tab lists it.
+pub fn world_name(entry: &SharedEntry) -> String {
+    Path::new(&entry.name)
+        .file_stem()
+        .map_or_else(|| entry.name.clone(), |stem| stem.to_string_lossy().into_owned())
+}
+
 /// Copies `from`, a file or a folder, into the folder `into` under its own name, and returns that name. A name that is
 /// already in `into` is left as it is, so a pack already there is never overwritten.
 pub fn copy_into(from: &Path, into: &Path) -> Result<String, String> {

@@ -329,6 +329,9 @@ impl InstancePage {
         if let Some(dialog) = self.packs.dialog_view() {
             return Some(dialog.map(Message::Packs));
         }
+        if let Some(dialog) = self.worlds.dialog_view() {
+            return Some(dialog.map(Message::Worlds));
+        }
         if self.tab == Tab::Settings
             && let Some(overlay) = self.settings.overlay()
         {
@@ -365,6 +368,11 @@ impl InstancePage {
     /// The packs of the Content tab, as the page shows them.
     pub fn packs(&self) -> &packs::State {
         &self.packs
+    }
+
+    /// The Worlds tab's state, which the root reads for the shared-worlds dialog.
+    pub fn worlds(&self) -> &worlds::State {
+        &self.worlds
     }
 
     /// Handles the Screenshots tab's messages the page owns. The root carries out the rest: the

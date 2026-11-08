@@ -306,7 +306,7 @@ impl LodestoneLauncher {
 
     /// Forgets the record of a download whose folder went to the trash, then reads the records again, so the Discover page
     /// no longer lists it as downloaded. The records are read after the forgetting, so the answer does not list it.
-    fn forget_shared_download(&self, kind: ContentType, download: String) -> Task<LodestoneAppMessage> {
+    pub(super) fn forget_shared_download(&self, kind: ContentType, download: String) -> Task<LodestoneAppMessage> {
         let Some(db) = self.db.clone() else {
             return Task::none();
         };

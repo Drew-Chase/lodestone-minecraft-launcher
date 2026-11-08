@@ -50,7 +50,7 @@ fn an_empty_log_has_no_lines_yet() {
 }
 
 #[test]
-fn the_live_pill_toggles_following_and_export_changes_nothing() {
+fn the_live_pill_toggles_following_and_opening_the_log_changes_nothing() {
     let mut state = State::default();
     assert!(state.following(), "a fresh log follows new lines");
 
@@ -59,6 +59,14 @@ fn the_live_pill_toggles_following_and_export_changes_nothing() {
     assert!(!state.following());
 
     let before = state.buffer.iter().count();
-    state.update(Message::Export);
+    state.update(Message::OpenLatest);
     assert_eq!(state.buffer.iter().count(), before);
+}
+
+#[test]
+fn a_lit_debug_chip_is_light_blue_and_the_other_levels_keep_their_colours() {
+    assert_eq!(level_ink(LogLevel::Debug), color::cyan());
+    assert_eq!(level_fill(LogLevel::Debug), color::cyan_tint());
+    assert_eq!(level_ink(LogLevel::Info), color::primary());
+    assert_eq!(level_ink(LogLevel::Error), color::pink());
 }

@@ -6,6 +6,7 @@ use chrono::{Local, TimeZone};
 
 use super::*;
 use crate::app::pages::instance::files::{Difficulty, GameMode};
+use crate::app::shared_library::SharedEntry;
 
 fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Local> {
     Local
@@ -127,4 +128,40 @@ fn other_messages_keep_the_hover_while_the_pointer_stays_over_the_card() {
 
     state.update(Message::Search(String::new()));
     assert!(state.hovered.is_some(), "the card is still under the pointer");
+}
+
+fn shared_world(name: &str) -> SharedEntry {
+    SharedEntry {
+        name: name.to_string(),
+        path: PathBuf::from(format!("/shared/worlds/download/{name}")),
+        is_dir: false,
+        download: Some("download".to_string()),
+    }
+}
+
+#[test]
+fn the_shared_worlds_open_a_dialog_until_it_is_closed() {
+    let mut state = State::default();
+    assert!(state.dialog().is_none(), "nothing opens until the root has read the shared folder");
+
+    state.update(Message::SharedLoaded {
+        entries: vec![(shared_world("Aether Hub.zip"), false), (shared_world("Pixel Town.zip"), true)],
+    });
+    let dialog = state.dialog().expect("the dialog is open");
+    assert_eq!(dialog.entries.len(), 2);
+    assert!(dialog.entries[1].1, "a world the instance has is marked");
+
+    state.update(Message::CloseShared);
+    assert!(state.dialog().is_none());
+}
+
+#[test]
+fn adding_or_deleting_a_shared_world_leaves_the_list_to_the_root() {
+    let mut state = State::default();
+    state.update(Message::SharedLoaded {
+        entries: vec![(shared_world("Aether Hub.zip"), false)],
+    });
+    state.update(Message::AddShared { index: 0 });
+    state.update(Message::DeleteShared { index: 0 });
+    assert_eq!(state.dialog().map(|dialog| dialog.entries.len()), Some(1));
 }

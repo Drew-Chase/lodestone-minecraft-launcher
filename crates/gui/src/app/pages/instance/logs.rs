@@ -3,7 +3,6 @@
 //! The buffer keeps the newest [`MAX_LINES`] lines. While following, the
 //! scroller stays pinned to the bottom so new lines come into view; the LIVE
 //! pill toggles that, and the page re-reads the file on a timer while it is on.
-//! Export is display-only until the root owns file IO.
 
 use std::collections::{HashSet, VecDeque};
 
@@ -106,8 +105,6 @@ pub enum Message {
     ToggleFollow,
     /// A level's filter chip was pressed: its lines are shown, or hidden when they were.
     ToggleLevel(LogLevel),
-    /// Export was pressed — display-only until the root owns file IO.
-    Export,
     /// The button that opens `latest.log` in its app was pressed. The root opens it.
     OpenLatest,
     /// The button that shows `latest.log` in the file browser was pressed. The root shows it.
@@ -153,8 +150,8 @@ impl State {
                     self.hidden.insert(level);
                 }
             }
-            // Display-only until the root owns file IO. The root opens and reveals the log.
-            Message::Export | Message::OpenLatest | Message::RevealLatest => {}
+            // The root opens and reveals the log.
+            Message::OpenLatest | Message::RevealLatest => {}
         }
     }
 
@@ -181,7 +178,6 @@ impl State {
             live_pill(self.follow),
             TextButton::labeled_icon(Icon::lucide().file(), lang::t("instance.logs.open_latest"), Variant::Ghost).on_press(Message::OpenLatest),
             TextButton::labeled_icon(Icon::lucide().folder(), lang::t("instance.logs.reveal"), Variant::Ghost).on_press(Message::RevealLatest),
-            TextButton::labeled_icon(Icon::lucide().download(), lang::t("instance.logs.export"), Variant::Ghost).on_press(Message::Export),
         ]
         .spacing(10)
         .align_y(alignment::Vertical::Center);
@@ -216,7 +212,7 @@ impl State {
 /// A level's filter chip: lit in the level's colour while its lines show, and dimmed while they are hidden.
 fn level_chip<'a>(level: LogLevel, shown: bool) -> Element<'a, Message> {
     let (ink, fill) = if shown {
-        (level_ink(level), rgb!(255, 255, 255, 6%))
+        (level_ink(level), level_fill(level))
     } else {
         (color::text_placeholder(), rgb!(255, 255, 255, 2%))
     };
@@ -282,10 +278,18 @@ fn caret() -> Element<'static, Message> {
 
 fn level_ink(level: LogLevel) -> Color {
     match level {
-        LogLevel::Debug => color::text_placeholder(),
+        LogLevel::Debug => color::cyan(),
         LogLevel::Info => color::primary(),
         LogLevel::Warn => color::amber(),
         LogLevel::Error => color::pink(),
+    }
+}
+
+/// The fill of a lit level chip. DEBUG's is light blue, as its ink is, so a lit DEBUG chip reads apart from a dimmed one.
+fn level_fill(level: LogLevel) -> Color {
+    match level {
+        LogLevel::Debug => color::cyan_tint(),
+        LogLevel::Info | LogLevel::Warn | LogLevel::Error => rgb!(255, 255, 255, 6%),
     }
 }
 

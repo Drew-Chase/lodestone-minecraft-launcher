@@ -66,12 +66,18 @@ fn write_dir(archive: &mut zip::ZipWriter<File>, dir: &Path, prefix: &str, optio
 /// extraction leaves no folder behind.
 pub fn import(archive_path: &Path, saves: &Path) -> Result<String, String> {
     let _scope = perf::scope("io.import");
-    let stem = archive_path
+    extract_save(archive_path, saves, &save_name(archive_path))
+}
+
+/// The folder name an import gives the zip at `archive_path`: its file name without the extension, with the characters a
+/// file name cannot hold replaced, or `World` when nothing is left. The import takes that name when no save has it, and a
+/// number after it when one does.
+pub fn save_name(archive_path: &Path) -> String {
+    archive_path
         .file_stem()
         .map(|stem| sanitize(&stem.to_string_lossy()))
         .filter(|stem| !stem.is_empty())
-        .unwrap_or_else(|| FALLBACK_NAME.to_string());
-    extract_save(archive_path, saves, &stem)
+        .unwrap_or_else(|| FALLBACK_NAME.to_string())
 }
 
 /// Restores the backup zip at `archive_path` into `saves` as the save `folder`, the save it was made from. When a
