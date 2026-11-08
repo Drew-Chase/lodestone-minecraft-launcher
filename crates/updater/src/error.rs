@@ -30,6 +30,9 @@ pub enum Error {
     /// The archive could not be unpacked, or it does not hold the file the update needs.
     #[error("{0}")]
     Unpack(String),
+    /// The release's checksums are not signed by the release key, so nothing is downloaded from it.
+    #[error("{0}")]
+    Signature(String),
 }
 
 /// An `Io` error for `path`.

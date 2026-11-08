@@ -16,7 +16,9 @@ use crate::error::PlatformError;
 use crate::http::{HYDRATION_CHUNK, download_files, get_json};
 use crate::meta::{ContentDetails, ContentType, ContentVersion, DescriptionFormat, Facets, ProjectInfo, SearchPage, SearchQuery, SearchResult};
 use crate::modpack::combined_forge;
+use crate::paths::is_contained;
 use crate::sealed;
+use lodestone_net::download::Target;
 
 /// Marker for FTB (https://feed-the-beast.com).
 pub struct Ftb;
@@ -35,6 +37,30 @@ struct FtbFile {
     name: Option<String>,
     #[serde(default)]
     url: Option<String>,
+    #[serde(default)]
+    sha1: Option<String>,
+    #[serde(default)]
+    size: Option<u64>,
+}
+
+impl FtbFile {
+    /// The file's path in the instance, `directory/name`. Paths are "./kubejs"-style relative to the instance root. A path
+    /// that would leave the instance is an error, and a file with no name or url is skipped.
+    fn relative(&self) -> Option<Result<String, PlatformError>> {
+        self.url.as_ref()?;
+        let name = self.name.as_deref()?;
+        let directory = self.path.as_deref().unwrap_or_default().trim_start_matches("./").trim_matches('/');
+        let path = if directory.is_empty() {
+            name.to_string()
+        } else {
+            format!("{directory}/{name}")
+        };
+        Some(if is_contained(&path) {
+            Ok(path)
+        } else {
+            Err(PlatformError::UnsafePath { path })
+        })
+    }
 }
 
 /// A version target: game, modloader, or runtime.
@@ -259,24 +285,19 @@ impl PlatformKind for Ftb {
         // Flat response — no envelope.
         let version_detail: FtbVersion = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
 
-        let files = version_detail
-            .files
-            .into_iter()
-            .filter_map(|file| {
-                let url = file.url?;
-                let name = file.name?;
-                let directory = file.path.unwrap_or_default();
-                // Paths are "./kubejs"-style relative to the instance root.
-                let directory = directory.trim_start_matches("./").trim_matches('/');
-                let destination = if directory.is_empty() {
-                    into.join(&name)
-                } else {
-                    into.join(directory).join(&name)
-                };
-                Some((url, destination))
-            })
-            .collect::<Vec<(String, PathBuf)>>();
-        download_files(files, progress).await
+        let mut files = Vec::with_capacity(version_detail.files.len());
+        for file in &version_detail.files {
+            let Some(path) = file.relative() else {
+                continue;
+            };
+            files.push(Target {
+                url: file.url.clone().unwrap_or_default(),
+                path: into.join(path?),
+                sha1: file.sha1.clone(),
+                size: file.size,
+            });
+        }
+        download_files(http, files, progress).await
     }
 
     fn parse_modpack(_archive: &Path) -> Result<crate::meta::Modpack, PlatformError> {
@@ -327,24 +348,20 @@ pub(crate) async fn modpack(http: &reqwest::Client, version: &ContentVersion) ->
     let response = get_json(http, &url).await?;
     let detail: FtbVersion = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
     let (minecraft_versions, _) = version_targets(&detail);
-    let files = detail
-        .files
-        .iter()
-        .filter_map(|file| {
-            let url = file.url.clone()?;
-            let name = file.name.clone()?;
-            let directory = file.path.as_deref().unwrap_or_default().trim_start_matches("./").trim_matches('/');
-            let path = if directory.is_empty() { name } else { format!("{directory}/{name}") };
-            Some(crate::meta::ModpackFile {
-                path,
-                url,
-                sha1: None,
-                size: None,
-                project_id: None,
-                file_id: None,
-            })
-        })
-        .collect();
+    let mut files = Vec::with_capacity(detail.files.len());
+    for file in &detail.files {
+        let Some(path) = file.relative() else {
+            continue;
+        };
+        files.push(crate::meta::ModpackFile {
+            path: path?,
+            url: file.url.clone().unwrap_or_default(),
+            sha1: file.sha1.clone(),
+            size: file.size,
+            project_id: None,
+            file_id: None,
+        });
+    }
     let minecraft = minecraft_versions.into_iter().next().unwrap_or_default();
     let loader_version = loader_version_of(&detail, &minecraft);
     Ok(crate::meta::Modpack {

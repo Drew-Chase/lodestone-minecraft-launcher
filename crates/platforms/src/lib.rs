@@ -68,6 +68,7 @@ mod meta;
 mod modpack;
 pub use modpack::combined_forge;
 mod modrinth;
+pub mod paths;
 mod technic;
 
 pub use atlauncher::AtLauncher;

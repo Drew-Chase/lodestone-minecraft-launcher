@@ -1,5 +1,26 @@
 use super::*;
 
+/// [`super::run_installer`] with the stop flag left unset, for the tests that run an installer to its end.
+fn run_installer(
+    loader: &'static str,
+    minecraft: &str,
+    java: PathBuf,
+    installer: PathBuf,
+    flag: &'static str,
+    game_dir: PathBuf,
+    lines: Option<Sender<String>>,
+) -> Result<InstalledVersion, LoaderError> {
+    let run = Run {
+        loader,
+        minecraft: minecraft.to_string(),
+        java,
+        installer,
+        flag,
+        game_dir,
+    };
+    super::run_installer(run, lines, Arc::new(AtomicBool::new(false)))
+}
+
 /// A fresh folder for one test, named after the test so parallel runs do not share it.
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("lodestone-loaders-{}-{name}", std::process::id()));

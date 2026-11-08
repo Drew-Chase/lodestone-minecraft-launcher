@@ -116,6 +116,14 @@ fn a_zip_pack_has_one_version_that_is_its_zip() {
 fn the_file_name_is_the_last_part_of_a_url() {
     assert_eq!(file_name("https://solder.test/mods/mod-1.0.jar"), "mod-1.0.jar");
     assert_eq!(file_name("plain"), "plain");
+    assert_eq!(file_name("https://solder.test/mods/mod.jar?raw=true#top"), "mod.jar");
+}
+
+#[test]
+fn a_mod_url_with_no_file_name_is_refused() {
+    assert!(mod_path("https://solder.test/mods/").is_err());
+    assert!(mod_path("https://solder.test/mods/..").is_err());
+    assert_eq!(mod_path("https://solder.test/a.jar").unwrap(), "mods/a.jar");
 }
 
 #[test]

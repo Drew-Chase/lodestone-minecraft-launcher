@@ -14,12 +14,13 @@ use tokio::sync::mpsc::Sender;
 
 use crate::PlatformKind;
 use crate::error::PlatformError;
-use crate::http::{download_files, get_json, with_query};
+use crate::http::{download_files, file_target, get_json, with_query};
 use crate::meta::{
     ContentDetails, ContentFile, ContentType, ContentVersion, DescriptionFormat, Facets, Modpack, ModpackFile, ProjectInfo, SearchPage, SearchQuery,
     SearchResult,
 };
 use crate::modpack::combined_forge;
+use crate::paths::is_contained;
 use crate::sealed;
 
 /// Marker for Technic (https://www.technicpack.net).
@@ -131,9 +132,34 @@ fn hit_to_result(hit: TechnicHit) -> SearchResult {
     }
 }
 
-/// The last segment of a mod's url, which is the file's name.
+/// The last segment of a mod's url path, which is the file's name. The query and fragment are not part of it, so
+/// `mod.jar?raw=true` names `mod.jar`. A url with no usable last segment gives an empty name, which [`mod_path`] refuses.
 fn file_name(url: &str) -> String {
-    url.rsplit('/').next().unwrap_or(url).to_string()
+    match reqwest::Url::parse(url) {
+        Ok(parsed) => parsed
+            .path_segments()
+            .and_then(|mut segments| segments.next_back())
+            .unwrap_or_default()
+            .to_string(),
+        Err(_) => url
+            .split(['?', '#'])
+            .next()
+            .unwrap_or_default()
+            .rsplit('/')
+            .next()
+            .unwrap_or_default()
+            .to_string(),
+    }
+}
+
+/// Where a mod at `url` goes in the instance: `mods/<file name>`, when that stays inside the instance.
+fn mod_path(url: &str) -> Result<String, PlatformError> {
+    let path = format!("mods/{}", file_name(url));
+    if is_contained(&path) {
+        Ok(path)
+    } else {
+        Err(PlatformError::UnsafePath { path })
+    }
 }
 
 /// Fetches a pack's details by its slug.
@@ -266,7 +292,7 @@ impl PlatformKind for Technic {
     }
 
     async fn download(
-        _http: &reqwest::Client,
+        http: &reqwest::Client,
         _credential: Option<&str>,
         version: &ContentVersion,
         into: &Path,
@@ -275,9 +301,9 @@ impl PlatformKind for Technic {
         // Closure-free (RPITIT `+ Send`): collect destinations with a loop.
         let mut files = Vec::with_capacity(version.files.len());
         for file in &version.files {
-            files.push((file.url.clone(), into.join(&file.name)));
+            files.push(file_target(file, file.url.clone(), into)?);
         }
-        download_files(files, progress).await
+        download_files(http, files, progress).await
     }
 
     fn parse_modpack(archive: &Path) -> Result<Modpack, PlatformError> {
@@ -324,18 +350,17 @@ fn solder_modpack(
         });
     };
     let loader_version = combined_forge(&minecraft, forge);
-    let files = manifest
-        .mods
-        .into_iter()
-        .map(|mod_| ModpackFile {
-            path: format!("mods/{}", file_name(&mod_.url)),
+    let mut files = Vec::with_capacity(manifest.mods.len());
+    for mod_ in manifest.mods {
+        files.push(ModpackFile {
+            path: mod_path(&mod_.url)?,
             url: mod_.url,
             sha1: None,
             size: mod_.filesize,
             project_id: None,
             file_id: None,
-        })
-        .collect();
+        });
+    }
     Ok(Modpack {
         name,
         version: Some(version.version_number.clone()),

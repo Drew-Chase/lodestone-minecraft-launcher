@@ -139,7 +139,8 @@ fn append_bytes<W: Write>(tar: &mut tar::Builder<W>, path: &str, bytes: &[u8], m
 /// Reads the manifest out of a Lodestone package. The manifest is the package's first entry, so only the start
 /// of the stream is decoded.
 pub fn read_manifest(source: impl Read) -> Result<Manifest> {
-    let mut archive = tar::Archive::new(XzDecoder::new(source));
+    let (counted, consumed) = lodestone_fs::Counted::new(source);
+    let mut archive = tar::Archive::new(lodestone_fs::Bounded::new(XzDecoder::new(counted), consumed));
     for entry in archive.entries()? {
         let mut entry = entry?;
         if entry.path()?.as_ref() == Path::new(MANIFEST) {
@@ -159,7 +160,8 @@ pub fn read_manifest(source: impl Read) -> Result<Manifest> {
 /// Unpacks the bundled files of a Lodestone package into `destination`, at the paths they have inside
 /// `overrides/`. A path that would leave `destination` is refused.
 pub fn extract_overrides(source: impl Read, destination: &Path) -> Result<()> {
-    let mut archive = tar::Archive::new(XzDecoder::new(source));
+    let (counted, consumed) = lodestone_fs::Counted::new(source);
+    let mut archive = tar::Archive::new(lodestone_fs::Bounded::new(XzDecoder::new(counted), consumed));
     for entry in archive.entries()? {
         let mut entry = entry?;
         if !entry.header().entry_type().is_file() {

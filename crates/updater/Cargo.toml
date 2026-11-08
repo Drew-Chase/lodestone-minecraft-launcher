@@ -10,10 +10,12 @@ autotests = false
 reqwest = { workspace = true }
 lodestone_net = { path = "../net" }
 semver = "1"
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
 serde = { workspace = true }
 sha2 = "0.10"
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "fs", "io-util"] }
+base64 = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

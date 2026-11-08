@@ -20,6 +20,7 @@ use crate::meta::{
     ContentDetails, ContentType, ContentVersion, DescriptionFormat, Facets, Modpack, ModpackArchive, ModpackFile, ProjectInfo, SearchPage,
     SearchQuery, SearchResult,
 };
+use crate::paths::is_contained;
 use crate::sealed;
 
 /// Marker for ATLauncher (https://atlauncher.com).
@@ -294,8 +295,12 @@ fn modpack_from(name: String, safe_name: &str, version: &ContentVersion, configs
                 action: "installing a mod of this type",
             });
         };
+        let path = format!("{folder}/{file}");
+        if !is_contained(&path) {
+            return Err(PlatformError::UnsafePath { path });
+        }
         files.push(ModpackFile {
-            path: format!("{folder}/{file}"),
+            path,
             url,
             sha1: None,
             size: entry.filesize,

@@ -122,11 +122,17 @@ fn spawn_drain(pipe: impl Read + Send + 'static, stream: LogStream, events: Sync
 fn drain(pipe: impl Read, stream: LogStream, events: SyncSender<LaunchEvent>, eof: Sender<()>) {
     let mut reader = BufReader::new(pipe);
     let mut raw = Vec::new();
+    // Once the consumer is gone, the lines are still read and dropped. Stopping here would leave the pipe full, and the game
+    // would block on its next write.
+    let mut listening = true;
     loop {
         raw.clear();
         match reader.read_until(b'\n', &mut raw) {
             Ok(0) => break, // end of stream: the pipe is closed for good
             Ok(_) => {
+                if !listening {
+                    continue;
+                }
                 let mut line = String::from_utf8_lossy(&raw).into_owned();
                 // `read_until` keeps the terminator; strip `\n` and a Windows `\r`.
                 if line.ends_with('\n') {
@@ -135,12 +141,9 @@ fn drain(pipe: impl Read, stream: LogStream, events: SyncSender<LaunchEvent>, eo
                 if line.ends_with('\r') {
                     line.pop();
                 }
-                // Blocking send: backpressure onto the game (see the channel
-                // bound). If the consumer is gone, the game outran us on
-                // purpose; stop draining rather than spin.
-                if events.send(LaunchEvent::Log { stream, line }).is_err() {
-                    break;
-                }
+                // Blocking send: backpressure onto the game (see the channel bound). A consumer that has gone ends the
+                // forwarding, not the reading.
+                listening = events.send(LaunchEvent::Log { stream, line }).is_ok();
             }
             Err(error) => {
                 warn!(stream = ?stream, %error, "failed to read the game's output stream");

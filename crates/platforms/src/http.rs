@@ -6,15 +6,18 @@
 //! `lodestone_loaders`.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
+use lodestone_net::download::Target;
 use reqwest::Client;
-use simple_download_utility::{DownloadProgress, download_file};
+use simple_download_utility::DownloadProgress;
 use tokio::sync::mpsc::Sender;
 
 use crate::error::PlatformError;
+use crate::meta::ContentFile;
+use crate::paths::contained;
 
 /// How many detail calls are in flight at once while a page of results is hydrated. The platforms
 /// rate-limit bursts of requests, so a page is hydrated a few calls at a time.
@@ -151,33 +154,48 @@ pub(crate) async fn post_json(http: &Client, url: &str, body: &serde_json::Value
     })
 }
 
-/// Downloads `(url, destination)` pairs sequentially, creating parent
-/// directories as needed, and returns the destination paths in order.
+/// Downloads `files` one after another with `http`, and returns their paths in order. Each answer must be a success, and a
+/// file with a SHA-1 or a size must match it; only a file that passed lands at its path (see [`lodestone_net::download`]).
 ///
 /// A progress channel, when given, receives per-byte progress for each file —
 /// the same `DownloadProgress` events piston-mc and lodestone_loaders emit, so
 /// gui can treat every download uniformly.
 pub(crate) async fn download_files(
-    files: impl IntoIterator<Item = (String, PathBuf)>,
+    http: &Client,
+    files: Vec<Target>,
     progress: Option<&Sender<DownloadProgress>>,
 ) -> Result<Vec<PathBuf>, PlatformError> {
-    let mut downloaded = Vec::new();
-    for (url, path) in files {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|source| PlatformError::Io {
-                path: parent.to_path_buf(),
-                source,
-            })?;
-        }
-        download_file(&url, &path, progress.cloned())
-            .await
-            .map_err(|source| PlatformError::Download {
-                url: url.clone(),
-                source: source.into(),
-            })?;
-        downloaded.push(path);
+    let mut downloaded = Vec::with_capacity(files.len());
+    for target in files {
+        lodestone_net::download::fetch(http, &target, |received, total| {
+            if let Some(progress) = progress {
+                let _ = progress.try_send(DownloadProgress {
+                    bytes_to_download: total.unwrap_or(received) as usize,
+                    bytes_downloaded: received as usize,
+                    bytes_per_second: 0,
+                });
+            }
+        })
+        .await
+        .map_err(|source| PlatformError::Download {
+            url: target.url.clone(),
+            source: source.into(),
+        })?;
+        downloaded.push(target.path);
     }
     Ok(downloaded)
+}
+
+/// The download of `file` into `into`, checked against the hash and size the platform gave. A file name that would leave
+/// `into` is refused.
+pub(crate) fn file_target(file: &ContentFile, url: String, into: &Path) -> Result<Target, PlatformError> {
+    let path = contained(into, &file.name).ok_or_else(|| PlatformError::UnsafePath { path: file.name.clone() })?;
+    Ok(Target {
+        url,
+        path,
+        sha1: file.sha1.clone(),
+        size: file.size,
+    })
 }
 
 /// Appends a query parameter to `url` with proper percent-encoding.

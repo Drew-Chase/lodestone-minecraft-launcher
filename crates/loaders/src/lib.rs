@@ -57,6 +57,7 @@ mod http;
 mod install;
 mod meta;
 mod mod_info;
+pub mod mojang;
 mod neoforge;
 mod quilt;
 mod vanilla;

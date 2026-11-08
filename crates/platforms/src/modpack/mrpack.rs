@@ -8,6 +8,12 @@ use serde::Deserialize;
 use super::combined_forge;
 use crate::error::PlatformError;
 use crate::meta::{Modpack, ModpackFile};
+use crate::paths::is_contained;
+
+/// Whether `url` is an HTTPS address.
+fn is_https(url: &str) -> bool {
+    reqwest::Url::parse(url).is_ok_and(|url| url.scheme() == "https" && url.host().is_some())
+}
 
 /// The `modrinth.index.json` manifest.
 #[derive(Debug, Deserialize)]
@@ -85,22 +91,28 @@ pub(super) fn parse(raw: &str, archive: &Path) -> Result<Modpack, PlatformError>
     })?;
 
     let (loader, loader_version) = index.dependencies.loader();
-    let files = index
-        .files
-        .into_iter()
-        .filter_map(|file| {
-            // Mirrors are optional; a file without any url cannot be installed.
-            let url = file.downloads.into_iter().next()?;
-            Some(ModpackFile {
-                path: file.path,
-                url,
-                sha1: file.hash.and_then(|hash| hash.sha1),
-                size: file.file_size,
-                project_id: None,
-                file_id: None,
-            })
-        })
-        .collect();
+    let mut files = Vec::with_capacity(index.files.len());
+    for file in index.files {
+        // The index is written by whoever made the pack, so a path that leaves the instance fails the whole pack.
+        if !is_contained(&file.path) {
+            return Err(PlatformError::UnsafePath { path: file.path });
+        }
+        // Mirrors are optional; a file without any url cannot be installed. Only HTTPS mirrors are used, as the format asks.
+        let Some(first) = file.downloads.first().cloned() else {
+            continue;
+        };
+        let Some(url) = file.downloads.into_iter().find(|url| is_https(url)) else {
+            return Err(PlatformError::InsecureUrl { url: first });
+        };
+        files.push(ModpackFile {
+            path: file.path,
+            url,
+            sha1: file.hash.and_then(|hash| hash.sha1),
+            size: file.file_size,
+            project_id: None,
+            file_id: None,
+        });
+    }
 
     Ok(Modpack {
         name: index.name.unwrap_or_else(|| "Modrinth modpack".to_string()),

@@ -8,7 +8,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::LoaderKind;
 use crate::error::LoaderError;
-use crate::http::{download_files, get_json};
+use crate::http::{download_installer, get_json};
 use crate::install::{
     InstalledVersion, finished_install, installer_jar, installer_marker, record_install, run_installer_task, seed_launcher_profiles,
 };
@@ -101,7 +101,7 @@ impl LoaderKind for NeoForge {
     }
 
     async fn download_client(
-        _http: &reqwest::Client,
+        http: &reqwest::Client,
         version: &LoaderVersion,
         into: &Path,
         progress: Option<&Sender<DownloadProgress>>,
@@ -111,8 +111,8 @@ impl LoaderKind for NeoForge {
                 version: version.version.clone(),
             });
         }
-        let files = artifact_urls(&version.version).map(|(url, name)| (url, into.join(name)));
-        download_files(files, progress).await
+        let [installer, universal] = artifact_urls(&version.version).map(|(url, name)| (url, into.join(name)));
+        download_installer(http, installer, universal, progress).await
     }
 
     async fn install(

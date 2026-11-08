@@ -13,8 +13,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 futures-util = "0.3"
+sha1 = "0.10"
 reqwest = { workspace = true }
 lodestone_net = { path = "../net" }
+lodestone_fs = { path = "../fsutil" }
 tokio = { workspace = true, features = ["rt"] }
 piston-mc = { workspace = true }
 simple_download_utility = { workspace = true }

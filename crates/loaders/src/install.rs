@@ -6,8 +6,10 @@ use std::collections::{BTreeSet, VecDeque};
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use tokio::sync::mpsc::Sender;
 
@@ -26,7 +28,14 @@ pub struct InstalledVersion {
 const TAIL_LINES: usize = 40;
 
 /// How often a running installer is checked for a dropped line receiver.
+/// Windows: a console program started from a window opens a console unless it is created without one.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 const POLL: Duration = Duration::from_millis(250);
+
+/// How long an installer may run before it is stopped. The Forge and NeoForge installers take a few minutes at most.
+const INSTALLER_LIMIT: Duration = Duration::from_secs(30 * 60);
 
 /// How much earlier than a run's start a file still counts as written by it. File times come from a coarser clock than
 /// `SystemTime::now`, so a write just after the start can read a few milliseconds before it.
@@ -40,7 +49,7 @@ pub(crate) fn write_version(game_dir: &Path, id: &str, json: &serde_json::Value)
         source,
     })?;
     let path = directory.join(format!("{id}.json"));
-    std::fs::write(&path, json.to_string()).map_err(|source| LoaderError::Io { path: path.clone(), source })?;
+    lodestone_fs::write_atomic(&path, json.to_string().as_bytes()).map_err(|source| LoaderError::Io { path: path.clone(), source })?;
     Ok(InstalledVersion {
         id: id.to_string(),
         json: path,
@@ -56,7 +65,7 @@ pub(crate) fn seed_launcher_profiles(game_dir: &Path) -> Result<(), LoaderError>
     })?;
     let path = game_dir.join("launcher_profiles.json");
     if !path.exists() {
-        std::fs::write(&path, r#"{"profiles":{}}"#).map_err(|source| LoaderError::Io { path: path.clone(), source })?;
+        lodestone_fs::write_atomic(&path, br#"{"profiles":{}}"#).map_err(|source| LoaderError::Io { path: path.clone(), source })?;
     }
     Ok(())
 }
@@ -89,7 +98,7 @@ pub(crate) fn record_install(marker: &Path, installed: &InstalledVersion) -> Res
             source,
         })?;
     }
-    std::fs::write(marker, &installed.id).map_err(|source| LoaderError::Io {
+    lodestone_fs::write_atomic(marker, installed.id.as_bytes()).map_err(|source| LoaderError::Io {
         path: marker.to_path_buf(),
         source,
     })
@@ -129,9 +138,19 @@ pub(crate) async fn run_installer_task(
     game_dir: &Path,
     lines: Option<&Sender<String>>,
 ) -> Result<InstalledVersion, LoaderError> {
-    let (minecraft, java, installer, game_dir) = (minecraft.to_string(), java.to_path_buf(), installer.to_path_buf(), game_dir.to_path_buf());
+    let run = Run {
+        loader,
+        minecraft: minecraft.to_string(),
+        java: java.to_path_buf(),
+        installer: installer.to_path_buf(),
+        flag,
+        game_dir: game_dir.to_path_buf(),
+    };
     let lines = lines.cloned();
-    tokio::task::spawn_blocking(move || run_installer(loader, &minecraft, java, installer, flag, game_dir, lines))
+    // Dropping this future, as an aborted install does, sets the flag, and the installer is stopped at its next check.
+    let stop = Arc::new(AtomicBool::new(false));
+    let _stop_on_drop = StopOnDrop(Arc::clone(&stop));
+    tokio::task::spawn_blocking(move || run_installer(run, lines, stop))
         .await
         .map_err(|error| LoaderError::InstallerFailed {
             loader,
@@ -140,20 +159,33 @@ pub(crate) async fn run_installer_task(
         })?
 }
 
-/// The blocking half of [`run_installer_task`]. Output lines go to `lines` as they
-/// arrive. When that receiver is dropped the installer is stopped and the run fails.
-fn run_installer(
+/// What one installer run needs: the loader and the game it installs for, the Java that runs the installer, the installer jar,
+/// the flag that selects the install, and the folder to install into.
+struct Run {
     loader: &'static str,
-    minecraft: &str,
+    minecraft: String,
     java: PathBuf,
     installer: PathBuf,
     flag: &'static str,
     game_dir: PathBuf,
-    lines: Option<Sender<String>>,
-) -> Result<InstalledVersion, LoaderError> {
+}
+
+/// The blocking half of [`run_installer_task`]. Output lines go to `lines` as they
+/// arrive. When that receiver is dropped the installer is stopped and the run fails.
+fn run_installer(run: Run, lines: Option<Sender<String>>, stop: Arc<AtomicBool>) -> Result<InstalledVersion, LoaderError> {
+    let Run {
+        loader,
+        minecraft,
+        java,
+        installer,
+        flag,
+        game_dir,
+    } = run;
+    let minecraft = minecraft.as_str();
     let before = version_folders(&game_dir)?;
     let started = SystemTime::now() - CLOCK_SLACK;
-    let mut child = Command::new(&java)
+    let mut command = Command::new(&java);
+    command
         .arg("-jar")
         .arg(&installer)
         .arg(flag)
@@ -161,22 +193,29 @@ fn run_installer(
         .current_dir(&game_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|source| LoaderError::InstallerLaunch {
-            program: java.clone(),
-            source,
-        })?;
+        .stderr(Stdio::piped());
+    // The installer is a console program, and the launcher is a window: without this flag each run opens a console.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = command.spawn().map_err(|source| LoaderError::InstallerLaunch {
+        program: java.clone(),
+        source,
+    })?;
     let stdout = child.stdout.take().map(|pipe| read_lines(pipe, lines.clone()));
     let stderr = child.stderr.take().map(|pipe| read_lines(pipe, lines.clone()));
 
+    let started_waiting = Instant::now();
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Some(status),
             Ok(None) => {}
             Err(_) => break None,
         }
-        if lines.as_ref().is_some_and(Sender::is_closed) {
+        let stopped = stop.load(Ordering::Acquire) || started_waiting.elapsed() > INSTALLER_LIMIT;
+        if stopped || lines.as_ref().is_some_and(Sender::is_closed) {
             let _ = child.kill();
             let _ = child.wait();
             break None;
@@ -265,3 +304,12 @@ fn read_lines<R: Read + Send + 'static>(pipe: R, lines: Option<Sender<String>>) 
 #[cfg(test)]
 #[path = "../tests/install.rs"]
 mod tests;
+
+/// Sets its flag when it is dropped, so the installer it started is stopped when the install that waits for it is dropped.
+struct StopOnDrop(Arc<AtomicBool>);
+
+impl Drop for StopOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}

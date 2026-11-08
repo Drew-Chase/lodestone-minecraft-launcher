@@ -10,6 +10,7 @@ use crate::CHECKSUMS;
 use crate::checksum::checksum_for;
 use crate::error::{Error, io_error};
 use crate::release::{Asset, Release};
+use crate::signature::{SIGNATURE_FILE, check_sums};
 
 /// Downloads the release's file called `name` into `dir`, after checking it against the release's checksum list. Returns
 /// the path of the verified file.
@@ -29,9 +30,16 @@ pub async fn fetch_asset(client: &Client, release: &Release, name: &str, dir: &P
         .send()
         .await?
         .error_for_status()?
-        .text()
+        .bytes()
         .await?;
-    let expected = checksum_for(&sums, &asset.name).ok_or_else(|| Error::MissingAsset(format!("a checksum for {}", asset.name)))?;
+    // The checksum list must be signed by the release key when one is configured. Only then is it trusted to name the file.
+    let signature = match release.assets.iter().find(|candidate| candidate.name == SIGNATURE_FILE) {
+        Some(asset) => Some(client.get(&asset.browser_download_url).send().await?.error_for_status()?.text().await?),
+        None => None,
+    };
+    check_sums(&sums, signature.as_deref())?;
+    let expected =
+        checksum_for(&String::from_utf8_lossy(&sums), &asset.name).ok_or_else(|| Error::MissingAsset(format!("a checksum for {}", asset.name)))?;
     download_verified(client, asset, &expected, dir).await
 }
 

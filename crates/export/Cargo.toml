@@ -14,5 +14,6 @@ serde_json = { workspace = true }
 zip = "9"
 tar = "0.4"
 xz2 = "0.1.7"
+lodestone_fs = { path = "../fsutil" }
 sha1 = "0.10"
 sha2 = "0.10"

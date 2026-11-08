@@ -83,6 +83,21 @@ pub enum PlatformError {
         path: PathBuf,
     },
 
+    /// A pack or platform named a file path that would leave the folder it belongs in, such as `../x` or an absolute
+    /// path. Nothing is written for it.
+    #[error("refusing the file path {path:?}: it leaves the folder it belongs in")]
+    UnsafePath {
+        /// The path as it was named.
+        path: String,
+    },
+
+    /// A file named only a download address that is not HTTPS.
+    #[error("refusing to download {url}: only HTTPS downloads are allowed")]
+    InsecureUrl {
+        /// The address as it was named.
+        url: String,
+    },
+
     /// A modpack manifest was found but could not be parsed.
     #[error("failed to parse the modpack manifest in {}: {source}", path.display())]
     ModpackParse {

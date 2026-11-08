@@ -15,7 +15,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::PlatformKind;
 use crate::error::PlatformError;
-use crate::http::{download_files, get_json, post_json, with_query};
+use crate::http::{download_files, file_target, get_json, post_json, with_query};
 use crate::meta::{
     CategoryGroup, Channel, ContentDetails, ContentFile, ContentType, ContentVersion, Creator, DependencyKind, DescriptionFormat, Facet, Facets,
     GalleryImage, ProjectInfo, ProjectLinks, SearchPage, SearchQuery, SearchResult, SearchSort, VersionDependency, banner_from,
@@ -550,7 +550,7 @@ impl PlatformKind for CurseForge {
     }
 
     async fn download(
-        _http: &reqwest::Client,
+        http: &reqwest::Client,
         credential: Option<&str>,
         version: &ContentVersion,
         into: &Path,
@@ -575,9 +575,9 @@ impl PlatformKind for CurseForge {
             } else {
                 file.url.clone()
             };
-            files.push((url, into.join(&file.name)));
+            files.push(file_target(file, url, into)?);
         }
-        download_files(files, progress).await
+        download_files(http, files, progress).await
     }
 
     fn parse_modpack(archive: &Path) -> Result<crate::meta::Modpack, PlatformError> {

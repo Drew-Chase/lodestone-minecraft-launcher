@@ -17,7 +17,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::PlatformKind;
 use crate::error::PlatformError;
-use crate::http::{download_files, get_json, with_query};
+use crate::http::{download_files, file_target, get_json, with_query};
 use crate::meta::{
     BundledProject, CategoryGroup, Channel, ContentDetails, ContentFile, ContentType, ContentVersion, Creator, DependencyKind, DescriptionFormat,
     Facet, Facets, GalleryImage, ProjectInfo, ProjectLinks, SearchPage, SearchQuery, SearchResult, SearchSort, Side, VersionDependency, banner_from,
@@ -566,7 +566,7 @@ impl PlatformKind for Modrinth {
     }
 
     async fn download(
-        _http: &reqwest::Client,
+        http: &reqwest::Client,
         _credential: Option<&str>,
         version: &ContentVersion,
         into: &Path,
@@ -575,9 +575,9 @@ impl PlatformKind for Modrinth {
         // Closure-free (RPITIT `+ Send`): collect destinations with a loop.
         let mut files = Vec::with_capacity(version.files.len());
         for file in &version.files {
-            files.push((file.url.clone(), into.join(&file.name)));
+            files.push(file_target(file, file.url.clone(), into)?);
         }
-        download_files(files, progress).await
+        download_files(http, files, progress).await
     }
 
     fn parse_modpack(archive: &Path) -> Result<crate::meta::Modpack, PlatformError> {

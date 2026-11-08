@@ -8,6 +8,7 @@ mod download;
 mod error;
 mod install;
 mod release;
+mod signature;
 
 pub use apply::{can_write_to, extract_bundle, extract_executable, relaunch_after_exit, replace_bundle, replace_executable};
 pub use checksum::checksum_for;
@@ -15,6 +16,7 @@ pub use download::{fetch_asset, verify_file};
 pub use error::Error;
 pub use install::{installed_with_installer, run_silent_elevated};
 pub use release::{Answer, Asset, Payload, Release, check, newer};
+pub use signature::{SIGNATURE_FILE, Trust, configured as signing_configured};
 
 /// The repository whose releases are checked.
 pub const REPOSITORY: &str = "Drew-Chase/lodestone-minecraft-launcher";

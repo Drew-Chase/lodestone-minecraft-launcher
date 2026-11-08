@@ -64,7 +64,7 @@ impl LoaderKind for Quilt {
                 });
             }
         };
-        fabric::download_libraries(entry, DEFAULT_MAVEN, into, progress).await
+        fabric::download_libraries(http, entry, DEFAULT_MAVEN, into, progress).await
     }
 
     /// Quilt metadata is parsed locally (modcrawl has no `quilt.mod.json`

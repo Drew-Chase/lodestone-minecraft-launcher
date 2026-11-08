@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use lodestone_net::download::Target;
 use serde::Deserialize;
 use simple_download_utility::DownloadProgress;
 use tokio::sync::mpsc::Sender;
@@ -68,6 +69,12 @@ pub(crate) struct Artifact {
     pub(crate) name: String,
     #[serde(default)]
     pub(crate) url: Option<String>,
+    /// The jar's SHA-1, which newer meta answers list.
+    #[serde(default)]
+    pub(crate) sha1: Option<String>,
+    /// The jar's size in bytes, which newer meta answers list.
+    #[serde(default)]
+    pub(crate) size: Option<u64>,
 }
 
 /// The profile the meta API serves for one loader build: a version JSON that inherits
@@ -100,6 +107,7 @@ pub(crate) fn entry_version(entry: &Entry, minecraft: Option<&str>) -> LoaderVer
 /// reference arguments trip rustc's RPITIT `+ Send` check ("implementation of
 /// FnOnce is not general enough").
 pub(crate) async fn download_libraries(
+    http: &reqwest::Client,
     entry: &Entry,
     default_maven: &str,
     into: &Path,
@@ -112,23 +120,31 @@ pub(crate) async fn download_libraries(
     if let Some(maven) = &entry.loader.maven
         && let Some(relative) = maven_jar_path(maven)
     {
-        files.push((format!("{}{relative}", maven_base(default_maven)), into.join(native(relative))));
+        files.push(Target::unchecked(
+            format!("{}{relative}", maven_base(default_maven)),
+            into.join(native(relative)),
+        ));
     }
     files.extend(artifact_files(libraries.client.iter().chain(&libraries.common), default_maven, into));
-    download_files(files, progress).await
+    download_files(http, files, progress).await
 }
 
 /// The `(url, destination)` pairs for `artifacts`, each downloaded from its own base url
 /// and falling back to `default_maven`. Per-artifact base urls are authoritative: quilt
 /// entries share libraries that live on maven.fabricmc.net. Names that are not maven
 /// coordinates are skipped.
-fn artifact_files<'a>(artifacts: impl IntoIterator<Item = &'a Artifact>, default_maven: &str, into: &Path) -> Vec<(String, PathBuf)> {
+fn artifact_files<'a>(artifacts: impl IntoIterator<Item = &'a Artifact>, default_maven: &str, into: &Path) -> Vec<Target> {
     artifacts
         .into_iter()
         .filter_map(|artifact| {
             let relative = maven_jar_path(&artifact.name)?;
             let base = maven_base(artifact.url.as_deref().unwrap_or(default_maven));
-            Some((format!("{base}{relative}"), into.join(native(relative))))
+            Some(Target {
+                url: format!("{base}{relative}"),
+                path: into.join(native(relative)),
+                sha1: artifact.sha1.clone(),
+                size: artifact.size,
+            })
         })
         .collect()
 }
@@ -155,7 +171,7 @@ pub(crate) async fn install_profile(
     // The libraries land before the version JSON, so a JSON on disk means the install finished:
     // an interrupted install leaves no JSON for a launch to trust.
     let files = artifact_files(&profile.libraries, default_maven, &game_dir.join("libraries"));
-    download_files(files, progress).await?;
+    download_files(http, files, progress).await?;
     write_version(game_dir, &profile.id, &json)
 }
 
@@ -216,7 +232,7 @@ impl LoaderKind for Fabric {
                 });
             }
         };
-        download_libraries(entry, DEFAULT_MAVEN, into, progress).await
+        download_libraries(http, entry, DEFAULT_MAVEN, into, progress).await
     }
 
     async fn install(

@@ -72,3 +72,28 @@ fn a_vanilla_pack_has_no_loader() {
     let index: MrpackIndex = serde_json::from_str(r#"{ "dependencies": { "minecraft": "1.21.1" } }"#).expect("parses");
     assert_eq!(index.dependencies.loader(), (None, None));
 }
+
+/// An index naming one file at `path`, downloaded from `url`.
+fn one_file(path: &str, url: &str) -> String {
+    format!(r#"{{ "files": [ {{ "path": {path:?}, "hashes": {{ "sha1": "abc" }}, "downloads": [{url:?}] }} ] }}"#)
+}
+
+#[test]
+fn a_file_path_that_leaves_the_instance_fails_the_pack() {
+    for path in ["../../.bashrc", "/etc/passwd", "mods/../../x.jar", "C:\\Users\\x.jar"] {
+        let raw = one_file(path, "https://cdn.modrinth.com/a.jar");
+        let error = parse(&raw, Path::new("evil.mrpack")).expect_err(path);
+        assert!(matches!(error, PlatformError::UnsafePath { .. }), "{path}: {error}");
+    }
+}
+
+#[test]
+fn only_https_mirrors_are_used() {
+    let raw = r#"{ "files": [ { "path": "mods/a.jar", "downloads": ["http://plain.test/a.jar", "https://cdn.modrinth.com/a.jar"] } ] }"#;
+    let modpack = parse(raw, Path::new("a.mrpack")).unwrap();
+    assert_eq!(modpack.files[0].url, "https://cdn.modrinth.com/a.jar");
+
+    let raw = one_file("mods/a.jar", "http://plain.test/a.jar");
+    let error = parse(&raw, Path::new("a.mrpack")).unwrap_err();
+    assert!(matches!(error, PlatformError::InsecureUrl { .. }), "{error}");
+}

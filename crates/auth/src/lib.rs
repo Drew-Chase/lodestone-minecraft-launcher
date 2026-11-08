@@ -199,7 +199,7 @@ impl Authentication {
         self.session_from_microsoft_token(
             token.access_token().secret(),
             token.refresh_token().map(|refresh| refresh.secret().clone()),
-            token.expires_in().unwrap_or_default(),
+            token.expires_in(),
         )
         .await
     }
@@ -221,7 +221,7 @@ impl Authentication {
         self.session_from_microsoft_token(
             token.access_token().secret(),
             token.refresh_token().map(|refresh| refresh.secret().clone()),
-            token.expires_in().unwrap_or_default(),
+            token.expires_in(),
         )
         .await
     }
@@ -380,7 +380,7 @@ impl Authentication {
         &self,
         microsoft_token: &str,
         refresh_token: Option<String>,
-        microsoft_expires_in: std::time::Duration,
+        microsoft_expires_in: Option<std::time::Duration>,
     ) -> Result<Session, AuthError> {
         let flow = MinecraftAuthorizationFlow::new(self.http.clone());
         let response = flow
@@ -390,7 +390,11 @@ impl Authentication {
 
         // The session is valid until the earlier of the two expiries.
         let minecraft_expires_in = u64::from(response.expires_in());
-        let expires_at = session_expiry(minecraft_expires_in, microsoft_expires_in.as_secs());
+        let expires_at = match microsoft_expires_in {
+            Some(microsoft) => session_expiry(minecraft_expires_in, microsoft.as_secs()),
+            // Microsoft named no lifetime for its token, so the Minecraft token's alone decides when the session ends.
+            None => unix_now().saturating_add(minecraft_expires_in),
+        };
 
         let minecraft_token: String = response.access_token().clone().into();
         let profile = self.fetch_profile(&minecraft_token).await?;
@@ -491,13 +495,10 @@ impl Authentication {
     }
 }
 
-/// Seconds since the unix epoch. The launcher runs on real machines with real
-/// clocks; a pre-1970 clock would have broken every timestamp long before this.
+/// Seconds since the unix epoch. A clock set before 1970 reads as zero, so a session starts out expired, and the next launch
+/// refreshes it, rather than the process panicking.
 fn unix_now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock is after the unix epoch")
-        .as_secs()
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
 }
 
 /// The session expiry: unix seconds now plus the *earlier* of the two token

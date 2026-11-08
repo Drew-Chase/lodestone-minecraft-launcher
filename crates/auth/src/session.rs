@@ -6,7 +6,7 @@
 /// Sessions are returned, never stored — gui persists `refresh_token` in its
 /// own storage for silent re-login via
 /// [`Authentication::login_with_refresh_token`](crate::Authentication::login_with_refresh_token).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Session {
     /// The Minecraft services bearer token (`api.minecraftservices.com`), also
     /// the game's `--accessToken`.
@@ -72,7 +72,26 @@ pub struct DeviceCodeStart {
 /// The oauth2 state needed to complete the poll in phase two: the device
 /// authorization response itself. The oauth2 client is rebuilt on demand from
 /// `Authentication`'s client id.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct DeviceCodeState {
     pub(crate) details: oauth2::StandardDeviceAuthorizationResponse,
+}
+
+/// Redacts the tokens, which sign the player in, so a log or a debug print never carries them.
+impl std::fmt::Debug for Session {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Session")
+            .field("minecraft_token", &"<redacted>")
+            .field("expires_at", &self.expires_at)
+            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "<redacted>"))
+            .field("profile", &self.profile)
+            .finish()
+    }
+}
+
+/// Redacts the device code, which the sign-in poll redeems, so a log or a debug print never carries it.
+impl std::fmt::Debug for DeviceCodeState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeviceCodeState").field("details", &"<redacted>").finish()
+    }
 }
