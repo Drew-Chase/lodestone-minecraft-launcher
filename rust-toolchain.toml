@@ -1,0 +1,5 @@
+# The toolchain the workspace is built and linted with. rustup installs it on first use, locally and in CI.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
