@@ -8,6 +8,7 @@ use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use zip::CompressionMethod;
+use zip::System;
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
@@ -94,13 +95,18 @@ pub fn write_binary(executable: &Path, target: &Path, package: &Package<'_>, con
 pub fn write_app(executable: &Path, target: &Path, app_name: &str, bundle_id: &str, package: &Package<'_>, control: &mut Control<'_>) -> Result<()> {
     let contents = format!("{app_name}.app/Contents");
     let mut zip = ZipWriter::new(BufWriter::new(File::create(target)?));
+    // Readers take the mode bits from a zip only when its host is Unix. zip picks MS-DOS on Windows, which would
+    // drop the launcher's executable bit, so the bundle always names Unix as its host.
     let plain = SimpleFileOptions::default()
+        .system(System::Unix)
         .compression_method(CompressionMethod::Deflated)
         .unix_permissions(0o644);
     let program = SimpleFileOptions::default()
+        .system(System::Unix)
         .compression_method(CompressionMethod::Deflated)
         .unix_permissions(0o755);
     let stored = SimpleFileOptions::default()
+        .system(System::Unix)
         .compression_method(CompressionMethod::Stored)
         .unix_permissions(0o644);
 
