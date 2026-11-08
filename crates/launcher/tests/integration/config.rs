@@ -4,7 +4,7 @@ mod common;
 
 use std::path::PathBuf;
 
-use common::{StubJava, builder_for};
+use common::{StubJava, builder_for, launch};
 use lodestone_launch::{LaunchError, Launcher};
 
 #[test]
@@ -71,7 +71,7 @@ fn launch_rechecks_java_after_build() {
     let java_path = stub.java_path.clone();
     let launcher = builder_for(&stub).build().unwrap();
     std::fs::remove_file(&java_path).unwrap();
-    let error = launcher.launch().unwrap_err();
+    let error = launch(&launcher).unwrap_err();
     assert!(matches!(error, LaunchError::JavaNotFound { path } if path == java_path));
 }
 

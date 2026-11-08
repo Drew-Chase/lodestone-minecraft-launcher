@@ -7,7 +7,7 @@
 
 mod common;
 
-use common::{StubJava, builder_for};
+use common::{StubJava, builder_for, launch};
 use lodestone_launch::{LaunchEvent, Launcher, LogStream};
 
 /// The platform classpath separator.
@@ -16,7 +16,7 @@ const SEPARATOR: char = if cfg!(windows) { ';' } else { ':' };
 /// Launches `launcher`, pumps its event stream to disconnection, and returns
 /// (stdout lines, stderr lines, exit status).
 fn run(launcher: &Launcher) -> (Vec<String>, Vec<String>, std::process::ExitStatus) {
-    let mut process = launcher.launch().unwrap();
+    let mut process = launch(launcher).unwrap();
     let events = process.take_events();
 
     let mut stdout = Vec::new();

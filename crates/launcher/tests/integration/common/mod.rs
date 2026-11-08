@@ -10,6 +10,9 @@
 use std::path::PathBuf;
 use std::process;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, PoisonError};
+
+use lodestone_launch::{GameProcess, LaunchError, Launcher};
 
 /// Marker the echo stub writes to stderr, so tests can assert stderr events.
 pub const STUB_STDERR_LINE: &str = "STUB_STDERR_LINE";
@@ -17,6 +20,17 @@ pub const STUB_STDERR_LINE: &str = "STUB_STDERR_LINE";
 pub const STUB_STARTED_LINE: &str = "STUB_STARTED_LINE";
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+
+/// Keeps stub writes and process launches apart in a test binary. A launch forks this process, and a child forked
+/// while a stub is still open for writing keeps a copy of that file open until it execs, so running the stub fails
+/// with `ETXTBSY` ("text file busy"). A stub is written under this gate, and a launch holds it while it spawns.
+static SPAWN_GATE: Mutex<()> = Mutex::new(());
+
+/// Launches `launcher` under [`SPAWN_GATE`]. The tests start every process through here.
+pub fn launch(launcher: &Launcher) -> Result<GameProcess, LaunchError> {
+    let _gate = SPAWN_GATE.lock().unwrap_or_else(PoisonError::into_inner);
+    launcher.launch()
+}
 
 /// A fake `java` executable plus a valid working directory, both inside a fresh
 /// temporary directory that is removed (best effort) when dropped.
@@ -41,6 +55,8 @@ impl StubJava {
         std::fs::create_dir_all(&dir)?;
         let working_directory = dir.join("work");
         std::fs::create_dir_all(&working_directory)?;
+        // Held until the stub is written, so no launch forks while the stub is open for writing.
+        let _gate = SPAWN_GATE.lock().unwrap_or_else(PoisonError::into_inner);
 
         #[cfg(windows)]
         let java_path = {

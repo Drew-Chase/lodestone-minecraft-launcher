@@ -4,14 +4,14 @@ mod common;
 
 use std::time::Duration;
 
-use common::{STUB_STARTED_LINE, STUB_STDERR_LINE, StubJava, builder_for};
+use common::{STUB_STARTED_LINE, STUB_STDERR_LINE, StubJava, builder_for, launch};
 use lodestone_launch::{LaunchEvent, LogStream};
 
 #[test]
 fn stdout_and_stderr_lines_arrive_as_log_events() {
     let stub = StubJava::echo().unwrap();
     let launcher = builder_for(&stub).game_args(["--echo-me"]).build().unwrap();
-    let mut process = launcher.launch().unwrap();
+    let mut process = launch(&launcher).unwrap();
     let events = process.take_events();
 
     let mut stdout_lines = Vec::new();
@@ -44,7 +44,7 @@ fn stdout_and_stderr_lines_arrive_as_log_events() {
 fn exit_produces_exactly_one_exited_event_last() {
     let stub = StubJava::echo().unwrap();
     let launcher = builder_for(&stub).build().unwrap();
-    let mut process = launcher.launch().unwrap();
+    let mut process = launch(&launcher).unwrap();
     let events = process.take_events();
 
     let mut collected = Vec::new();
@@ -61,7 +61,7 @@ fn exit_produces_exactly_one_exited_event_last() {
 fn try_wait_and_wait_report_the_exit_status() {
     let stub = StubJava::echo().unwrap();
     let launcher = builder_for(&stub).build().unwrap();
-    let mut process = launcher.launch().unwrap();
+    let mut process = launch(&launcher).unwrap();
 
     let mut exited = false;
     for _ in 0..500 {
@@ -81,7 +81,7 @@ fn try_wait_and_wait_report_the_exit_status() {
 fn kill_stops_a_long_running_game_and_the_stream_disconnects() {
     let stub = StubJava::sleeper().unwrap();
     let launcher = builder_for(&stub).build().unwrap();
-    let mut process = launcher.launch().unwrap();
+    let mut process = launch(&launcher).unwrap();
     let events = process.take_events();
 
     // Wait for the stub to announce itself so the kill lands on a live game.
@@ -114,7 +114,7 @@ fn kill_stops_a_long_running_game_and_the_stream_disconnects() {
 fn taking_events_twice_panics() {
     let stub = StubJava::echo().unwrap();
     let launcher = builder_for(&stub).build().unwrap();
-    let mut process = launcher.launch().unwrap();
+    let mut process = launch(&launcher).unwrap();
     let _first = process.take_events();
     let _second = process.take_events();
 }
