@@ -235,3 +235,32 @@ fn a_replacement_that_lands_is_remembered_at_its_new_release() {
     assert_eq!(status.added_version.as_deref(), Some("v2"));
     assert!(!status.adding);
 }
+
+#[test]
+fn a_replaced_jar_is_recorded_at_its_new_release_in_the_cache() {
+    let mut page = mods_page();
+    page.set_added(&[record("a", "p1")]);
+    let newer = ModSource {
+        version_id: "v2".to_string(),
+        file_name: "sodium-2.jar".to_string(),
+        ..record("a", "p1")
+    };
+    page.note_sources(&[newer]);
+    let cached = page
+        .added
+        .get(&("a".to_string(), "modrinth".to_string(), "p1".to_string()))
+        .expect("the project is still added");
+    assert_eq!(cached.version_id, "v2");
+    assert_eq!(cached.file_name, "sodium-2.jar");
+}
+
+#[test]
+fn a_renamed_jar_keeps_its_record_under_the_new_name_and_a_deleted_one_is_forgotten() {
+    let mut page = mods_page();
+    page.set_added(&[record("a", "p1")]);
+    let key = ("a".to_string(), "modrinth".to_string(), "p1".to_string());
+    page.renamed("a", "sodium.jar", "sodium.jar.disabled");
+    assert_eq!(page.added.get(&key).map(|cached| cached.file_name.as_str()), Some("sodium.jar.disabled"));
+    page.forget_source("a", "sodium.jar.disabled");
+    assert!(!page.added.contains_key(&key));
+}

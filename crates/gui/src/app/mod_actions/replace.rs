@@ -61,6 +61,8 @@ impl LodestoneLauncher {
                 for record in &records {
                     mods.apply_source(record.clone());
                 }
+                // The Discover page's cache is what the Versions tab marks as installed, so it takes the new release too.
+                self.discover.note_sources(&records);
                 self.forget_checked(&context.instance.id, &file_name);
                 let mut tasks = vec![self.rescan_mods(), self.load_instances()];
                 if let (Some(own), Some(db)) = (records.first().cloned(), self.db.clone()) {

@@ -68,6 +68,7 @@ impl LodestoneLauncher {
                     return Task::none();
                 };
                 self.instance_page.mods_mut().forget_source(&file_name);
+                self.discover.forget_source(&context.instance.id, &file_name);
                 self.forget_checked(&context.instance.id, &file_name);
                 Task::batch([self.forget_record(&context, file_name), self.rescan_mods(), self.load_instances()])
             }

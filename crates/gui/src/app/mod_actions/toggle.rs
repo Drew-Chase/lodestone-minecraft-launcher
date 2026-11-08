@@ -45,6 +45,9 @@ impl LodestoneLauncher {
         match result {
             Ok(renamed) => {
                 info!("Renamed the mod {file_name} to {renamed}");
+                if let Some(instance) = self.instance_page.instance().map(|instance| instance.id.clone()) {
+                    self.discover.renamed(&instance, &file_name, &renamed);
+                }
                 self.instance_page.mods_mut().renamed(&file_name, &renamed, enabled);
                 if let Some(instance) = self.instance_page.instance().map(|instance| instance.id.clone())
                     && let Some(check) = self.mod_checks.get_mut(&instance)

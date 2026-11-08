@@ -176,6 +176,27 @@ impl Discover {
         }
     }
 
+    /// Keeps the mods the launcher knows came from a platform in step with the database. Each record replaces the one its
+    /// instance, platform and project already had.
+    pub fn note_sources(&mut self, records: &[ModSource]) {
+        self.added.extend(records.iter().map(|record| (key_of(record), record.clone())));
+    }
+
+    /// Forgets the record of the jar `file_name` in `instance`, once the jar is gone.
+    pub fn forget_source(&mut self, instance: &str, file_name: &str) {
+        self.added
+            .retain(|_, record| record.instance != instance || record.file_name != file_name);
+    }
+
+    /// Moves the record of the jar `from` in `instance` to its new name, once the jar is renamed.
+    pub fn renamed(&mut self, instance: &str, from: &str, to: &str) {
+        for record in self.added.values_mut() {
+            if record.instance == instance && record.file_name == from {
+                record.file_name = to.to_string();
+            }
+        }
+    }
+
     /// The filters follow the target instance: its Minecraft version, and on the Mods tab its loader too. The other picks
     /// stay as the user made them.
     pub(super) fn apply_target_filters(&mut self) {

@@ -316,7 +316,11 @@ impl LodestoneLauncher {
             Message::Checked { generation, full, result } if self.mods_fresh(generation) => {
                 self.instance_page.mods_mut().set_checking(false);
                 match result {
-                    Ok(checks) => self.apply_checks(full, checks),
+                    Ok(checks) => {
+                        // The jars just identified are saved, so the Discover cache takes them too.
+                        self.discover.note_sources(&checks.identified);
+                        self.apply_checks(full, checks)
+                    }
                     Err(error) => warn!("checking the mods failed: {error}"),
                 }
                 Task::none()
