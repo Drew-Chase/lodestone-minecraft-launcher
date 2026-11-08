@@ -5,6 +5,16 @@ use tokio::net::TcpListener;
 
 use super::*;
 
+#[test]
+fn the_curseforge_cdn_gets_a_browser_agent_and_no_other_host_does() {
+    assert_eq!(agent_for("https://mediafilez.forgecdn.net/files/9394/38/a.zip"), Some(BROWSER_AGENT));
+    assert_eq!(agent_for("https://edge.forgecdn.net/files/9323/162/a.jar"), Some(BROWSER_AGENT));
+    assert_eq!(agent_for("https://forgecdn.net/files/1/2/a.jar"), Some(BROWSER_AGENT));
+    assert_eq!(agent_for("https://cdn.modrinth.com/data/abc/versions/1/a.jar"), None);
+    assert_eq!(agent_for("https://forgecdn.net.example.com/a.jar"), None);
+    assert_eq!(agent_for("not a url"), None);
+}
+
 /// A one-shot HTTP server that answers every request with `status` and `body`. Returns its address.
 async fn serve(status: &'static str, body: &'static [u8]) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

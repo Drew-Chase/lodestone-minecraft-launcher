@@ -80,11 +80,15 @@ impl std::error::Error for Error {
 /// [`crate::bytes_received`].
 pub async fn fetch(client: &reqwest::Client, target: &Target, mut progress: impl FnMut(u64, Option<u64>)) -> Result<u64, Error> {
     let url = target.url.as_str();
-    let request = |source| Error::Request {
+    let failed = |source| Error::Request {
         url: url.to_string(),
         source,
     };
-    let mut response = client.get(url).send().await.map_err(request)?;
+    let mut get = client.get(url);
+    if let Some(agent) = agent_for(url) {
+        get = get.header(reqwest::header::USER_AGENT, agent);
+    }
+    let mut response = get.send().await.map_err(failed)?;
     let status = response.status();
     if !status.is_success() {
         return Err(Error::Status {
@@ -117,7 +121,7 @@ pub async fn fetch(client: &reqwest::Client, target: &Target, mut progress: impl
     let mut file = tokio::fs::File::create(&part.path).await.map_err(io)?;
     let mut hasher = target.sha1.as_ref().map(|_| Sha1::new());
     let mut received: u64 = 0;
-    while let Some(chunk) = response.chunk().await.map_err(request)? {
+    while let Some(chunk) = response.chunk().await.map_err(failed)? {
         received += chunk.len() as u64;
         if let Some(expected) = target.size
             && received > expected
@@ -160,6 +164,15 @@ pub async fn fetch(client: &reqwest::Client, target: &Target, mut progress: impl
     }
     part.finish(&target.path).await?;
     Ok(received)
+}
+
+/// The user agent CurseForge's file CDN accepts. It turns away the client's own agent, so its downloads present as Firefox.
+const BROWSER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0";
+
+/// The user agent a download from `url` presents: a browser's for a CurseForge CDN host, and the client's own otherwise.
+fn agent_for(url: &str) -> Option<&'static str> {
+    let host = reqwest::Url::parse(url).ok()?.host_str()?.to_ascii_lowercase();
+    (host == "forgecdn.net" || host.ends_with(".forgecdn.net")).then_some(BROWSER_AGENT)
 }
 
 /// The SHA-1 of the file at `path`, as lowercase hex.
