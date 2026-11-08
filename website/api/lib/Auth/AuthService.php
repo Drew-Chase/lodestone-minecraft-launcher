@@ -197,26 +197,26 @@ final class AuthService
         $emailBucket = 'login:email:' . $key;
         $ipBucket = 'login:ip:' . $ip;
 
-        if ($this->limiter->isBlocked($emailBucket, self::LOGIN_LIMIT, self::LOGIN_WINDOW_SECONDS)
-            || $this->limiter->isBlocked($ipBucket, self::LOGIN_LIMIT, self::LOGIN_WINDOW_SECONDS)
-        ) {
-            throw new AuthException('rate_limited', 429, $this->limiter->retryAfter(self::LOGIN_WINDOW_SECONDS));
-        }
+        // Each attempt is counted before its password is checked, so attempts that run at once each count. A check made before
+        // the count let a burst of parallel attempts all pass it. A successful attempt gives its count back to the address.
+        $this->hitOrThrow($emailBucket, self::LOGIN_LIMIT, self::LOGIN_WINDOW_SECONDS);
+        $this->hitOrThrow($ipBucket, self::LOGIN_LIMIT, self::LOGIN_WINDOW_SECONDS);
 
         $user = $this->findLoginUser($key);
         if ($user === null || $user['deleted_at'] !== null || $user['password_hash'] === null) {
             $this->hasher->burnTime();
-            $this->failLogin($emailBucket, $ipBucket, $ip, $user === null ? null : (int) $user['id']);
+            $this->failLogin($ip, $user === null ? null : (int) $user['id']);
         }
 
         $userId = (int) $user['id'];
         $storedHash = (string) $user['password_hash'];
 
         if (!$this->hasher->verify($password, $storedHash)) {
-            $this->failLogin($emailBucket, $ipBucket, $ip, $userId);
+            $this->failLogin($ip, $userId);
         }
 
         $this->limiter->clear($emailBucket);
+        $this->limiter->release($ipBucket, self::LOGIN_WINDOW_SECONDS);
 
         if ($this->hasher->needsRehash($storedHash)) {
             $this->users->setPasswordHash($userId, $this->hasher->hash($password));
@@ -350,10 +350,8 @@ final class AuthService
         string $ip,
     ): void {
         $bucket = 'changepw:user:' . $userId;
-
-        if ($this->limiter->isBlocked($bucket, self::LOGIN_LIMIT, self::LOGIN_WINDOW_SECONDS)) {
-            throw new AuthException('rate_limited', 429, $this->limiter->retryAfter(self::LOGIN_WINDOW_SECONDS));
-        }
+        // Counted before the current password is checked, as a login is.
+        $this->hitOrThrow($bucket, self::LOGIN_LIMIT, self::LOGIN_WINDOW_SECONDS);
 
         $user = $this->users->findById($userId);
         if ($user === null || $user['deleted_at'] !== null) {
@@ -362,10 +360,11 @@ final class AuthService
 
         $storedHash = $user['password_hash'];
         if ($storedHash === null || !$this->hasher->verify($currentPassword, (string) $storedHash)) {
-            $this->limiter->hit($bucket, self::LOGIN_WINDOW_SECONDS);
             $this->audit->record($userId, 'change_password_failed', $ip);
             throw new AuthException('invalid_credentials', 401);
         }
+        // The current password was right, so this attempt does not count against the account.
+        $this->limiter->release($bucket, self::LOGIN_WINDOW_SECONDS);
 
         $this->policy->check($newPassword);
         $this->users->setPasswordHash($userId, $this->hasher->hash($newPassword));
@@ -473,14 +472,12 @@ final class AuthService
     }
 
     /**
-     * Counts the failure against both buckets, audits it without the address, and throws.
+     * Audits a failed login without the address, and throws. The attempt was counted before its password was checked.
      *
      * @throws AuthException invalid_credentials (401)
      */
-    private function failLogin(string $emailBucket, string $ipBucket, string $ip, ?int $userId): never
+    private function failLogin(string $ip, ?int $userId): never
     {
-        $this->limiter->hit($emailBucket, self::LOGIN_WINDOW_SECONDS);
-        $this->limiter->hit($ipBucket, self::LOGIN_WINDOW_SECONDS);
         $this->audit->record($userId, 'login_failed', $ip);
 
         throw new AuthException('invalid_credentials', 401);

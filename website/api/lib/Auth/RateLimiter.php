@@ -52,6 +52,15 @@ final class RateLimiter
         return $count;
     }
 
+    /** Gives back one hit the current window counted, for an attempt that succeeded, so only the failures stay counted. */
+    public function release(string $bucket, int $windowSeconds): void
+    {
+        $statement = Database::pdo()->prepare(
+            'UPDATE rate_limits SET hits = hits - 1 WHERE bucket_key = ? AND window_start = ? AND hits > 0'
+        );
+        $statement->execute([Tokens::hash($bucket), $this->windowStart($windowSeconds)]);
+    }
+
     /** Removes every window of the bucket. */
     public function clear(string $bucket): void
     {
