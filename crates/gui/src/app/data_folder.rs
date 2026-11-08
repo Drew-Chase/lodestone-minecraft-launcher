@@ -184,7 +184,7 @@ impl LodestoneLauncher {
     fn data_busy(&self) -> Option<&'static str> {
         if self.games.any_active() {
             Some(lang::t("data_folder.busy.games"))
-        } else if !self.downloads.pending().is_empty() {
+        } else if self.downloads.has_unfinished() {
             Some(lang::t("data_folder.busy.downloads"))
         } else {
             None

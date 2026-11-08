@@ -431,6 +431,12 @@ impl Downloads {
         self.jobs.iter().any(|job| matches!(job.state, JobState::Queued | JobState::Running))
     }
 
+    /// Whether any job has not ended, of any kind, paused ones included. A data move waits for all of them, because a
+    /// queued, running or paused job holds paths in the folder that would move.
+    pub fn has_unfinished(&self) -> bool {
+        self.jobs.iter().any(|job| !job.ended())
+    }
+
     /// Takes the bytes job `id` moved in its current run, so each run's bytes are counted once.
     pub fn take_bytes(&mut self, id: u64) -> u64 {
         self.job_mut(id).map_or(0, |job| std::mem::take(&mut job.bytes))

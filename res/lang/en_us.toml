@@ -623,7 +623,7 @@ data_folder.failed = "The data could not be moved. {error}"
 data_folder.refused.nested = "The new folder cannot be inside the current one, or hold it."
 data_folder.refused.not_empty = "Pick an empty folder. The one you chose already has files in it."
 data_folder.busy.games = "Stop the running games before moving your data."
-data_folder.busy.downloads = "Wait for the installs and downloads to finish before moving your data."
+data_folder.busy.downloads = "Wait for installs, downloads and exports to finish before moving your data. A paused install must be resumed or cancelled first."
 
 # --- settings page ---
 settings.nav.eyebrow = "Settings"

@@ -286,3 +286,34 @@ fn a_mod_ends_as_done_or_failed_and_is_cleared_with_the_rest() {
     queue.clear_completed();
     assert!(queue.jobs().is_empty());
 }
+
+/// An export of an instance called `name`, written as a zip, as the export dialog would start it.
+fn export_job(name: &str) -> ExportJob {
+    ExportJob {
+        name: name.to_owned(),
+        format: lodestone_export::format::Format::Zip,
+        target: std::path::PathBuf::from(format!("{name}.zip")),
+        cancel: Arc::new(AtomicBool::new(false)),
+        progress: None,
+    }
+}
+
+#[test]
+fn a_data_move_waits_for_every_job_that_has_not_ended() {
+    let mut queue = Downloads::default();
+    assert!(!queue.has_unfinished(), "an empty queue holds nothing");
+
+    let export = queue.enqueue_export(export_job("Build"));
+    assert!(queue.has_unfinished(), "a running export counts");
+    queue.finish(export, Ok(()));
+    assert!(!queue.has_unfinished(), "a finished export does not");
+
+    let install = queue.enqueue(request("Paused"));
+    assert!(queue.has_unfinished(), "a queued install counts");
+    queue.start(install, handle());
+    assert!(queue.pause(install).is_some(), "the running install's handle comes back to be aborted");
+    assert!(queue.has_unfinished(), "a paused install still holds paths in the data folder");
+    assert!(!queue.has_work(), "a paused install is not work, so an update does not wait for it");
+    let _ = queue.cancel(install);
+    assert!(!queue.has_unfinished(), "a cancelled install does not");
+}
