@@ -101,6 +101,18 @@ impl Launcher {
         Self::ALL.into_iter().find(|launcher| launcher.key() == key)
     }
 
+    /// The display names the launcher's uninstall entry may carry, which the registry is searched for.
+    #[cfg(windows)]
+    fn display_names(self) -> &'static [&'static str] {
+        match self {
+            Launcher::Prism => &["Prism Launcher"],
+            Launcher::MultiMc => &["MultiMC"],
+            Launcher::AtLauncher => &["ATLauncher"],
+            Launcher::Modrinth => &["Modrinth App"],
+            Launcher::Minecraft | Launcher::CurseForge => &[],
+        }
+    }
+
     /// The folder that holds this launcher's instances, when `folder` is the launcher's folder or the folder that holds it.
     fn instances_in(self, folder: &Path) -> Option<PathBuf> {
         match self {
