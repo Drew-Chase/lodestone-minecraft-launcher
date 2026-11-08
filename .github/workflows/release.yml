@@ -58,7 +58,8 @@ jobs:
       BASE: ${{ needs.version.outputs.base }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install the pinned toolchain
+        run: rustup show
       - uses: Swatinem/rust-cache@v2
 
       - name: Check the CurseForge key
@@ -107,9 +108,11 @@ jobs:
       BASE: ${{ needs.version.outputs.base }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      # rust-toolchain.toml pins the compiler that cargo uses, so the Mac targets go on that toolchain, not on stable.
+      - name: Install the pinned toolchain and both Mac targets
+        run: |
+          rustup show
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
 
       - name: Check the CurseForge key
@@ -153,7 +156,8 @@ jobs:
       TAG: ${{ needs.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install the pinned toolchain
+        run: rustup show
       - uses: Swatinem/rust-cache@v2
 
       - name: Check the CurseForge key
