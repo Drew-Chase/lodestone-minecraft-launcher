@@ -1,7 +1,6 @@
 //! The Library header row and the instance-list controls: search, filter
 //! tabs and the view switcher.
 
-use crate::app::components::hint::hint;
 use crate::app::components::icon_button::ghost_button_style;
 use crate::app::components::{IconButton, TextButton, input};
 use crate::app::lang;
@@ -24,19 +23,22 @@ fn summary(instances: usize, total_hours: u32) -> String {
     lang::t_with("library.summary", &[("instances", count.as_str()), ("hours", hours.as_str())])
 }
 
-/// The update button: a download icon, hinted with what the update is doing. It is disabled while the update is
-/// downloading or installing.
+/// The update button: a primary button with a download icon, labelled with what the update is doing. It reads "Update
+/// Available" while an update is offered, and it is disabled while an update is downloading for an install or installing.
 fn update_button(update: Button) -> Element<'static, Message> {
-    hint(
-        IconButton::new(Icon::lucide().download())
-            .size(36)
-            .radius(12.0)
-            .icon_size(16.0)
-            .style(ghost_button_style())
-            .disabled(!update.enabled)
-            .on_press(Message::UpdatePressed),
-        update.tooltip,
+    TextButton::content(
+        row![
+            icon(Icon::lucide().download(), 14.0, color::primary_on(), 1.0),
+            Text::new(update.label).size(13).font(fonts::Inter::BOLD).color(color::primary_on()),
+        ]
+        .spacing(8)
+        .align_y(alignment::Vertical::Center),
     )
+    .variant(crate::app::components::button::Variant::Primary)
+    .padding(Padding::new(0.0).left(18).right(18).top(12).bottom(12))
+    .on_press(Message::UpdatePressed)
+    .disabled(!update.enabled)
+    .into()
 }
 
 impl Library {

@@ -41,13 +41,63 @@ fn an_available_update_is_a_button_that_can_be_pressed() {
 }
 
 #[test]
-fn a_download_or_an_install_disables_the_button() {
+fn a_download_the_user_waits_on_or_an_install_disables_the_button() {
     let downloading = Status::Downloading {
         release: release(),
-        install: false,
+        install: true,
     };
     assert!(!installing_copy(downloading).button().expect("a button").enabled);
     assert!(!installing_copy(Status::Installing(verified())).button().expect("a button").enabled);
+}
+
+#[test]
+fn an_offered_update_reads_update_available_and_stays_pressable() {
+    let background = Status::Downloading {
+        release: release(),
+        install: false,
+    };
+    for status in [Status::Available(release()), Status::Ready(verified()), background] {
+        let button = installing_copy(status).button().expect("a button");
+        assert_eq!(button.label, lang::t("updater.button.available"));
+        assert!(button.enabled);
+    }
+}
+
+#[test]
+fn the_button_names_what_an_install_in_progress_is_doing() {
+    let downloading = Status::Downloading {
+        release: release(),
+        install: true,
+    };
+    assert_eq!(
+        installing_copy(downloading).button().expect("a button").label,
+        lang::t("updater.button.downloading")
+    );
+    assert_eq!(
+        installing_copy(Status::Installing(verified())).button().expect("a button").label,
+        lang::t("updater.button.installing")
+    );
+}
+
+#[test]
+fn an_offered_update_opens_its_changelog_and_a_download_the_user_waits_on_does_not() {
+    let with_dialog = |status| Updater {
+        status,
+        dialog: Some(markdown::Content::parse("## Changes\n\n- A fix")),
+        etag: None,
+        target: Target::Installer,
+    };
+    let background = Status::Downloading {
+        release: release(),
+        install: false,
+    };
+    assert!(with_dialog(background).modal().is_some());
+    assert!(with_dialog(Status::Ready(verified())).modal().is_some());
+    let waited_on = Status::Downloading {
+        release: release(),
+        install: true,
+    };
+    assert!(with_dialog(waited_on).modal().is_none());
 }
 
 #[test]

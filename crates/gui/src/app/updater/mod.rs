@@ -1,7 +1,7 @@
 //! The update check. At launch the launcher asks GitHub for a newer release. Where this copy can install it, the release's
-//! file downloads in the background when Auto-update Lodestone is on, and the update button installs it when the user
-//! presses it. Where this copy cannot, the button opens the release page. The Settings page decides whether the download
-//! runs in the background, and whether prereleases count.
+//! file downloads in the background when Auto-update Lodestone is on, and the update button opens its changelog, whose
+//! Update installs it. Where this copy cannot, that Update opens the release page. The Settings page decides whether the
+//! download runs in the background, and whether prereleases count.
 
 mod target;
 mod tasks;
@@ -37,7 +37,7 @@ pub enum Message {
     Checked(Result<Answer, String>),
     /// The release's file was downloaded, checked and unpacked, or the download failed.
     Downloaded(Result<Verified, String>),
-    /// The update button was pressed. A newer release opens its changelog, and a downloaded one is installed.
+    /// The update button was pressed. An offered release opens its changelog, whose Update starts or finishes the install.
     Pressed,
     /// The changelog's Update button was pressed.
     Confirm,
@@ -72,12 +72,24 @@ pub enum Status {
     /// The file is downloading, and its checksum is not yet checked. `install` is set when the changelog's Update button
     /// asked for the install that follows the download.
     Downloading { release: Release, install: bool },
-    /// The verified file waits for the user to press the button.
+    /// The verified file waits. The button opens its changelog, whose Update installs it.
     Ready(Verified),
     /// The update is being put in place, and the launcher is about to restart.
     Installing(Verified),
     /// The update could not be fetched or checked. It is dropped until the next launch.
     Failed(String),
+}
+
+impl Status {
+    /// The release of an offered update: waiting, downloading in the background, or downloaded. The button opens its
+    /// changelog for each of these.
+    fn offered(&self) -> Option<&Release> {
+        match self {
+            Self::Available(release) | Self::Downloading { release, install: false } => Some(release),
+            Self::Ready(verified) => Some(&verified.release),
+            Self::Idle | Self::Downloading { install: true, .. } | Self::Installing(_) | Self::Failed(_) => None,
+        }
+    }
 }
 
 /// The update check's state, kept by the root.
@@ -92,12 +104,12 @@ pub struct Updater {
     target: Target,
 }
 
-/// What the topbar's update button shows: its hint, and whether a press does anything.
+/// What the topbar's update button shows: its label, and whether a press does anything.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Button {
-    /// The hint that says what the update is doing.
-    pub tooltip: &'static str,
-    /// Whether a press acts. A download or an install in progress cannot be pressed.
+    /// The label that says what the update is doing.
+    pub label: &'static str,
+    /// Whether a press acts. A download the user is waiting on, and an install in progress, cannot be pressed.
     pub enabled: bool,
 }
 
@@ -117,24 +129,22 @@ impl Updater {
         self.target.installs()
     }
 
-    /// The topbar button for the current status, or none when there is no update to show.
+    /// The topbar button for the current status, or none when there is no update to show. An offered update reads as
+    /// available, whether it is waiting, downloading in the background, or downloaded.
     pub fn button(&self) -> Option<Button> {
-        let (tooltip, enabled) = match &self.status {
+        let (label, enabled) = match &self.status {
             Status::Idle | Status::Failed(_) => return None,
-            Status::Available(_) => (lang::t("updater.button.available"), true),
-            Status::Downloading { .. } => (lang::t("updater.button.downloading"), false),
-            Status::Ready(_) => (lang::t("updater.button.ready"), true),
+            Status::Available(_) | Status::Ready(_) | Status::Downloading { install: false, .. } => (lang::t("updater.button.available"), true),
+            Status::Downloading { install: true, .. } => (lang::t("updater.button.downloading"), false),
             Status::Installing(_) => (lang::t("updater.button.installing"), false),
         };
-        Some(Button { tooltip, enabled })
+        Some(Button { label, enabled })
     }
 
-    /// The changelog dialog for a newer release, while it is open. Its footer has Update, which starts the update, and Cancel.
+    /// The changelog dialog for an offered release, while it is open. Its footer has Update, which starts the update, and Cancel.
     pub fn modal(&self) -> Option<Element<'_, Message>> {
         let notes = self.dialog.as_ref()?;
-        let Status::Available(release) = &self.status else {
-            return None;
-        };
+        let release = self.status.offered()?;
         let body: Element<'_, Message> = if release.body.trim().is_empty() {
             text(lang::t("updater.dialog.no_notes"))
                 .size(14)
@@ -299,27 +309,30 @@ impl LodestoneLauncher {
         if install { self.install_now() } else { Task::none() }
     }
 
-    /// The button was pressed. A newer release opens its changelog, where Update starts the download. A downloaded one is
-    /// installed, after a question when something is still running.
+    /// The button was pressed. An offered release opens its changelog, whether it is waiting, downloading or downloaded. Its
+    /// Update button starts or finishes the install.
     fn pressed(&mut self) -> Task<LodestoneAppMessage> {
-        match self.updater.status.clone() {
-            Status::Available(release) => {
-                info!("Showing the changelog of {}", release.tag);
-                self.updater.dialog = Some(markdown::Content::parse(&release.body));
-                Task::none()
-            }
-            Status::Ready(_) => self.install_now(),
-            _ => Task::none(),
-        }
+        let Some(release) = self.updater.status.offered().cloned() else {
+            return Task::none();
+        };
+        info!("Showing the changelog of {}", release.tag);
+        self.updater.dialog = Some(markdown::Content::parse(&release.body));
+        Task::none()
     }
 
-    /// The changelog's Update button. A copy that can install downloads the release and installs it. Any other copy opens
-    /// the release page.
+    /// The changelog's Update button. A copy that can install downloads the release and installs it. A download already under
+    /// way installs once it finishes, and a downloaded release installs now, after a question when something is still running.
+    /// Any other copy opens the release page.
     fn confirm(&mut self) -> Task<LodestoneAppMessage> {
         self.updater.dialog = None;
         match self.updater.status.clone() {
             Status::Available(release) if self.updater.installs() => self.download(release, true),
             Status::Available(release) => super::instances::open_source(release.html_url),
+            Status::Downloading { release, install: false } => {
+                self.updater.status = Status::Downloading { release, install: true };
+                Task::none()
+            }
+            Status::Ready(_) => self.install_now(),
             _ => Task::none(),
         }
     }
