@@ -140,3 +140,30 @@ fn the_binary_inside_the_bundle_is_executable() {
     assert_eq!(mode & 0o777, 0o755);
     let _ = fs::remove_dir_all(&root);
 }
+
+#[test]
+fn the_image_is_sized_with_room_to_spare() {
+    assert_eq!(image_size_mb(0), 64);
+    assert_eq!(image_size_mb(1), 65);
+    assert_eq!(image_size_mb(100 * 1024 * 1024), 100 + 50 + 64);
+}
+
+#[test]
+fn staged_files_are_summed_through_their_folders() {
+    let root = scratch("staged-bytes");
+    fs::create_dir_all(root.join("app/Contents/MacOS")).expect("folders");
+    fs::write(root.join("app/Contents/MacOS/lodestone_launcher"), vec![0u8; 1000]).expect("file");
+    fs::write(root.join("app/Info.plist"), vec![0u8; 2345]).expect("file");
+    assert_eq!(dir_bytes(&root).expect("sums"), 3345);
+    fs::remove_dir_all(&root).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn symbolic_links_add_no_bytes() {
+    let root = scratch("staged-links");
+    fs::write(root.join("file"), vec![0u8; 10]).expect("file");
+    std::os::unix::fs::symlink("/Applications", root.join("Applications")).expect("link");
+    assert_eq!(dir_bytes(&root).expect("sums"), 10);
+    fs::remove_dir_all(&root).ok();
+}

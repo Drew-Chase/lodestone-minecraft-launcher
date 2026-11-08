@@ -160,6 +160,8 @@ pub fn make_dmg(app: &Path, staging: &Path, dmg: &Path) -> Result<(), String> {
     let staged_app = staging.join(format!("{APP_NAME}.app"));
     run("ditto", &[app.as_os_str(), staged_app.as_os_str()])?;
     std::os::unix::fs::symlink("/Applications", staging.join("Applications")).map_err(|error| io_error(staging, error))?;
+    // hdiutil's own estimate can fall short of the staged files, so the image is sized explicitly.
+    let size = format!("{}m", image_size_mb(dir_bytes(staging).map_err(|error| io_error(staging, error))?));
     run(
         "hdiutil",
         &[
@@ -168,6 +170,8 @@ pub fn make_dmg(app: &Path, staging: &Path, dmg: &Path) -> Result<(), String> {
             OsStr::new(APP_NAME),
             OsStr::new("-srcfolder"),
             staging.as_os_str(),
+            OsStr::new("-size"),
+            OsStr::new(&size),
             OsStr::new("-ov"),
             OsStr::new("-format"),
             OsStr::new("UDZO"),
@@ -175,6 +179,31 @@ pub fn make_dmg(app: &Path, staging: &Path, dmg: &Path) -> Result<(), String> {
         ],
     )?;
     fs::remove_dir_all(staging).map_err(|error| io_error(staging, error))
+}
+
+/// The bytes of the files under `path`. Symbolic links count as nothing, so the Applications link adds no weight.
+#[cfg(any(target_os = "macos", test))]
+fn dir_bytes(path: &Path) -> std::io::Result<u64> {
+    let mut total = 0;
+    for entry in fs::read_dir(path)? {
+        let entry_path = entry?.path();
+        let meta = fs::symlink_metadata(&entry_path)?;
+        total += if meta.is_dir() {
+            dir_bytes(&entry_path)?
+        } else if meta.is_file() {
+            meta.len()
+        } else {
+            0
+        };
+    }
+    Ok(total)
+}
+
+/// The disk image's size in megabytes for `bytes` of staged files: half as much again, plus 64 MB of slack.
+#[cfg(any(target_os = "macos", test))]
+fn image_size_mb(bytes: u64) -> u64 {
+    let mb = bytes.div_ceil(1024 * 1024);
+    mb + mb / 2 + 64
 }
 
 /// The disk image needs `hdiutil`, which only macOS has.
