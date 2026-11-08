@@ -274,14 +274,14 @@ impl Platform<CurseForge> {
         Self::build(Some(key.into()), http::client())
     }
 
-    /// The CDN url of one file of a project, which a modpack's file list names by id. Fails when the
-    /// file's author disabled distribution.
+    /// The url one file of a project downloads from, which a modpack's file list names by id: the file record's, or else
+    /// the file's direct CDN address.
     pub async fn file_url(&self, project_id: &str, file_id: &str) -> Result<String, PlatformError> {
         curseforge::file_url(self.credential.as_deref(), project_id, file_id).await
     }
 
-    /// One file of a project: its name, its download url, and its sha1 and size. A file whose listing hides its
-    /// url is resolved through the download-link endpoint.
+    /// One file of a project: its name, its download url, and its sha1 and size. A file whose record gives no url gets its
+    /// direct CDN address.
     pub async fn file(&self, project_id: &str, file_id: &str) -> Result<ContentFile, PlatformError> {
         curseforge::file(self.credential.as_deref(), project_id, file_id).await
     }

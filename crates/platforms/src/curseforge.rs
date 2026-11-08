@@ -15,12 +15,21 @@ use tokio::sync::mpsc::Sender;
 
 use crate::PlatformKind;
 use crate::error::PlatformError;
-use crate::http::{download_files, file_target, get_json, post_json, with_query};
+use crate::http::{download_files, file_target, get_json, with_query};
 use crate::meta::{
     CategoryGroup, Channel, ContentDetails, ContentFile, ContentType, ContentVersion, Creator, DependencyKind, DescriptionFormat, Facet, Facets,
     GalleryImage, ProjectInfo, ProjectLinks, SearchPage, SearchQuery, SearchResult, SearchSort, VersionDependency, banner_from,
 };
 use crate::sealed;
+
+mod cdn;
+mod fingerprint;
+
+use cdn::direct_url;
+pub use fingerprint::FingerprintMatch;
+pub(crate) use fingerprint::fingerprint_match;
+#[cfg(test)]
+use fingerprint::fingerprint_match_of;
 
 /// Marker for CurseForge (https://www.curseforge.com). Requires an API key —
 /// see [`Platform::<CurseForge>::with_api_key`](crate::Platform::with_api_key).
@@ -43,24 +52,19 @@ fn class_id(content: ContentType) -> Option<u32> {
         ContentType::Modpack => Some(4471),
         ContentType::ResourcePack => Some(12),
         ContentType::World => Some(17),
-        ContentType::Shader | ContentType::DataPack => None,
+        ContentType::Shader => Some(6552),
+        ContentType::DataPack => Some(6945),
     }
 }
 
-/// CurseForge's `modLoader` int values → loader names.
-fn loader_name(mod_loader: Option<i64>) -> Vec<String> {
-    match mod_loader {
-        Some(1) => vec!["forge".to_string()],
-        Some(4) => vec!["neoforge".to_string()],
-        Some(5) => vec!["fabric".to_string()],
-        Some(6) => vec!["quilt".to_string()],
-        _ => Vec::new(),
-    }
+/// Whether a content type takes a loader on CurseForge. Only mods and modpacks are built for one: a resource pack, a world,
+/// a shader or a datapack names no loader, so a loader filter would match nothing.
+fn takes_loader(content: ContentType) -> bool {
+    matches!(content, ContentType::Mod | ContentType::Modpack)
 }
 
-/// The loader names a search filters by, paired with CurseForge's `modLoaderType`
-/// values. The inverse of [`loader_name`].
-const LOADERS: [(&str, u32); 4] = [("forge", 1), ("neoforge", 4), ("fabric", 5), ("quilt", 6)];
+/// The loader names a search filters by, paired with CurseForge's `modLoaderType` values.
+const LOADERS: [(&str, u32); 4] = [("forge", 1), ("fabric", 4), ("quilt", 5), ("neoforge", 6)];
 
 /// CurseForge's `sortField` values, one per [`SearchSort`].
 fn sort_field(sort: SearchSort) -> u32 {
@@ -226,13 +230,17 @@ struct CfFile {
     hashes: Vec<CfHash>,
     #[serde(rename = "gameVersions", default)]
     game_versions: Vec<String>,
-    #[serde(rename = "modLoader", default)]
-    mod_loader: Option<i64>,
     #[serde(rename = "fileDate", default)]
     file_date: Option<String>,
     /// `1` is a release, `2` a beta, `3` an alpha.
     #[serde(rename = "releaseType", default)]
     release_type: Option<i64>,
+    /// How many times the file has been downloaded.
+    #[serde(rename = "downloadCount", default)]
+    download_count: u64,
+    /// Whether the file is available to download. A file that is not is left out of the releases.
+    #[serde(rename = "isAvailable", default)]
+    is_available: Option<bool>,
     #[serde(default)]
     dependencies: Vec<CfDependency>,
 }
@@ -272,9 +280,17 @@ struct CfFileEnvelope {
     data: CfFile,
 }
 
-#[derive(Debug, Deserialize)]
-struct CfDownloadLink {
-    data: String,
+/// The link a file record gives, or else the file's direct CDN address, built from its id and name. An empty url counts as
+/// none.
+fn download_link(record_url: Option<String>, file_id: i64, file_name: &str) -> String {
+    record_url
+        .filter(|link| !link.is_empty())
+        .unwrap_or_else(|| direct_url(file_id, file_name))
+}
+
+/// The files a listing keeps: those CurseForge says are available to download. A file that says nothing is kept.
+fn available(files: Vec<CfFile>) -> Vec<CfFile> {
+    files.into_iter().filter(|file| file.is_available != Some(false)).collect()
 }
 
 /// The banner a CurseForge project shows: its first screenshot. CurseForge marks no featured one.
@@ -343,6 +359,36 @@ fn mod_to_search_result(mod_: CfMod, content: ContentType) -> SearchResult {
     }
 }
 
+/// The Minecraft versions in a file's `gameVersions`. CurseForge lists the loaders a file runs on, and its environments, there
+/// too, so only the entries that read as a version are kept.
+fn minecraft_versions_of(game_versions: &[String]) -> Vec<String> {
+    game_versions
+        .iter()
+        .filter(|entry| reads_as_minecraft_version(entry.as_str()))
+        .cloned()
+        .collect()
+}
+
+/// Whether a `gameVersions` entry is a Minecraft version: one that starts with a digit, or an old alpha, beta or classic name
+/// (`a`, `b` or `c` followed by a digit). A loader, an environment or a Java requirement is not.
+fn reads_as_minecraft_version(entry: &str) -> bool {
+    let mut chars = entry.chars();
+    match (chars.next(), chars.next()) {
+        (Some(first), _) if first.is_ascii_digit() => true,
+        (Some('a' | 'b' | 'c'), Some(second)) => second.is_ascii_digit(),
+        _ => false,
+    }
+}
+
+/// The loaders in a file's `gameVersions`, named as the search names them: `forge`, `neoforge`, `fabric` or `quilt`.
+fn loaders_of(game_versions: &[String]) -> Vec<String> {
+    game_versions
+        .iter()
+        .map(|entry| entry.to_ascii_lowercase())
+        .filter(|entry| LOADERS.iter().any(|(name, _)| *name == entry.as_str()))
+        .collect()
+}
+
 fn file_to_content_version(project_id: &str, file: CfFile, content: ContentType) -> ContentVersion {
     ContentVersion {
         id: file.id.to_string(),
@@ -350,9 +396,9 @@ fn file_to_content_version(project_id: &str, file: CfFile, content: ContentType)
         name: file.display_name.clone(),
         version_number: file.display_name.unwrap_or(file.file_name.clone()),
         content_type: content,
-        minecraft_versions: file.game_versions,
-        loaders: loader_name(file.mod_loader),
-        downloads: 0,
+        minecraft_versions: minecraft_versions_of(&file.game_versions),
+        loaders: loaders_of(&file.game_versions),
+        downloads: file.download_count,
         date: file.file_date,
         changelog_url: None,
         files: vec![ContentFile {
@@ -381,7 +427,14 @@ fn file_to_content_version(project_id: &str, file: CfFile, content: ContentType)
 impl sealed::Sealed for CurseForge {}
 impl PlatformKind for CurseForge {
     const NAME: &'static str = "curseforge";
-    const CONTENT_TYPES: &'static [ContentType] = &[ContentType::Mod, ContentType::Modpack, ContentType::ResourcePack, ContentType::World];
+    const CONTENT_TYPES: &'static [ContentType] = &[
+        ContentType::Mod,
+        ContentType::Modpack,
+        ContentType::ResourcePack,
+        ContentType::World,
+        ContentType::Shader,
+        ContentType::DataPack,
+    ];
     const SUPPORTS_MODPACK_ARCHIVE: bool = true;
 
     async fn search(_http: &reqwest::Client, credential: Option<&str>, query: &SearchQuery) -> Result<SearchPage, PlatformError> {
@@ -401,11 +454,8 @@ impl PlatformKind for CurseForge {
         if let Some(category) = query.categories.first() {
             path = with_query(&path, "categoryId", category);
         }
-        if let Some((_, id)) = query
-            .loaders
-            .first()
-            .and_then(|loader| LOADERS.iter().find(|(name, _)| *name == loader.as_str()))
-        {
+        let loader = query.loaders.first().filter(|_| takes_loader(query.content));
+        if let Some((_, id)) = loader.and_then(|loader| LOADERS.iter().find(|(name, _)| *name == loader.as_str())) {
             path = format!("{path}&modLoaderType={id}");
         }
         if let Some(version) = query.game_versions.first() {
@@ -450,7 +500,11 @@ impl PlatformKind for CurseForge {
         };
         Ok(Facets {
             category_groups,
-            loaders: LOADERS.iter().map(|(name, _)| (*name).to_string()).collect(),
+            loaders: if takes_loader(content) {
+                LOADERS.iter().map(|(name, _)| (*name).to_string()).collect()
+            } else {
+                Vec::new()
+            },
             game_versions: versions.data.into_iter().map(|version| version.version_string).collect(),
             snapshot_versions: Vec::new(),
             // CurseForge's search takes one value per filter, so the page keeps one pick per section.
@@ -546,12 +600,15 @@ impl PlatformKind for CurseForge {
                 break;
             }
         }
-        Ok(files.into_iter().map(|file| file_to_content_version(id, file, content)).collect())
+        Ok(available(files)
+            .into_iter()
+            .map(|file| file_to_content_version(id, file, content))
+            .collect())
     }
 
     async fn download(
         http: &reqwest::Client,
-        credential: Option<&str>,
+        _credential: Option<&str>,
         version: &ContentVersion,
         into: &Path,
         progress: Option<&Sender<DownloadProgress>>,
@@ -559,19 +616,12 @@ impl PlatformKind for CurseForge {
         let mut files = Vec::new();
         for file in &version.files {
             let url = if file.url.is_empty() {
-                // Some files hide their download url; the download-link
-                // endpoint resolves the CDN url. That needs the project id,
-                // which `versions()` always attaches for CurseForge.
-                let Some(project_id) = version.project_id.as_deref() else {
-                    return Err(PlatformError::Download {
-                        url: file.name.clone(),
-                        source: "the download url is hidden and the version carries no project id to resolve it".into(),
-                    });
-                };
-                let (url, client) = request(credential, &format!("/mods/{project_id}/files/{}/download-link", version.id))?;
-                let response = get_json(&client, &url).await?;
-                let link: CfDownloadLink = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
-                link.data
+                // The listing names no url for this file, so its direct CDN address is built from its id and name.
+                let file_id: i64 = version.id.parse().map_err(|_| PlatformError::Download {
+                    url: file.name.clone(),
+                    source: "the file id is not a number".into(),
+                })?;
+                direct_url(file_id, &file.name)
             } else {
                 file.url.clone()
             };
@@ -585,14 +635,11 @@ impl PlatformKind for CurseForge {
     }
 }
 
-/// The CDN url of one file of a project. Modpack files name their mods by project and file id, and
-/// each id resolves here when the modpack is installed. A file whose author disabled distribution has
-/// no url, and the call fails. Reached through `Platform::<CurseForge>::file_url`.
+/// The url one file of a project downloads from: the one CurseForge's file record gives, or else the file's direct CDN
+/// address. Modpack files name their mods by project and file id, and each id resolves here when the modpack is installed.
+/// Reached through `Platform::<CurseForge>::file_url`.
 pub(crate) async fn file_url(credential: Option<&str>, project_id: &str, file_id: &str) -> Result<String, PlatformError> {
-    let (url, client) = request(credential, &format!("/mods/{project_id}/files/{file_id}/download-link"))?;
-    let response = get_json(&client, &url).await?;
-    let link: CfDownloadLink = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
-    Ok(link.data)
+    Ok(file(credential, project_id, file_id).await?.url)
 }
 
 /// The files of a project that run on a Minecraft version and a loader, newest first. CurseForge filters the files
@@ -614,25 +661,21 @@ pub(crate) async fn fitting_files(
     let (url, client) = request(credential, &path)?;
     let response = get_json(&client, &url).await?;
     let list: CfFileList = serde_json::from_value(response).map_err(|source| PlatformError::Json { url: url.clone(), source })?;
-    Ok(list
-        .data
+    Ok(available(list.data)
         .into_iter()
         .map(|file| file_to_content_version(project_id, file, ContentType::Mod))
         .collect())
 }
 
-/// One file of a project: its name, its download url, and its sha1 and size. A file whose listing hides its url
-/// is resolved through the download-link endpoint. Reached through `Platform::<CurseForge>::file`.
+/// One file of a project: its name, its download url, and its sha1 and size. A file whose record gives no url gets its
+/// direct CDN address. Reached through `Platform::<CurseForge>::file`.
 pub(crate) async fn file(credential: Option<&str>, project_id: &str, file_id: &str) -> Result<ContentFile, PlatformError> {
     let (url, client) = request(credential, &format!("/mods/{project_id}/files/{file_id}"))?;
     let response = get_json(&client, &url).await?;
     let file = serde_json::from_value::<CfFileEnvelope>(response)
         .map_err(|source| PlatformError::Json { url: url.clone(), source })?
         .data;
-    let download = match file.download_url.filter(|link| !link.is_empty()) {
-        Some(link) => link,
-        None => file_url(credential, project_id, file_id).await?,
-    };
+    let download = download_link(file.download_url, file.id, &file.file_name);
     Ok(ContentFile {
         name: file.file_name,
         url: download,
@@ -640,67 +683,6 @@ pub(crate) async fn file(credential: Option<&str>, project_id: &str, file_id: &s
         size: Some(file.file_length),
         primary: true,
     })
-}
-
-/// The CurseForge file a fingerprint names: the file's project, and the file's own id. Both are CurseForge's ids as text.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FingerprintMatch {
-    /// The project's id on CurseForge.
-    pub project_id: String,
-    /// The file's id on CurseForge.
-    pub file_id: String,
-}
-
-/// The fingerprint endpoint's answer. Only the exact matches are read: each names a file by its own record.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CfFingerprintEnvelope {
-    data: CfFingerprintData,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CfFingerprintData {
-    #[serde(default)]
-    exact_matches: Vec<CfFingerprintMatch>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CfFingerprintMatch {
-    #[serde(default)]
-    file: Option<CfFingerprintFile>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CfFingerprintFile {
-    id: u64,
-    mod_id: u64,
-}
-
-/// The CurseForge file a fingerprint names, when CurseForge has one. It asks about one fingerprint at a time, so every exact
-/// match in the answer is a match for it. Reached through `Platform::<CurseForge>::fingerprint_match`.
-pub(crate) async fn fingerprint_match(credential: Option<&str>, fingerprint: u32) -> Result<Option<FingerprintMatch>, PlatformError> {
-    let (url, client) = request(credential, &format!("/fingerprints/{MINECRAFT_GAME_ID}"))?;
-    let body = serde_json::json!({ "fingerprints": [fingerprint] });
-    let response = post_json(&client, &url, &body).await?;
-    fingerprint_match_of(response, &url)
-}
-
-/// The first exact match of a fingerprint answer that names its file, or `None` when CurseForge names none.
-fn fingerprint_match_of(response: serde_json::Value, url: &str) -> Result<Option<FingerprintMatch>, PlatformError> {
-    let envelope: CfFingerprintEnvelope = serde_json::from_value(response).map_err(|source| PlatformError::Json {
-        url: url.to_string(),
-        source,
-    })?;
-    Ok(envelope.data.exact_matches.into_iter().find_map(|hit| {
-        let file = hit.file?;
-        Some(FingerprintMatch {
-            project_id: file.mod_id.to_string(),
-            file_id: file.id.to_string(),
-        })
-    }))
 }
 
 #[cfg(test)]

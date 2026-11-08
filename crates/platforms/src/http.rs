@@ -206,7 +206,7 @@ pub(crate) fn with_query(url: &str, key: &str, value: &str) -> String {
 
 /// Percent-encodes everything outside the unreserved set — enough for query
 /// values like search terms.
-fn percent_encode(value: &str) -> String {
+pub(crate) fn percent_encode(value: &str) -> String {
     let mut encoded = String::with_capacity(value.len());
     for byte in value.bytes() {
         match byte {

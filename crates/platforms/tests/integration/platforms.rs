@@ -54,12 +54,11 @@ async fn capability_matrix_gates_content_types() {
         }
     ));
 
-    let platform = Platform::<CurseForge>::new();
     let error = platform.search(&query("anything", ContentType::Shader)).await.expect_err("out of matrix");
     assert!(matches!(
         error,
         PlatformError::UnsupportedContentType {
-            platform: "curseforge",
+            platform: "atlauncher",
             content: ContentType::Shader
         }
     ));
@@ -68,10 +67,18 @@ async fn capability_matrix_gates_content_types() {
     assert!(matches!(
         error,
         PlatformError::UnsupportedContentType {
-            platform: "curseforge",
+            platform: "atlauncher",
             content: ContentType::DataPack
         }
     ));
+
+    // CurseForge hosts shaders and datapacks, so the gate lets them through. With no key the call stops before the network.
+    let platform = Platform::<CurseForge>::new();
+    let error = platform
+        .search(&query("anything", ContentType::Shader))
+        .await
+        .expect_err("no key, so no call");
+    assert!(matches!(error, PlatformError::UnexpectedResponse { status: 401, .. }));
 }
 
 #[test]

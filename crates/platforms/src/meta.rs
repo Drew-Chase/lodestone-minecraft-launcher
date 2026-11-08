@@ -338,8 +338,7 @@ pub struct ContentFile {
 pub struct ContentVersion {
     /// The platform's stable version id — store this, not the display name.
     pub id: String,
-    /// The owning project's id, when follow-up calls need it (CurseForge's
-    /// download-link resolution) — `None` elsewhere.
+    /// The owning project's id, when the platform's version record names one — `None` elsewhere.
     pub project_id: Option<String>,
     /// The release's display name, when the platform provides one.
     pub name: Option<String>,

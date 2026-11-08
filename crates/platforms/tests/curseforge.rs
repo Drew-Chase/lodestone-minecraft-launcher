@@ -27,9 +27,9 @@ const FILES: &str = r#"{
             "fileName": "testmod-1.0.0.jar",
             "downloadUrl": "https://mediafilez.forgecdn.net/files/testmod-1.0.0.jar",
             "fileLength": 123456,
+            "downloadCount": 4321,
             "hashes": [{ "value": "abc", "algo": 1 }],
             "gameVersions": ["1.20.1", "Forge"],
-            "modLoader": 1,
             "fileDate": "2026-01-01T00:00:00Z"
         },
         {
@@ -38,8 +38,7 @@ const FILES: &str = r#"{
             "fileName": "testmod-1.0.0-neo.jar",
             "downloadUrl": "",
             "fileLength": 234567,
-            "gameVersions": ["1.20.1"],
-            "modLoader": 4,
+            "gameVersions": ["1.20.1", "NeoForge", "Client"],
             "fileDate": "2026-01-02T00:00:00Z"
         }
     ],
@@ -52,25 +51,45 @@ fn class_ids_cover_the_curseforge_classes() {
     assert_eq!(class_id(ContentType::Modpack), Some(4471));
     assert_eq!(class_id(ContentType::ResourcePack), Some(12));
     assert_eq!(class_id(ContentType::World), Some(17));
-    assert_eq!(class_id(ContentType::Shader), None);
-    assert_eq!(class_id(ContentType::DataPack), None);
+    assert_eq!(class_id(ContentType::Shader), Some(6552));
+    assert_eq!(class_id(ContentType::DataPack), Some(6945));
 }
 
 #[test]
-fn loader_ints_map_to_loader_names() {
-    assert_eq!(loader_name(Some(1)), ["forge"]);
-    assert_eq!(loader_name(Some(4)), ["neoforge"]);
-    assert_eq!(loader_name(Some(5)), ["fabric"]);
-    assert_eq!(loader_name(Some(6)), ["quilt"]);
-    assert!(loader_name(Some(0)).is_empty(), "Any");
-    assert!(loader_name(None).is_empty());
+fn curseforge_hosts_shaders_and_data_packs() {
+    assert!(CurseForge::CONTENT_TYPES.contains(&ContentType::Shader));
+    assert!(CurseForge::CONTENT_TYPES.contains(&ContentType::DataPack));
 }
 
 #[test]
-fn every_search_loader_round_trips_through_its_mod_loader_int() {
-    for (name, id) in LOADERS {
-        assert_eq!(loader_name(Some(i64::from(id))), [name]);
+fn only_mods_and_modpacks_take_a_loader() {
+    assert!(takes_loader(ContentType::Mod));
+    assert!(takes_loader(ContentType::Modpack));
+    for content in [ContentType::ResourcePack, ContentType::World, ContentType::Shader, ContentType::DataPack] {
+        assert!(!takes_loader(content), "{content} takes no loader");
     }
+}
+
+#[test]
+fn a_files_loaders_are_the_loader_names_in_its_game_versions() {
+    assert_eq!(loaders_of(&["1.20.1".to_string(), "Forge".to_string()]), ["forge"]);
+    assert_eq!(loaders_of(&["NeoForge".to_string(), "Client".to_string()]), ["neoforge"]);
+    assert!(loaders_of(&["1.20.1".to_string(), "Datapack".to_string()]).is_empty());
+}
+
+#[test]
+fn every_search_loader_is_named_in_a_files_game_versions() {
+    for (name, _) in LOADERS {
+        let display = format!("{}{}", name[..1].to_ascii_uppercase(), &name[1..]);
+        assert_eq!(loaders_of(&[display]), [name]);
+    }
+}
+
+#[test]
+fn a_files_game_versions_split_into_minecraft_versions_and_loaders() {
+    let game_versions = ["1.21.1", "Fabric", "Client", "Java 21", "NeoForge", "Datapack", "26.3", "b1.7.3"].map(String::from);
+    assert_eq!(minecraft_versions_of(&game_versions), ["1.21.1", "26.3", "b1.7.3"]);
+    assert_eq!(loaders_of(&game_versions), ["fabric", "neoforge"]);
 }
 
 #[test]
@@ -115,8 +134,10 @@ fn the_files_payload_maps_onto_versions() {
     assert!(versions[0].minecraft_versions.contains(&"1.20.1".to_string()));
     assert_eq!(versions[0].files[0].sha1.as_deref(), Some("abc"));
     assert_eq!(versions[0].files[0].size, Some(123456));
+    assert_eq!(versions[0].downloads, 4321, "the file's own download count");
     // NeoForge file with a hidden download url: url empty, loader mapped.
     assert_eq!(versions[1].loaders, ["neoforge"]);
+    assert_eq!(versions[1].minecraft_versions, ["1.20.1"], "the environment is no version");
     assert_eq!(versions[1].files[0].url, "");
 }
 
@@ -261,4 +282,54 @@ fn an_exact_match_with_no_file_record_is_passed_over() {
 fn an_answer_that_is_not_a_fingerprint_answer_is_an_error_and_not_a_match() {
     let answer = serde_json::json!({ "unexpected": true });
     assert!(fingerprint_match_of(answer, FINGERPRINT_URL).is_err());
+}
+
+#[test]
+fn a_listing_leaves_out_the_files_curseforge_says_are_unavailable() {
+    let list: CfFileList = serde_json::from_str(
+        r#"{ "data": [
+            { "id": 1, "fileName": "a.jar", "isAvailable": true },
+            { "id": 2, "fileName": "b.jar", "isAvailable": false },
+            { "id": 3, "fileName": "c.jar" }
+        ] }"#,
+    )
+    .expect("recorded listing parses");
+    let kept: Vec<i64> = available(list.data).into_iter().map(|file| file.id).collect();
+    assert_eq!(kept, [1, 3], "a file that says nothing about availability is kept");
+}
+
+#[test]
+fn a_file_id_splits_into_all_but_its_last_three_digits_and_those_three() {
+    assert_eq!(
+        direct_url(9394038, "FreshAnimations_v1.11.2_26.1.zip"),
+        "https://mediafilez.forgecdn.net/files/9394/38/FreshAnimations_v1.11.2_26.1.zip"
+    );
+    assert_eq!(
+        direct_url(9323162, "xaerominimap-forge-26.3-26.6.2.jar"),
+        "https://mediafilez.forgecdn.net/files/9323/162/xaerominimap-forge-26.3-26.6.2.jar"
+    );
+}
+
+#[test]
+fn a_direct_url_percent_encodes_the_file_name() {
+    assert_eq!(
+        direct_url(9394038, "FA 1.11.2 + x.zip"),
+        "https://mediafilez.forgecdn.net/files/9394/38/FA%201.11.2%20%2B%20x.zip"
+    );
+}
+
+#[test]
+fn a_file_record_without_a_url_gets_its_direct_cdn_address() {
+    let direct = "https://mediafilez.forgecdn.net/files/9394/38/FreshAnimations_v1.11.2_26.1.zip";
+    assert_eq!(download_link(None, 9394038, "FreshAnimations_v1.11.2_26.1.zip"), direct);
+    assert_eq!(
+        download_link(Some(String::new()), 9394038, "FreshAnimations_v1.11.2_26.1.zip"),
+        direct,
+        "an empty url is no url"
+    );
+    assert_eq!(
+        download_link(Some("https://edge.forgecdn.net/files/1/2/a.jar".to_string()), 9394038, "a.jar"),
+        "https://edge.forgecdn.net/files/1/2/a.jar",
+        "the record's own url is used as it is"
+    );
 }
