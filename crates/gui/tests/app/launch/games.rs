@@ -16,6 +16,7 @@ fn record(instance: &str) -> Record {
         pid: u32::MAX - 1,
         started_at: 1_700_000_000,
         process_started_at: 1_700_000_000,
+        credited_seconds: 0,
     }
 }
 
@@ -222,4 +223,29 @@ fn each_runs_panel_opens_and_shuts_on_its_own() {
     open.toggle(RunsPlace::Titlebar);
     open.dismiss(RunsPlace::Titlebar);
     assert!(!open.is_open(RunsPlace::Titlebar));
+}
+
+#[test]
+fn a_reattached_run_is_credited_the_time_since_its_last_credit() {
+    let mut games = Games::default();
+    let mut earlier = record("aether");
+    earlier.credited_seconds = 30;
+    games.attach(earlier, Local::now() - chrono::TimeDelta::seconds(100));
+    assert!(games.any_running());
+
+    let credits = games.take_credits();
+    assert_eq!(credits.len(), 1);
+    let credit = &credits[0];
+    assert_eq!(credit.instance, "aether");
+    assert_eq!(credit.credited - credit.seconds, 30, "the seconds already credited are not counted again");
+    assert!((70..=71).contains(&credit.seconds), "about 70 seconds are owed, got {}", credit.seconds);
+}
+
+#[test]
+fn the_same_time_is_never_owed_twice() {
+    let mut games = Games::default();
+    games.attach(record("aether"), Local::now() - chrono::TimeDelta::seconds(100));
+    assert_eq!(games.take_credits().len(), 1);
+    let again = games.take_credits();
+    assert!(again.iter().all(|credit| credit.seconds <= 1), "the time was credited already: {again:?}");
 }

@@ -22,6 +22,7 @@ fn own_record(instance: &str) -> Record {
         pid,
         started_at: 1_700_000_000,
         process_started_at,
+        credited_seconds: 0,
     }
 }
 
@@ -118,6 +119,7 @@ fn a_spawned_game_is_found_again_through_its_record_and_killed_through_it() {
         pid,
         started_at: 1_700_000_000,
         process_started_at,
+        credited_seconds: 0,
     };
     write_in(&dir, &record).expect("the record is written");
 
@@ -126,5 +128,38 @@ fn a_spawned_game_is_found_again_through_its_record_and_killed_through_it() {
     assert!(!child.wait().expect("the killed child is reaped").success());
     assert!(load_live_in(&dir, &mut Processes::new()).is_empty());
     assert!(!file_in(&dir, pid).exists());
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_credit_is_written_into_the_record_and_read_back() {
+    let dir = scratch_dir();
+    let record = own_record("aether");
+    write_in(&dir, &record).expect("the record is written");
+
+    set_credited_in(&dir, record.pid, 42);
+    let bytes = fs::read(file_in(&dir, record.pid)).expect("the record is still there");
+    let read: Record = serde_json::from_slice(&bytes).expect("the record parses");
+    assert_eq!(read.credited_seconds, 42);
+    assert_eq!(read.instance, "aether");
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_credit_for_a_game_whose_record_is_gone_writes_nothing() {
+    let dir = scratch_dir();
+    set_credited_in(&dir, NO_SUCH_PID, 42);
+    assert!(!file_in(&dir, NO_SUCH_PID).exists());
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_record_from_an_earlier_launcher_reads_back_with_nothing_credited() {
+    let dir = scratch_dir();
+    let json = r#"{"instance":"aether","pid":4242,"started_at":1700000000,"process_started_at":1700000000}"#;
+    fs::write(file_in(&dir, 4242), json).expect("the old record is written");
+    let bytes = fs::read(file_in(&dir, 4242)).expect("the record reads");
+    let read: Record = serde_json::from_slice(&bytes).expect("the old record parses");
+    assert_eq!(read.credited_seconds, 0);
     fs::remove_dir_all(&dir).ok();
 }

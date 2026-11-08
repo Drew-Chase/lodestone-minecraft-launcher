@@ -84,6 +84,8 @@ pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
         M::Datapacks(_) => "update.Datapacks",
         M::ModActions(_) => "update.ModActions",
         M::Resource(_) => "update.Resource",
+        M::CloseRequested(_) => "update.CloseRequested",
+        M::CloseAnswered(_) => "update.CloseAnswered",
     }
 }
 

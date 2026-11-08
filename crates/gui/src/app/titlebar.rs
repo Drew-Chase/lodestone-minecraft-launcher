@@ -72,7 +72,8 @@ impl Titlebar {
             }
             TitlebarMessage::Close => {
                 info!("Closing window {window_id}");
-                window::close(window_id)
+                // `window::close` skips the close request, so the titlebar asks the same question the window's button does.
+                Task::done(LodestoneAppMessage::CloseRequested(window_id))
             }
             TitlebarMessage::StartDragWindow => {
                 debug!("Starting drag on window {window_id}");

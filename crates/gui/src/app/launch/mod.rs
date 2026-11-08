@@ -54,4 +54,6 @@ pub enum GameMessage {
     Exited { serial: u64, status: Option<ExitStatus> },
     /// A game's event stream ended. Nothing needs to happen.
     StreamEnded,
+    /// The playtime checkpoint is due: each running game is credited the time it has run since its last credit.
+    Checkpoint,
 }

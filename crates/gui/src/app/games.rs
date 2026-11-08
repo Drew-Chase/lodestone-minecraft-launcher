@@ -27,6 +27,9 @@ use crate::app::pages::library::instance::InstanceState;
 /// How often the process of a reattached run is checked for its exit.
 const WATCH_INTERVAL: Duration = Duration::from_secs(2);
 
+/// How often the playtime of the running games is checkpointed. A launcher that stops early keeps all but the last interval.
+pub const CHECKPOINT_EVERY: Duration = Duration::from_secs(60);
+
 impl LodestoneLauncher {
     /// Routes one game message.
     pub(super) fn game_message(&mut self, message: GameMessage) -> Task<LodestoneAppMessage> {
@@ -60,6 +63,7 @@ impl LodestoneLauncher {
             }
             GameMessage::Exited { serial, status } => self.game_exited(serial, status),
             GameMessage::StreamEnded => Task::none(),
+            GameMessage::Checkpoint => self.checkpoint(),
         }
     }
 
@@ -320,6 +324,7 @@ impl LodestoneLauncher {
         Task::batch([
             self.record_game_state(id, InstanceState::Playing),
             record,
+            self.record_launch(id, started),
             Task::sip(pump(serial, events), LodestoneAppMessage::Game, |()| {
                 LodestoneAppMessage::Game(GameMessage::StreamEnded)
             }),
@@ -348,8 +353,9 @@ impl LodestoneLauncher {
             Some(status) => info!("{id} run {serial} exited with code {:?}", status.code()),
             None => info!("{id} run {serial} stopped"),
         }
-        let seconds = u32::try_from(run.since.elapsed().as_secs()).unwrap_or(u32::MAX);
-        let mut tasks = vec![self.finish_game_session(&id, run.started, seconds), remove_pid_file(run.pid)];
+        // Only the time since the last checkpoint is still owed: the rest was credited as it went.
+        let seconds = run.since.elapsed().as_secs().saturating_sub(run.credited);
+        let mut tasks = vec![self.credit_game_time(&id, seconds), remove_pid_file(run.pid)];
         // The last run of an instance brings the window back when the instance hid it, and quits the launcher when
         // the instance asks for that. The quit waits for the tasks above, so the playtime and state are saved first.
         let mut quit = false;
@@ -496,20 +502,79 @@ impl LodestoneLauncher {
         .chain(self.load_instances())
     }
 
-    /// Adds a finished run to the instance `id`'s playtime, then reloads the library so the cards show
-    /// the new playtime.
-    fn finish_game_session(&mut self, id: &str, started: DateTime<Local>, seconds: u32) -> Task<LodestoneAppMessage> {
+    /// Records that a run of the instance `id` started, so the instance is last played from its launch and not only from its
+    /// exit. The library reloads so the cards show it.
+    fn record_launch(&mut self, id: &str, started: DateTime<Local>) -> Task<LodestoneAppMessage> {
         let Some(db) = self.db.clone() else {
             return Task::none();
         };
         let id = id.to_string();
         Task::future(async move {
-            if let Err(error) = db.finish_session(&id, started, seconds).await {
-                warn!("Could not record the play session of {id}: {error}");
+            if let Err(error) = db.record_launch(&id, started).await {
+                warn!("Could not record the launch of {id}: {error}");
             }
         })
         .discard()
         .chain(self.load_instances())
+    }
+
+    /// Adds `seconds` of play to the instance `id`, then reloads the library so the cards show the new total. A run that ends
+    /// owes only the time since its last checkpoint.
+    fn credit_game_time(&mut self, id: &str, seconds: u64) -> Task<LodestoneAppMessage> {
+        let Some(db) = self.db.clone() else {
+            return Task::none();
+        };
+        let id = id.to_string();
+        Task::future(async move {
+            if let Err(error) = db.credit_playtime(&id, seconds).await {
+                warn!("Could not record the playtime of {id}: {error}");
+            }
+        })
+        .discard()
+        .chain(self.load_instances())
+    }
+
+    /// The playtime checkpoint: each run that is still going is credited the time since its last credit. The credit is saved
+    /// into its pid file too, so a launcher that attaches to the run later does not count it twice.
+    fn checkpoint(&mut self) -> Task<LodestoneAppMessage> {
+        let Some(db) = self.db.clone() else {
+            return Task::none();
+        };
+        let credits = self.games.take_credits();
+        Task::batch(credits.into_iter().map(|credit| {
+            let db = db.clone();
+            Task::future(async move {
+                if let Err(error) = db.credit_playtime(&credit.instance, credit.seconds).await {
+                    warn!("Could not record the playtime of {}: {error}", credit.instance);
+                }
+                let pid = credit.pid;
+                let credited = credit.credited;
+                if let Err(error) = tokio::task::spawn_blocking(move || pidfile::set_credited(pid, credited)).await {
+                    warn!("Could not save the playtime of game {pid}: {error}");
+                }
+            })
+            .discard()
+        }))
+    }
+
+    /// The window was asked to close. With no game running the launcher exits. A running game is not watched once the launcher
+    /// has gone, so the launcher asks first, and the answer comes back as `CloseAnswered`.
+    pub(super) fn close_requested(&mut self) -> Task<LodestoneAppMessage> {
+        if !self.games.any_running() {
+            return iced::exit();
+        }
+        self.alerts
+            .show(Alert::warn(lang::t("games.close.message")).title(lang::t("games.close.title")).yes_no())
+            .map(LodestoneAppMessage::CloseAnswered)
+    }
+
+    /// The answer to "close the launcher while a game runs?". Yes first credits the time the running games have run since their
+    /// last checkpoint, so it is saved before the launcher exits. The games carry on without the launcher.
+    pub(super) fn close_answered(&mut self, close: bool) -> Task<LodestoneAppMessage> {
+        if !close {
+            return Task::none();
+        }
+        self.checkpoint().chain(iced::exit())
     }
 
     /// Keeps a Microsoft session that a refresh produced, and the refresh token it carries, so the

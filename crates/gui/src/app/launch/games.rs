@@ -46,6 +46,19 @@ pub struct Running {
     pub process: Process,
     pub started: DateTime<Local>,
     pub since: Instant,
+    /// The seconds of this run already added to its instance's playtime.
+    pub credited: u64,
+}
+
+/// The playtime a run has earned since it was last credited, for a checkpoint to add to its instance.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Credit {
+    pub instance: String,
+    pub pid: u32,
+    /// The seconds the run has earned since its last credit.
+    pub seconds: u64,
+    /// The seconds the run has been credited in all, once this credit lands.
+    pub credited: u64,
 }
 
 /// One preparation that has not finished yet.
@@ -243,6 +256,7 @@ impl Games {
                 process: Process::Launched(process),
                 started,
                 since: Instant::now(),
+                credited: 0,
             },
         );
         pid
@@ -259,12 +273,44 @@ impl Games {
             Running {
                 instance: record.instance.clone(),
                 pid: record.pid,
+                credited: record.credited_seconds,
                 process: Process::Reattached(record),
                 started,
                 since,
             },
         );
         serial
+    }
+
+    /// Whether any game has a run going, in any instance. A preparation is not a run yet.
+    pub fn any_running(&self) -> bool {
+        !self.running.is_empty()
+    }
+
+    /// Takes the playtime each run has earned since its last credit, and marks it credited. A launched run whose process has
+    /// already exited is skipped, because its exit credits the rest. A reattached run is not polled here: its watcher reports
+    /// the exit within seconds.
+    pub fn take_credits(&mut self) -> Vec<Credit> {
+        let mut credits = Vec::new();
+        for run in self.running.values_mut() {
+            if let Process::Launched(process) = &mut run.process
+                && !matches!(process.try_wait(), Ok(None))
+            {
+                continue;
+            }
+            let total = run.since.elapsed().as_secs();
+            let seconds = total.saturating_sub(run.credited);
+            if seconds > 0 {
+                run.credited = total;
+                credits.push(Credit {
+                    instance: run.instance.clone(),
+                    pid: run.pid,
+                    seconds,
+                    credited: total,
+                });
+            }
+        }
+        credits
     }
 
     /// Takes the run `serial` once its exit arrives.

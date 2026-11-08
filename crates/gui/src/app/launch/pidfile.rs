@@ -26,6 +26,9 @@ pub struct Record {
     pub started_at: i64,
     /// When the operating system says the game's process started, in seconds since the Unix epoch.
     pub process_started_at: u64,
+    /// The seconds of the run already added to its instance's playtime, so a later launcher counts from here.
+    #[serde(default)]
+    pub credited_seconds: u64,
 }
 
 /// The folder the pid files live in: `<config dir>/lodestone/running`.
@@ -45,6 +48,7 @@ pub fn record_started(instance: &str, pid: u32, started_at: i64) -> Result<(), S
         pid,
         started_at,
         process_started_at,
+        credited_seconds: 0,
     };
     write_in(&dir, &record).map_err(|error| error.to_string())
 }
@@ -53,6 +57,26 @@ pub fn record_started(instance: &str, pid: u32, started_at: i64) -> Result<(), S
 pub fn remove(pid: u32) {
     if let Some(dir) = dir() {
         remove_in(&dir, pid);
+    }
+}
+
+/// Saves how much of the run has been credited to its instance's playtime, so a launcher that attaches to the run later
+/// counts from there. A file that is gone stays gone: the game has ended, and its record went with it.
+pub fn set_credited(pid: u32, credited_seconds: u64) {
+    if let Some(dir) = dir() {
+        set_credited_in(&dir, pid, credited_seconds);
+    }
+}
+
+/// Rewrites the pid file of `pid` in `dir` with its credited seconds. A file that does not read back as a record is left alone.
+pub fn set_credited_in(dir: &Path, pid: u32, credited_seconds: u64) {
+    let path = file_in(dir, pid);
+    let Some(mut record) = fs::read(&path).ok().and_then(|bytes| serde_json::from_slice::<Record>(&bytes).ok()) else {
+        return;
+    };
+    record.credited_seconds = credited_seconds;
+    if let Err(error) = write_in(dir, &record) {
+        warn!("Could not save the playtime of game {pid}: {error}");
     }
 }
 

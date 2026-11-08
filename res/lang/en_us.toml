@@ -18,6 +18,10 @@ updater.dialog.no_notes = "This release has no notes."
 updater.dialog.update = "Update"
 updater.dialog.cancel = "Cancel"
 
+# --- games ---
+games.close.title = "Close while a game runs?"
+games.close.message = "A game is still running. Closing the launcher stops watching it, so its playtime counts only if you reopen the launcher while it is still running."
+
 # --- common ---
 common.cancel = "Cancel"
 common.close = "Close"

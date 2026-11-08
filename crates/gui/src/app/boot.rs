@@ -165,7 +165,8 @@ impl LodestoneLauncher {
             blur: false,
             level: Level::Normal,
             icon: app_icon(),
-            exit_on_close_request: true,
+            // A close is answered by `CloseRequested`, which asks before a running game is left unwatched.
+            exit_on_close_request: false,
         }
     }
 }

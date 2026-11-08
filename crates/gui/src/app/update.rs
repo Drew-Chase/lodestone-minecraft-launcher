@@ -450,6 +450,9 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Game(message) => self.game_message(message),
             LodestoneAppMessage::SessionRefreshed(result) => self.session_refreshed(result),
             // Another launcher was started: this one shows its window, which may be minimized, and takes focus.
+            // A close asked for by the window, or by the titlebar: a running game is asked about first.
+            LodestoneAppMessage::CloseRequested(_) => self.close_requested(),
+            LodestoneAppMessage::CloseAnswered(close) => self.close_answered(close),
             LodestoneAppMessage::FocusRequested => match self.id {
                 Some(id) => Task::batch([window::minimize(id, false), window::gain_focus(id)]),
                 None => Task::none(),

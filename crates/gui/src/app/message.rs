@@ -213,6 +213,10 @@ pub enum LodestoneAppMessage {
     Perf(perf::Message),
     /// Another launcher was started while this one runs. It asks this one to show its window.
     FocusRequested,
+    /// The window was asked to close, by its close button or the titlebar's. A running game asks first.
+    CloseRequested(Id),
+    /// The answer to "close the launcher while a game runs?".
+    CloseAnswered(bool),
 }
 
 /// Which sidebar group a nav selection came from.

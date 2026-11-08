@@ -5,7 +5,9 @@
 use iced::window::Id;
 use iced::{Subscription, event, keyboard, mouse, window};
 
+use super::games;
 use super::import;
+use super::launch::GameMessage;
 use super::notifications;
 use super::pages::Page;
 use super::pages::skins::{Message as SkinsMessage, PREVIEW_FRAME};
@@ -31,7 +33,20 @@ impl LodestoneLauncher {
             iced::time::every(updater::CHECK_EVERY).map(|_| LodestoneAppMessage::Updater(updater::Message::CheckDue)),
             perf::subscription(&self.perf).map(LodestoneAppMessage::Perf),
             super::single_instance::focus_requests().map(|()| LodestoneAppMessage::FocusRequested),
+            // A close is asked for here, so a running game can be asked about before the launcher goes.
+            window::close_requests().map(LodestoneAppMessage::CloseRequested),
+            self.playtime_subscription(),
         ])
+    }
+
+    /// The playtime checkpoint: each minute while a game runs, so the time it has run is saved as it goes, not only when it
+    /// exits.
+    fn playtime_subscription(&self) -> Subscription<LodestoneAppMessage> {
+        if self.games.any_running() {
+            iced::time::every(games::CHECKPOINT_EVERY).map(|_| LodestoneAppMessage::Game(GameMessage::Checkpoint))
+        } else {
+            Subscription::none()
+        }
     }
 
     /// The auth-services probe runs while a page shows its result: the sign-in page's status bar and the Settings page. Elsewhere
