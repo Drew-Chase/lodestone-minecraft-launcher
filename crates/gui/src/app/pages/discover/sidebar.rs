@@ -1,9 +1,10 @@
 //! The Discover sidebar: the filters the platform offers for the tab on screen, beside the results. Every section is drawn
 //! from the platform's own lists, so a platform that offers no filter shows no section. The sidebar keeps its place while
-//! the results scroll, and its sections scroll inside it under a scrollbar of their own.
+//! the results scroll, and its sections scroll inside it under a scrollbar of their own. The reset button stays pinned
+//! under them.
 
 use aurora_leaf::Icon;
-use iced::widget::{Space, Text, button, column, container, row, text_input};
+use iced::widget::{Text, button, column, container, row, text_input};
 use iced::{Background, Border, Color, Element, Fill, Length, Padding, alignment};
 use lodestone_platforms::{CategoryGroup, Facets, Side};
 
@@ -11,6 +12,7 @@ use super::card::{CARD_RADIUS, glyph, panel};
 use super::filters::{FilterMessage, Kind};
 use super::{BOTTOM, Discover, GAP, Message, SIDE};
 use crate::app::components::checkbox::{self, State};
+use crate::app::components::hint::hint;
 use crate::app::components::{input, scrollbar};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
@@ -35,6 +37,12 @@ const ROW_PAD_X: f32 = 8.0;
 const ROW_PAD_Y: f32 = 7.0;
 /// The corner radius of a row. It is the card's radius less the card's padding, so the two corners are concentric.
 const ROW_RADIUS: f32 = CARD_RADIUS - CARD_PAD;
+/// The side of a `+` or `−` button.
+const SIGN_SIZE: f32 = 22.0;
+/// The space between a row's `+` and its `−`.
+const SIGN_GAP: f32 = 4.0;
+/// The corner radius of a `+` or `−` button.
+const SIGN_RADIUS: f32 = 6.0;
 
 /// Whether the platform offers any filter at all.
 fn has_sections(facets: &Facets) -> bool {
@@ -44,7 +52,6 @@ fn has_sections(facets: &Facets) -> bool {
         || !facets.category_groups.is_empty()
         || facets.environments
         || facets.open_source
-        || facets.exclusions
 }
 
 /// The sidebar, or nothing when the platform offers no filter for the tab. It runs beside the scrolling part of the page,
@@ -59,7 +66,7 @@ pub(super) fn view(page: &Discover) -> Option<Element<'_, Message>> {
         sections = sections.push(loaders(page, facets));
     }
     for group in &facets.category_groups {
-        sections = sections.push(category(page, group));
+        sections = sections.push(category(page, group, facets.exclusions));
     }
     if facets.environments {
         sections = sections.push(environments(page));
@@ -67,23 +74,30 @@ pub(super) fn view(page: &Discover) -> Option<Element<'_, Message>> {
     if facets.open_source {
         sections = sections.push(license(page));
     }
-    if facets.exclusions {
-        sections = sections.push(exclusions(page, facets));
-    }
-    if !page.filters.is_empty() {
-        sections = sections.push(clear());
-    }
     // The cards end where the scrollbar's track begins, so the track floats over the padding and never over a card.
     let cards = container(sections).padding(Padding::new(0.0).right(scrollbar::TRACK_WIDTH)).width(Fill);
     let scrolled = scrollbar::scroll(cards).width(Length::Fixed(WIDTH + scrollbar::TRACK_WIDTH)).height(Fill);
+    // The reset button is pinned under the sections, so it stays in view however far they scroll.
+    let mut body = column![scrolled].spacing(SECTION_GAP).height(Fill);
+    if !page.filters.is_empty() {
+        body = body.push(reset());
+    }
     let margins = Padding::new(0.0).top(GAP).bottom(BOTTOM).left(SIDE).right(COLUMN_GAP);
-    Some(container(scrolled).padding(margins).height(Fill).into())
+    Some(container(body).padding(margins).height(Fill).into())
 }
 
-/// One choice in a list: what it shows, whether it is picked, and what pressing it sends.
+/// One choice in a list: what it shows, whether it is picked, and what pressing it sends. On a platform that takes
+/// exclusions, a choice also has a `−`, so it can be excluded as well as picked.
 struct Choice {
     label: String,
     picked: bool,
+    message: Message,
+    exclusion: Option<Exclusion>,
+}
+
+/// The `−` of a choice: whether the choice is excluded, and the message that excludes it.
+struct Exclusion {
+    excluded: bool,
     message: Message,
 }
 
@@ -148,12 +162,102 @@ fn list<'a>(page: &Discover, section: &str, choices: Vec<Choice>, shown: usize) 
     let limit = if expanded { total } else { shown.min(total) };
     let mut rows = column![].spacing(2).width(Fill);
     for choice in choices.into_iter().take(limit) {
-        rows = rows.push(option(choice.label, choice.picked, choice.message));
+        rows = rows.push(choice_row(choice));
     }
     if total > shown {
         rows = rows.push(show_more(section, expanded, total - shown));
     }
     rows.into()
+}
+
+/// One row of a list. A choice with an exclusion gets its `+` and `−` in place of the box.
+fn choice_row<'a>(choice: Choice) -> Element<'a, Message> {
+    match choice.exclusion {
+        Some(exclusion) => signed_row(choice.label, choice.picked, exclusion, choice.message),
+        None => option(choice.label, choice.picked, choice.message),
+    }
+}
+
+/// A row with a `+` that includes the choice and a `−` that excludes it. The label is not a button: the two signs are the
+/// controls. An excluded label is muted, so the row reads as excluded at a glance.
+fn signed_row<'a>(label: String, picked: bool, exclusion: Exclusion, include: Message) -> Element<'a, Message> {
+    let Exclusion { excluded, message: exclude } = exclusion;
+    let ink = if picked {
+        color::text_headline()
+    } else if excluded {
+        color::text_muted()
+    } else {
+        color::text_default()
+    };
+    let text = container(Text::new(label).size(13).font(fonts::Inter::REGULAR).color(ink))
+        .width(Fill)
+        .padding(Padding::new(0.0).left(ROW_PAD_X));
+    let signs = row![
+        sign(Icon::lucide().plus(), picked, Tint::Include, lang::t("discover.sidebar.include"), include),
+        sign(
+            Icon::lucide().minus(),
+            excluded,
+            Tint::Exclude,
+            lang::t("discover.sidebar.exclude"),
+            exclude
+        ),
+    ]
+    .spacing(SIGN_GAP)
+    .align_y(alignment::Vertical::Center);
+    container(row![text, signs].align_y(alignment::Vertical::Center).width(Fill))
+        .padding(Padding::new(0.0).top(ROW_PAD_Y).bottom(ROW_PAD_Y).right(ROW_PAD_X))
+        .width(Fill)
+        .into()
+}
+
+/// The colour a `+` or `−` takes while it is active: the accent for an include, the destructive pink for an exclude.
+#[derive(Clone, Copy)]
+enum Tint {
+    Include,
+    Exclude,
+}
+
+/// A `+` or `−` button. Active, it takes its tint. Idle, it is a ghost square that lights under the pointer.
+fn sign<'a>(markup: &'static str, active: bool, tint: Tint, label: &'static str, message: Message) -> Element<'a, Message> {
+    let ink = match (active, tint) {
+        (true, Tint::Include) => color::primary(),
+        (true, Tint::Exclude) => color::pink(),
+        (false, _) => color::text_muted(),
+    };
+    let mark = container(glyph(markup, 12.0, ink))
+        .width(Fill)
+        .height(Fill)
+        .align_x(alignment::Horizontal::Center)
+        .align_y(alignment::Vertical::Center);
+    let face = button(mark)
+        .width(SIGN_SIZE)
+        .height(SIGN_SIZE)
+        .padding(0.0)
+        .style(move |_, status| sign_style(active, tint, status))
+        .on_press(message);
+    hint(face, label)
+}
+
+/// The look of a `+` or `−` in `status`. An active one takes its tint, and an idle one lights under the pointer.
+fn sign_style(active: bool, tint: Tint, status: button::Status) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    let background = match (active, hovered) {
+        (true, _) => Some(match tint {
+            Tint::Include => color::primary_tint(),
+            Tint::Exclude => color::pink_tint(),
+        }),
+        (false, true) => Some(color::surface_bg4()),
+        (false, false) => None,
+    };
+    button::Style {
+        background: background.map(Background::Color),
+        text_color: color::text_default(),
+        border: Border {
+            radius: SIGN_RADIUS.into(),
+            ..Border::default()
+        },
+        ..button::Style::default()
+    }
 }
 
 /// The switch under a list that is cut short, or that shows every item and can cut itself short again. Its label sits in
@@ -197,6 +301,7 @@ fn versions<'a>(page: &'a Discover, facets: &'a Facets) -> Element<'a, Message> 
             label: version.clone(),
             picked: page.filters.game_versions.contains(version),
             message: Message::Filter(FilterMessage::Pick(Kind::GameVersion, version.clone())),
+            exclusion: None,
         })
         .collect();
     let mut body = column![search, list(page, "versions", choices, SHOWN_VERSIONS)].spacing(8).width(Fill);
@@ -226,7 +331,7 @@ fn ordered_loaders(facets: &Facets) -> Vec<&String> {
     loaders
 }
 
-/// The mod loaders, as the platform names them.
+/// The mod loaders, as the platform names them. On a platform that takes exclusions, each loader also has a `−`.
 fn loaders<'a>(page: &'a Discover, facets: &'a Facets) -> Element<'a, Message> {
     let choices = ordered_loaders(facets)
         .into_iter()
@@ -234,13 +339,17 @@ fn loaders<'a>(page: &'a Discover, facets: &'a Facets) -> Element<'a, Message> {
             label: loader_label(name),
             picked: page.filters.loaders.contains(name),
             message: Message::Filter(FilterMessage::Pick(Kind::Loader, name.clone())),
+            exclusion: facets.exclusions.then(|| Exclusion {
+                excluded: page.filters.excluded_loaders.contains(name),
+                message: Message::Filter(FilterMessage::Exclude(Kind::Loader, name.clone())),
+            }),
         })
         .collect();
     section(lang::t("discover.sidebar.loader").to_string(), list(page, "loaders", choices, SHOWN))
 }
 
-/// One header's categories, titled by the header.
-fn category<'a>(page: &'a Discover, group: &'a CategoryGroup) -> Element<'a, Message> {
+/// One header's categories, titled by the header. On a platform that takes exclusions, each category also has a `−`.
+fn category<'a>(page: &'a Discover, group: &'a CategoryGroup, exclusions: bool) -> Element<'a, Message> {
     let choices = group
         .categories
         .iter()
@@ -248,6 +357,10 @@ fn category<'a>(page: &'a Discover, group: &'a CategoryGroup) -> Element<'a, Mes
             label: facet.name.clone(),
             picked: page.filters.categories.contains(&facet.id),
             message: Message::Filter(FilterMessage::Pick(Kind::Category, facet.id.clone())),
+            exclusion: exclusions.then(|| Exclusion {
+                excluded: page.filters.excluded_categories.contains(&facet.id),
+                message: Message::Filter(FilterMessage::Exclude(Kind::Category, facet.id.clone())),
+            }),
         })
         .collect();
     let key = format!("category:{}", group.header);
@@ -278,71 +391,15 @@ fn license<'a>(page: &'a Discover) -> Element<'a, Message> {
     section(lang::t("discover.sidebar.license").to_string(), body)
 }
 
-/// The exclusions: a collapsed header that opens to the categories and loaders a project must not have.
-fn exclusions<'a>(page: &'a Discover, facets: &'a Facets) -> Element<'a, Message> {
-    let open = page.panel.expanded.contains("exclusions");
-    let chevron = if open {
-        Icon::lucide().chevron_down()
-    } else {
-        Icon::lucide().chevron_right()
-    };
-    let head = row_button(
-        row![
-            Text::new(lang::t("discover.sidebar.exclusions").to_string())
-                .size(12)
-                .font(fonts::Inter::SEMI_BOLD)
-                .color(color::text_muted()),
-            Space::new().width(Fill),
-            glyph(chevron, 12.0, color::text_muted()),
-        ]
-        .align_y(alignment::Vertical::Center)
-        .width(Fill),
-        false,
-        Message::Filter(FilterMessage::Expand {
-            section: "exclusions".to_string(),
-            expanded: !open,
-        }),
-    );
-    if !open {
-        return card(head);
-    }
-    let categories = facets
-        .category_groups
-        .iter()
-        .flat_map(|group| group.categories.iter())
-        .map(|facet| Choice {
-            label: facet.name.clone(),
-            picked: page.filters.excluded_categories.contains(&facet.id),
-            message: Message::Filter(FilterMessage::Exclude(Kind::Category, facet.id.clone())),
-        })
-        .collect();
-    let mut body = column![head, list(page, "exclusion-categories", categories, SHOWN)]
-        .spacing(TITLE_GAP)
-        .width(Fill);
-    if facets.loaders.len() > 1 {
-        let loaders = ordered_loaders(facets)
-            .into_iter()
-            .map(|name| Choice {
-                label: loader_label(name),
-                picked: page.filters.excluded_loaders.contains(name),
-                message: Message::Filter(FilterMessage::Exclude(Kind::Loader, name.clone())),
-            })
-            .collect();
-        body = body.push(list(page, "exclusion-loaders", loaders, SHOWN));
-    }
-    card(body)
-}
-
-/// The button that clears every pick. It sits under the cards, inset to the rows' edges.
-fn clear<'a>() -> Element<'a, Message> {
-    let label = Text::new(lang::t("discover.sidebar.clear").to_string())
+/// The button that resets every pick. It is pinned under the sections, so it stays in view however far they scroll.
+fn reset<'a>() -> Element<'a, Message> {
+    let label = Text::new(lang::t("discover.sidebar.reset").to_string())
         .size(12)
         .font(fonts::Inter::MEDIUM)
         .color(color::text_default());
     let centred = container(label).width(Fill).align_x(alignment::Horizontal::Center);
-    container(row_button(centred, false, Message::Filter(FilterMessage::Clear)))
-        .padding(Padding::new(0.0).left(CARD_PAD).right(CARD_PAD))
-        .width(Fill)
+    container(card(row_button(centred, false, Message::Filter(FilterMessage::Clear))))
+        .width(Length::Fixed(WIDTH))
         .into()
 }
 

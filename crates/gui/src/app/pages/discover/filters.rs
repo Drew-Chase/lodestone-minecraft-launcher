@@ -121,7 +121,11 @@ impl Discover {
         let multiple = self.facets().is_none_or(|facets| facets.multiple);
         let searches = match message {
             FilterMessage::Pick(kind, id) => {
-                toggle(self.list_mut(kind), id, multiple);
+                toggle(self.list_mut(kind), id.clone(), multiple);
+                // A pick includes the item, so it cannot also be excluded.
+                if self.list_mut(kind).contains(&id) {
+                    self.drop_exclusion(kind, &id);
+                }
                 true
             }
             FilterMessage::Environment(side) => {
@@ -133,7 +137,11 @@ impl Discover {
                 true
             }
             FilterMessage::Exclude(kind, id) => {
-                toggle(self.excluded_list_mut(kind), id, true);
+                toggle(self.excluded_list_mut(kind), id.clone(), true);
+                // An exclusion drops the pick of the same item, so it cannot also be included.
+                if self.excluded_list_mut(kind).contains(&id) {
+                    self.drop_pick(kind, &id);
+                }
                 true
             }
             FilterMessage::Clear => {
@@ -179,6 +187,20 @@ impl Discover {
         match kind {
             Kind::Loader => &mut self.filters.excluded_loaders,
             _ => &mut self.filters.excluded_categories,
+        }
+    }
+
+    /// Drops `id` from the exclusions of `kind`, so an item is never both picked and excluded.
+    fn drop_exclusion(&mut self, kind: Kind, id: &str) {
+        if kind != Kind::GameVersion {
+            self.excluded_list_mut(kind).retain(|excluded| excluded.as_str() != id);
+        }
+    }
+
+    /// Drops `id` from the picks of `kind`, so an item is never both picked and excluded.
+    fn drop_pick(&mut self, kind: Kind, id: &str) {
+        if kind != Kind::GameVersion {
+            self.list_mut(kind).retain(|picked| picked.as_str() != id);
         }
     }
 

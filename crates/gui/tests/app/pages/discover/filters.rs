@@ -96,6 +96,37 @@ fn an_exclusion_is_its_own_list_and_does_not_pick_anything() {
 }
 
 #[test]
+fn picking_an_item_drops_its_exclusion_and_excluding_it_drops_its_pick() {
+    let mut page = page_with(Facets {
+        exclusions: true,
+        multiple: true,
+        ..Facets::default()
+    });
+    page.filter_changed(FilterMessage::Exclude(Kind::Category, "magic".to_string()));
+    page.filter_changed(FilterMessage::Pick(Kind::Category, "magic".to_string()));
+    assert_eq!(page.filters.categories, ["magic"]);
+    assert!(page.filters.excluded_categories.is_empty(), "a pick cannot also be excluded");
+    page.filter_changed(FilterMessage::Exclude(Kind::Category, "magic".to_string()));
+    assert!(page.filters.categories.is_empty(), "an exclusion cannot also be picked");
+    assert_eq!(page.filters.excluded_categories, ["magic"]);
+}
+
+#[test]
+fn a_loader_is_either_included_or_excluded_never_both() {
+    let mut page = page_with(Facets {
+        exclusions: true,
+        multiple: true,
+        ..Facets::default()
+    });
+    page.filter_changed(FilterMessage::Pick(Kind::Loader, "fabric".to_string()));
+    page.filter_changed(FilterMessage::Exclude(Kind::Loader, "fabric".to_string()));
+    assert!(page.filters.loaders.is_empty());
+    assert_eq!(page.filters.excluded_loaders, ["fabric"]);
+    page.filter_changed(FilterMessage::Exclude(Kind::Loader, "fabric".to_string()));
+    assert!(page.filters.excluded_loaders.is_empty(), "the active exclusion clears when pressed again");
+}
+
+#[test]
 fn the_panel_changes_ask_for_no_search() {
     let mut page = page_with(Facets {
         snapshot_versions: vec!["26.3-snapshot-1".to_string()],
