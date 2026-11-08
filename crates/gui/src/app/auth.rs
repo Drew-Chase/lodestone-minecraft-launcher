@@ -62,6 +62,7 @@ impl LodestoneLauncher {
                         self.credentials.add_and_make_primary(StoredAccount::Microsoft(StoredMicrosoft {
                             refresh_token: refresh_token.clone(),
                             username: session.profile.name.clone(),
+                            uuid: Some(session.profile.id.clone()),
                         }));
                         self.save_credentials()
                     }
@@ -236,9 +237,10 @@ impl LodestoneLauncher {
     }
 
     /// Makes the account at `index` the one that plays. An offline profile takes over at once. A Microsoft account logs in
-    /// again with its refresh token first, and takes over once that succeeds.
+    /// again with its refresh token first, and takes over once that succeeds. While such a login runs, another switch waits:
+    /// a refresh token is spent once, so two logins must never use it.
     pub(super) fn switch_account(&mut self, index: usize) -> Task<LodestoneAppMessage> {
-        if self.credentials.primary_index() == Some(index) {
+        if self.credentials.primary_index() == Some(index) || self.switching_account {
             return Task::none();
         }
         let Some(account) = self.credentials.accounts.get(index).cloned() else {
@@ -254,27 +256,39 @@ impl LodestoneLauncher {
             }
             StoredAccount::Microsoft(microsoft) => {
                 info!("Switching to {} (signing in again)", microsoft.username);
+                self.switching_account = true;
                 let auth = self.auth.clone();
+                // The result names the account by what it is, not by its place in the list, which can move while the login runs.
+                let account = StoredAccount::Microsoft(microsoft.clone());
                 Task::perform(
                     async move {
                         auth.login_with_refresh_token(&microsoft.refresh_token)
                             .await
                             .map_err(|error| error.to_string())
                     },
-                    move |result| LodestoneAppMessage::AccountSwitched(index, result),
+                    move |result| LodestoneAppMessage::AccountSwitched(account, result),
                 )
             }
         }
     }
 
-    /// The login a switch started finished. Its refresh token is the one the login produced, and the account plays once
-    /// it is kept. A failed switch says so, and the account that played stays.
-    pub(super) fn account_switched(&mut self, index: usize, result: Result<Session, String>) -> Task<LodestoneAppMessage> {
+    /// The login a switch started finished. The account is found again by what it is, and when it is still kept, its
+    /// refresh token is the one the login produced, and it plays. An account signed out meanwhile takes nothing. A failed
+    /// switch says so, and the account that played stays.
+    pub(super) fn account_switched(&mut self, account: StoredAccount, result: Result<Session, String>) -> Task<LodestoneAppMessage> {
+        self.switching_account = false;
+        let Some(index) = self.credentials.position(&account) else {
+            info!(
+                "{} was signed out while it signed in again, so the new session is not kept",
+                account.username()
+            );
+            return Task::none();
+        };
         match result {
             Ok(session) => {
                 info!("Switched to {}", session.profile.name);
                 if let Some(token) = session.refresh_token.clone() {
-                    self.credentials.replace_refresh_token(&session.profile.name, token);
+                    self.credentials.replace_refresh_token(&session.profile.id, &session.profile.name, token);
                 }
                 self.credentials.make_primary(index);
                 let save = self.save_credentials();

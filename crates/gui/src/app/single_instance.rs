@@ -67,15 +67,17 @@ fn requests() -> impl Stream<Item = ()> {
     })
 }
 
-/// Unix: a socket in the config folder. Binding it is the claim, and a socket that nothing answers is one a launcher left
-/// behind when it ended.
+/// Unix: a socket in the config folder, and a lock beside it. Holding the lock is the claim. The OS releases the lock when the
+/// launcher ends, so a socket a crashed launcher left behind is replaced, and never mistaken for a launcher that runs.
 #[cfg(unix)]
 mod platform {
-    use std::hash::{DefaultHasher, Hash, Hasher};
+    use std::fs::{File, OpenOptions, TryLockError};
     use std::io::{self, Write};
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::{Path, PathBuf};
+    use std::sync::OnceLock;
     use std::thread;
+    use std::time::{Duration, Instant};
 
     use tokio::sync::mpsc::UnboundedSender;
     use tracing::warn;
@@ -83,10 +85,20 @@ mod platform {
     use super::Claim;
 
     /// A Unix socket path holds fewer than 104 bytes, so a deeper folder, which a portable launcher's can be, gets a short
-    /// name in the temp folder instead. Both paths name the same socket for the same folder.
+    /// name in the runtime or temp folder instead. Both paths name the same socket for the same folder.
     const SOCKET_PATH_LIMIT: usize = 100;
 
-    /// The socket's path: `launcher.sock` in the config folder, or a name in the temp folder when that path is too long.
+    /// How long a launcher that finds the lock taken keeps trying to reach the launcher holding it. That one may still be
+    /// starting its listener.
+    const REACH_FOR: Duration = Duration::from_secs(5);
+
+    /// How often that reaching is tried again.
+    const REACH_EVERY: Duration = Duration::from_millis(100);
+
+    /// The lock file, kept open for as long as the launcher runs.
+    static HELD: OnceLock<File> = OnceLock::new();
+
+    /// The socket's path: `launcher.sock` in the config folder, or a name in the runtime or temp folder when that path is too long.
     pub fn endpoint() -> Option<PathBuf> {
         let dir = crate::app::paths::config_dir()?;
         let path = dir.join("launcher.sock");
@@ -96,22 +108,51 @@ mod platform {
         Some(short_socket_path(&dir))
     }
 
-    /// The socket's name in the temp folder for the config folder `dir`, unique to that folder.
+    /// The socket's name for the config folder `dir`, unique to that folder. The runtime folder is the user's own, where the
+    /// system provides one. The shared temp folder is the fallback.
     fn short_socket_path(dir: &Path) -> PathBuf {
-        let mut hasher = DefaultHasher::new();
-        dir.hash(&mut hasher);
-        std::env::temp_dir().join(format!("lodestone-{:016x}.sock", hasher.finish()))
+        let folder = std::env::var_os("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .filter(|runtime| runtime.is_dir())
+            .unwrap_or_else(std::env::temp_dir);
+        folder.join(format!("lodestone-{:016x}.sock", stable_hash(dir.as_os_str().as_encoded_bytes())))
+    }
+
+    /// FNV-1a. Unlike the standard library's hasher, its result does not change between Rust releases, so two builds of the
+    /// launcher name the same socket for the same folder.
+    fn stable_hash(bytes: &[u8]) -> u64 {
+        bytes.iter().fold(0xcbf2_9ce4_8422_2325u64, |hash, &byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        })
+    }
+
+    /// The lock file. It is in the config folder, which belongs to this user, and never in the shared temp folder.
+    fn lock_path(endpoint: &Path) -> PathBuf {
+        crate::app::paths::config_dir().map_or_else(|| endpoint.with_extension("lock"), |dir| dir.join("launcher.lock"))
     }
 
     pub fn claim(path: &Path, requests: UnboundedSender<()>) -> io::Result<Claim> {
-        if let Ok(mut stream) = UnixStream::connect(path) {
-            // The message is only a line to read, so a failed write still leaves the other launcher to be shown.
-            let _ = stream.write_all(b"show\n");
-            return Ok(Claim::Taken);
+        // The lock may sit in the config folder while the socket sits in a shorter folder, so each folder is made here.
+        let lock = lock_path(path);
+        if let Some(dir) = lock.parent() {
+            std::fs::create_dir_all(dir)?;
         }
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
+        let file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .truncate(false)
+            .open(lock_path(path))?;
+        match file.try_lock() {
+            Ok(()) => {}
+            Err(TryLockError::WouldBlock) => return ask_holder(path),
+            Err(TryLockError::Error(error)) => return Err(error),
+        }
+        // Holding the lock, any socket still at this path was left by a launcher that ended, so it is replaced.
+        let _ = HELD.set(file);
         let _ = std::fs::remove_file(path);
         let listener = UnixListener::bind(path)?;
         thread::spawn(move || {
@@ -127,6 +168,24 @@ mod platform {
             }
         });
         Ok(Claim::Held)
+    }
+
+    /// Asks the launcher that holds the lock to show its window. That launcher may still be starting its listener, so the
+    /// connection is tried for a moment. One that never answers is not a reason to run a second launcher, so this one exits.
+    fn ask_holder(path: &Path) -> io::Result<Claim> {
+        let deadline = Instant::now() + REACH_FOR;
+        loop {
+            if let Ok(mut stream) = UnixStream::connect(path) {
+                // The message is only a line to read, so a failed write still leaves the other launcher to be shown.
+                let _ = stream.write_all(b"show\n");
+                return Ok(Claim::Taken);
+            }
+            if Instant::now() >= deadline {
+                warn!("Another launcher holds the lock but does not answer, so this one exits");
+                return Ok(Claim::Taken);
+            }
+            thread::sleep(REACH_EVERY);
+        }
     }
 }
 

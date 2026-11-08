@@ -2,6 +2,7 @@
 //! database, and the probes. Sign-in and account messages are routed to
 //! `auth.rs`.
 
+use crate::app::components::alert::Alert;
 use crate::app::components::floating_dock::CLEARANCE;
 use crate::app::components::scrollbar;
 use crate::app::database::Database;
@@ -211,7 +212,7 @@ impl LodestoneLauncher {
             LodestoneAppMessage::InstanceResetAnswered { instance, confirmed } => self.instance_reset_answered(instance, confirmed),
             LodestoneAppMessage::SettingsSaved(result) => self.settings_saved(result),
             LodestoneAppMessage::VersionsPrefetched(result) => self.versions_prefetched(result),
-            LodestoneAppMessage::AccountSwitched(index, result) => self.account_switched(index, result),
+            LodestoneAppMessage::AccountSwitched(account, result) => self.account_switched(account, result),
             LodestoneAppMessage::AccountMenu(message) => self.account_menu(message),
             LodestoneAppMessage::ProfileChangeConfirmed(confirmed) => self.profile_change_confirmed(confirmed),
             LodestoneAppMessage::LocalDataAnswered(confirmed) => self.local_data_answered(confirmed),
@@ -233,7 +234,14 @@ impl LodestoneLauncher {
             LodestoneAppMessage::ProfileRefreshed(result) => self.profile_refreshed(result),
             LodestoneAppMessage::SkinFileMoved(result) => self.skin_file_moved(result),
             LodestoneAppMessage::SpeedTick => {
-                self.speed.tick(lodestone_net::bytes_received());
+                // After a pause the bytes moved while the clock was off are not one second's worth, so the meter starts again from
+                // the total without taking a sample.
+                let total = lodestone_net::bytes_received();
+                let now = std::time::Instant::now();
+                match self.speed_at.replace(now) {
+                    Some(last) if now.duration_since(last) < std::time::Duration::from_secs(3) => self.speed.tick(total),
+                    _ => self.speed.resume(total),
+                }
                 Task::none()
             }
             LodestoneAppMessage::ReinstallFinished { job, result } => self.reinstall_finished(job, result),
@@ -323,7 +331,14 @@ impl LodestoneLauncher {
             }
             LodestoneAppMessage::DatabaseReady(Err(error)) => {
                 warn!("Launcher database unavailable: {error}");
-                Task::none()
+                // Without the database the library, the installs and the settings cannot load, so the user is told where it is.
+                let path = crate::app::paths::config_dir().map(|dir| dir.join("launcher.db")).unwrap_or_default();
+                self.alerts
+                    .show(Alert::error(lang::t_with(
+                        "database.unavailable",
+                        &[("path", path.display().to_string().as_str()), ("error", error.as_str())],
+                    )))
+                    .discard()
             }
             LodestoneAppMessage::InstancesLoaded(Ok(instances)) => {
                 info!("Loaded {} instance(s)", instances.len());
@@ -412,7 +427,7 @@ impl LodestoneLauncher {
             }
             LodestoneAppMessage::AuthProbeResult(result) => {
                 match &result {
-                    Ok(probe) => info!("Auth services reachable: {}ms", probe.delay_ms),
+                    Ok(probe) => debug!("Auth services reachable: {}ms", probe.delay_ms),
                     Err(error) => warn!("Auth services unreachable: {error}"),
                 }
                 self.auth_status = Some(result);
@@ -513,13 +528,7 @@ const SETTINGS_KEY: &str = "settings";
 fn write_settings(values: SettingsValues) -> Task<LodestoneAppMessage> {
     Task::perform(
         async move {
-            match tokio::task::spawn_blocking(move || {
-                let mut preferences = Preferences::load();
-                preferences.settings = values;
-                preferences.store()
-            })
-            .await
-            {
+            match tokio::task::spawn_blocking(move || Preferences::update(|preferences| preferences.settings = values)).await {
                 Ok(saved) => saved,
                 Err(error) => Err(error.to_string()),
             }
@@ -538,14 +547,7 @@ fn select_language(code: &'static str) -> Task<LodestoneAppMessage> {
     }
     let language = code.to_owned();
     Task::future(async move {
-        match tokio::task::spawn_blocking(move || {
-            // Read the file again, so the other choices (the Discover platform) are kept.
-            let mut preferences = Preferences::load();
-            preferences.language = Some(language);
-            preferences.store()
-        })
-        .await
-        {
+        match tokio::task::spawn_blocking(move || Preferences::update(|preferences| preferences.language = Some(language))).await {
             Ok(Ok(())) => {}
             Ok(Err(error)) => warn!("Saving the language choice failed: {error}"),
             Err(error) => warn!("Saving the language choice failed: {error}"),

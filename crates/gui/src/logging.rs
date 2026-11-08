@@ -260,6 +260,7 @@ pub fn setup_logging() -> color_eyre::Result<()> {
         archive(&dir)?;
     }
 
+    install_crash_report(dir.clone());
     let logs = RollingLogs::open(dir.clone())?;
     let (queue, commands) = mpsc::sync_channel(QUEUE_CAPACITY);
     thread::Builder::new()
@@ -482,3 +483,21 @@ fn cleanup_old_logs_archives(dir: &Path) -> io::Result<()> {
 #[cfg(test)]
 #[path = "../tests/logging.rs"]
 mod tests;
+
+/// Keeps a report of a panic beside the logs, written before the panic goes on to end the launcher or its task. The report
+/// has the message, the place, and the stack, which the logs alone do not hold.
+fn install_crash_report(dir: PathBuf) {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let path = dir.join(format!("crash-{stamp}.txt"));
+        let report = format!("{info}\n\n{}\n", std::backtrace::Backtrace::force_capture());
+        if let Err(error) = lodestone_fs::write_atomic(&path, report.as_bytes()) {
+            eprintln!("could not write the crash report to {}: {error}", path.display());
+        }
+        previous(info);
+    }));
+}

@@ -161,6 +161,10 @@ pub struct LodestoneLauncher {
     restoring: Option<String>,
     /// Whether the sign-in page was opened to add an account, so a sign-in returns to Settings.
     adding_account: bool,
+    /// A switch to a Microsoft account is signing in again. Another switch waits for it, so the refresh token is spent once.
+    switching_account: bool,
+    /// When the speed meter last sampled, which tells a pause from one second's gap.
+    speed_at: Option<std::time::Instant>,
     /// The Skins page: the skin and cape the account wears, the skins to choose from, and the capes the account owns.
     skins: pages::skins::Skins,
     /// The change to the profile that the player is asked to confirm, until the answer comes back.
@@ -257,6 +261,8 @@ impl Default for LodestoneLauncher {
             speed: Default::default(),
             restoring: None,
             adding_account: false,
+            switching_account: false,
+            speed_at: None,
             skins: pages::skins::Skins::default(),
             pending_change: None,
             waiting_change: None,

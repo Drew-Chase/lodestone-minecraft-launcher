@@ -90,8 +90,28 @@ pub fn t(key: &'static str) -> &'static str {
 
 /// [`t`] with each `{NAME}` replaced by its value.
 pub fn t_with(key: &'static str, args: &[(&str, &str)]) -> String {
-    args.iter()
-        .fold(t(key).to_owned(), |text, &(name, value)| text.replace(&format!("{{{name}}}"), value))
+    // One pass over the template, so a value that happens to contain a placeholder is copied as it is, not filled in again.
+    let mut rest = t(key);
+    let mut out = String::with_capacity(rest.len());
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('}') else {
+            break;
+        };
+        let name = &after[..close];
+        match args.iter().find(|(key, _)| *key == name) {
+            Some((_, value)) => out.push_str(value),
+            None => {
+                out.push('{');
+                out.push_str(name);
+                out.push('}');
+            }
+        }
+        rest = &after[close + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// The count's form of `stem`: `<stem>.one` for exactly one, `<stem>.other`

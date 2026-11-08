@@ -8,6 +8,7 @@ fn microsoft(username: &str, token: &str) -> StoredAccount {
     StoredAccount::Microsoft(StoredMicrosoft {
         refresh_token: token.into(),
         username: username.into(),
+        uuid: None,
     })
 }
 
@@ -72,6 +73,7 @@ fn a_legacy_name_already_in_the_list_is_not_added_twice() {
         microsoft: Some(StoredMicrosoft {
             refresh_token: "older-token".into(),
             username: "Steve".into(),
+            uuid: None,
         }),
         ..StoredCredentials::default()
     };
@@ -123,9 +125,14 @@ fn a_refresh_token_is_replaced_for_the_named_microsoft_account_only() {
         accounts: vec![offline("Steve"), microsoft("Steve", "old")],
         ..StoredCredentials::default()
     };
-    assert!(credentials.replace_refresh_token("Steve", "new".into()));
-    assert_eq!(credentials.accounts, vec![offline("Steve"), microsoft("Steve", "new")]);
-    assert!(!credentials.replace_refresh_token("Alex", "x".into()));
+    assert!(credentials.replace_refresh_token("uuid-steve", "Steve", "new".into()));
+    let filled = StoredAccount::Microsoft(StoredMicrosoft {
+        refresh_token: "new".into(),
+        username: "Steve".into(),
+        uuid: Some("uuid-steve".into()),
+    });
+    assert_eq!(credentials.accounts, vec![offline("Steve"), filled]);
+    assert!(!credentials.replace_refresh_token("uuid-alex", "Alex", "x".into()));
 }
 
 #[test]
@@ -154,4 +161,41 @@ fn an_idle_writer_starts_the_next_save_at_once() {
     assert!(writer.request());
     assert!(!writer.complete());
     assert!(writer.request(), "after going idle, a save starts a new write");
+}
+
+#[test]
+fn a_renamed_player_keeps_the_same_account_by_uuid() {
+    let mut credentials = StoredCredentials::default();
+    credentials.add_and_make_primary(StoredAccount::Microsoft(StoredMicrosoft {
+        refresh_token: "old".into(),
+        username: "Old".into(),
+        uuid: Some("uuid-1".into()),
+    }));
+    let renamed = StoredAccount::Microsoft(StoredMicrosoft {
+        refresh_token: "fresh".into(),
+        username: "New".into(),
+        uuid: Some("uuid-1".into()),
+    });
+    assert_eq!(credentials.position(&renamed), Some(0), "the same uuid is the same account");
+    assert!(credentials.replace_refresh_token("uuid-1", "New", "next".into()));
+    assert_eq!(credentials.accounts.len(), 1);
+    assert_eq!(credentials.accounts[0].username(), "New");
+}
+
+#[test]
+fn a_different_player_who_takes_an_old_name_is_a_new_account() {
+    let mut credentials = StoredCredentials::default();
+    credentials.add_and_make_primary(StoredAccount::Microsoft(StoredMicrosoft {
+        refresh_token: "old".into(),
+        username: "Steve".into(),
+        uuid: Some("uuid-1".into()),
+    }));
+    let other = StoredAccount::Microsoft(StoredMicrosoft {
+        refresh_token: "other".into(),
+        username: "Steve".into(),
+        uuid: Some("uuid-2".into()),
+    });
+    assert_eq!(credentials.position(&other), None);
+    credentials.add_and_make_primary(other);
+    assert_eq!(credentials.accounts.len(), 2);
 }

@@ -80,7 +80,7 @@ fn file_in(dir: &Path, pid: u32) -> PathBuf {
 pub fn write_in(dir: &Path, record: &Record) -> io::Result<()> {
     fs::create_dir_all(dir)?;
     let json = serde_json::to_vec_pretty(record).map_err(io::Error::other)?;
-    fs::write(file_in(dir, record.pid), json)
+    lodestone_fs::write_atomic(&file_in(dir, record.pid), &json)
 }
 
 /// Deletes the pid file of the game with process id `pid` in `dir`. A file that is already gone is

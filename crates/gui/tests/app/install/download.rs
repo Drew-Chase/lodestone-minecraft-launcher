@@ -70,3 +70,23 @@ async fn with_verification_off_nothing_is_looked_at_and_nothing_is_fetched() {
     assert!(split.missing.is_empty(), "a file that is absent is not fetched either");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[tokio::test]
+async fn a_file_of_the_right_size_with_the_wrong_hash_is_fetched_again() {
+    let dir = scratch("hash");
+    std::fs::write(dir.join("a.bin"), b"hello world").expect("the file writes");
+    // The SHA-1 of "hello world" is what the file must hash to. A file of the same size with other bytes is not present.
+    let right = Item {
+        url: Some("https://files.example/object".to_string()),
+        path: dir.join("a.bin"),
+        sha1: Some("2aae6c35c94fcfb415dbe95f408b9ce91ee846ed".to_string()),
+        size: Some(11),
+    };
+    let wrong = Item {
+        sha1: Some("0000000000000000000000000000000000000000".to_string()),
+        ..right.clone()
+    };
+    assert_eq!(missing(vec![right]).await.expect("the check runs").present, 1);
+    let split = missing(vec![wrong]).await.expect("the check runs");
+    assert_eq!((split.present, split.missing.len()), (0, 1));
+}

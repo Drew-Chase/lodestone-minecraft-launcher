@@ -221,7 +221,12 @@ impl State {
             .filter(|&index| self.filter.matches(&entries[index], pinned[index]) && entries[index].matches(&query))
             .collect();
         let sort = self.sort;
-        visible.sort_by(|&a, &b| sort.compare(&entries[a], &entries[b]));
+        if sort == WorldSort::Name {
+            // The name is lowered once per world, not once per comparison. The index breaks ties, so equal names keep their order.
+            visible.sort_by_cached_key(|&index| (entries[index].world.name.to_lowercase(), index));
+        } else {
+            visible.sort_by(|&a, &b| sort.compare(&entries[a], &entries[b]));
+        }
         let visible_backups = (0..self.backups.len()).filter(|&index| self.backups[index].matches(&query)).collect();
 
         self.counts = counts;

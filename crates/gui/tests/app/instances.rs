@@ -22,3 +22,14 @@ fn a_folder_that_is_already_gone_counts_as_removed() {
 
     assert_eq!(remove_folder(&folder), Ok(()));
 }
+
+#[test]
+fn only_web_addresses_are_opened_as_links() {
+    assert!(is_web_link("https://modrinth.com/mod/sodium"));
+    assert!(is_web_link("http://example.test/readme"));
+    assert!(!is_web_link("file:///C:/Users/Public/tool.exe"));
+    assert!(!is_web_link("ms-msdt:/id PCWDiagnostic"));
+    assert!(!is_web_link("javascript:alert(1)"));
+    assert!(!is_web_link("/relative/path"));
+    assert!(!is_web_link(""));
+}

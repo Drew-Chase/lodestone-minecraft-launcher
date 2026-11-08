@@ -36,7 +36,7 @@ pub struct VersionEntry {
 
 /// Mojang's releases and snapshots, newest first. Other kinds of version (old betas and alphas) are left out.
 pub async fn versions() -> Result<Vec<VersionEntry>, String> {
-    let manifest = ManifestV2::fetch()
+    let manifest = lodestone_loaders::mojang::version_list(&lodestone_net::client())
         .await
         .map_err(|error| lang::t_with("install.version_list_failed", &[("error", error.to_string().as_str())]))?;
     Ok(manifest
@@ -60,7 +60,7 @@ pub struct BundledJava {
 
 /// Fetches Mojang's version list.
 pub async fn releases() -> Result<Releases, String> {
-    let manifest = ManifestV2::fetch()
+    let manifest = lodestone_loaders::mojang::version_list(&lodestone_net::client())
         .await
         .map_err(|error| lang::t_with("install.version_list_failed", &[("error", error.to_string().as_str())]))?;
     let ids = manifest.releases().into_iter().map(|version| version.id).collect();

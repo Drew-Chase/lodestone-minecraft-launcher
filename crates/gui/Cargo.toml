@@ -36,6 +36,7 @@ zip = "9"
 sha1 = "0.10"
 reqwest = { workspace = true }
 lodestone_net = { path = "../net" }
+lodestone_fs = { path = "../fsutil" }
 simple_download_utility = { workspace = true }
 fastrand = "2"
 sipper = "0.1"

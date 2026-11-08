@@ -9,7 +9,9 @@ pub mod servers;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Local, Utc};
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};
+use std::time::Duration;
+
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteRow, SqliteSynchronous};
 use sqlx::{Row, Sqlite, Transaction};
 
 use crate::app::import::record::{ImportFormat, ImportOrigin, ImportRecord};
@@ -50,10 +52,17 @@ impl Database {
         let mut path = crate::app::paths::config_dir().ok_or("no config directory")?;
         std::fs::create_dir_all(&path).map_err(|error| format!("creating {}: {error}", path.display()))?;
         path.push("launcher.db");
-        let url = format!("sqlite://{}?mode=rwc", path.display());
+        // The file is named by its path, not in a URL, so a folder whose name holds `?`, `#` or `%` opens the right file. WAL lets
+        // readers run beside the writer, and the busy timeout makes a writer wait for another one rather than fail at once.
+        let options = SqliteConnectOptions::new()
+            .filename(&path)
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal)
+            .busy_timeout(Duration::from_secs(5));
         let pool = SqlitePoolOptions::new()
             .max_connections(4)
-            .connect(&url)
+            .connect_with(options)
             .await
             .map_err(|error| error.to_string())?;
         sqlx::migrate!("./migrations").run(&pool).await.map_err(|error| error.to_string())?;

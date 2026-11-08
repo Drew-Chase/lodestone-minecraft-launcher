@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::mpsc::Receiver;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local};
 use iced::Task;
@@ -203,6 +203,11 @@ impl Games {
     }
 
     /// Whether `instance` is being prepared.
+    /// Whether any instance is preparing a launch, which downloads the files it needs.
+    pub fn any_preparing(&self) -> bool {
+        !self.preparing.is_empty()
+    }
+
     pub fn is_preparing(&self, instance: &str) -> bool {
         self.preparing.contains_key(instance)
     }
@@ -404,26 +409,60 @@ impl Games {
     }
 }
 
+/// The events the bridge from the game's output thread holds. A full bridge stops that thread reading the game's pipes, so
+/// a slow window slows the game's output rather than growing the launcher's memory.
+const BRIDGE: usize = 1024;
+
+/// How long output is gathered after the first line, so a burst of lines reaches the window as one message.
+const GATHER: Duration = Duration::from_millis(16);
+
+/// The most lines one message carries.
+const BATCH: usize = 256;
+
 /// The lines of one run's output, as they arrive, then its exit. It ends after the exit.
 pub fn pump(serial: u64, events: Receiver<LaunchEvent>) -> impl Sipper<(), GameMessage> {
     sipper(move |mut progress: ProgressSender<GameMessage>| async move {
-        let (sender, mut received) = tokio::sync::mpsc::unbounded_channel::<LaunchEvent>();
+        let (sender, mut received) = tokio::sync::mpsc::channel::<LaunchEvent>(BRIDGE);
         std::thread::spawn(move || {
             for event in events {
-                if sender.send(event).is_err() {
+                if sender.blocking_send(event).is_err() {
                     break;
                 }
             }
         });
-        while let Some(event) = received.recv().await {
-            let message = match event {
-                LaunchEvent::Log { stream, line } => GameMessage::Output { serial, stream, line },
-                LaunchEvent::Exited { status } => GameMessage::Exited {
-                    serial,
-                    status: Some(status),
-                },
-            };
-            progress.send(message).await;
+        while let Some(first) = received.recv().await {
+            tokio::time::sleep(GATHER).await;
+            let mut batch = vec![first];
+            while batch.len() < BATCH {
+                match received.try_recv() {
+                    Ok(event) => batch.push(event),
+                    Err(_) => break,
+                }
+            }
+            // The lines before an exit go out first, so the exit always follows the last line.
+            let mut lines = Vec::with_capacity(batch.len());
+            let mut exit = None;
+            for event in batch {
+                match event {
+                    LaunchEvent::Log { stream, line } => lines.push((stream, line)),
+                    LaunchEvent::Exited { status } => {
+                        exit = Some(status);
+                        break;
+                    }
+                }
+            }
+            if !lines.is_empty() {
+                progress.send(GameMessage::Output { serial, lines }).await;
+            }
+            if let Some(status) = exit {
+                progress
+                    .send(GameMessage::Exited {
+                        serial,
+                        status: Some(status),
+                    })
+                    .await;
+                return;
+            }
         }
     })
 }

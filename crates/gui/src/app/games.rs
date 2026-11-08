@@ -52,8 +52,10 @@ impl LodestoneLauncher {
                 Task::none()
             }
             GameMessage::Prepared { id, serial, result } => self.prepared_game(&id, serial, result),
-            GameMessage::Output { serial, stream, line } => {
-                self.games.push_output(serial, stream, line);
+            GameMessage::Output { serial, lines } => {
+                for (stream, line) in lines {
+                    self.games.push_output(serial, stream, line);
+                }
                 Task::none()
             }
             GameMessage::Exited { serial, status } => self.game_exited(serial, status),
@@ -519,6 +521,7 @@ impl LodestoneLauncher {
                     .add_and_make_primary(crate::app::storage::StoredAccount::Microsoft(crate::app::storage::StoredMicrosoft {
                         refresh_token: refresh_token.clone(),
                         username: session.profile.name.clone(),
+                        uuid: Some(session.profile.id.clone()),
                     }));
                 self.save_credentials()
             }

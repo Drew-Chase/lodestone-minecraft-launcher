@@ -4,7 +4,10 @@
 //! the launcher spawns.
 
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::process::{ExitStatus, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use lodestone_launch::Launcher;
 use lodestone_server::address::ServerAddress;
@@ -461,7 +464,7 @@ async fn debug_log_config(config: PathBuf) -> Result<PathBuf, String> {
             .map_or_else(|| "log4j.xml".to_string(), |name| name.to_string_lossy().into_owned());
         let path = config.with_file_name(format!("debug-{name}"));
         let text = std::fs::read_to_string(&config).map_err(|error| error.to_string())?;
-        std::fs::write(&path, debug_log_text(&text)).map_err(|error| error.to_string())?;
+        lodestone_fs::write_atomic(&path, debug_log_text(&text).as_bytes()).map_err(|error| error.to_string())?;
         Ok::<PathBuf, String>(path)
     })
     .await
@@ -474,28 +477,48 @@ fn debug_log_text(text: &str) -> String {
     text.replace("<Root level=\"info\">", "<Root level=\"debug\">")
 }
 
-/// Runs the pre-launch hook through the shell, in the instance folder with the instance's variables, and waits
-/// for it. A hook that exits with an error stops the launch.
+/// The longest a pre-launch hook may run before it is stopped. A hook that waits on something that never comes would
+/// otherwise hold the instance in "preparing" for ever.
+const HOOK_LIMIT: Duration = Duration::from_secs(5 * 60);
+
+/// How often a running hook is checked against its deadline, and against its launch having been dropped.
+const HOOK_POLL: Duration = Duration::from_millis(200);
+
+/// Runs the pre-launch hook through the shell, in the instance folder with the instance's variables, and waits for it. A hook
+/// that exits with an error stops the launch. One that runs past [`HOOK_LIMIT`], or whose launch was dropped, is stopped.
 async fn run_hook(command: String, directory: PathBuf, env: Vec<EnvVar>) -> Result<(), String> {
-    let status = tokio::task::spawn_blocking(move || {
-        let mut shell = if cfg!(windows) {
-            let mut shell = std::process::Command::new("cmd");
-            shell.arg("/C");
-            shell
-        } else {
-            let mut shell = std::process::Command::new("sh");
-            shell.arg("-c");
-            shell
-        };
-        shell
-            .arg(&command)
+    // Dropping this future, as an aborted launch does, sets the flag, and the hook is stopped at its next check.
+    let stop = Arc::new(AtomicBool::new(false));
+    let _stop_on_drop = StopOnDrop(Arc::clone(&stop));
+    let status = tokio::task::spawn_blocking(move || -> Result<ExitStatus, String> {
+        let mut child = shell_for(&command)
             .current_dir(&directory)
+            .stdin(Stdio::null())
             .envs(env.iter().filter(|var| valid_env_name(&var.name)).map(|var| (&var.name, &var.value)))
-            .status()
+            .spawn()
+            .map_err(|error| lang::t_with("launch.hook_failed", &[("error", error.to_string().as_str())]))?;
+        let started = Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => return Ok(status),
+                Ok(None) => {}
+                Err(error) => return Err(lang::t_with("launch.hook_failed", &[("error", error.to_string().as_str())])),
+            }
+            if stop.load(Ordering::Acquire) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(lang::t("launch.hook_stopped").to_owned());
+            }
+            if started.elapsed() > HOOK_LIMIT {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(lang::t("launch.hook_timeout").to_owned());
+            }
+            std::thread::sleep(HOOK_POLL);
+        }
     })
     .await
-    .map_err(|error| error.to_string())?
-    .map_err(|error| lang::t_with("launch.hook_failed", &[("error", error.to_string().as_str())]))?;
+    .map_err(|error| error.to_string())??;
     if status.success() {
         return Ok(());
     }
@@ -503,6 +526,39 @@ async fn run_hook(command: String, directory: PathBuf, env: Vec<EnvVar>) -> Resu
         .code()
         .map_or_else(|| lang::t("launch.hook_no_code").to_owned(), |code| code.to_string());
     Err(lang::t_with("launch.hook_exit", &[("code", code.as_str())]))
+}
+
+/// Sets its flag when it is dropped, so the hook a launch started is stopped when that launch is dropped.
+struct StopOnDrop(Arc<AtomicBool>);
+
+impl Drop for StopOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
+/// The shell a hook runs in: `sh -c` on Unix.
+#[cfg(not(windows))]
+fn shell_for(command: &str) -> std::process::Command {
+    let mut shell = std::process::Command::new("sh");
+    shell.arg("-c").arg(command);
+    shell
+}
+
+/// The shell a hook runs in on Windows: `cmd /S /C` over the command as written. The command goes in raw, because
+/// `Command::arg` quotes it the way the C runtime does, and cmd does not read that quoting. A hook is a console program
+/// started from a window, so it is created without a console of its own.
+#[cfg(windows)]
+fn shell_for(command: &str) -> std::process::Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut shell = std::process::Command::new("cmd");
+    shell
+        .raw_arg("/S")
+        .raw_arg("/C")
+        .raw_arg(format!("\"{command}\""))
+        .creation_flags(CREATE_NO_WINDOW);
+    shell
 }
 
 #[cfg(test)]

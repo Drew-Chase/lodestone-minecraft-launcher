@@ -5,10 +5,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
-use piston_mc::assets::{AssetItem, Assets};
-use piston_mc::manifest_v2::ManifestV2;
 use serde::Deserialize;
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard, mpsc};
 
@@ -18,6 +16,7 @@ use crate::app::lang;
 use crate::app::launch::libraries::{Item, Native, Plan};
 use crate::app::launch::manifest::{AssetIndex, Manifest};
 use crate::app::paths::LauncherPaths;
+use lodestone_loaders::mojang;
 
 /// The host Mojang serves asset objects from, by hash.
 const ASSET_HOST: &str = "https://resources.download.minecraft.net";
@@ -27,9 +26,22 @@ const ASSET_HOST: &str = "https://resources.download.minecraft.net";
 /// the locks in the order version, then Java, then loader, then natives, so no two of them wait on
 /// each other.
 pub async fn lock(key: String) -> OwnedMutexGuard<()> {
-    static LOCKS: OnceLock<Mutex<HashMap<String, Arc<AsyncMutex<()>>>>> = OnceLock::new();
+    // A key's mutex is held weakly. It lives while a lock on it is held or waited for, and its entry is pruned once it is gone,
+    // so the table holds only the keys in use.
+    static LOCKS: OnceLock<Mutex<HashMap<String, Weak<AsyncMutex<()>>>>> = OnceLock::new();
     let locks = LOCKS.get_or_init(Default::default);
-    let mutex = locks.lock().expect("the lock table is not poisoned").entry(key).or_default().clone();
+    let mutex = {
+        let mut table = locks.lock().expect("the lock table is not poisoned");
+        table.retain(|_, weak| weak.strong_count() > 0);
+        match table.get(&key).and_then(Weak::upgrade) {
+            Some(mutex) => mutex,
+            None => {
+                let mutex = Arc::new(AsyncMutex::new(()));
+                table.insert(key, Arc::downgrade(&mutex));
+                mutex
+            }
+        }
+    };
     mutex.lock_owned().await
 }
 
@@ -50,7 +62,7 @@ pub async fn vanilla(paths: &LauncherPaths, client: &reqwest::Client, mc: &str) 
 
 /// Downloads the version JSON Mojang lists for `mc`.
 async fn fetch_version_json(client: &reqwest::Client, mc: &str) -> Result<String, String> {
-    let manifest = ManifestV2::fetch()
+    let manifest = mojang::version_list(client)
         .await
         .map_err(|error| lang::t_with("install.version_list_failed", &[("error", error.to_string().as_str())]))?;
     let entry = manifest
@@ -113,45 +125,7 @@ pub async fn assets(
     let total = items.len();
     let Missing { missing, present } = download::missing_when(items, verify).await?;
     report(reports, Part::Assets, present, total).await;
-    if missing.is_empty() {
-        return Ok(());
-    }
-    let result = fetch_objects(paths, index, missing, present, total, reports).await;
-    // piston-mc writes the index it was handed in its own shape, so Mojang's text is put back over it
-    // whether or not the download succeeded.
-    write_file(&paths.asset_indexes().join(format!("{}.json", index.id)), text.as_bytes())?;
-    result
-}
-
-/// Downloads the objects that are missing through piston-mc, as many at a time as the concurrency setting allows. piston-mc
-/// fetches only the objects it is given, checks each one's SHA-1 as it lands, and writes each under
-/// `<assets>/objects/<prefix>/<hash>`, the layout [`object_items`] uses.
-async fn fetch_objects(
-    paths: &LauncherPaths,
-    index: &AssetIndex,
-    missing: Vec<Item>,
-    present: usize,
-    total: usize,
-    reports: &mpsc::Sender<PartReport>,
-) -> Result<(), String> {
-    let objects = missing
-        .into_iter()
-        .filter_map(|item| {
-            let hash = item.sha1?;
-            let size = item.size.unwrap_or_default();
-            Some((hash.clone(), AssetItem { hash, size }))
-        })
-        .collect();
-    let mut assets = Assets {
-        url: index.url.clone(),
-        asset_id: index.id.clone(),
-        path: None,
-        objects,
-    };
-    let (sender, forward) = download::forward(Part::Assets, present, total, reports);
-    let result = assets.download(paths.assets(), download::concurrency(), Some(sender)).await;
-    let _ = forward.await;
-    result.map_err(|error| error.to_string())
+    download::fetch(client, missing, Part::Assets, present, total, reports).await
 }
 
 /// The asset index text, from the store when it is there.
@@ -248,7 +222,7 @@ fn extract_natives(dir: &Path, natives: &[Native]) -> Result<(), String> {
     for native in natives {
         extract_archive(&native.archive, dir, &native.exclude)?;
     }
-    std::fs::write(dir.join(COMPLETE), b"").map_err(|error| {
+    lodestone_fs::write_atomic(&dir.join(COMPLETE), b"").map_err(|error| {
         lang::t_with(
             "install.could_not_finish",
             &[("path", dir.display().to_string().as_str()), ("error", error.to_string().as_str())],
@@ -266,7 +240,15 @@ fn extract_archive(archive: &Path, dir: &Path, exclude: &[String]) -> Result<(),
         )
     };
     let file = std::fs::File::open(archive).map_err(|error| failed(error.to_string()))?;
+    let archive_len = file.metadata().map_err(|error| failed(error.to_string()))?.len();
     let mut zip = zip::ZipArchive::new(file).map_err(|error| failed(error.to_string()))?;
+    // The declared sizes are read before any entry is written, so an archive that claims far more than it holds is refused whole.
+    let declared = (0..zip.len())
+        .filter_map(|index| zip.by_index_raw(index).ok().map(|entry| entry.size()))
+        .fold(0, u64::saturating_add);
+    if !lodestone_fs::archive_fits(declared, archive_len) {
+        return Err(failed(format!("the archive declares {declared} bytes from {archive_len}")));
+    }
     for index in 0..zip.len() {
         let mut entry = zip.by_index(index).map_err(|error| failed(error.to_string()))?;
         let Some(name) = entry.enclosed_name() else {
@@ -281,7 +263,8 @@ fn extract_archive(archive: &Path, dir: &Path, exclude: &[String]) -> Result<(),
             std::fs::create_dir_all(parent).map_err(|error| failed(error.to_string()))?;
         }
         let mut out = std::fs::File::create(&target).map_err(|error| failed(error.to_string()))?;
-        std::io::copy(&mut entry, &mut out).map_err(|error| failed(error.to_string()))?;
+        let (declared, compressed) = (entry.size(), entry.compressed_size());
+        lodestone_fs::copy_entry(&mut entry, &mut out, declared, compressed).map_err(|error| failed(error.to_string()))?;
     }
     Ok(())
 }
@@ -304,29 +287,11 @@ async fn get_text(client: &reqwest::Client, url: &str) -> Result<String, String>
         .map_err(|error| error.to_string())
 }
 
-/// Writes `bytes` to `path` through a `.part` file, so an interrupted write is never mistaken
-/// for a finished one.
+/// Writes `bytes` to `path` so an interrupted write never leaves a partial file behind (see [`lodestone_fs::write_atomic`]).
 pub fn write_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| {
-            lang::t_with(
-                "install.could_not_create",
-                &[("path", parent.display().to_string().as_str()), ("error", error.to_string().as_str())],
-            )
-        })?;
-    }
-    let mut partial = path.as_os_str().to_owned();
-    partial.push(".part");
-    let partial = PathBuf::from(partial);
-    std::fs::write(&partial, bytes).map_err(|error| {
+    lodestone_fs::write_atomic(path, bytes).map_err(|error| {
         lang::t_with(
             "install.could_not_write",
-            &[("path", partial.display().to_string().as_str()), ("error", error.to_string().as_str())],
-        )
-    })?;
-    std::fs::rename(&partial, path).map_err(|error| {
-        lang::t_with(
-            "install.could_not_replace",
             &[("path", path.display().to_string().as_str()), ("error", error.to_string().as_str())],
         )
     })

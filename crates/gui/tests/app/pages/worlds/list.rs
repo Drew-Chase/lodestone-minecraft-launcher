@@ -13,8 +13,10 @@ fn the_grid_takes_as_many_cards_as_the_width_allows() {
 
 #[test]
 fn only_the_rows_around_the_scroll_are_built() {
-    let mut state = State::default();
-    state.visible = (0..100).collect();
+    let mut state = State {
+        visible: (0..100).collect(),
+        ..State::default()
+    };
     let viewport = Size::new(1200.0, 800.0);
     let pitch = CARD_HEIGHT + GAP;
 

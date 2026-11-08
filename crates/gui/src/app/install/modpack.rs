@@ -127,16 +127,18 @@ pub(super) async fn stage(
             Origin::Remote { .. } => fetched.join(format!("{index}.zip")),
         })
         .collect();
-    let mut items: Vec<Item> = payload
-        .files
-        .iter()
-        .map(|file| Item {
+    // A pack's paths are written by whoever made it, so each one must stay inside the instance before anything is fetched.
+    let mut items: Vec<Item> = Vec::with_capacity(payload.files.len());
+    for file in &payload.files {
+        let path = lodestone_platforms::paths::contained(game_dir, &file.path)
+            .ok_or_else(|| lang::t_with("install.unsafe_path", &[("path", file.path.as_str())]))?;
+        items.push(Item {
             url: Some(file.url.clone()),
-            path: game_dir.join(&file.path),
+            path,
             sha1: file.sha1.clone(),
             size: file.size,
-        })
-        .collect();
+        });
+    }
     items.extend(payload.unpacks.iter().zip(&archives).filter_map(|(unpack, path)| match &unpack.origin {
         Origin::Remote { url, sha1, size } => Some(Item {
             url: Some(url.clone()),
@@ -217,7 +219,14 @@ fn unpack_all(unpacks: &[(PathBuf, Unpack)], game_dir: &Path, abandoned: &Atomic
 /// is skipped.
 fn extract(archive: &Path, folder: &str, target: &str, skip: &[String], game_dir: &Path) -> Result<(), String> {
     let file = std::fs::File::open(archive).map_err(|error| error.to_string())?;
+    let archive_len = file.metadata().map_err(|error| error.to_string())?.len();
     let mut zip = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
+    let declared = (0..zip.len())
+        .filter_map(|index| zip.by_index_raw(index).ok().map(|entry| entry.size()))
+        .fold(0, u64::saturating_add);
+    if !lodestone_fs::archive_fits(declared, archive_len) {
+        return Err(format!("the archive declares {declared} bytes from {archive_len}"));
+    }
     let prefix = folder_prefix(folder);
     let destination = game_dir.join(target);
     for index in 0..zip.len() {
@@ -241,7 +250,8 @@ fn extract(archive: &Path, folder: &str, target: &str, skip: &[String], game_dir
             std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
         let mut out = std::fs::File::create(&path).map_err(|error| error.to_string())?;
-        std::io::copy(&mut entry, &mut out).map_err(|error| error.to_string())?;
+        let (declared, compressed) = (entry.size(), entry.compressed_size());
+        lodestone_fs::copy_entry(&mut entry, &mut out, declared, compressed).map_err(|error| error.to_string())?;
         out.flush().map_err(|error| error.to_string())?;
     }
     Ok(())

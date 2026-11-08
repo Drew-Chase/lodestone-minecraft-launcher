@@ -184,7 +184,7 @@ impl Folder {
             Err(error) if error.kind() == ErrorKind::AlreadyExists && path.join(INSTALLING).is_file() => {}
             Err(error) => return Err(could_not_create(path, error)),
         }
-        std::fs::write(path.join(INSTALLING), b"").map_err(|error| could_not_create(path, error))?;
+        lodestone_fs::write_atomic(&path.join(INSTALLING), b"").map_err(|error| could_not_create(path, error))?;
         Ok(Self {
             path: path.to_path_buf(),
             kept: false,
@@ -499,7 +499,7 @@ async fn finish(
 fn write_art(dir: &Path, file: &str, png: &[u8]) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|error| could_not_create(dir, error))?;
     let path = dir.join(file);
-    std::fs::write(&path, png).map_err(|error| path_failed("install.could_not_write", &path, error))
+    lodestone_fs::write_atomic(&path, png).map_err(|error| path_failed("install.could_not_write", &path, error))
 }
 
 /// Reports one progress update.

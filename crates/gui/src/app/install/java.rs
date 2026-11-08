@@ -1,16 +1,28 @@
 //! Bundled Java runtimes. Each Mojang runtime component installs once into
 //! `meta/java/<short name>` and every instance that needs it shares that copy.
+//!
+//! A runtime's file list comes from Mojang's runtime manifest, which must hash to the SHA-1 the platform's list gives it.
+//! Each file the list names is fetched through the launcher's checked downloader, and the directories, links and executable
+//! bits are applied once the files are in place.
 
 use std::path::{Path, PathBuf};
 
 use piston_mc::java::{JavaManifest, JavaRuntime, Runtimes};
-use simple_download_utility::MultiDownloadProgress;
+use serde_json::Value;
 use tokio::sync::mpsc;
 
 use super::COMPLETE;
-use super::download::{Part, PartReport, concurrency, relay};
+use super::download::{self, Missing, Part, PartReport};
 use crate::app::lang;
+use crate::app::launch::libraries::Item;
 use crate::app::paths::LauncherPaths;
+
+/// Mojang's list of the Java runtimes each platform publishes.
+const LIST_URL: &str = "https://piston-meta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
+
+/// Windows: a console program started from a window opens a console unless it is created without one.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// The folder name of a Mojang runtime component: `java-runtime-delta` is `delta`, and
 /// the legacy Java 8 runtime is `legacy`.
@@ -41,7 +53,7 @@ pub(crate) fn installed_home(paths: &LauncherPaths, component: &str) -> Option<P
 
 /// Makes sure the runtime for `component` is installed and returns its Java program and
 /// its short name. An install that finished earlier is reused. One that did not is run
-/// again.
+/// again, and the files it already has are checked and kept.
 pub(super) async fn ensure(paths: &LauncherPaths, component: &str, reports: &mpsc::Sender<PartReport>) -> Result<(PathBuf, String), String> {
     let name = short_name(component).to_string();
     let home = paths.java(&name);
@@ -50,26 +62,41 @@ pub(super) async fn ensure(paths: &LauncherPaths, component: &str, reports: &mps
         return Ok((binary(&home), name));
     }
 
-    let manifest = JavaManifest::fetch()
-        .await
-        .map_err(|error| lang::t_with("install.java.fetch_list", &[("error", error.to_string().as_str())]))?;
+    let client = lodestone_net::client();
+    let manifest = fetch_list(&client).await?;
     let runtime = platform_runtimes(&manifest)
         .and_then(|runtimes| runtime(runtimes, component))
         .ok_or_else(|| lang::t_with("install.java.not_published", &[("component", component)]))?;
     std::fs::create_dir_all(&home).map_err(|error| super::could_not_create(&home, error))?;
-
-    let (sender, files) = mpsc::channel::<MultiDownloadProgress>(64);
-    let work = async {
-        runtime
-            .install(&home, concurrency(), Some(sender))
-            .await
-            .map_err(|error| error.to_string())
-    };
-    relay(reports, Part::Java, files, work).await?;
-
-    apply_manifest_flags(runtime, &home).await?;
-    std::fs::write(home.join(COMPLETE), b"").map_err(|error| super::path_failed("install.could_not_finish", &home, error))?;
+    install_runtime(&client, runtime, &home, reports).await?;
+    lodestone_fs::write_atomic(&home.join(COMPLETE), b"").map_err(|error| super::path_failed("install.could_not_finish", &home, error))?;
     Ok((binary(&home), name))
+}
+
+/// Installs the files of `runtime` into `home`: the files its list names, then the directories, links and executable bits.
+pub(super) async fn install_runtime(
+    client: &reqwest::Client,
+    runtime: &JavaRuntime,
+    home: &Path,
+    reports: &mpsc::Sender<PartReport>,
+) -> Result<(), String> {
+    let entries = fetch_entries(client, runtime).await?;
+    let items = file_items(home, &entries)?;
+    let total = items.len();
+    let Missing { missing, present } = download::missing(items).await?;
+    download::fetch(client, missing, Part::Java, present, total, reports).await?;
+
+    let home = home.to_path_buf();
+    tokio::task::spawn_blocking(move || apply(&home, &entries))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+/// Fetches Mojang's list of runtimes.
+async fn fetch_list(client: &reqwest::Client) -> Result<JavaManifest, String> {
+    lodestone_net::get_json(client, LIST_URL)
+        .await
+        .map_err(|error| lang::t_with("install.java.fetch_list", &[("error", error.to_string().as_str())]))
 }
 
 /// The runtimes this platform's manifest lists.
@@ -107,9 +134,7 @@ const COMPONENTS: [&str; 7] = [
 /// The components this platform publishes, each with its Java major version when its
 /// version name gives one, newest Java first.
 pub(super) async fn platform_components() -> Result<Vec<(String, Option<u8>)>, String> {
-    let manifest = JavaManifest::fetch()
-        .await
-        .map_err(|error| lang::t_with("install.java.fetch_list", &[("error", error.to_string().as_str())]))?;
+    let manifest = fetch_list(&lodestone_net::client()).await?;
     let Some(runtimes) = platform_runtimes(&manifest) else {
         return Ok(Vec::new());
     };
@@ -141,52 +166,101 @@ fn runtime<'a>(runtimes: &'a Runtimes, component: &str) -> Option<&'a JavaRuntim
     list.first()
 }
 
-/// One entry of a runtime's file list, with the flags the downloader ignores.
+/// One entry of a runtime's file list: a file, a directory or a link.
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Entry {
     name: String,
     kind: String,
     executable: bool,
     target: Option<String>,
+    /// Where a file's bytes come from. A file the list gives no download for is left out.
+    raw: Option<Raw>,
 }
 
-/// The downloader writes files and nothing else. Mojang's file list also marks the
-/// executables and the links, which it leaves out, so they are applied here.
-async fn apply_manifest_flags(runtime: &JavaRuntime, home: &Path) -> Result<(), String> {
+/// A file's raw download, with the SHA-1 and size it must have.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Raw {
+    url: String,
+    sha1: String,
+    size: u64,
+}
+
+/// Reads the file list of `runtime`. The list must hash to the SHA-1 its manifest names, so a list that was changed on the
+/// way is not trusted.
+async fn fetch_entries(client: &reqwest::Client, runtime: &JavaRuntime) -> Result<Vec<Entry>, String> {
     let url = &runtime.manifest.url;
-    let text = reqwest::get(url)
+    let bytes = client
+        .get(url)
+        .send()
         .await
         .and_then(reqwest::Response::error_for_status)
         .map_err(|error| lang::t_with("install.java.fetch_file", &[("url", url.as_str()), ("error", error.to_string().as_str())]))?
-        .text()
+        .bytes()
         .await
         .map_err(|error| lang::t_with("install.java.read_file", &[("url", url.as_str()), ("error", error.to_string().as_str())]))?;
-    let entries = parse_entries(&text)?;
-    let home = home.to_path_buf();
-    tokio::task::spawn_blocking(move || apply(&home, &entries))
-        .await
-        .map_err(|error| error.to_string())?
+    if !lodestone_net::download::sha1_hex(&bytes).eq_ignore_ascii_case(&runtime.manifest.sha1) {
+        return Err(lang::t_with("install.java.list_checksum", &[("url", url.as_str())]));
+    }
+    parse_entries(&String::from_utf8_lossy(&bytes))
 }
 
 /// Reads the `files` map of a runtime's file list.
 fn parse_entries(text: &str) -> Result<Vec<Entry>, String> {
-    let json: serde_json::Value =
+    let json: Value =
         serde_json::from_str(text).map_err(|error| lang::t_with("install.java.list_parse", &[("error", error.to_string().as_str())]))?;
     let files = json
         .get("files")
-        .and_then(serde_json::Value::as_object)
+        .and_then(Value::as_object)
         .ok_or_else(|| lang::t("install.java.list_empty").to_owned())?;
-    Ok(files
+    // The names are Mojang's, but each is still a path under the runtime's folder, so one that leaves the folder is refused.
+    files
         .iter()
-        .map(|(name, entry)| Entry {
-            name: name.clone(),
-            kind: entry.get("type").and_then(serde_json::Value::as_str).unwrap_or("file").to_string(),
-            executable: entry.get("executable").and_then(serde_json::Value::as_bool).unwrap_or(false),
-            target: entry.get("target").and_then(serde_json::Value::as_str).map(str::to_string),
+        .map(|(name, entry)| {
+            if !lodestone_platforms::paths::is_contained(name) {
+                return Err(lang::t_with("install.unsafe_path", &[("path", name.as_str())]));
+            }
+            Ok(Entry {
+                name: name.clone(),
+                kind: entry.get("type").and_then(Value::as_str).unwrap_or("file").to_string(),
+                executable: entry.get("executable").and_then(Value::as_bool).unwrap_or(false),
+                target: entry.get("target").and_then(Value::as_str).map(str::to_string),
+                raw: raw_of(entry),
+            })
         })
-        .collect())
+        .collect()
 }
 
-/// Creates the directories, links and executables of a runtime that is already downloaded.
+/// The raw download of one list entry, when it names one completely.
+fn raw_of(entry: &Value) -> Option<Raw> {
+    let raw = entry.get("downloads")?.get("raw")?;
+    Some(Raw {
+        url: raw.get("url")?.as_str()?.to_string(),
+        sha1: raw.get("sha1")?.as_str()?.to_string(),
+        size: raw.get("size")?.as_u64()?,
+    })
+}
+
+/// The downloads for the files of `entries`, each placed under `home`.
+fn file_items(home: &Path, entries: &[Entry]) -> Result<Vec<Item>, String> {
+    entries
+        .iter()
+        .filter(|entry| entry.kind == "file")
+        .map(|entry| {
+            let raw = entry
+                .raw
+                .as_ref()
+                .ok_or_else(|| lang::t_with("install.no_download", &[("path", entry.name.as_str())]))?;
+            Ok(Item {
+                url: Some(raw.url.clone()),
+                path: home.join(&entry.name),
+                sha1: Some(raw.sha1.clone()),
+                size: Some(raw.size),
+            })
+        })
+        .collect()
+}
+
+/// Creates the directories, links and executables of a runtime whose files are downloaded.
 fn apply(home: &Path, entries: &[Entry]) -> Result<(), String> {
     for entry in entries {
         let path = home.join(&entry.name);
@@ -259,14 +333,22 @@ fn find_system(at_least: u32) -> Option<SystemJava> {
 
 /// The major version a Java program reports with `-version`, which writes to stderr.
 fn major_version(program: &Path) -> Option<u32> {
-    let output = std::process::Command::new(program).arg("-version").output().ok()?;
+    let mut command = std::process::Command::new(program);
+    command.arg("-version");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let output = command.output().ok()?;
     parse_major(&String::from_utf8_lossy(&output.stderr))
 }
 
-/// The major version on the first line of `-version` output: `17` for `openjdk version "17.0.20.1"`, and `8` for
-/// `java version "1.8.0_202"`.
+/// The major version in `-version` output. The version line can come after lines a JVM prints for itself, such as
+/// "Picked up JAVA_TOOL_OPTIONS", so the first line that names a version is the one read.
 fn parse_major(output: &str) -> Option<u32> {
-    let version = output.lines().next()?.split('"').nth(1)?;
+    let line = output.lines().find(|line| line.contains("version \""))?;
+    let version = line.split('"').nth(1)?;
     let mut parts = version.split(|c: char| !c.is_ascii_digit());
     let first: u32 = parts.next()?.parse().ok()?;
     if first == 1 { parts.next()?.parse().ok() } else { Some(first) }

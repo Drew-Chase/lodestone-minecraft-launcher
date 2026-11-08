@@ -483,7 +483,7 @@ async fn write_art(folder: PathBuf, kind: &'static str, png: Vec<u8>) -> Result<
     tokio::task::spawn_blocking(move || {
         let relative = PathBuf::from(ART_DIR).join(format!("{kind}-{}.png", Utc::now().timestamp_millis()));
         std::fs::create_dir_all(folder.join(ART_DIR)).map_err(|error| error.to_string())?;
-        std::fs::write(folder.join(&relative), png).map_err(|error| error.to_string())?;
+        lodestone_fs::write_atomic(&folder.join(&relative), &png).map_err(|error| error.to_string())?;
         Ok(relative)
     })
     .await
@@ -503,8 +503,15 @@ pub(super) fn reveal_folder(folder: PathBuf) -> Task<LodestoneAppMessage> {
     )
 }
 
-/// Opens `url` in the browser on the blocking pool. A failure returns as `SourceOpened`.
+/// Opens `url` in the browser on the blocking pool. A failure returns as `SourceOpened`. Only a web address is opened: a link a
+/// project, a news post or a release names is written by whoever published it, and a file or a registered program must not be
+/// started from it (see [`is_web_link`]).
 pub(super) fn open_source(url: String) -> Task<LodestoneAppMessage> {
+    let url = url.trim().to_string();
+    if !is_web_link(&url) {
+        tracing::warn!("refusing to open a link that is not an http or https address");
+        return Task::none();
+    }
     Task::perform(
         async move {
             match tokio::task::spawn_blocking(move || open::that_detached(&url)).await {
@@ -538,3 +545,8 @@ fn remove_folder(folder: &Path) -> Result<(), String> {
 #[cfg(test)]
 #[path = "../../tests/app/instances.rs"]
 mod tests;
+
+/// Whether `text` is an `http` or `https` address. The only links the launcher opens.
+pub fn is_web_link(text: &str) -> bool {
+    reqwest::Url::parse(text).is_ok_and(|url| matches!(url.scheme(), "http" | "https"))
+}

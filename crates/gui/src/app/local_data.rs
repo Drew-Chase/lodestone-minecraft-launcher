@@ -59,13 +59,11 @@ impl LodestoneLauncher {
 /// Removes the saved settings, but keeps the folder the data is in: the data stays there, so the launcher must still find it.
 fn clear_preferences_keeping_folder() -> Result<(), String> {
     let data_folder = Preferences::load().data_folder;
-    Preferences::remove()?;
-    match data_folder {
-        Some(data_folder) => Preferences {
-            data_folder: Some(data_folder),
+    // One locked write resets every choice but the folder, so no other preference change can land between the two.
+    Preferences::update(|preferences| {
+        *preferences = Preferences {
+            data_folder,
             ..Preferences::default()
-        }
-        .store(),
-        None => Ok(()),
-    }
+        };
+    })
 }

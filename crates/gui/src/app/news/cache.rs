@@ -38,6 +38,6 @@ pub fn write(news: &[u8], patches: &[u8]) {
     if std::fs::create_dir_all(&folder).is_err() {
         return;
     }
-    let _ = std::fs::write(folder.join(NEWS_FILE), news);
-    let _ = std::fs::write(folder.join(PATCHES_FILE), patches);
+    let _ = lodestone_fs::write_atomic(&folder.join(NEWS_FILE), news);
+    let _ = lodestone_fs::write_atomic(&folder.join(PATCHES_FILE), patches);
 }

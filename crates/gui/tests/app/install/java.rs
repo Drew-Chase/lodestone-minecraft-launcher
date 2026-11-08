@@ -65,18 +65,21 @@ fn applying_the_list_makes_executables_directories_and_links() {
             kind: "file".to_string(),
             executable: true,
             target: None,
+            raw: None,
         },
         Entry {
             name: "lib/libjli.so".to_string(),
             kind: "link".to_string(),
             executable: false,
             target: Some("../jli/libjli.so".to_string()),
+            raw: None,
         },
         Entry {
             name: "lib".to_string(),
             kind: "directory".to_string(),
             executable: false,
             target: None,
+            raw: None,
         },
     ];
 
@@ -104,16 +107,14 @@ fn major_versions_come_from_the_leading_number() {
 #[tokio::test]
 #[ignore = "downloads a Java runtime from Mojang (about 95 MB)"]
 async fn an_installed_runtime_runs_once_its_flags_are_applied() {
-    let manifest = JavaManifest::fetch().await.expect("the runtime list fetches");
+    let client = lodestone_net::client();
+    let manifest = fetch_list(&client).await.expect("the runtime list fetches");
     let runtimes = platform_runtimes(&manifest).expect("this platform publishes runtimes");
     let runtime = runtime(runtimes, "java-runtime-gamma").expect("gamma is published here");
     let home = scratch("e2e");
 
-    runtime
-        .install(&home, crate::app::install::download::PARALLEL, None)
-        .await
-        .expect("the runtime downloads");
-    apply_manifest_flags(runtime, &home).await.expect("the flags apply");
+    let (reports, _received) = tokio::sync::mpsc::channel(64);
+    install_runtime(&client, runtime, &home, &reports).await.expect("the runtime installs");
 
     let output = std::process::Command::new(binary(&home))
         .arg("-version")

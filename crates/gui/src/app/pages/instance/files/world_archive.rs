@@ -89,7 +89,14 @@ pub fn restore(archive_path: &Path, saves: &Path, folder: &str) -> Result<String
 /// after it, and returns that name. The archive must have the layout `import` describes.
 fn extract_save(archive_path: &Path, saves: &Path, stem: &str) -> Result<String, String> {
     let file = File::open(archive_path).map_err(|error| error.to_string())?;
+    let archive_len = file.metadata().map_err(|error| error.to_string())?.len();
     let mut archive = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
+    let declared = (0..archive.len())
+        .filter_map(|index| archive.by_index_raw(index).ok().map(|entry| entry.size()))
+        .fold(0, u64::saturating_add);
+    if !lodestone_fs::archive_fits(declared, archive_len) {
+        return Err(format!("the archive declares {declared} bytes from {archive_len}"));
+    }
 
     let names: Vec<PathBuf> = (0..archive.len())
         .map(|index| {
@@ -143,7 +150,8 @@ fn extract(archive: &mut zip::ZipArchive<File>, names: &[PathBuf], prefix: &Path
             std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
         let mut output = File::create(&destination).map_err(|error| error.to_string())?;
-        io::copy(&mut entry, &mut output).map_err(|error| error.to_string())?;
+        let (declared, compressed) = (entry.size(), entry.compressed_size());
+        lodestone_fs::copy_entry(&mut entry, &mut output, declared, compressed).map_err(|error| error.to_string())?;
     }
     Ok(())
 }

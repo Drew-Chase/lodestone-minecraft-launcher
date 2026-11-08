@@ -45,7 +45,7 @@ impl LodestoneLauncher {
             app.library.set_view(view);
         }
         // Open the launcher database — migrations run on connect.
-        tasks.push(Task::perform(Database::connect(), |result| LodestoneAppMessage::DatabaseReady(result)));
+        tasks.push(Task::perform(Database::connect(), LodestoneAppMessage::DatabaseReady));
         // The update check runs at launch, in the background, and then every `updater::CHECK_EVERY`. `updater::enabled` says when
         // it is skipped.
         if updater::enabled(app.portable.is_some()) {

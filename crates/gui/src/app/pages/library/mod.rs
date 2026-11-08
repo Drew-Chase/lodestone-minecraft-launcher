@@ -203,6 +203,9 @@ pub struct Library {
     hovered: Option<String>,
     /// The installs still running or waiting, shown as cards beside the instances.
     pending: Vec<Pending>,
+    /// The positions, in `every_instance`, of the instances the list shows, in order. `refilter` keeps it current, so the
+    /// list is not searched and sorted on every frame.
+    visible: Vec<usize>,
 }
 
 impl Library {
@@ -211,8 +214,14 @@ impl Library {
     /// owned by the page scroll alone — filter changes must not jump it.
     pub fn update(&mut self, message: Message) {
         match message {
-            Message::SearchChanged(search) => self.search = search,
-            Message::FilterChanged(filter) => self.filter = filter,
+            Message::SearchChanged(search) => {
+                self.search = search;
+                self.refilter();
+            }
+            Message::FilterChanged(filter) => {
+                self.filter = filter;
+                self.refilter();
+            }
             Message::ViewChanged(view) => self.view = view,
             Message::Scrolled(offset) => self.scroll_y = offset.max(0.0),
             Message::Hover { instance, hovered } => {
@@ -243,6 +252,7 @@ impl Library {
     /// Replaces the loaded instances (the root re-queried the database).
     pub fn set_instances(&mut self, instances: Vec<Instance>) {
         self.instances = instances;
+        self.refilter();
     }
 
     /// Looks an instance up by id — the root uses this to open the detail
@@ -290,6 +300,7 @@ impl Library {
     /// Replaces the installs that have not ended. The root sends them whenever the queue changes.
     pub fn set_pending(&mut self, pending: Vec<Pending>) {
         self.pending = pending;
+        self.refilter();
     }
 
     /// The install of the instance `id`, while it has not ended.
@@ -303,6 +314,7 @@ impl Library {
             Some(known) => *known = instance,
             None => self.instances.push(instance),
         }
+        self.refilter();
     }
 
     /// Overrides the initial view mode (the `LODESTONE_LIBRARY_VIEW` probe).
@@ -313,14 +325,21 @@ impl Library {
     /// The instances after the search query and filter tab, most recent
     /// first.
     fn visible(&self) -> Vec<&Instance> {
+        let all: Vec<&Instance> = self.every_instance().collect();
+        self.visible.iter().filter_map(|&index| all.get(index).copied()).collect()
+    }
+
+    /// Recomputes which instances the list shows, and their order, from the search and the filter. The loaded instances and the
+    /// installs still running are searched together, and the most recently played comes first.
+    fn refilter(&mut self) {
         let query = self.search.to_lowercase();
-        let mut visible: Vec<&Instance> = self
-            .every_instance()
-            .filter(|instance| self.filter.matches(instance))
-            .filter(|instance| query.is_empty() || instance.name.to_lowercase().contains(&query))
+        let all: Vec<&Instance> = self.every_instance().collect();
+        let mut visible: Vec<usize> = (0..all.len())
+            .filter(|&index| self.filter.matches(all[index]))
+            .filter(|&index| query.is_empty() || all[index].name.to_lowercase().contains(&query))
             .collect();
-        visible.sort_by_key(|instance| std::cmp::Reverse(instance.recency()));
-        visible
+        visible.sort_by_key(|&index| std::cmp::Reverse(all[index].recency()));
+        self.visible = visible;
     }
 
     /// Opens the New Instance dialog at `paths`. The task loads the lists it offers.

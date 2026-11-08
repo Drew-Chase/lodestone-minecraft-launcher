@@ -14,17 +14,43 @@
 //! OS keyring (libsecret / DPAPI) is the future hardening task. Tokens
 //! are never logged.
 
-use std::path::PathBuf;
+use std::fmt;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 /// A Microsoft sign-in the launcher keeps: enough to log in again silently.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredMicrosoft {
     /// The Microsoft refresh token (`offline_access` scope). A refresh spends it, so the one a refresh produces replaces it.
     pub refresh_token: String,
     /// The profile name of the last successful sign-in.
     pub username: String,
+    /// The player's Minecraft uuid. A rename changes the name but not this, so the uuid is what identifies the account. A
+    /// sign-in kept before uuids were stored has none, until its next sign-in fills it in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uuid: Option<String>,
+}
+
+impl StoredMicrosoft {
+    /// Whether `other` is the same player: the same uuid when both carry one, and otherwise the same name.
+    pub fn is_same_player(&self, other: &Self) -> bool {
+        match (&self.uuid, &other.uuid) {
+            (Some(kept), Some(new)) => kept == new,
+            _ => self.username == other.username,
+        }
+    }
+}
+
+/// Redacts the refresh token, which signs the account in again, so a log or a debug print never carries it.
+impl fmt::Debug for StoredMicrosoft {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StoredMicrosoft")
+            .field("refresh_token", &"<redacted>")
+            .field("username", &self.username)
+            .field("uuid", &self.uuid)
+            .finish()
+    }
 }
 
 /// One account the launcher keeps signed in.
@@ -49,9 +75,8 @@ impl StoredAccount {
     /// Whether `other` is the same account: the same kind, under the same name.
     fn is(&self, other: &StoredAccount) -> bool {
         match (self, other) {
-            (StoredAccount::Microsoft(_), StoredAccount::Microsoft(_)) | (StoredAccount::Offline { .. }, StoredAccount::Offline { .. }) => {
-                self.username() == other.username()
-            }
+            (StoredAccount::Microsoft(kept), StoredAccount::Microsoft(new)) => kept.is_same_player(new),
+            (StoredAccount::Offline { username: kept }, StoredAccount::Offline { username: new }) => kept == new,
             _ => false,
         }
     }
@@ -88,7 +113,7 @@ impl StoredCredentials {
     }
 
     /// Loads from an explicit path (the entry point for tests). A file from before there were several accounts is migrated.
-    pub fn load_from(path: &PathBuf) -> Self {
+    pub fn load_from(path: &Path) -> Self {
         let contents = match std::fs::read_to_string(path) {
             Ok(contents) => contents,
             Err(_) => return Self::default(),
@@ -99,21 +124,21 @@ impl StoredCredentials {
                 credentials
             }
             Err(error) => {
-                tracing::warn!("credential file is corrupt, ignoring it: {error}");
+                // The file is kept beside its path, so the tokens in it can be recovered, and the next save starts a new file.
+                tracing::warn!("credential file is corrupt, keeping it aside and starting empty: {error}");
+                if let Err(error) = lodestone_fs::quarantine(path) {
+                    tracing::warn!("could not keep the corrupt credential file: {error}");
+                }
                 Self::default()
             }
         }
     }
 
-    /// Persists to an explicit path (the entry point for tests).
-    pub fn store_to(path: &PathBuf, credentials: &Self) -> Result<(), String> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|error| format!("creating {}: {error}", parent.display()))?;
-        }
+    /// Persists to an explicit path (the entry point for tests). The file is created owner-only and replaced atomically, so
+    /// no other user can read it and a crash never leaves it half written (see [`lodestone_fs::write_private`]).
+    pub fn store_to(path: &Path, credentials: &Self) -> Result<(), String> {
         let json = serde_json::to_string_pretty(credentials).map_err(|error| format!("serializing credentials: {error}"))?;
-        std::fs::write(path, json).map_err(|error| format!("writing {}: {error}", path.display()))?;
-        restrict_permissions(path);
-        Ok(())
+        lodestone_fs::write_private(path, json.as_bytes()).map_err(|error| format!("writing {}: {error}", path.display()))
     }
 
     /// Moves the single-account fields of an older file into the list: the Microsoft sign-in first, then the offline name.
@@ -194,17 +219,30 @@ impl StoredCredentials {
         Some(removed)
     }
 
-    /// Replaces the refresh token of the Microsoft account named `username`. Returns false when no such account is kept.
-    pub fn replace_refresh_token(&mut self, username: &str, token: String) -> bool {
+    /// Replaces the refresh token of the Microsoft account of the player `uuid`, which is named `username` now. A kept account
+    /// from before uuids were stored is matched by its name, and takes the uuid from then on. Returns false when no such
+    /// account is kept.
+    pub fn replace_refresh_token(&mut self, uuid: &str, username: &str, token: String) -> bool {
         for account in &mut self.accounts {
-            if let StoredAccount::Microsoft(microsoft) = account
-                && microsoft.username == username
-            {
-                microsoft.refresh_token = token;
-                return true;
+            if let StoredAccount::Microsoft(microsoft) = account {
+                let same = match &microsoft.uuid {
+                    Some(kept) => kept == uuid,
+                    None => microsoft.username == username,
+                };
+                if same {
+                    microsoft.refresh_token = token;
+                    microsoft.username = username.to_string();
+                    microsoft.uuid = Some(uuid.to_string());
+                    return true;
+                }
             }
         }
         false
+    }
+
+    /// The index of the account `account` is, when it is still kept. An account that was removed has none.
+    pub fn position(&self, account: &StoredAccount) -> Option<usize> {
+        self.accounts.iter().position(|kept| kept.is(account))
     }
 
     /// Removes the Microsoft account named `username`, when it is kept. Returns whether one was removed.
@@ -222,18 +260,6 @@ fn credentials_path() -> PathBuf {
     let mut path = crate::app::paths::config_dir().unwrap_or_else(|| PathBuf::from("."));
     path.push("credentials.json");
     path
-}
-
-/// Owner-only file permissions on Unix; a no-op elsewhere (Windows
-/// secures the user profile by default).
-fn restrict_permissions(path: &PathBuf) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
-    }
-    #[cfg(not(unix))]
-    let _ = path;
 }
 
 /// Serialises credential writes so they can run off the UI thread without

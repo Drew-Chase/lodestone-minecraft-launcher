@@ -174,9 +174,7 @@ pub fn apply(from: &Path, to: &Path, saved: Option<PathBuf>) -> Result<(), Strin
 
 /// Saves the folder the launcher opens next time. The other preferences are kept as the file has them.
 fn save(folder: Option<PathBuf>) -> Result<(), String> {
-    let mut preferences = Preferences::load();
-    preferences.data_folder = folder;
-    preferences.store()
+    Preferences::update(|preferences| preferences.data_folder = folder)
 }
 
 impl LodestoneLauncher {

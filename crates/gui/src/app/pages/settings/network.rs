@@ -240,6 +240,11 @@ fn proxy_rows<'a>(network: &Network) -> Vec<Element<'a, Message>> {
             lang::t("settings.network.proxy_address_hint"),
             proxy_field(&network.custom_proxy),
         ));
+        // An address the launcher cannot use is said so, since requests then go direct rather than through it.
+        let address = network.custom_proxy.trim();
+        if !address.is_empty() && !lodestone_net::proxy_is_valid(address) {
+            rows.push(container(text(lang::t("settings.network.proxy_invalid")).size(12).color(color::amber())).into());
+        }
     }
     rows
 }

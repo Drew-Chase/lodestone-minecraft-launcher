@@ -147,3 +147,9 @@ fn an_unknown_language_is_refused_and_the_current_one_kept() {
         assert_eq!(active_index(), 0);
     });
 }
+
+#[test]
+fn a_value_that_holds_a_placeholder_is_not_filled_in_again() {
+    let text = t_with("launch.hook_exit", &[("code", "{mc}"), ("mc", "1.21")]);
+    assert_eq!(text, "The pre-launch hook stopped the launch with code {mc}.");
+}

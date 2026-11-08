@@ -279,7 +279,7 @@ fn write_manifest(dir: &Path, modpack: &Modpack) -> Result<(), String> {
         "files": files,
     });
     let bytes = serde_json::to_vec_pretty(&manifest).map_err(|error| error.to_string())?;
-    std::fs::write(dir.join("modpack.json"), bytes).map_err(|error| error.to_string())
+    lodestone_fs::write_atomic(&dir.join("modpack.json"), &bytes).map_err(|error| error.to_string())
 }
 
 /// Resolves the CurseForge files of a modpack to their download urls, a few at a time.
@@ -699,12 +699,7 @@ impl LodestoneLauncher {
     fn remember_discover_view(&self, view: DiscoverView) -> Task<LodestoneAppMessage> {
         let key = view.key().to_string();
         Task::future(async move {
-            let saved = tokio::task::spawn_blocking(move || {
-                let mut preferences = Preferences::load();
-                preferences.discover_view = Some(key);
-                preferences.store()
-            })
-            .await;
+            let saved = tokio::task::spawn_blocking(move || Preferences::update(|preferences| preferences.discover_view = Some(key))).await;
             match saved {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => warn!("saving the Discover layout failed: {error}"),
@@ -726,12 +721,7 @@ impl LodestoneLauncher {
     fn remember_discover_source(&self) -> Task<LodestoneAppMessage> {
         let key = self.discover.source().key().to_string();
         Task::future(async move {
-            let saved = tokio::task::spawn_blocking(move || {
-                let mut preferences = Preferences::load();
-                preferences.discover_source = Some(key);
-                preferences.store()
-            })
-            .await;
+            let saved = tokio::task::spawn_blocking(move || Preferences::update(|preferences| preferences.discover_source = Some(key))).await;
             match saved {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => warn!("saving the Discover platform failed: {error}"),

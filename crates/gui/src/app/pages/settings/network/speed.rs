@@ -17,6 +17,11 @@ pub struct Meter {
 }
 
 impl Meter {
+    /// Starts again from `total` without taking a sample, after the meter was not sampled for a while.
+    pub fn resume(&mut self, total: u64) {
+        self.last_total = total;
+    }
+
     /// Takes a sample: the bytes received since the last one, given the running total of every byte received.
     pub fn tick(&mut self, total: u64) {
         let received = total.saturating_sub(self.last_total);

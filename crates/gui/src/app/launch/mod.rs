@@ -47,8 +47,8 @@ pub enum GameMessage {
         serial: u64,
         result: Result<Box<Prepared>, String>,
     },
-    /// A running game wrote a line.
-    Output { serial: u64, stream: LogStream, line: String },
+    /// A running game wrote lines, in the order it wrote them. They are sent together when they arrive close together.
+    Output { serial: u64, lines: Vec<(LogStream, String)> },
     /// A running game exited. A reattached game's exit status went with the launcher that started it,
     /// so its exit comes through as `None`.
     Exited { serial: u64, status: Option<ExitStatus> },

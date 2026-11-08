@@ -92,7 +92,7 @@ pub enum LodestoneAppMessage {
     /// One second has passed, so the Network tab takes a speed sample.
     SpeedTick,
     /// A switch to another account, which signed in again, finished.
-    AccountSwitched(usize, Result<Session, String>),
+    AccountSwitched(crate::app::storage::StoredAccount, Result<Session, String>),
     /// The account menu on the player's face: its toggle, its dismissal, a switch to an account, and the add.
     AccountMenu(AccountMenuMessage),
     /// The answer to the question whether to make the change to the profile that was asked for: a skin or a cape.

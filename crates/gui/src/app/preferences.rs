@@ -10,6 +10,7 @@
 
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, PoisonError};
 
 use serde::{Deserialize, Serialize};
 
@@ -39,6 +40,10 @@ pub struct Preferences {
     pub settings: SettingsValues,
 }
 
+/// Serialises every change to the preferences file. A change reads the file, applies one change and writes it back, under this
+/// lock, so two changes never interleave: the later one keeps the earlier one's value.
+static WRITES: Mutex<()> = Mutex::new(());
+
 impl Preferences {
     /// Loads the saved preferences. A missing, unreadable, or corrupt file yields
     /// the defaults, so a broken file never blocks the launcher.
@@ -46,40 +51,51 @@ impl Preferences {
         Self::load_from(&preferences_path())
     }
 
-    /// Persists the preferences, creating the directory on first write.
-    pub fn store(&self) -> Result<(), String> {
-        Self::store_to(&preferences_path(), self)
+    /// Applies one change to the saved preferences and writes them back. The file is read again under the write lock, so the
+    /// change lands on the latest values and the rest of the file is kept. A file that cannot be read is an error, and it is
+    /// not written over.
+    pub fn update(change: impl FnOnce(&mut Self)) -> Result<(), String> {
+        let _writes = WRITES.lock().unwrap_or_else(PoisonError::into_inner);
+        let path = preferences_path();
+        let mut preferences = Self::read_from(&path)?;
+        change(&mut preferences);
+        Self::store_to(&path, &preferences)
     }
 
-    /// Loads from an explicit path (the entry point for tests).
+    /// Loads from an explicit path (the entry point for tests). A missing, unreadable, or corrupt file yields the defaults.
     pub fn load_from(path: &Path) -> Self {
-        let Ok(contents) = std::fs::read_to_string(path) else {
-            return Self::default();
+        Self::read_from(path).unwrap_or_default()
+    }
+
+    /// Reads from an explicit path. A missing file is the defaults. A file that does not parse is moved aside, so the next
+    /// write does not replace it, and the defaults are returned. A file that cannot be read at all is an error.
+    fn read_from(path: &Path) -> Result<Self, String> {
+        let contents = match std::fs::read_to_string(path) {
+            Ok(contents) => contents,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(error) => return Err(format!("reading {}: {error}", path.display())),
         };
         match serde_json::from_str(&contents) {
-            Ok(preferences) => preferences,
+            Ok(preferences) => Ok(preferences),
             Err(error) => {
-                tracing::warn!("preferences file is corrupt, ignoring it: {error}");
-                Self::default()
+                tracing::warn!("preferences file is corrupt, keeping it aside and using the defaults: {error}");
+                if let Err(error) = lodestone_fs::quarantine(path) {
+                    tracing::warn!("could not keep the corrupt preferences file: {error}");
+                }
+                Ok(Self::default())
             }
         }
     }
 
-    /// Persists to an explicit path (the entry point for tests).
+    /// Persists to an explicit path. The write is atomic (see [`lodestone_fs::write_atomic`]), so a crash never leaves a
+    /// truncated file. Changes to the saved file go through [`Preferences::update`].
     pub fn store_to(path: &Path, preferences: &Self) -> Result<(), String> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|error| format!("creating {}: {error}", parent.display()))?;
-        }
         let json = serde_json::to_string_pretty(preferences).map_err(|error| format!("serializing preferences: {error}"))?;
-        std::fs::write(path, json).map_err(|error| format!("writing {}: {error}", path.display()))
-    }
-
-    /// Removes the saved preferences, so the next launch uses the defaults. A file that is already gone is not an error.
-    pub fn remove() -> Result<(), String> {
-        Self::remove_from(&preferences_path())
+        lodestone_fs::write_atomic(path, json.as_bytes()).map_err(|error| format!("writing {}: {error}", path.display()))
     }
 
     /// Removes the file at an explicit path (the entry point for tests).
+    #[cfg(test)]
     pub fn remove_from(path: &Path) -> Result<(), String> {
         match std::fs::remove_file(path) {
             Ok(()) => Ok(()),

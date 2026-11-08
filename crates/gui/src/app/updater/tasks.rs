@@ -26,6 +26,9 @@ pub async fn fetch(release: Release, payload: Payload) -> Result<Verified, Strin
     let client = lodestone_updater::client(USER_AGENT).map_err(|error| error.to_string())?;
     let name = payload.file_name(&release.tag);
     let dir = root.join(&release.tag);
+    if !lodestone_updater::signing_configured() {
+        tracing::warn!("this build has no release key, so the update is checked by its checksums alone");
+    }
     let archive = fetch_asset(&client, &release, &name, &dir).await.map_err(|error| error.to_string())?;
     let unpacked = dir.join("unpacked");
     let file = tokio::task::spawn_blocking(move || unpack(payload, &archive, &unpacked))

@@ -19,20 +19,39 @@ impl LodestoneLauncher {
             window::resize_events().map(|(id, size)| LodestoneAppMessage::WindowSizeChanged(id, size)),
             event::listen_with(Self::mouse_navigation),
             self.import_subscription(),
-            // The auth-services probe — keeps the login status bar honest.
-            iced::time::every(std::time::Duration::from_secs(15)).map(|_| LodestoneAppMessage::AuthProbeTick),
-            iced::time::every(std::time::Duration::from_secs(1)).map(|_| LodestoneAppMessage::SpeedTick),
+            self.auth_probe_subscription(),
+            self.speed_subscription(),
             self.instance_subscription(),
             self.skins_subscription(),
             self.discover_shortcut(),
             self.servers_subscription(),
             // The update checks are due every few hours, so the clock wakes once an hour to see whether one is.
             iced::time::every(std::time::Duration::from_secs(60 * 60)).map(|_| LodestoneAppMessage::Notifications(notifications::Message::CheckDue)),
-            // The launcher checks GitHub for a newer release every couple of minutes while it runs.
+            // The launcher checks GitHub for a newer release every half hour while it runs.
             iced::time::every(updater::CHECK_EVERY).map(|_| LodestoneAppMessage::Updater(updater::Message::CheckDue)),
             perf::subscription(&self.perf).map(LodestoneAppMessage::Perf),
             super::single_instance::focus_requests().map(|()| LodestoneAppMessage::FocusRequested),
         ])
+    }
+
+    /// The auth-services probe runs while a page shows its result: the sign-in page's status bar and the Settings page. Elsewhere
+    /// nothing reads it, so it does not wake the window.
+    fn auth_probe_subscription(&self) -> Subscription<LodestoneAppMessage> {
+        match self.router.current() {
+            Page::Login | Page::Settings => iced::time::every(std::time::Duration::from_secs(15)).map(|_| LodestoneAppMessage::AuthProbeTick),
+            _ => Subscription::none(),
+        }
+    }
+
+    /// The speed meter samples once a second while the Settings page shows its chart, or while bytes are moving: a download
+    /// or a launch that is preparing. Each sample redraws the window, so an idle launcher does not take them.
+    fn speed_subscription(&self) -> Subscription<LodestoneAppMessage> {
+        let moving = self.downloads.running() > 0 || self.games.any_preparing();
+        if matches!(self.router.current(), Page::Settings) || moving {
+            iced::time::every(std::time::Duration::from_secs(1)).map(|_| LodestoneAppMessage::SpeedTick)
+        } else {
+            Subscription::none()
+        }
     }
 
     /// The Servers page's clocks: its round of pings every few seconds, and the games announced on the local network. They
