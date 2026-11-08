@@ -8,3 +8,10 @@ autotests = false
 
 [dependencies]
 reqwest = { workspace = true }
+serde = { workspace = true }
+sha1 = "0.10"
+tokio = { workspace = true, features = ["fs", "io-util"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "net", "rt-multi-thread"] }

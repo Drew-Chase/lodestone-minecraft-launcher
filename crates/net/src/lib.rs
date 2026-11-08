@@ -4,6 +4,8 @@
 //!
 //! The byte counter lives here too, so the speed the Network tab shows counts every download that reports progress.
 
+pub mod download;
+
 use std::sync::PoisonError;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -48,15 +50,38 @@ pub fn builder() -> reqwest::ClientBuilder {
     if !config.use_system_proxy {
         builder = builder.no_proxy();
     }
-    if let Some(proxy) = config.custom_proxy.as_deref().and_then(|url| reqwest::Proxy::all(url).ok()) {
-        builder = builder.proxy(proxy);
+    if let Some(url) = config.custom_proxy.as_deref() {
+        match reqwest::Proxy::all(url) {
+            Ok(proxy) => builder = builder.proxy(proxy),
+            // The Settings page marks the address as unusable (see [`proxy_is_valid`]), so this is only logged.
+            Err(error) => tracing::warn!("the custom proxy {url:?} cannot be used, so requests skip it: {error}"),
+        }
     }
     builder
 }
 
 /// A client built from [`builder`]. A client the settings cannot build falls back to reqwest's default one.
 pub fn client() -> reqwest::Client {
-    builder().build().unwrap_or_else(|_| reqwest::Client::new())
+    builder().build().unwrap_or_else(|error| {
+        // The fallback keeps the timeout, so a stalled request still ends. It drops the proxy settings, which is why it is logged.
+        tracing::warn!("the network settings could not build a client, so a client with the default timeout is used: {error}");
+        let timeout = CONFIG.read().unwrap_or_else(PoisonError::into_inner).timeout;
+        reqwest::Client::builder()
+            .connect_timeout(timeout)
+            .read_timeout(timeout)
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
+}
+
+/// Whether `url` is a proxy address a client can use, such as `http://proxy.example.com:3128`.
+pub fn proxy_is_valid(url: &str) -> bool {
+    reqwest::Proxy::all(url.trim()).is_ok()
+}
+
+/// GETs `url` with `client` and reads the body as JSON. An answer that is not a success is an error.
+pub async fn get_json<T: serde::de::DeserializeOwned>(client: &reqwest::Client, url: &str) -> Result<T, reqwest::Error> {
+    client.get(url).send().await?.error_for_status()?.json::<T>().await
 }
 
 /// Every byte a download has reported receiving.
