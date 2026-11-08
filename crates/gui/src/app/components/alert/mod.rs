@@ -57,7 +57,9 @@ impl Kind {
     pub fn icon(self) -> &'static str {
         match self {
             Kind::Info => Icon::lucide().info(),
-            Kind::Warning | Kind::Danger => Icon::lucide().triangle_alert(),
+            // Iconify lists this icon as `triangle-exclamation-point`. `triangle-alert` is now only an alias of it, and
+            // aurora_iconify generates no method for an alias.
+            Kind::Warning | Kind::Danger => Icon::lucide().triangle_exclamation_point(),
             Kind::Error => Icon::lucide().circle_x(),
         }
     }
