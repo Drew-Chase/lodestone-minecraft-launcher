@@ -113,6 +113,8 @@ pub struct SettingsValues {
     pub instance_defaults: LaunchDefaults,
     /// The page the launcher opens on.
     pub startup_page: StartupPage,
+    /// Which instance the library's hero banner features.
+    pub hero: HeroRule,
     /// Installs stable releases of the launcher in the background.
     pub auto_update: bool,
     /// Offers prereleases of the launcher as well as stable releases.
@@ -138,6 +140,7 @@ impl Default for SettingsValues {
         Self {
             instance_defaults: LaunchDefaults::default(),
             startup_page: StartupPage::default(),
+            hero: HeroRule::default(),
             auto_update: true,
             beta_channel: false,
             auto_update_game_versions: true,
@@ -173,6 +176,29 @@ pub enum StartupPage {
     /// The Worlds page.
     Worlds,
 }
+
+/// Which instance the library's hero banner features. Settings picks the rule, and each rule picks one instance.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HeroRule {
+    /// The instance launched most recently. While none has been launched, the most recently installed one.
+    #[default]
+    LastPlayed,
+    /// The instance installed most recently.
+    LastInstalled,
+    /// The later of each instance's last launch and its install, as the library orders its recent instances.
+    LastPlayedAndInstalled,
+    /// The instance with the most playtime. Ties go to the most recent.
+    MostPlayed,
+}
+
+/// The hero rules, in the order Settings lists them.
+pub const HERO_RULES: [HeroRule; 4] = [
+    HeroRule::LastPlayed,
+    HeroRule::LastInstalled,
+    HeroRule::LastPlayedAndInstalled,
+    HeroRule::MostPlayed,
+];
 
 /// How the launcher looks. The accent and the surface theme recolor the whole interface.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -13,7 +13,7 @@ use crate::app::components::{Select, TextButton, Toggle};
 use crate::app::lang;
 use crate::app::launch_settings::LaunchChange;
 use crate::app::paths::{self, LauncherPaths};
-use crate::app::preferences::{SettingsValues, StartupPage};
+use crate::app::preferences::{HERO_RULES, HeroRule, SettingsValues, StartupPage};
 use crate::app::theme::{color, fonts};
 
 /// The pages the launcher can open on, in the order the select offers them.
@@ -36,6 +36,7 @@ pub fn view<'a>(
     let startup = vec![
         folder_row(paths),
         startup_row(settings.startup_page),
+        hero_row(settings.hero),
         game_start_row(shown.values.hide_launcher),
         game_exit_row(shown.values.quit_after_exit),
     ];
@@ -95,6 +96,23 @@ fn startup_row<'a>(page: StartupPage) -> Element<'a, Message> {
     .on_select(|index| Message::Edit(Edit::Startup(STARTUP_PAGES[index])))
     .width(SELECT_WIDTH);
     described_setting(lang::t("settings.general.startup"), lang::t("settings.general.startup_hint"), select)
+}
+
+/// Which instance the library's banner features. Each rule picks one instance, and the select lists the rules in the order
+/// `HERO_RULES` gives them.
+fn hero_row<'a>(rule: HeroRule) -> Element<'a, Message> {
+    let select = Select::new(
+        [
+            lang::t("settings.general.hero_last_played"),
+            lang::t("settings.general.hero_last_installed"),
+            lang::t("settings.general.hero_last_both"),
+            lang::t("settings.general.hero_most_played"),
+        ],
+        HERO_RULES.iter().position(|option| *option == rule),
+    )
+    .on_select(|index| Message::Edit(Edit::Hero(HERO_RULES[index])))
+    .width(SELECT_WIDTH);
+    described_setting(lang::t("settings.general.hero"), lang::t("settings.general.hero_hint"), select)
 }
 
 /// Whether the launcher minimizes while a game runs. The launch default is `hide_launcher`, which an instance inherits.

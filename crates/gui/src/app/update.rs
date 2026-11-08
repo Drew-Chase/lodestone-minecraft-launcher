@@ -516,6 +516,7 @@ impl LodestoneLauncher {
         let values = self.settings.commit();
         values.apply();
         self.settings_values = values.clone();
+        self.library.set_hero_rule(values.hero);
         self.refresh_instance_page();
         match self.settings_saves.request(SETTINGS_KEY, values) {
             Some(values) => write_settings(values),

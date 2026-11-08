@@ -1,6 +1,6 @@
 //! The changes the Settings tabs make to the draft's values. A launch default changes through [`LaunchChange`] instead.
 
-use crate::app::preferences::{DownloadMirror, SettingsValues, SourceOrder, StartupPage};
+use crate::app::preferences::{DownloadMirror, HeroRule, SettingsValues, SourceOrder, StartupPage};
 use crate::app::theme::{Accent, SurfaceTheme};
 
 /// One change to a setting. The tabs emit these, and the draft writes each one into its copy.
@@ -8,6 +8,8 @@ use crate::app::theme::{Accent, SurfaceTheme};
 pub enum Edit {
     /// The page the launcher opens on.
     Startup(StartupPage),
+    /// Which instance the library's hero banner features.
+    Hero(HeroRule),
     /// Installs stable releases of the launcher in the background.
     AutoUpdate(bool),
     /// Offers prereleases of the launcher as well as stable releases.
@@ -65,6 +67,7 @@ impl Edit {
     pub fn apply(self, values: &mut SettingsValues) {
         match self {
             Edit::Startup(page) => values.startup_page = page,
+            Edit::Hero(rule) => values.hero = rule,
             Edit::AutoUpdate(on) => values.auto_update = on,
             Edit::BetaChannel(on) => values.beta_channel = on,
             Edit::AutoUpdateGameVersions(on) => values.auto_update_game_versions = on,

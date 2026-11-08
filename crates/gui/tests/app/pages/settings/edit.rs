@@ -24,6 +24,14 @@ fn an_edit_leaves_the_other_values_alone() {
 }
 
 #[test]
+fn the_hero_edit_writes_the_featured_rule() {
+    let mut values = SettingsValues::default();
+    assert_eq!(values.hero, HeroRule::LastPlayed);
+    Edit::Hero(HeroRule::MostPlayed).apply(&mut values);
+    assert_eq!(values.hero, HeroRule::MostPlayed);
+}
+
+#[test]
 fn the_appearance_edits_write_their_own_fields() {
     let mut values = SettingsValues::default();
     Edit::Accent(Accent::Cyan).apply(&mut values);

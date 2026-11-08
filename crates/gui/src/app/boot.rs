@@ -32,6 +32,7 @@ impl LodestoneLauncher {
             paths: data,
             ..Self::default()
         };
+        app.library.set_hero_rule(app.settings_values.hero);
         let mut tasks = vec![id.map(LodestoneAppMessage::WindowCreation)];
         // TEMPORARY library-view verification — env-gated: boots the Library
         // into `compact` or `table` so each view can be screenshotted.

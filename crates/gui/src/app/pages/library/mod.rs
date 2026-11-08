@@ -22,6 +22,7 @@ use crate::app::install::InstallRequest;
 use crate::app::lang;
 use crate::app::notifications;
 use crate::app::paths::LauncherPaths;
+use crate::app::preferences::HeroRule;
 use crate::app::theme::fonts;
 use crate::app::updater::Button;
 use iced::widget::{Column, Text, container, svg};
@@ -206,9 +207,16 @@ pub struct Library {
     /// The positions, in `every_instance`, of the instances the list shows, in order. `refilter` keeps it current, so the
     /// list is not searched and sorted on every frame.
     visible: Vec<usize>,
+    /// The rule that picks the instance the hero banner features. Settings sets it.
+    hero_rule: HeroRule,
 }
 
 impl Library {
+    /// Sets which instance the hero banner features. Settings sets it, and the hero reads it on each frame.
+    pub fn set_hero_rule(&mut self, rule: HeroRule) {
+        self.hero_rule = rule;
+    }
+
     /// Applies a display-state change. Database effects (`Reload`) are
     /// intercepted by the root before reaching here. The scroll offset is
     /// owned by the page scroll alone — filter changes must not jump it.

@@ -140,3 +140,47 @@ fn a_scroll_keeps_the_hover_while_the_pointer_stays_over_the_card() {
     library.update(Message::Scrolled(40.0));
     assert_eq!(library.hovered.as_deref(), Some("aether"), "the card is still under the pointer");
 }
+
+/// Four instances for the hero rules: one played most recently, one installed most recently and never played, one played long
+/// ago with the most hours, and one installed two days ago.
+fn hero_sample() -> Vec<Instance> {
+    let now = Local::now();
+    let mut played_now = fixture("played-now", "Played Now", Loader::Fabric);
+    played_now.installed_at = now - Duration::days(90);
+    played_now.last_played = Some(now - Duration::minutes(30));
+    played_now.playtime_seconds = 3600;
+    let mut fresh = fixture("fresh", "Fresh Install", Loader::Forge);
+    fresh.installed_at = now - Duration::hours(1);
+    let mut marathon = fixture("marathon", "Marathon", Loader::Quilt);
+    marathon.installed_at = now - Duration::days(30);
+    marathon.last_played = Some(now - Duration::days(10));
+    marathon.playtime_seconds = 100 * 3600;
+    let mut older = fixture("older", "Older Install", Loader::Vanilla);
+    older.installed_at = now - Duration::days(2);
+    vec![played_now, fresh, marathon, older]
+}
+
+/// The id of the instance the hero shows under `rule`.
+fn hero_under(rule: HeroRule) -> String {
+    let mut library = library_with(hero_sample());
+    library.set_hero_rule(rule);
+    library.hero_instance().map(|instance| instance.id.clone()).expect("a hero")
+}
+
+#[test]
+fn each_hero_rule_features_the_instance_it_names() {
+    assert_eq!(hero_under(HeroRule::LastPlayed), "played-now");
+    assert_eq!(hero_under(HeroRule::LastInstalled), "fresh");
+    assert_eq!(hero_under(HeroRule::LastPlayedAndInstalled), "played-now");
+    assert_eq!(hero_under(HeroRule::MostPlayed), "marathon");
+}
+
+#[test]
+fn without_a_launch_the_last_played_rule_features_the_newest_install() {
+    let mut older = fixture("older", "Older", Loader::Vanilla);
+    older.installed_at = Local::now() - Duration::days(2);
+    let mut library = Library::default();
+    library.set_instances(vec![older, fixture("fresh", "Fresh", Loader::Forge)]);
+    library.set_hero_rule(HeroRule::LastPlayed);
+    assert_eq!(library.hero_instance().map(|instance| instance.id.as_str()), Some("fresh"));
+}

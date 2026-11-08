@@ -10,6 +10,7 @@ use crate::app::components::page::content_width;
 use crate::app::components::scene_art::HERO_RADIUS;
 use crate::app::components::{Dropdown, IconButton, TextButton};
 use crate::app::lang;
+use crate::app::preferences::HeroRule;
 use crate::app::theme::{color, fonts};
 use aurora_leaf::Icon;
 use chrono::{DateTime, Local};
@@ -25,9 +26,23 @@ use super::{Library, Message, chip, icon};
 pub(super) const HERO_HEIGHT: f32 = 300.0;
 
 impl Library {
-    /// The instance the hero shows: the most recently played, or installed.
+    /// The instance the hero shows: the one the library's hero rule favours.
     pub(super) fn hero_instance(&self) -> Option<&Instance> {
-        self.instances.iter().max_by_key(|instance| instance.recency().timestamp_millis())
+        self.instances.iter().max_by_key(|instance| Self::hero_order(self.hero_rule, instance))
+    }
+
+    /// The order a hero rule puts the instances in: the one it favours sorts last. Each key is a pair, and its second part
+    /// breaks ties. An instance that was never launched sorts below every launched one.
+    fn hero_order(rule: HeroRule, instance: &Instance) -> (i64, i64) {
+        let played = instance.last_played.map_or(i64::MIN, |at| at.timestamp_millis());
+        let installed = instance.installed_at.timestamp_millis();
+        let recency = instance.recency().timestamp_millis();
+        match rule {
+            HeroRule::LastPlayed => (played, installed),
+            HeroRule::LastInstalled => (installed, 0),
+            HeroRule::LastPlayedAndInstalled => (recency, 0),
+            HeroRule::MostPlayed => (i64::from(instance.playtime_seconds), recency),
+        }
     }
 
     /// The most-recent instance's wide banner card — rounded with a

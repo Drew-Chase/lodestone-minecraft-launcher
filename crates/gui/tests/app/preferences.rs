@@ -115,3 +115,12 @@ fn a_chosen_data_folder_round_trips_and_the_default_is_left_out_of_the_file() {
     let json = serde_json::to_string(&Preferences::default()).expect("serializes");
     assert!(!json.contains("data_folder"), "{json}");
 }
+
+#[test]
+fn the_hero_rule_defaults_to_the_last_played_and_reads_its_snake_case_name() {
+    assert_eq!(SettingsValues::default().hero, HeroRule::LastPlayed);
+    let json = serde_json::to_string(&HeroRule::LastPlayedAndInstalled).expect("serializes");
+    assert_eq!(json, "\"last_played_and_installed\"");
+    let rule: HeroRule = serde_json::from_str("\"most_played\"").expect("deserializes");
+    assert_eq!(rule, HeroRule::MostPlayed);
+}
