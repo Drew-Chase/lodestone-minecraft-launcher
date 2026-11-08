@@ -150,3 +150,10 @@ fn a_gallery_picture_steps_within_the_gallery_only() {
     page.update(Message::StepPicture(1));
     assert_eq!(page.gallery_open, Some(1), "there is no picture after the last");
 }
+
+#[test]
+fn back_asks_the_root_to_leave_the_page() {
+    let mut page = ResourcePage::default();
+    page.show(listing());
+    assert!(matches!(page.update(Message::Back).as_slice(), [Effect::Back]));
+}

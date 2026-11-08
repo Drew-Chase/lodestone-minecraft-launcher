@@ -87,6 +87,11 @@ impl Router {
     pub fn can_go_forward(&self) -> bool {
         !self.forward.is_empty()
     }
+
+    /// The page a back step returns to, when there is one.
+    pub fn back_page(&self) -> Option<Page> {
+        self.back.last().copied()
+    }
 }
 
 impl Default for Router {

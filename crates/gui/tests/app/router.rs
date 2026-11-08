@@ -67,3 +67,13 @@ fn can_go_flags_track_the_stacks() {
     assert!(router.can_go_back());
     assert!(!router.can_go_forward());
 }
+
+#[test]
+fn the_back_page_is_the_entry_a_back_step_returns_to() {
+    let mut router = Router::new(Page::Discover);
+    assert_eq!(router.back_page(), None);
+    router.push(Page::Resource);
+    assert_eq!(router.back_page(), Some(Page::Discover));
+    router.go_back();
+    assert_eq!(router.back_page(), None);
+}

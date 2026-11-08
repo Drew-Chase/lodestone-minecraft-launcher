@@ -15,11 +15,13 @@ mod versions;
 
 use std::collections::{HashMap, HashSet};
 
+use aurora_leaf::Icon;
 use iced::widget::{column, container, image, markdown};
 use iced::{Element, Fill, Padding, Size};
 use lodestone_platforms::{BundledProject, Channel, ContentDetails, ContentType, ContentVersion, DescriptionFormat};
 
-use crate::app::components::{Tabs, scrollbar};
+use crate::app::components::button::Variant;
+use crate::app::components::{Tabs, TextButton, scrollbar};
 use crate::app::lang;
 use crate::app::pages::discover::{ProjectStatus, Source};
 
@@ -156,6 +158,8 @@ pub enum Message {
     OpenVersion(usize),
     /// The open version was closed.
     CloseVersion,
+    /// The back control was pressed: the page asks the root to return to Discover.
+    Back,
 }
 
 /// What the root does for the page after an update.
@@ -169,6 +173,8 @@ pub enum Effect {
     Act(Action),
     /// Open a link in the browser.
     Open(String),
+    /// Return from the page to Discover.
+    Back,
 }
 
 /// The resource page's state.
@@ -337,6 +343,7 @@ impl ResourcePage {
                 self.version_open = None;
                 Vec::new()
             }
+            Message::Back => vec![Effect::Back],
             // An answer for a project the page no longer shows, or for a version it has closed.
             Message::Details { .. } | Message::Versions { .. } | Message::Contents { .. } => Vec::new(),
         }
@@ -380,8 +387,12 @@ impl ResourcePage {
             },
         };
         let active = tabs.iter().position(|tab| *tab == shown).unwrap_or_default();
+        // The page has no other way back to Discover, so the header carries one.
+        let back: Element<'_, Message> = TextButton::labeled_icon(Icon::lucide().chevron_left(), lang::t("resource.back"), Variant::Ghost)
+            .on_press(Message::Back)
+            .into();
         column![
-            container(header::view(self, status)).padding(Padding::new(0.0).top(22).left(GUTTER).right(GUTTER)),
+            container(column![back, header::view(self, status)].spacing(16)).padding(Padding::new(0.0).top(22).left(GUTTER).right(GUTTER)),
             tab_bar(&tabs, active),
             scrollbar::scroll(
                 container(body)

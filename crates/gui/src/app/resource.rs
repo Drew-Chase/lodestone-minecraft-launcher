@@ -65,9 +65,20 @@ impl LodestoneLauncher {
                     })
                 })
             }
+            Effect::Back => self.back_to_discover(),
             Effect::Act(action) => self.resource_action(action),
             Effect::Open(url) => open_source(url),
         }
+    }
+
+    /// Returns from the resource page to Discover. When Discover is the page before it, the back step is taken, so Discover
+    /// shows as it was left; otherwise Discover is opened.
+    fn back_to_discover(&mut self) -> Task<LodestoneAppMessage> {
+        if self.router.back_page() == Some(Page::Discover) {
+            self.router.go_back();
+            return self.rescan_on_return();
+        }
+        self.navigate(Page::Discover)
     }
 
     /// Carries out an action the page asked for on the project it shows, through the Discover page's methods.
