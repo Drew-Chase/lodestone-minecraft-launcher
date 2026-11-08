@@ -97,6 +97,8 @@ fn view(state: &Notifications) -> Element<'_, Message> {
         .into()
     } else {
         let rows = Column::with_children(state.items().iter().map(row_view)).spacing(8).width(Fill);
+        // The cards end where the scrollbar's track begins, as the Discover sidebar's do, so the track never sits on a card.
+        let rows = container(rows).padding(Padding::new(0.0).right(scrollbar::TRACK_WIDTH)).width(Fill);
         container(scrollbar::scroll_panel(rows).width(Fill).height(Length::Shrink))
             .max_height(LIST_HEIGHT)
             .width(Fill)
