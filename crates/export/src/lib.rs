@@ -18,6 +18,7 @@ pub mod link;
 pub mod plan;
 pub mod portable;
 pub mod progress;
+pub mod server_pack;
 
 #[cfg(test)]
 #[path = "../tests/support.rs"]

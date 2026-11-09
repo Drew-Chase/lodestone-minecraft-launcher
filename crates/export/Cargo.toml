@@ -17,3 +17,5 @@ xz2 = "0.1.7"
 lodestone_fs = { path = "../fsutil" }
 sha1 = "0.10"
 sha2 = "0.10"
+# sievemc_lib is not on crates.io, so it is pinned to a commit of Drew-Chase/sievemc (crate version 0.2.1).
+sievemc_lib = { git = "https://github.com/Drew-Chase/sievemc", rev = "4b15baeb486b8a1773309cb4950df8e6fdd0c6dc" }
