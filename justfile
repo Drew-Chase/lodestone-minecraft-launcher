@@ -23,7 +23,7 @@ dmg:
 
 # This will app update the version and publish a tag to github to initiate CICD
 publish version="":
-    uv -g commit-push-tag {{version}}
+    uv -g commit-push-tag --path ./crates/gui/ {{version}}
 
 dev:
     cargo run --bin lodestone_launcher
