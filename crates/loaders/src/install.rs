@@ -159,6 +159,104 @@ pub(crate) async fn run_installer_task(
         })?
 }
 
+/// Runs `java -jar <installer> <flag> <dir>` in `dir` on the blocking pool, and waits for it to finish. Output lines go to
+/// `lines` as they arrive, and a failed run is reported with the end of its output. A server install writes into `dir`,
+/// so nothing is removed here when the run fails.
+pub(crate) async fn run_server_installer_task(
+    loader: &'static str,
+    java: &Path,
+    installer: &Path,
+    flag: &'static str,
+    dir: &Path,
+    lines: Option<&Sender<String>>,
+) -> Result<(), LoaderError> {
+    let program = java.to_path_buf();
+    let installer = installer.to_path_buf();
+    let dir = dir.to_path_buf();
+    let lines = lines.cloned();
+    // Dropping this future, as an aborted install does, sets the flag, and the installer is stopped at its next check.
+    let stop = Arc::new(AtomicBool::new(false));
+    let _stop_on_drop = StopOnDrop(Arc::clone(&stop));
+    tokio::task::spawn_blocking(move || run_server_installer(loader, &program, &installer, flag, &dir, lines, stop))
+        .await
+        .map_err(|error| LoaderError::InstallerFailed {
+            loader,
+            status: "stopped".to_string(),
+            output: error.to_string(),
+        })?
+}
+
+/// The blocking half of [`run_server_installer_task`]: runs the installer and returns once it has exited.
+fn run_server_installer(
+    loader: &'static str,
+    java: &Path,
+    installer: &Path,
+    flag: &'static str,
+    dir: &Path,
+    lines: Option<Sender<String>>,
+    stop: Arc<AtomicBool>,
+) -> Result<(), LoaderError> {
+    let mut command = Command::new(java);
+    command
+        .arg("-jar")
+        .arg(installer)
+        .arg(flag)
+        .arg(dir)
+        .current_dir(dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    // The installer is a console program, and the launcher is a window: without this flag each run opens a console.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = command.spawn().map_err(|source| LoaderError::InstallerLaunch {
+        program: java.to_path_buf(),
+        source,
+    })?;
+    let stdout = child.stdout.take().map(|pipe| read_lines(pipe, lines.clone()));
+    let stderr = child.stderr.take().map(|pipe| read_lines(pipe, lines.clone()));
+
+    let started_waiting = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) => {}
+            Err(_) => break None,
+        }
+        let stopped = stop.load(Ordering::Acquire) || started_waiting.elapsed() > INSTALLER_LIMIT;
+        if stopped || lines.as_ref().is_some_and(Sender::is_closed) {
+            let _ = child.kill();
+            let _ = child.wait();
+            break None;
+        }
+        std::thread::sleep(POLL);
+    };
+
+    let mut output: Vec<String> = Vec::new();
+    for reader in [stdout, stderr].into_iter().flatten() {
+        output.extend(reader.join().unwrap_or_default());
+    }
+    if status.is_some_and(|status| status.success()) {
+        return Ok(());
+    }
+    let tail = output[output.len().saturating_sub(TAIL_LINES)..].join("\n");
+    let status = match status {
+        Some(status) => match status.code() {
+            Some(code) => format!("exit code {code}"),
+            None => "terminated by a signal".to_string(),
+        },
+        None => "stopped".to_string(),
+    };
+    Err(LoaderError::InstallerFailed {
+        loader,
+        status,
+        output: tail,
+    })
+}
+
 /// What one installer run needs: the loader and the game it installs for, the Java that runs the installer, the installer jar,
 /// the flag that selects the install, and the folder to install into.
 struct Run {

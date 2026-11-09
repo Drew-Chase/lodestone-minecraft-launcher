@@ -142,6 +142,31 @@ pub enum LoaderError {
         /// The loader whose installer is missing.
         loader: &'static str,
     },
+
+    /// The loader has no server install in this crate yet.
+    #[error("the {loader} loader has no server install yet")]
+    ServerUnsupported {
+        /// The loader whose server is not installed.
+        loader: &'static str,
+    },
+
+    /// The loader offers no server for the Minecraft version, or a file the server needs is missing.
+    #[error("no {loader} server is available for Minecraft {minecraft}")]
+    ServerUnavailable {
+        /// The loader whose server is missing.
+        loader: &'static str,
+        /// The Minecraft version the server was asked for.
+        minecraft: String,
+    },
+
+    /// An installed server holds no file its start scripts can run.
+    #[error("the {loader} server in {} has no launch file", directory.display())]
+    ServerLaunchMissing {
+        /// The loader whose server was installed.
+        loader: &'static str,
+        /// The server folder.
+        directory: PathBuf,
+    },
 }
 
 impl LoaderError {

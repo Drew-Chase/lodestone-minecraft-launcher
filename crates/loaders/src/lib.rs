@@ -60,6 +60,7 @@ mod mod_info;
 pub mod mojang;
 mod neoforge;
 mod quilt;
+pub mod server;
 mod vanilla;
 
 pub use error::LoaderError;

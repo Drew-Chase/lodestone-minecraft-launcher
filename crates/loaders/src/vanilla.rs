@@ -20,14 +20,14 @@ use crate::sealed;
 pub struct Vanilla;
 
 /// A failed request to Mojang, with the address that failed.
-fn fetch_error(url: &str, source: reqwest::Error) -> LoaderError {
+pub(crate) fn fetch_error(url: &str, source: reqwest::Error) -> LoaderError {
     LoaderError::Download {
         url: url.to_string(),
         source: source.into(),
     }
 }
 
-async fn version_list(http: &reqwest::Client) -> Result<ManifestV2, LoaderError> {
+pub(crate) async fn version_list(http: &reqwest::Client) -> Result<ManifestV2, LoaderError> {
     mojang::version_list(http)
         .await
         .map_err(|source| fetch_error(mojang::VERSION_LIST_URL, source))
