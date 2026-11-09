@@ -8,7 +8,7 @@ use crate::app::notifications::{Notifications, bell};
 use crate::app::theme::{color, fonts};
 use crate::app::updater::Button;
 use aurora_leaf::Icon;
-use iced::widget::{Row, Space, Text, column, container, row, stack, text_input};
+use iced::widget::{Row, Text, column, container, row, stack, text_input};
 use iced::{Element, Fill, Length, Padding, alignment};
 
 use super::{Library, LibraryFilter, LibraryView, Message, icon};
@@ -29,7 +29,11 @@ fn update_button(update: Button) -> Element<'static, Message> {
     TextButton::content(
         row![
             icon(Icon::lucide().download(), 14.0, color::primary_on(), 1.0),
-            Text::new(update.label).size(13).font(fonts::Inter::BOLD).color(color::primary_on()),
+            Text::new(update.label)
+                .size(13)
+                .font(fonts::Inter::BOLD)
+                .color(color::primary_on())
+                .wrapping(iced::widget::text::Wrapping::None),
         ]
         .spacing(8)
         .align_y(alignment::Vertical::Center),
@@ -57,8 +61,10 @@ impl Library {
                 .color(color::text_muted()),
         ]
         .spacing(2);
-        let mut children: Vec<Element<'_, Message>> = vec![title.into(), Space::new().width(Fill).into(), self.search_box()];
-        children.push(
+        // The actions sit in a wrapping group beside the title. When the title leaves them too little room, they
+        // continue on a second line, kept to the right edge, instead of squeezing their labels.
+        let mut actions: Vec<Element<'_, Message>> = vec![self.search_box()];
+        actions.push(
             IconButton::new(Icon::lucide().refresh_cw())
                 .size(36)
                 .radius(12.0)
@@ -68,17 +74,18 @@ impl Library {
                 .into(),
         );
         if let Some(update) = update {
-            children.push(update_button(update));
+            actions.push(update_button(update));
         }
-        children.push(bell(notifications).map(Message::Notifications));
-        children.push(
+        actions.push(bell(notifications).map(Message::Notifications));
+        actions.push(
             TextButton::content(
                 row![
                     icon(Icon::lucide().plus(), 14.0, color::primary_on(), 1.0),
                     Text::new(lang::t("library.new_instance"))
                         .size(13)
                         .font(fonts::Inter::BOLD)
-                        .color(color::primary_on()),
+                        .color(color::primary_on())
+                        .wrapping(iced::widget::text::Wrapping::None),
                 ]
                 .spacing(8)
                 .align_y(alignment::Vertical::Center),
@@ -88,7 +95,20 @@ impl Library {
             .on_press(Message::OpenNewInstance)
             .into(),
         );
-        Row::with_children(children)
+        // A wrapping group keeps its widest line's width and right-aligns its lines to it, so the group stays at its natural
+        // width inside a container that takes the rest of the row and aligns the group to its right edge.
+        let actions = container(
+            Row::with_children(actions)
+                .spacing(16)
+                .align_y(alignment::Vertical::Center)
+                .wrap()
+                .vertical_spacing(12)
+                .align_x(alignment::Horizontal::Right),
+        )
+        .width(Fill)
+        .align_x(alignment::Horizontal::Right);
+        let parts: Vec<Element<'_, Message>> = vec![title.into(), actions.into()];
+        Row::with_children(parts)
             .spacing(16)
             .align_y(alignment::Vertical::Center)
             .width(Fill)

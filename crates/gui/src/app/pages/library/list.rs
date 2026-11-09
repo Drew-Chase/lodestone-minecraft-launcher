@@ -5,14 +5,14 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use crate::app::components::art_cache::{ArtCache, ArtKey, Kind};
-use crate::app::components::instance_card::{InstanceMessages, THUMB_SIZE, compact_row, instance_card, table_header, table_row};
+use crate::app::components::instance_card::{InstanceMessages, THUMB_SIZE, compact_row, instance_card, table_columns, table_header, table_row};
 use crate::app::components::page::content_width;
 use crate::app::lang;
 use crate::app::pages::library::instance::Instance;
 use crate::app::perf;
 use crate::app::theme::{color, fonts};
 use iced::widget::image::Handle;
-use iced::widget::{Space, Text, column, container, row};
+use iced::widget::{Row, Space, Text, column, container, row};
 use iced::{Element, Fill, Length, Size, alignment};
 
 use super::{HEADER_BLOCK, LIST_TOP, Library, LibraryView, Message, card_art_size};
@@ -32,19 +32,29 @@ impl Library {
     /// The "Your Instances" section — title, filter tabs, view switcher,
     /// and the virtualized list (which continues the scroll).
     pub(super) fn instances_section(&self, viewport: Size, art: &ArtCache) -> Element<'_, Message> {
+        // The filter tabs and the view switcher wrap beside the title, so a narrow window never squeezes them into it.
+        let controls: Vec<Element<'_, Message>> = vec![self.filter_tabs(), self.view_switcher()];
+        let controls = container(
+            Row::with_children(controls)
+                .spacing(12)
+                .align_y(alignment::Vertical::Center)
+                .wrap()
+                .vertical_spacing(8)
+                .align_x(alignment::Horizontal::Right),
+        )
+        .width(Fill)
+        .align_x(alignment::Horizontal::Right);
+        let head: Vec<Element<'_, Message>> = vec![
+            Text::new(lang::t("library.your_instances"))
+                .size(18)
+                .font(fonts::Inter::EXTRA_BOLD)
+                .color(color::text_headline())
+                .wrapping(iced::widget::text::Wrapping::None)
+                .into(),
+            controls.into(),
+        ];
         column![
-            row![
-                Text::new(lang::t("library.your_instances"))
-                    .size(18)
-                    .font(fonts::Inter::EXTRA_BOLD)
-                    .color(color::text_headline()),
-                Space::new().width(Fill),
-                self.filter_tabs(),
-                Space::new().width(12),
-                self.view_switcher(),
-            ]
-            .align_y(alignment::Vertical::Center)
-            .width(Fill),
+            Row::with_children(head).spacing(16).align_y(alignment::Vertical::Center).width(Fill),
             self.instances_list(viewport, art),
         ]
         .spacing(16)
@@ -107,9 +117,10 @@ impl Library {
                     }
                 }
                 LibraryView::Table => {
+                    let shown = table_columns(content_width(viewport.width));
                     for (offset, instance) in slice.iter().enumerate() {
                         let install = self.pending_install(&instance.id);
-                        items.push(table_row(start + offset, instance, instance_messages(instance), install));
+                        items.push(table_row(start + offset, instance, instance_messages(instance), install, shown));
                     }
                 }
             }
@@ -124,7 +135,9 @@ impl Library {
 
         // The table keeps its header pinned above its rows.
         if view == LibraryView::Table {
-            column![table_header(), content].width(Fill).into()
+            column![table_header(table_columns(content_width(viewport.width))), content]
+                .width(Fill)
+                .into()
         } else {
             content.into()
         }
@@ -179,7 +192,13 @@ impl Library {
             }
         }
         if let Some(hero) = self.hero_instance().filter(|hero| hero.art_path.is_none()) {
-            keys.push(ArtKey::new(Kind::Hero, hero.biome, hero.art_seed, content, super::hero::HERO_HEIGHT));
+            keys.push(ArtKey::new(
+                Kind::Hero,
+                hero.biome,
+                hero.art_seed,
+                content,
+                super::hero::hero_height(viewport),
+            ));
         }
         keys
     }

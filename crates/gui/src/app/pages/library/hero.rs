@@ -6,7 +6,7 @@ use crate::app::components::badge::{Badge, loader_palette};
 use crate::app::components::hint::hint;
 use crate::app::components::instance_art;
 use crate::app::components::instance_card::status_chip;
-use crate::app::components::page::content_width;
+use crate::app::components::page::{content_width, is_narrow, is_short};
 use crate::app::components::scene_art::HERO_RADIUS;
 use crate::app::components::{Dropdown, IconButton, TextButton};
 use crate::app::lang;
@@ -24,6 +24,13 @@ use super::{Library, Message, chip, icon};
 
 /// The hero banner's height.
 pub(super) const HERO_HEIGHT: f32 = 300.0;
+/// The hero banner's height on a short window, where the list would otherwise start below the fold.
+pub(super) const HERO_SHORT_HEIGHT: f32 = 230.0;
+
+/// The hero banner's height in a window `viewport` big.
+pub(super) fn hero_height(viewport: Size) -> f32 {
+    if is_short(viewport.height) { HERO_SHORT_HEIGHT } else { HERO_HEIGHT }
+}
 
 impl Library {
     /// The instance the hero shows: the one the library's hero rule favours.
@@ -51,15 +58,12 @@ impl Library {
     pub(super) fn hero(&self, viewport: Size, art: &ArtCache) -> Option<Element<'_, Message>> {
         let hero = self.hero_instance()?;
         let playing = hero.state == InstanceState::Playing;
+        let height = hero_height(viewport);
+        // A short window also sets the title smaller, so the banner's column still fits its height.
+        let title_size = if is_short(viewport.height) { 26 } else { 34 };
         let rendered = match hero.art_path {
             Some(_) => None,
-            None => art.get(ArtKey::new(
-                Kind::Hero,
-                hero.biome,
-                hero.art_seed,
-                content_width(viewport.width),
-                HERO_HEIGHT,
-            )),
+            None => art.get(ArtKey::new(Kind::Hero, hero.biome, hero.art_seed, content_width(viewport.width), height)),
         };
 
         let (ink, fill) = loader_palette(hero.loader);
@@ -98,7 +102,7 @@ impl Library {
                                 column![
                                     chips,
                                     Text::new(hero.name.clone())
-                                        .size(34)
+                                        .size(title_size)
                                         .font(fonts::Inter::EXTRA_BOLD)
                                         .color(color::text_headline()),
                                     Text::new(meta).size(13).font(fonts::Inter::REGULAR).color(color::text_default()),
@@ -116,10 +120,10 @@ impl Library {
                     .align_y(alignment::Vertical::Center),
                 ]
                 .width(Fill)
-                .height(HERO_HEIGHT),
+                .height(height),
             )
             .width(Fill)
-            .height(HERO_HEIGHT)
+            .height(height)
             .style(|_| container::Style {
                 border: Border {
                     radius: HERO_RADIUS.into(),
@@ -132,8 +136,9 @@ impl Library {
         )
     }
 
-    /// The four quick-action cards — dummy entries until the features land.
-    pub(super) fn quick_actions(&self) -> Element<'_, Message> {
+    /// The four quick-action cards — dummy entries until the features land. At a narrow window they become one row of
+    /// icon tiles without their subtitles, so four fit beside each other and the list keeps its room.
+    pub(super) fn quick_actions(&self, viewport: Size) -> Element<'_, Message> {
         // Each card's text comes from the catalogue; its action carries its own id.
         let cards: [(&'static str, Color, Color, &'static str, &'static str, Message); 4] = [
             (
@@ -169,6 +174,14 @@ impl Library {
                 Message::OpenCoopSync,
             ),
         ];
+        if is_narrow(viewport.width) {
+            return row(cards
+                .into_iter()
+                .map(|(icon_markup, ink, fill, title, _subtitle, on_press)| quick_action_tile(icon_markup, ink, fill, title, on_press)))
+            .spacing(10)
+            .width(Fill)
+            .into();
+        }
         row(cards
             .into_iter()
             .map(|(icon_markup, ink, fill, title, subtitle, on_press)| quick_action_card(icon_markup, ink, fill, title, subtitle, on_press)))
@@ -278,6 +291,38 @@ fn quick_action_card(
         .width(Fill),
     )
     .padding(Padding::new(0.0).left(16).right(16).top(14).bottom(14))
+    .width(Fill)
+    .on_press(on_press)
+    .into()
+}
+
+/// One quick action at a narrow window: its icon and title. The title stays on one line, so a tile never grows taller.
+fn quick_action_tile(icon_markup: &'static str, ink: Color, fill: Color, title: &'static str, on_press: Message) -> Element<'static, Message> {
+    TextButton::content(
+        row![
+            container(icon(icon_markup, 16.0, ink, 1.0))
+                .width(32)
+                .height(32)
+                .align_x(alignment::Horizontal::Center)
+                .align_y(alignment::Vertical::Center)
+                .style(move |_| container::Style {
+                    background: Some(Background::Color(fill)),
+                    border: Border {
+                        radius: 8.0.into(),
+                        ..Border::default()
+                    },
+                    ..container::Style::default()
+                }),
+            Text::new(title)
+                .size(13)
+                .font(fonts::Inter::SEMI_BOLD)
+                .color(color::text_headline())
+                .wrapping(iced::widget::text::Wrapping::None),
+        ]
+        .spacing(10)
+        .align_y(alignment::Vertical::Center),
+    )
+    .padding(Padding::new(0.0).left(12).right(12).top(10).bottom(10))
     .width(Fill)
     .on_press(on_press)
     .into()

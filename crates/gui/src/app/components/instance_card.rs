@@ -21,11 +21,12 @@ use crate::app::theme::fonts;
 use crate::app::theme::utility;
 use aurora_leaf::Icon;
 use iced::widget::image::Handle;
-use iced::widget::{Space, Text, column, container, mouse_area, row, stack};
+use iced::widget::{Row, Space, Text, column, container, mouse_area, row, stack};
 use iced::{Background, Border, Color, Element, Fill, Gradient, Length, Padding, alignment, color, gradient, mouse};
 use iced_color_extension::rgb;
 
 use crate::app::components::badge::{Badge, loader_palette};
+use crate::app::components::table::{self, Column};
 use crate::app::components::{Dropdown, ProgressBar, PulseDot, TextButton};
 use crate::app::downloads::{JobState, Pending};
 
@@ -435,29 +436,96 @@ const COL_LOADER: f32 = 110.0;
 const COL_MODS: f32 = 80.0;
 const COL_PLAYTIME: f32 = 110.0;
 const COL_ACTIONS: f32 = 90.0;
+/// The gap between a table's cells, and the row's padding either side.
+const TABLE_GAP: f32 = 12.0;
+const TABLE_PAD: f32 = 16.0;
 
-/// The table's header row.
-pub fn table_header<Message: 'static>() -> Element<'static, Message> {
+/// Which of the library table's optional columns show. Playtime and the actions always do; the others hide as the window
+/// narrows, in the order [`table_columns`] gives.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TableColumns {
+    pub version: bool,
+    pub loader: bool,
+    pub mods: bool,
+}
+
+/// The columns that show in a table in a list `list_width` pixels wide. The loader hides first, then the mod count, then the
+/// version.
+pub fn table_columns(list_width: f32) -> TableColumns {
+    const COLUMNS: [Column; 5] = [
+        Column {
+            width: COL_VERSION,
+            hide: Some(2),
+        },
+        Column {
+            width: COL_LOADER,
+            hide: Some(0),
+        },
+        Column {
+            width: COL_MODS,
+            hide: Some(1),
+        },
+        Column {
+            width: COL_PLAYTIME,
+            hide: None,
+        },
+        Column {
+            width: COL_ACTIONS,
+            hide: None,
+        },
+    ];
+    let available = list_width - 2.0 * TABLE_PAD;
+    let shown = table::fit(&COLUMNS, available, table::NAME_MIN, TABLE_GAP);
+    TableColumns {
+        version: shown[0],
+        loader: shown[1],
+        mods: shown[2],
+    }
+}
+
+/// The name cell's second line: the folder, then the facts of any column the row no longer shows.
+fn name_detail(instance: &Instance, shown: TableColumns) -> String {
+    let mut parts = vec![instance.directory_name.clone()];
+    if !shown.version {
+        parts.push(instance.mc_version.clone());
+    }
+    if !shown.loader {
+        parts.push(instance.loader.label().to_string());
+    }
+    if !shown.mods {
+        parts.push(lang::t_count("instance.mods", instance.mod_count as usize));
+    }
+    parts.join("  ·  ")
+}
+
+/// The table's header row, with the columns `shown` gives.
+pub fn table_header<Message: 'static>(shown: TableColumns) -> Element<'static, Message> {
     let header = |label: &'static str, width: Length| {
         container(
             Text::new(label)
                 .size(10)
                 .font(fonts::JetBrainsMono::SEMI_BOLD)
-                .color(color::text_placeholder()),
+                .color(color::text_placeholder())
+                .wrapping(iced::widget::text::Wrapping::None),
         )
         .width(width)
     };
-    row![
-        header(lang::t("library.table.name"), Fill),
-        header(lang::t("library.table.version"), Length::Fixed(COL_VERSION)),
-        header(lang::t("library.table.loader"), Length::Fixed(COL_LOADER)),
-        header(lang::t("library.table.mods"), Length::Fixed(COL_MODS)),
-        header(lang::t("library.table.playtime"), Length::Fixed(COL_PLAYTIME)),
-        header("", Length::Fixed(COL_ACTIONS)),
-    ]
-    .spacing(12)
-    .padding(Padding::new(0.0).left(16).right(16).top(12).bottom(12))
-    .into()
+    let mut cells: Vec<Element<'static, Message>> = vec![header(lang::t("library.table.name"), Fill).into()];
+    if shown.version {
+        cells.push(header(lang::t("library.table.version"), Length::Fixed(COL_VERSION)).into());
+    }
+    if shown.loader {
+        cells.push(header(lang::t("library.table.loader"), Length::Fixed(COL_LOADER)).into());
+    }
+    if shown.mods {
+        cells.push(header(lang::t("library.table.mods"), Length::Fixed(COL_MODS)).into());
+    }
+    cells.push(header(lang::t("library.table.playtime"), Length::Fixed(COL_PLAYTIME)).into());
+    cells.push(header("", Length::Fixed(COL_ACTIONS)).into());
+    Row::with_children(cells)
+        .spacing(TABLE_GAP)
+        .padding(Padding::new(0.0).left(TABLE_PAD).right(TABLE_PAD).top(12).bottom(12))
+        .into()
 }
 
 /// One striped table row. `index` drives the stripe parity within the
@@ -468,40 +536,65 @@ pub fn table_row<Message: Clone + 'static>(
     instance: &Instance,
     messages: InstanceMessages<Message>,
     install: Option<&Pending>,
+    shown: TableColumns,
 ) -> Element<'static, Message> {
-    let body = container(
-        row![
-            column![
-                title_block(instance),
-                Text::new(instance.directory_name.clone())
-                    .size(10)
-                    .font(fonts::JetBrainsMono::REGULAR)
-                    .color(color::text_placeholder()),
-            ]
-            .spacing(2)
-            .width(Fill),
+    // The name keeps one line and is clipped to its cell, so a long name never runs into the columns beside it.
+    let name = container(
+        column![
+            Text::new(instance.name.clone())
+                .size(15)
+                .font(fonts::Inter::EXTRA_BOLD)
+                .color(color::text_headline())
+                .wrapping(iced::widget::text::Wrapping::None),
+            Text::new(name_detail(instance, shown))
+                .size(10)
+                .font(fonts::JetBrainsMono::REGULAR)
+                .color(color::text_placeholder())
+                .wrapping(iced::widget::text::Wrapping::None),
+        ]
+        .spacing(2),
+    )
+    .width(Fill)
+    .clip(true);
+    let mut cells: Vec<Element<'static, Message>> = vec![name.into()];
+    if shown.version {
+        cells.push(
             Text::new(instance.mc_version.clone())
                 .size(12)
                 .color(color::text_muted())
-                .width(Length::Fixed(COL_VERSION)),
-            container(loader_chip(instance.loader)).width(Length::Fixed(COL_LOADER)),
+                .width(Length::Fixed(COL_VERSION))
+                .into(),
+        );
+    }
+    if shown.loader {
+        cells.push(container(loader_chip(instance.loader)).width(Length::Fixed(COL_LOADER)).into());
+    }
+    if shown.mods {
+        cells.push(
             Text::new(format!("{}", instance.mod_count))
                 .size(12)
                 .color(color::text_muted())
-                .width(Length::Fixed(COL_MODS)),
-            Text::new(playtime_hours(instance.playtime_seconds))
-                .size(12)
-                .color(color::text_muted())
-                .width(Length::Fixed(COL_PLAYTIME)),
-            container(play_slot(messages.play, install)).width(Length::Fixed(COL_ACTIONS)),
-        ]
-        .spacing(12)
-        .align_y(alignment::Vertical::Center)
-        .width(Fill),
+                .width(Length::Fixed(COL_MODS))
+                .into(),
+        );
+    }
+    cells.push(
+        Text::new(playtime_hours(instance.playtime_seconds))
+            .size(12)
+            .color(color::text_muted())
+            .width(Length::Fixed(COL_PLAYTIME))
+            .into(),
+    );
+    cells.push(container(play_slot(messages.play, install)).width(Length::Fixed(COL_ACTIONS)).into());
+    let body = container(
+        Row::with_children(cells)
+            .spacing(TABLE_GAP)
+            .align_y(alignment::Vertical::Center)
+            .width(Fill),
     )
     .width(Fill)
     .height(Length::Fixed(TABLE_ROW_HEIGHT))
-    .padding(Padding::new(0.0).left(16).right(16))
+    .padding(Padding::new(0.0).left(TABLE_PAD).right(TABLE_PAD))
     .style(move |_| container::Style {
         background: Some(Background::Color(if index % 2 == 1 { color!(0x101216) } else { Color::TRANSPARENT })),
         ..container::Style::default()

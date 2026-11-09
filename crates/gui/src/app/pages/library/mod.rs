@@ -418,7 +418,7 @@ impl Library {
         if let Some(hero) = self.hero(viewport, art) {
             page = page.push(hero);
         }
-        let page = page.push(self.quick_actions()).push(self.instances_section(viewport, art));
+        let page = page.push(self.quick_actions(viewport)).push(self.instances_section(viewport, art));
 
         let scrolled = scrollbar::scroll(
             page.spacing(24)
