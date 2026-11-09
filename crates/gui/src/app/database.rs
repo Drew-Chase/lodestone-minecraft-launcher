@@ -5,6 +5,7 @@
 mod added_content;
 mod notifications;
 mod playtime;
+mod server_pack;
 pub mod servers;
 
 use std::path::{Path, PathBuf};

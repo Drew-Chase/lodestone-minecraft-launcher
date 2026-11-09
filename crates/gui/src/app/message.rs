@@ -20,6 +20,7 @@ use crate::app::pages::library::instance::Instance;
 use crate::app::pages::login::Message as LoginMessage;
 use crate::app::pages::news::Message as NewsMessage;
 use crate::app::pages::resource::Message as ResourceMessage;
+use crate::app::pages::server_pack::Message as ServerPackMessage;
 use crate::app::pages::servers::Message as ServersMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
 use crate::app::pages::skins::capes::CapeArt;
@@ -83,6 +84,8 @@ pub enum LodestoneAppMessage {
     CoopSync(CoopSyncMessage),
     /// The export dialog: its fields, its folder listing, and the export it starts.
     Export(ExportMessage),
+    /// The server pack wizard: its steps, the scan and the export it runs, and the choices it remembers.
+    ServerPack(ServerPackMessage),
     /// The Import Instance dialog: its tabs and fields, the files it is given, and the import it reads and queues.
     Import(ImportMessage),
     /// The portable launcher: its check, its install and its buttons.

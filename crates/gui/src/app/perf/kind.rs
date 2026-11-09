@@ -32,6 +32,7 @@ pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
         M::Settings(_) => "update.Settings",
         M::Downloads(_) => "update.Downloads",
         M::Export(_) => "update.Export",
+        M::ServerPack(_) => "update.ServerPack",
         M::Import(_) => "update.Import",
         M::Portable(_) => "update.Portable",
         M::Updater(_) => "update.Updater",

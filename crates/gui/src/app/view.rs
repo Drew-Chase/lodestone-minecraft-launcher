@@ -2,7 +2,7 @@
 
 use crate::app::components::account_menu::{self, Menu};
 use crate::app::components::backdrop::LoginBackdrop;
-use crate::app::components::floating_dock::FloatingDock;
+use crate::app::components::floating_dock::{CLEARANCE, FloatingDock};
 use crate::app::components::game_controls::Actions;
 use crate::app::components::hint;
 use crate::app::components::page::{MAX_CONTENT_WIDTH, content_width};
@@ -384,6 +384,7 @@ impl LodestoneLauncher {
             Page::Skins => "view.skins",
             Page::Servers => "view.servers",
             Page::Friends => "view.friends",
+            Page::ServerPack => "view.server_pack",
         });
         match page {
             Page::Login => self.login.view(None).map(LodestoneAppMessage::Login),
@@ -415,6 +416,16 @@ impl LodestoneLauncher {
                 .map(LodestoneAppMessage::Settings),
             Page::Discover => self.discover.view().map(LodestoneAppMessage::Discover),
             Page::Worlds => self.worlds.view(self.window_size).map(LodestoneAppMessage::Worlds),
+            // The wizard's footer and buttons sit at the page's foot, which does not scroll, so the floating bar would cover
+            // them. The page keeps CLEARANCE free above the bar when the bar floats, as a scrolling page does at its end.
+            Page::ServerPack => {
+                let clearance = if self.floating_bottom_bar() { CLEARANCE } else { 0.0 };
+                container(self.server_pack.view().map(LodestoneAppMessage::ServerPack))
+                    .padding(Padding::new(0.0).bottom(clearance))
+                    .width(Fill)
+                    .height(Fill)
+                    .into()
+            }
             Page::Skins => self
                 .skins
                 .view(self.skins_account(), content_width(self.window_size.width))

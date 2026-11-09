@@ -14,6 +14,8 @@ pub enum Action {
     Reveal,
     /// Opens the export dialog, which writes the instance out as a package.
     Export,
+    /// Opens the server pack wizard, which writes the instance's mods that run on a server as a pack.
+    ServerPack,
     Delete,
     /// Stops an install that has not finished, and removes what it made.
     CancelInstall,
@@ -38,6 +40,7 @@ pub fn menu(installing: bool, reveal: bool) -> Menu {
             actions.push(Some(Action::Reveal));
         }
         actions.push(Some(Action::Export));
+        actions.push(Some(Action::ServerPack));
         actions.push(None);
         actions.push(Some(Action::Delete));
         actions
@@ -59,6 +62,7 @@ fn item(action: Action) -> MenuItem {
         Action::Edit => (lang::t("instance.menu.edit"), Icon::lucide().settings(), false),
         Action::Reveal => (lang::t("instance.menu.reveal"), Icon::lucide().folder(), false),
         Action::Export => (lang::t("instance.menu.export"), Icon::lucide().upload(), false),
+        Action::ServerPack => (lang::t("instance.menu.server_pack"), Icon::lucide().server(), false),
         Action::Delete => (lang::t("instance.menu.delete"), Icon::lucide().trash(), true),
         Action::CancelInstall => (lang::t("downloads.cancel_install"), Icon::lucide().x(), true),
     };

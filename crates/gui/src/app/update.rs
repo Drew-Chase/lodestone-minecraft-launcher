@@ -145,6 +145,7 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Library(LibraryMessage::UpdatePressed) => self.updater_message(updater::Message::Pressed),
             LodestoneAppMessage::Downloads(message) => self.downloads_message(message),
             LodestoneAppMessage::Export(message) => self.export_message(message),
+            LodestoneAppMessage::ServerPack(message) => self.server_pack_message(message),
             LodestoneAppMessage::Import(message) => self.import_message(message),
             LodestoneAppMessage::Portable(message) => self.portable_message(message),
             LodestoneAppMessage::Updater(message) => self.updater_message(message),

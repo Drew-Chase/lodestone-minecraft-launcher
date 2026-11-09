@@ -43,6 +43,7 @@ pub mod setting_row;
 pub mod sidebar;
 pub mod slider;
 pub mod status;
+pub mod stepper;
 pub mod tabs;
 pub mod tile;
 pub mod toggle;

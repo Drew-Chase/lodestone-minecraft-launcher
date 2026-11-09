@@ -33,6 +33,7 @@ mod resource;
 mod reveal;
 pub mod router;
 mod screenshot_actions;
+mod server_pack;
 mod servers;
 mod shared_library;
 pub(crate) mod single_instance;
@@ -116,6 +117,8 @@ pub struct LodestoneLauncher {
     router: Router,
     library: Library,
     instance_page: InstancePage,
+    /// The server pack wizard. The page shows what this state holds while it is open.
+    server_pack: pages::server_pack::State,
     /// When each instance's mods were last checked against their platforms, and what the check found, for the session.
     mod_checks: HashMap<String, mod_actions::ModCheck>,
     /// When a check of the Mods tab's mods against the platforms last started, whichever instance it was for. The checks
@@ -236,6 +239,7 @@ impl Default for LodestoneLauncher {
             router: Router::default(),
             library: Library::default(),
             instance_page: InstancePage::default(),
+            server_pack: Default::default(),
             mod_checks: HashMap::new(),
             mod_check_started: None,
             mod_check_timer: false,

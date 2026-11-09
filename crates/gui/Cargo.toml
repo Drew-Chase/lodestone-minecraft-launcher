@@ -38,6 +38,7 @@ reqwest = { workspace = true }
 lodestone_net = { path = "../net" }
 lodestone_fs = { path = "../fsutil" }
 simple_download_utility = { workspace = true }
+base64 = { workspace = true }
 fastrand = "2"
 sipper = "0.1"
 fastnbt = "2.6"

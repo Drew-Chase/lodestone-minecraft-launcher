@@ -1,11 +1,11 @@
 use super::*;
 
 #[test]
-fn a_card_menu_lists_play_edit_reveal_export_a_separator_then_delete() {
+fn a_card_menu_lists_play_edit_reveal_export_server_pack_a_separator_then_delete() {
     let menu = menu(false, true);
-    assert_eq!(menu.items.len(), 6);
-    assert!(matches!(menu.items[4], MenuItem::Separator));
-    assert!(matches!(menu.items[5], MenuItem::Action { danger: true, .. }), "delete is the red row");
+    assert_eq!(menu.items.len(), 7);
+    assert!(matches!(menu.items[5], MenuItem::Separator));
+    assert!(matches!(menu.items[6], MenuItem::Action { danger: true, .. }), "delete is the red row");
     assert_eq!(
         menu.actions,
         vec![
@@ -13,6 +13,7 @@ fn a_card_menu_lists_play_edit_reveal_export_a_separator_then_delete() {
             Some(Action::Edit),
             Some(Action::Reveal),
             Some(Action::Export),
+            Some(Action::ServerPack),
             None,
             Some(Action::Delete)
         ]
@@ -22,10 +23,17 @@ fn a_card_menu_lists_play_edit_reveal_export_a_separator_then_delete() {
 #[test]
 fn the_instance_page_leaves_reveal_out_for_a_local_instance() {
     let menu = menu(false, false);
-    assert_eq!(menu.items.len(), 5);
+    assert_eq!(menu.items.len(), 6);
     assert_eq!(
         menu.actions,
-        vec![Some(Action::Play), Some(Action::Edit), Some(Action::Export), None, Some(Action::Delete)]
+        vec![
+            Some(Action::Play),
+            Some(Action::Edit),
+            Some(Action::Export),
+            Some(Action::ServerPack),
+            None,
+            Some(Action::Delete)
+        ]
     );
 }
 

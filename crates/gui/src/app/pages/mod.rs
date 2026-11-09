@@ -24,6 +24,7 @@ pub mod library;
 pub mod login;
 pub mod news;
 pub mod resource;
+pub mod server_pack;
 pub mod servers;
 pub mod settings;
 pub mod skins;
@@ -53,6 +54,8 @@ pub enum Page {
     /// A project's resource page, opened from Discover. The project lives in the root's `ResourcePage`, as the
     /// instance page's does.
     Resource,
+    /// The server pack wizard, opened from an instance's menu. Its state lives in the root, as the instance page's does.
+    ServerPack,
     /// Every saved world across every instance.
     Worlds,
     /// The player's skin and cape, the skins to choose from, and the capes the player owns.
@@ -80,6 +83,7 @@ impl Page {
             Page::Instance => "Instance",
             Page::Resource => "Resource",
             Page::Settings => "Settings",
+            Page::ServerPack => "Server pack",
         }
     }
 }

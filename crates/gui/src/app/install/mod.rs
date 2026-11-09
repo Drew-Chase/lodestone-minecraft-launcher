@@ -42,7 +42,7 @@ use crate::app::shared_library::{AddedContent, ModSource};
 use download::{PartReport, Transfer};
 
 /// The marker a finished shared install leaves behind. Without it the install runs again.
-const COMPLETE: &str = ".complete";
+pub(crate) const COMPLETE: &str = ".complete";
 
 /// The marker an install leaves in its folder while it runs. A paused install keeps the folder, so
 /// the resumed install knows the folder is its own.
@@ -301,6 +301,41 @@ pub(crate) async fn download(
         version_files(paths, client, vanilla, &plan, reports, verify),
     )?;
     Ok(Downloaded { java, log_config })
+}
+
+/// A bundled Java runtime, installed under the meta folder.
+pub(crate) struct BundledJava {
+    /// The Java program that runs.
+    pub(crate) program: PathBuf,
+    /// The runtime's folder: the program and the files beside it.
+    pub(crate) home: PathBuf,
+}
+
+/// The bundled Java runtime the Minecraft version `minecraft` runs on, installed under the meta folder when it is not there
+/// yet. It is the runtime the game's launches use, so a later launch finds it installed. Nothing shows its download
+/// progress here, so the reports are dropped as they arrive.
+pub(crate) async fn bundled_java(paths: &LauncherPaths, client: &reqwest::Client, minecraft: &str) -> Result<BundledJava, String> {
+    let (reports, mut received) = mpsc::channel::<PartReport>(64);
+    let drain = tokio::spawn(async move { while received.recv().await.is_some() {} });
+    let installed: Result<BundledJava, String> = async {
+        let vanilla = {
+            let _version = ensure::lock(format!("version:{minecraft}")).await;
+            ensure::vanilla(paths, client, minecraft).await?
+        };
+        let component = vanilla
+            .java_version
+            .as_ref()
+            .map_or_else(|| "jre-legacy".to_string(), |java| java.component.clone());
+        let (program, name) = java::ensure(paths, &component, &reports).await?;
+        Ok(BundledJava {
+            program,
+            home: paths.java(&name),
+        })
+    }
+    .await;
+    drop(reports);
+    let _ = drain.await;
+    installed
 }
 
 /// The version's shared files other than Java: the client jar, the libraries, the assets and the log config.
