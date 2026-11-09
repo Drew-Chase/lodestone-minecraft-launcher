@@ -17,6 +17,7 @@ use crate::app::export::format_label;
 use crate::app::export::job::ExportJob;
 use crate::app::install::InstallRequest;
 use crate::app::install::download::Transfer;
+use crate::app::install::update::UpdateRequest;
 use crate::app::lang;
 use crate::app::pages::instance::format::format_bytes;
 use crate::app::theme::{color, fonts, utility};
@@ -260,7 +261,49 @@ fn running_row(job: &Job) -> Element<'static, Message> {
         JobKind::Mod(mod_job) => running_mod(job, mod_job),
         JobKind::Export(export) => running_export(job, export),
         JobKind::Reinstall(reinstall) => running_reinstall(job, reinstall),
+        JobKind::PackUpdate(update) => running_update(job, update),
     }
+}
+
+/// One running in-place update: the instance's name and art, the stage and the share of its files, and a cancel button. It has no
+/// pause button, since an instance cannot be left half-written.
+fn running_update(job: &Job, update: &UpdateRequest) -> Element<'static, Message> {
+    let progress = job.progress.as_ref();
+    let fraction = progress.and_then(|progress| progress.fraction);
+    let stage = progress.map_or_else(|| lang::t("downloads.starting").to_owned(), |progress| progress.stage.label().to_owned());
+    let transfer = progress.map(|progress| progress.transfer).unwrap_or_default();
+    running_card(
+        column![
+            row![
+                art(job, 40.0),
+                column![title(&update.instance.name), mono_line(format!("{} · {}", update.release.number, stage))]
+                    .spacing(2)
+                    .width(Fill),
+                small_button(
+                    Icon::lucide().x(),
+                    Message::Cancel(job.id),
+                    lang::t("downloads.cancel"),
+                    icon_button::danger_button_style(),
+                ),
+            ]
+            .spacing(10)
+            .align_y(alignment::Vertical::Center),
+            row![
+                ProgressBar::new(fraction.unwrap_or(0.0)).indeterminate(fraction.is_none()).width(Fill),
+                Text::new(fraction.map_or_else(String::new, percent_label))
+                    .size(11)
+                    .font(fonts::JetBrainsMono::SEMI_BOLD)
+                    .color(color::text_headline()),
+            ]
+            .spacing(10)
+            .align_y(alignment::Vertical::Center),
+            Text::new(rate_line(transfer.per_second, transfer_eta(transfer)))
+                .size(11)
+                .font(fonts::JetBrainsMono::REGULAR)
+                .color(color::primary()),
+        ]
+        .spacing(8),
+    )
 }
 
 /// One running reinstall: its mark, the version being fetched again, and an indeterminate bar, since it reports no
@@ -416,6 +459,7 @@ fn art(job: &Job, size: f32) -> Element<'static, Message> {
         JobKind::Mod(mod_job) => platform_logo::logo(mod_job.source.logo(), size),
         JobKind::Export(_) => export_mark(size),
         JobKind::Reinstall(_) => glyph_mark(Icon::lucide().refresh_cw(), size),
+        JobKind::PackUpdate(update) => instance_icon::icon(&update.instance.icon, size),
     }
 }
 
@@ -574,6 +618,7 @@ fn subtitle(job: &Job) -> Text<'static> {
         JobKind::Mod(mod_job) => mono_line(mod_job.instance.clone()),
         JobKind::Export(export) => mono_line(format_label(export.format).to_owned()),
         JobKind::Reinstall(reinstall) => mono_line(reinstall.mc_version.clone()),
+        JobKind::PackUpdate(update) => mono_line(format!("{} · {}", update.release.number, update.mc_version)),
     }
 }
 

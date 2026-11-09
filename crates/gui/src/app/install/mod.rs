@@ -15,6 +15,8 @@ pub mod modpack;
 pub(crate) mod mods;
 pub(crate) mod pack;
 pub(crate) mod package;
+pub(crate) mod shipped;
+pub(crate) mod update;
 
 use std::collections::HashSet;
 use std::future::Future;
@@ -98,6 +100,8 @@ pub struct InstallRequest {
     pub source_project_id: Option<String>,
     /// The release of that project being installed, as the platform names it.
     pub source_version: Option<String>,
+    /// The release's id on that platform, which the instance keeps so its Versions tab can tell the installed release apart.
+    pub source_version_id: Option<String>,
     /// The modpack's files and overrides, when the instance is installed from a modpack.
     pub modpack: Option<modpack::Payload>,
     /// The launch overrides the instance starts with. An empty set inherits every global default.
@@ -111,6 +115,10 @@ pub enum Stage {
     Download,
     Loader,
     Modpack,
+    /// An in-place update working out what it changes, before it touches the instance.
+    Plan,
+    /// An in-place update writing its changes into the instance. It is not stopped part way from here on.
+    Apply,
     Finish,
 }
 
@@ -122,6 +130,8 @@ impl Stage {
             Stage::Download => lang::t("install.stage.download"),
             Stage::Loader => lang::t("install.stage.loader"),
             Stage::Modpack => lang::t("install.stage.modpack"),
+            Stage::Plan => lang::t("install.stage.plan"),
+            Stage::Apply => lang::t("install.stage.apply"),
             Stage::Finish => lang::t("install.stage.finish"),
         }
     }
@@ -235,12 +245,24 @@ async fn run(request: &InstallRequest, progress: &mut ProgressSender<InstallProg
     let (java_binary, java_name) = downloaded.java;
     let version_id = match request.loader {
         Loader::Vanilla => mc.to_string(),
-        _ => loader_stage(progress, request, &java_binary, vanilla.java_major()).await?,
+        _ => {
+            loader_stage(
+                progress,
+                &request.paths,
+                &request.mc_version,
+                request.loader,
+                request.loader_version.as_deref(),
+                &java_binary,
+                vanilla.java_major(),
+            )
+            .await?
+        }
     };
-    if let Some(payload) = &request.modpack {
-        modpack::stage(progress, payload, game_dir, &client).await?;
-    }
-    finish(request, game_dir, version_id, java_name, progress, db).await
+    let shipped = match &request.modpack {
+        Some(payload) => modpack::stage(progress, payload, game_dir, &client).await?,
+        None => Vec::new(),
+    };
+    finish(request, game_dir, version_id, java_name, progress, db, shipped).await
 }
 
 /// What the download stage left on disk.
@@ -397,26 +419,21 @@ async fn version_files(
 
 /// The loader stage: installs the loader into the shared store and returns the version id it
 /// writes. The installer's output shows as the stage's detail lines.
-async fn loader_stage(
+pub(crate) async fn loader_stage(
     progress: &mut ProgressSender<InstallProgress>,
-    request: &InstallRequest,
+    paths: &LauncherPaths,
+    mc: &str,
+    loader: Loader,
+    loader_version: Option<&str>,
     java: &Path,
     game_major: u32,
 ) -> Result<String, String> {
-    let Some(loader_version) = request.loader_version.as_deref() else {
+    let Some(loader_version) = loader_version else {
         return Err(lang::t("install.loader.choose_version").to_owned());
     };
-    let shared = request.paths.meta();
+    let shared = paths.meta();
     let (lines_tx, lines) = mpsc::channel::<String>(256);
-    let work = loader::install(
-        &shared,
-        &request.mc_version,
-        request.loader,
-        loader_version,
-        java,
-        game_major,
-        Some(&lines_tx),
-    );
+    let work = loader::install(&shared, mc, loader, loader_version, java, game_major, Some(&lines_tx));
     drive(
         progress,
         lines,
@@ -431,7 +448,8 @@ async fn loader_stage(
     .await
 }
 
-/// Writes the folders and the uploaded art, then inserts the database row.
+/// Writes the folders and the uploaded art, then inserts the database row. `shipped` lists the files the modpack's
+/// archives wrote, relative to the instance folder.
 async fn finish(
     request: &InstallRequest,
     game_dir: &Path,
@@ -439,6 +457,7 @@ async fn finish(
     java_name: String,
     progress: &mut ProgressSender<InstallProgress>,
     db: &Database,
+    shipped: Vec<String>,
 ) -> Result<Instance, String> {
     report(progress, Stage::Finish, None, request.directory_name.clone()).await;
     for folder in FOLDERS {
@@ -488,6 +507,7 @@ async fn finish(
         source_platform: request.source_platform.clone(),
         source_project_id: request.source_project_id.clone(),
         source_version: request.source_version.clone(),
+        source_version_id: request.source_version_id.clone(),
         settings: request.settings.clone(),
     };
     // The mods the modpack names are recorded against the new instance, in the same transaction as its row.
@@ -501,7 +521,19 @@ async fn finish(
             })
             .collect()
     });
-    db.insert_instance(&instance, &sources).await?;
+    // An install from a platform keeps the files its release shipped, and the pristine copies of its text files that an update
+    // later merges against. An install from a file (Import) keeps neither, since it has no release to update from.
+    let pack_files = match &request.source_platform {
+        Some(_) => shipped::record(game_dir, &request.id, request.modpack.as_ref(), shipped).await?,
+        None => Vec::new(),
+    };
+    db.insert_instance_with_files(&instance, &sources, &pack_files).await?;
+    if request.source_platform.is_some()
+        && let Err(error) = shipped::write_base(&request.paths.pack_base(&request.id), game_dir, &pack_files).await
+    {
+        // The row is in, so only the copies are lost. An update then compares against the release as far as it can tell.
+        warn!("could not keep the pristine copies of {}'s files: {error}", request.name);
+    }
     // The packs the modpack places are recorded as the instance's content once its row is in, so the Content tab can show
     // where they came from. A record that fails leaves the install whole, and only that pack's chip is missing.
     let packs: Vec<AddedContent> = request.modpack.as_ref().map_or_else(Vec::new, |payload| {

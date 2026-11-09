@@ -198,44 +198,7 @@ pub(crate) async fn prepare_modpack(project: Project, paths: LauncherPaths, take
     let version = chosen_release(versions, &project).ok_or_else(|| lang::t("discover.no_version").to_string())?;
     let folder = download_folder(&project, &version);
     let shared = shared_library::folder(&paths, ContentType::Modpack).join(&folder);
-    let (modpack, archive) = match project.source {
-        Source::Modrinth => {
-            let archive = pack_archive(download_version(project.source, &version, &shared).await?)?;
-            let modpack = MODRINTH.parse_modpack(&archive).map_err(|error| error.to_string())?;
-            (modpack, Some(archive))
-        }
-        Source::CurseForge => {
-            let archive = pack_archive(download_version(project.source, &version, &shared).await?)?;
-            let modpack = curseforge()?.parse_modpack(&archive).map_err(|error| error.to_string())?;
-            (modpack, Some(archive))
-        }
-        Source::Ftb => {
-            let modpack = FTB.modpack(&version).await.map_err(|error| error.to_string())?;
-            write_manifest(&shared, &modpack)?;
-            (modpack, None)
-        }
-        Source::AtLauncher => {
-            let modpack = ATLAUNCHER.modpack(&version).await.map_err(|error| error.to_string())?;
-            (modpack, None)
-        }
-        // A Solder build names its mods on its server, so nothing is downloaded before the install.
-        Source::Technic if version.files.is_empty() => {
-            let modpack = TECHNIC.modpack(&version).await.map_err(|error| error.to_string())?;
-            (modpack, None)
-        }
-        // A zip pack names its zip as its only file. The zip is read for its loader, then unpacked. Its file
-        // name is the version's, and it names no Minecraft version unless it is a Forge pack, so the
-        // project's name and the version's Minecraft version stand in for them.
-        Source::Technic => {
-            let archive = pack_archive(download_version(project.source, &version, &shared).await?)?;
-            let mut modpack = TECHNIC.parse_modpack(&archive).map_err(|error| error.to_string())?;
-            modpack.name = project.name.clone();
-            if modpack.minecraft.is_empty() {
-                modpack.minecraft = version.minecraft_versions.first().cloned().unwrap_or_default();
-            }
-            (modpack, Some(archive))
-        }
-    };
+    let (modpack, archive) = pack_of_release(project.source, &project.name, &version, &shared).await?;
     // The archive's size is what an import from the page lists, so it is read before the archive is taken.
     let bytes = archive
         .as_deref()
@@ -248,8 +211,61 @@ pub(crate) async fn prepare_modpack(project: Project, paths: LauncherPaths, take
         url: project.web_url,
         icon_url: project.icon_url,
     };
-    let request = pack::request(&paths, &taken, modpack, archive, source, Some(page), Some(version.version_number.clone())).await?;
+    let release = pack::Release {
+        id: version.id.clone(),
+        number: version.version_number.clone(),
+    };
+    let request = pack::request(&paths, &taken, modpack, archive, source, Some(page), Some(release)).await?;
     Ok((request, bytes))
+}
+
+/// The modpack a release of a platform project is, read the way its platform gives it, with the archive it came in when it has
+/// one. `shared` is the release's folder in the shared downloads, where its archive is kept. `name` is the project's name, which
+/// a zip pack takes for its own.
+pub(crate) async fn pack_of_release(
+    source: Source,
+    name: &str,
+    version: &ContentVersion,
+    shared: &Path,
+) -> Result<(Modpack, Option<PathBuf>), String> {
+    match source {
+        Source::Modrinth => {
+            let archive = pack_archive(download_version(source, version, shared).await?)?;
+            let modpack = MODRINTH.parse_modpack(&archive).map_err(|error| error.to_string())?;
+            Ok((modpack, Some(archive)))
+        }
+        Source::CurseForge => {
+            let archive = pack_archive(download_version(source, version, shared).await?)?;
+            let modpack = curseforge()?.parse_modpack(&archive).map_err(|error| error.to_string())?;
+            Ok((modpack, Some(archive)))
+        }
+        Source::Ftb => {
+            let modpack = FTB.modpack(version).await.map_err(|error| error.to_string())?;
+            write_manifest(shared, &modpack)?;
+            Ok((modpack, None))
+        }
+        Source::AtLauncher => {
+            let modpack = ATLAUNCHER.modpack(version).await.map_err(|error| error.to_string())?;
+            Ok((modpack, None))
+        }
+        // A Solder build names its mods on its server, so nothing is downloaded before the install.
+        Source::Technic if version.files.is_empty() => {
+            let modpack = TECHNIC.modpack(version).await.map_err(|error| error.to_string())?;
+            Ok((modpack, None))
+        }
+        // A zip pack names its zip as its only file. The zip is read for its loader, then unpacked. Its file
+        // name is the version's, and it names no Minecraft version unless it is a Forge pack, so the
+        // project's name and the version's Minecraft version stand in for them.
+        Source::Technic => {
+            let archive = pack_archive(download_version(source, version, shared).await?)?;
+            let mut modpack = TECHNIC.parse_modpack(&archive).map_err(|error| error.to_string())?;
+            modpack.name = name.to_string();
+            if modpack.minecraft.is_empty() {
+                modpack.minecraft = version.minecraft_versions.first().cloned().unwrap_or_default();
+            }
+            Ok((modpack, Some(archive)))
+        }
+    }
 }
 
 /// The archive a modpack downloaded as: its first `.mrpack` or `.zip`, or the first file.

@@ -113,7 +113,7 @@ pub(super) async fn stage(
     payload: &Payload,
     game_dir: &Path,
     client: &reqwest::Client,
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
     report(progress, Stage::Modpack, None, lang::t("install.modpack.files").to_string()).await;
     let fetched = game_dir.join(FETCHED);
     // Where each unpack's archive is: its file on disk, or the place a remote one is fetched to.
@@ -189,20 +189,21 @@ pub(super) async fn stage(
     // Dropping this stage (an aborted install) sets the flag, so a copy still running stops at its next file.
     let abandon = Abandon(Arc::new(AtomicBool::new(false)));
     let abandoned = Arc::clone(&abandon.0);
-    tokio::task::spawn_blocking(move || unpack_all(&unpacks, &game_dir, &abandoned))
+    let shipped = tokio::task::spawn_blocking(move || unpack_all(&unpacks, &game_dir, &abandoned))
         .await
         .map_err(|error| error.to_string())??;
-    Ok(())
+    Ok(shipped)
 }
 
 /// Unpacks each archive into the instance in turn, then removes the folder the remote archives were
-/// fetched into.
-fn unpack_all(unpacks: &[(PathBuf, Unpack)], game_dir: &Path, abandoned: &AtomicBool) -> Result<(), String> {
+/// fetched into. Returns the paths, relative to the instance, of the files the archives wrote.
+fn unpack_all(unpacks: &[(PathBuf, Unpack)], game_dir: &Path, abandoned: &AtomicBool) -> Result<Vec<String>, String> {
+    let mut shipped = Vec::new();
     for (archive, unpack) in unpacks {
         match &unpack.origin {
             Origin::Package(_) => extract_package(archive, game_dir)?,
             Origin::Folder { root, skip } => copy_folder(root, skip, game_dir, abandoned)?,
-            _ => extract(archive, &unpack.folder, &unpack.target, &unpack.skip, game_dir)?,
+            _ => shipped.extend(extract(archive, &unpack.folder, &unpack.target, &unpack.skip, game_dir)?),
         }
     }
     let fetched = game_dir.join(FETCHED);
@@ -211,13 +212,13 @@ fn unpack_all(unpacks: &[(PathBuf, Unpack)], game_dir: &Path, abandoned: &Atomic
     {
         warn!("could not remove {}: {error}", fetched.display());
     }
-    Ok(())
+    Ok(shipped)
 }
 
 /// Extracts the entries under `folder` in `archive` into `game_dir/target`, with the folder removed from
 /// their paths. Entries that `skip` names are left out, and an entry whose path would leave the target
 /// is skipped.
-fn extract(archive: &Path, folder: &str, target: &str, skip: &[String], game_dir: &Path) -> Result<(), String> {
+fn extract(archive: &Path, folder: &str, target: &str, skip: &[String], game_dir: &Path) -> Result<Vec<String>, String> {
     let file = std::fs::File::open(archive).map_err(|error| error.to_string())?;
     let archive_len = file.metadata().map_err(|error| error.to_string())?.len();
     let mut zip = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
@@ -229,6 +230,7 @@ fn extract(archive: &Path, folder: &str, target: &str, skip: &[String], game_dir
     }
     let prefix = folder_prefix(folder);
     let destination = game_dir.join(target);
+    let mut written = Vec::new();
     for index in 0..zip.len() {
         let mut entry = zip.by_index(index).map_err(|error| error.to_string())?;
         if entry.is_dir() {
@@ -253,8 +255,17 @@ fn extract(archive: &Path, folder: &str, target: &str, skip: &[String], game_dir
         let (declared, compressed) = (entry.size(), entry.compressed_size());
         lodestone_fs::copy_entry(&mut entry, &mut out, declared, compressed).map_err(|error| error.to_string())?;
         out.flush().map_err(|error| error.to_string())?;
+        written.push(in_instance(target, &relative));
     }
-    Ok(())
+    Ok(written)
+}
+
+/// The path of `relative`, which sits inside `target`, relative to the instance folder, with `/` separators.
+fn in_instance(target: &str, relative: &str) -> String {
+    match target.trim_matches('/') {
+        "" => relative.to_string(),
+        trimmed => format!("{trimmed}/{relative}"),
+    }
 }
 
 /// Lays the bundled files of a Lodestone package over `game_dir`, from the `overrides/` folder inside it.

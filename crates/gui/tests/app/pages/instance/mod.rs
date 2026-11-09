@@ -79,7 +79,17 @@ fn sample_files() -> InstanceFiles {
 #[test]
 fn all_tabs_have_labels() {
     let labels: Vec<_> = Tab::ALL.iter().map(|tab| tab.label()).collect();
-    assert_eq!(labels, ["Content", "Worlds", "Screenshots", "Logs", "Settings"]);
+    assert_eq!(labels, ["Content", "Versions", "Worlds", "Screenshots", "Logs", "Settings"]);
+}
+
+#[test]
+fn the_versions_tab_is_shown_only_for_an_instance_that_came_from_a_platform() {
+    let local = aether();
+    assert!(!Tab::visible(Some(&local)).contains(&Tab::Versions));
+    let mut installed = aether();
+    installed.source_platform = Some("modrinth".to_string());
+    assert!(Tab::visible(Some(&installed)).contains(&Tab::Versions));
+    assert_eq!(Tab::visible(Some(&local)).len(), 5, "the other tabs stay");
 }
 
 #[test]
@@ -224,7 +234,7 @@ fn every_tab_builds_at_narrow_and_wide_widths() {
     for tab in Tab::ALL {
         let _ = page.update(Message::TabSelected(tab));
         for viewport in [Size::new(900.0, 700.0), Size::new(1400.0, 900.0)] {
-            let _ = page.view(viewport, idle_game(), None, &WorldPins::default());
+            let _ = page.view(viewport, idle_game(), None, &WorldPins::default(), None);
         }
     }
 }
@@ -235,12 +245,12 @@ fn every_tab_builds_before_the_scan_lands() {
     let _ = page.show(aether(), PathBuf::new(), &LaunchDefaults::default());
     for tab in Tab::ALL {
         let _ = page.update(Message::TabSelected(tab));
-        let _ = page.view(Size::new(1280.0, 800.0), idle_game(), None, &WorldPins::default());
+        let _ = page.view(Size::new(1280.0, 800.0), idle_game(), None, &WorldPins::default(), None);
     }
 }
 
 #[test]
 fn the_page_builds_without_an_instance() {
     let page = InstancePage::default();
-    let _ = page.view(Size::new(1280.0, 800.0), idle_game(), None, &WorldPins::default());
+    let _ = page.view(Size::new(1280.0, 800.0), idle_game(), None, &WorldPins::default(), None);
 }

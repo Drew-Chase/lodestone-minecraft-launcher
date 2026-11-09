@@ -18,6 +18,8 @@ pub enum Kind {
     InstallDone,
     /// An instance did not install.
     InstallFailed,
+    /// An instance was moved onto a release of its modpack, in place.
+    PackUpdated,
     /// An export wrote its package.
     ExportDone,
     /// An export did not write its package.
@@ -26,13 +28,14 @@ pub enum Kind {
 
 impl Kind {
     /// Every kind, in the order the bell's documentation lists them.
-    pub const ALL: [Kind; 8] = [
+    pub const ALL: [Kind; 9] = [
         Kind::Crash,
         Kind::ModpackUpdate,
         Kind::ModUpdate,
         Kind::LauncherUpdate,
         Kind::InstallDone,
         Kind::InstallFailed,
+        Kind::PackUpdated,
         Kind::ExportDone,
         Kind::ExportFailed,
     ];
@@ -46,6 +49,7 @@ impl Kind {
             Kind::LauncherUpdate => "launcher_update",
             Kind::InstallDone => "install_done",
             Kind::InstallFailed => "install_failed",
+            Kind::PackUpdated => "pack_updated",
             Kind::ExportDone => "export_done",
             Kind::ExportFailed => "export_failed",
         }

@@ -56,7 +56,8 @@ use iced::task::Handle;
 
 use crate::app::database::DownloadTotals;
 use crate::app::export::job::{ExportJob, ExportProgress};
-use crate::app::install::{IconSource, InstallProgress, InstallRequest};
+use crate::app::install::update::UpdateRequest;
+use crate::app::install::{IconSource, InstallProgress, InstallRequest, Stage};
 use crate::app::pages::discover::Source;
 use crate::app::pages::library::instance::{Instance, InstanceIcon, InstanceState};
 
@@ -88,6 +89,9 @@ pub enum JobKind {
     Export(ExportJob),
     /// Fetches a Minecraft version's client jar and profile again. It runs outside the install slots, and has no card.
     Reinstall(ReinstallJob),
+    /// Moves an instance onto a release of its modpack, in place. It takes an install slot, and it cannot be paused. It can be
+    /// stopped until it starts writing the instance's files, and stopping it after that is refused.
+    PackUpdate(Box<UpdateRequest>),
 }
 
 /// A Minecraft version being fetched again, as the popover shows it.
@@ -134,17 +138,31 @@ impl Job {
     pub fn install(&self) -> Option<&InstallRequest> {
         match &self.kind {
             JobKind::Install(request) => Some(request.as_ref()),
-            JobKind::Mod(_) | JobKind::Export(_) | JobKind::Reinstall(_) => None,
+            JobKind::Mod(_) | JobKind::Export(_) | JobKind::Reinstall(_) | JobKind::PackUpdate(_) => None,
         }
     }
 
-    /// The job's name: the instance's name for an install or an export, the mod's for a mod.
+    /// The in-place update the job runs, when it is one.
+    pub fn update(&self) -> Option<&UpdateRequest> {
+        match &self.kind {
+            JobKind::PackUpdate(request) => Some(request.as_ref()),
+            JobKind::Install(_) | JobKind::Mod(_) | JobKind::Export(_) | JobKind::Reinstall(_) => None,
+        }
+    }
+
+    /// Whether the job runs in one of the install slots: an install, or an in-place update.
+    pub fn takes_slot(&self) -> bool {
+        self.install().is_some() || self.update().is_some()
+    }
+
+    /// The job's name: the instance's name for an install, an update or an export, the mod's for a mod.
     pub fn name(&self) -> &str {
         match &self.kind {
             JobKind::Install(request) => &request.name,
             JobKind::Mod(mod_job) => &mod_job.name,
             JobKind::Export(export) => &export.name,
             JobKind::Reinstall(reinstall) => &reinstall.name,
+            JobKind::PackUpdate(update) => &update.instance.name,
         }
     }
 
@@ -175,6 +193,7 @@ impl Job {
             source_platform: request.source_platform.clone(),
             source_project_id: request.source_project_id.clone(),
             source_version: request.source_version.clone(),
+            source_version_id: request.source_version_id.clone(),
             settings: request.settings.clone(),
         })
     }
@@ -248,6 +267,11 @@ impl Downloads {
     /// Starts a reinstall and returns its job id. It runs at once, outside the install slots.
     pub fn enqueue_reinstall(&mut self, reinstall: ReinstallJob) -> u64 {
         self.push(JobKind::Reinstall(reinstall), JobState::Running)
+    }
+
+    /// Queues an in-place update of an instance and returns its job id. It starts when a running slot is free.
+    pub fn enqueue_update(&mut self, request: UpdateRequest) -> u64 {
+        self.push(JobKind::PackUpdate(Box::new(request)), JobState::Queued)
     }
 
     /// Starts an export and returns its job id. It runs at once, outside the install slots.
@@ -333,10 +357,7 @@ impl Downloads {
 
     /// How many installs are running now. Only installs take the slots that [`RUNNING_LIMIT`] allows.
     pub fn installs_running(&self) -> usize {
-        self.jobs
-            .iter()
-            .filter(|job| job.install().is_some() && job.state == JobState::Running)
-            .count()
+        self.jobs.iter().filter(|job| job.takes_slot() && job.state == JobState::Running).count()
     }
 
     /// The next queued install to start, when a running slot is free.
@@ -346,18 +367,33 @@ impl Downloads {
         }
         self.jobs
             .iter()
-            .find(|job| job.install().is_some() && job.state == JobState::Queued)
+            .find(|job| job.takes_slot() && job.state == JobState::Queued)
             .map(|job| job.id)
     }
 
     /// The keep flag the install of job `id` shares, so a pause can set it.
+    #[cfg(test)]
     pub fn keep_flag(&self, id: u64) -> Option<Arc<AtomicBool>> {
         self.job(id).map(|job| job.keep_folder.clone())
     }
 
-    /// The request the install of job `id` runs.
-    pub fn request(&self, id: u64) -> Option<&InstallRequest> {
-        self.job(id).and_then(|job| job.install())
+    /// The install job `id` runs, with its keep flag, cloned so the install can run on its own task.
+    pub fn install_start(&self, id: u64) -> Option<(InstallRequest, Arc<AtomicBool>)> {
+        let job = self.job(id)?;
+        Some((job.install()?.clone(), job.keep_folder.clone()))
+    }
+
+    /// The in-place update job `id` runs, cloned so the update can run on its own task.
+    pub fn update_start(&self, id: u64) -> Option<UpdateRequest> {
+        self.job(id)?.update().cloned()
+    }
+
+    /// Whether job `id` has started writing its instance. An in-place update that has, is not stopped any more: the rollback
+    /// would have to undo files while they are being written.
+    pub fn is_applying(&self, id: u64) -> bool {
+        self.job(id)
+            .and_then(|job| job.progress.as_ref())
+            .is_some_and(|progress| matches!(progress.stage, Stage::Apply | Stage::Finish))
     }
 
     /// Marks job `id` as running, with the handle that stops its install.
@@ -462,7 +498,7 @@ impl Downloads {
         let index = self
             .jobs
             .iter()
-            .position(|job| job.id == id && matches!(job.kind, JobKind::Install(_) | JobKind::Export(_)))?;
+            .position(|job| job.id == id && matches!(job.kind, JobKind::Install(_) | JobKind::Export(_) | JobKind::PackUpdate(_)))?;
         let job = self.jobs.remove(index);
         if let JobKind::Export(export) = &job.kind {
             export.cancel.store(true, Ordering::SeqCst);
@@ -498,8 +534,19 @@ impl Downloads {
     pub fn job_for_instance(&self, id: &str) -> Option<u64> {
         self.jobs
             .iter()
-            .find(|job| !job.ended() && job.install().is_some_and(|request| request.id == id))
+            .find(|job| !job.ended() && (job.install().is_some_and(|request| request.id == id) || self.updates(job, id)))
             .map(|job| job.id)
+    }
+
+    /// The in-place update of the instance `id`, while it has not ended. It stands for the instance while it runs: its files change,
+    /// so the instance cannot be launched or edited.
+    pub fn update_for_instance(&self, id: &str) -> Option<&Job> {
+        self.jobs.iter().find(|job| !job.ended() && self.updates(job, id))
+    }
+
+    /// Whether `job` is an in-place update of the instance `id`.
+    fn updates(&self, job: &Job, id: &str) -> bool {
+        job.update().is_some_and(|update| update.instance.id == id)
     }
 
     /// The directory names the installs that have not ended will create, so a new install avoids them.

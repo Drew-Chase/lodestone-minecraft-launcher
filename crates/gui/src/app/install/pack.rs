@@ -41,6 +41,15 @@ pub(crate) struct Page {
     pub icon_url: Option<String>,
 }
 
+/// The release of a platform modpack an install takes: its id on the platform, and the version number the platform names it by.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Release {
+    /// The release's id on the platform, which the instance keeps so it can tell the installed release apart.
+    pub id: String,
+    /// The release's version number, as the platform names it.
+    pub number: String,
+}
+
 /// The install of `modpack`. `archive` is the pack's own file on disk, which its overrides come from. `source` is the
 /// platform the pack is read as, which decides how its files are resolved and recorded. `page` is where the pack was
 /// taken from, when it has a page. The folder is named after the pack and kept clear of `taken`.
@@ -51,45 +60,9 @@ pub(crate) async fn request(
     archive: Option<PathBuf>,
     source: Option<Source>,
     page: Option<Page>,
-    version: Option<String>,
+    release: Option<Release>,
 ) -> Result<InstallRequest, String> {
-    // A pack the overrides bundle is identified from its bytes: by its hash on Modrinth, and by its fingerprint on CurseForge
-    // when a CurseForge key is built in. The archive is read for them only when the pack comes from a platform.
-    let fingerprints = curseforge().is_ok();
-    let bundled = match source {
-        Some(Source::CurseForge | Source::Modrinth) => bundled_packs(archive.clone(), modpack.overrides.clone(), fingerprints).await,
-        _ => Vec::new(),
-    };
-    let mut payload = Payload::from_modpack(&modpack, archive);
-    match source {
-        Some(Source::CurseForge) => {
-            payload.files = resolve_curseforge_files(payload.files).await?;
-            payload.sources = curseforge_sources(&payload.files);
-            // CurseForge names each bundled pack by its fingerprint. The packs it does not name are tried on Modrinth by hash.
-            let (mut packs, unnamed) = curseforge_pack_records(bundled).await;
-            packs.extend(modrinth_records(&hashed_packs(&unnamed)).await.packs);
-            payload.packs = packs;
-        }
-        Some(Source::Modrinth) => {
-            // The overrides lay over the files the pack names, so where both name a path, the bundled file is the one held.
-            let mut hashed = hashed_files(&payload.files);
-            hashed.retain(|(path, _)| !bundled.iter().any(|pack| &pack.path == path));
-            hashed.extend(hashed_packs(&bundled));
-            let records = modrinth_records(&hashed).await;
-            // The packs Modrinth does not name are tried on CurseForge by their fingerprints.
-            let named: HashSet<String> = records
-                .packs
-                .iter()
-                .map(|record| format!("{}/{}", record.kind, record.file_name))
-                .collect();
-            let unnamed: Vec<BundledPack> = bundled.into_iter().filter(|pack| !named.contains(&pack.path)).collect();
-            let (packs, _) = curseforge_pack_records(unnamed).await;
-            payload.sources = records.mods;
-            payload.packs = records.packs;
-            payload.packs.extend(packs);
-        }
-        _ => {}
-    }
+    let payload = payload_of(&modpack, archive, source).await?;
     let (biome, art_seed) = match &page {
         Some(page) => discover::scene_for(page.source, &page.project_id),
         None => random_scene(),
@@ -126,10 +99,55 @@ pub(crate) async fn request(
         source_url: page.as_ref().and_then(|page| page.url.clone()),
         source_platform: page.as_ref().map(|page| page.source.key().to_string()),
         source_project_id: page.map(|page| page.project_id),
-        source_version: version,
+        source_version: release.as_ref().map(|release| release.number.clone()),
+        source_version_id: release.map(|release| release.id),
         modpack: Some(payload),
         settings: Default::default(),
     })
+}
+
+/// The payload of a modpack: its files, its archives, and the platform records of the mods and packs it names. The files are
+/// resolved to download links where the platform needs it. A pack read from a file (`source` is `None`) names no platform,
+/// so its payload names nothing.
+pub(crate) async fn payload_of(modpack: &Modpack, archive: Option<PathBuf>, source: Option<Source>) -> Result<Payload, String> {
+    // A pack the overrides bundle is identified from its bytes: by its hash on Modrinth, and by its fingerprint on CurseForge
+    // when a CurseForge key is built in. The archive is read for them only when the pack comes from a platform.
+    let fingerprints = curseforge().is_ok();
+    let bundled = match source {
+        Some(Source::CurseForge | Source::Modrinth) => bundled_packs(archive.clone(), modpack.overrides.clone(), fingerprints).await,
+        _ => Vec::new(),
+    };
+    let mut payload = Payload::from_modpack(modpack, archive);
+    match source {
+        Some(Source::CurseForge) => {
+            payload.files = resolve_curseforge_files(payload.files).await?;
+            payload.sources = curseforge_sources(&payload.files);
+            // CurseForge names each bundled pack by its fingerprint. The packs it does not name are tried on Modrinth by hash.
+            let (mut packs, unnamed) = curseforge_pack_records(bundled).await;
+            packs.extend(modrinth_records(&hashed_packs(&unnamed)).await.packs);
+            payload.packs = packs;
+        }
+        Some(Source::Modrinth) => {
+            // The overrides lay over the files the pack names, so where both name a path, the bundled file is the one held.
+            let mut hashed = hashed_files(&payload.files);
+            hashed.retain(|(path, _)| !bundled.iter().any(|pack| &pack.path == path));
+            hashed.extend(hashed_packs(&bundled));
+            let records = modrinth_records(&hashed).await;
+            // The packs Modrinth does not name are tried on CurseForge by their fingerprints.
+            let named: HashSet<String> = records
+                .packs
+                .iter()
+                .map(|record| format!("{}/{}", record.kind, record.file_name))
+                .collect();
+            let unnamed: Vec<BundledPack> = bundled.into_iter().filter(|pack| !named.contains(&pack.path)).collect();
+            let (packs, _) = curseforge_pack_records(unnamed).await;
+            payload.sources = records.mods;
+            payload.packs = records.packs;
+            payload.packs.extend(packs);
+        }
+        _ => {}
+    }
+    Ok(payload)
 }
 
 /// Each file a modpack places, with the path it goes to and the SHA-1 the pack gives it. A file with no hash cannot be
@@ -293,7 +311,7 @@ async fn curseforge_pack_records(packs: Vec<BundledPack>) -> (Vec<AddedContent>,
 }
 
 /// The loader a modpack names, as an instance's loader. A pack with no loader is vanilla.
-fn loader_of(name: Option<&str>) -> Loader {
+pub(crate) fn loader_of(name: Option<&str>) -> Loader {
     match name {
         Some("fabric") => Loader::Fabric,
         Some("forge") => Loader::Forge,

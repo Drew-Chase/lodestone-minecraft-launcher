@@ -39,6 +39,18 @@ impl LauncherPaths {
         self.instances().join(directory_name)
     }
 
+    /// The pristine copies of the text files an installed modpack release shipped, for one instance: `<root>/pack-base/<id>`.
+    /// They sit outside the instance folder, so an export and the instance's file watcher never see them.
+    pub fn pack_base(&self, instance_id: &str) -> PathBuf {
+        self.root.join("pack-base").join(instance_id)
+    }
+
+    /// The workspace of one in-place pack update: `<root>/pack-update/<id>`. It holds the journal that lets an interrupted
+    /// update roll back, the files the update staged, and the originals it moved aside. It sits outside the instance folder.
+    pub fn pack_journal(&self, instance_id: &str) -> PathBuf {
+        self.root.join("pack-update").join(instance_id)
+    }
+
     /// Downloads shared between instances: `<root>/meta`.
     pub fn meta(&self) -> PathBuf {
         self.root.join("meta")

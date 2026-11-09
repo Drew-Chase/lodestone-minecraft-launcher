@@ -194,6 +194,9 @@ pub struct Instance {
     /// The release of that project the instance was installed with, as the platform names it. `None` for an instance
     /// installed before this was recorded, until the update check records one.
     pub source_version: Option<String>,
+    /// The release's id on that platform, which the Versions tab matches releases against. Only an install or an in-place
+    /// update writes it, so `None` means the installed release is not known, even when `source_version` has a value.
+    pub source_version_id: Option<String>,
     /// The launch settings this instance overrides. Each one it does not override inherits the global default.
     pub settings: InstanceSettings,
 }
@@ -245,6 +248,7 @@ pub(crate) fn fixture(id: &str, name: &str, loader: Loader) -> Instance {
         source_platform: None,
         source_project_id: None,
         source_version: None,
+        source_version_id: None,
         settings: InstanceSettings::default(),
     }
 }

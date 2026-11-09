@@ -88,6 +88,10 @@ impl LodestoneLauncher {
         let Some(instance) = self.library.instance(id) else {
             return Task::none();
         };
+        // An export reads the instance's folder, which an in-place update is changing.
+        if self.downloads.update_for_instance(id).is_some() {
+            return self.alerts.show(Alert::warn(lang::t("pack_update.busy.working"))).discard();
+        }
         if self.games.is_active(id) {
             let message = lang::t_with("export.running", &[("name", instance.name.as_str())]);
             return self.alerts.show(Alert::warn(message)).discard();

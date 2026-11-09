@@ -84,6 +84,18 @@ pub struct ModSource {
     pub sha1: Option<String>,
 }
 
+/// A file an installed modpack release shipped outside the user's own folders: a mod, a config file or a script. The
+/// instance keeps these so an update can tell what the pack placed from what the user added.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackFile {
+    /// The instance's id.
+    pub instance: String,
+    /// The file's path relative to the instance folder, with `/` separators, such as `mods/sodium.jar`.
+    pub path: String,
+    /// The SHA-1 the release gives the file, or the SHA-1 read from disk when it gives none, as lowercase hex.
+    pub sha1: Option<String>,
+}
+
 /// The SHA-1 of a jar in an instance's `mods/` folder, with the size and modification time it had when hashed. The
 /// hash stands while the jar keeps both.
 #[derive(Debug, Clone, PartialEq, Eq)]

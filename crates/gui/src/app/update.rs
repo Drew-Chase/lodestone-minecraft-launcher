@@ -14,6 +14,7 @@ use crate::app::pages::instance::Message as InstanceMessage;
 use crate::app::pages::instance::Tab;
 use crate::app::pages::instance::files;
 use crate::app::pages::instance::settings::Message as InstanceSettingsMessage;
+use crate::app::pages::instance::versions;
 use crate::app::pages::instance::{logs, mods, screenshots, worlds};
 use crate::app::pages::library::Message as LibraryMessage;
 use crate::app::pages::library::instance::Instance;
@@ -208,6 +209,9 @@ impl LodestoneLauncher {
             // The Settings tab's edits change the instance, which the root applies, saves and hands back to the page.
             LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::Edit(edit))) => self.edit_instance(edit),
             LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::ResetSettings)) => self.ask_instance_reset(),
+            LodestoneAppMessage::Instance(InstanceMessage::Versions(versions::Message::Move(release))) => self.review_move(release),
+            LodestoneAppMessage::Instance(InstanceMessage::Versions(versions::Message::Record(release))) => self.record_release(release),
+            LodestoneAppMessage::PackUpdate(message) => self.pack_update_message(message),
             LodestoneAppMessage::Instance(InstanceMessage::Settings(InstanceSettingsMessage::Reinstall)) => self.reinstall_instance(),
             LodestoneAppMessage::InstanceSaved { instance, result } => self.instance_saved(instance, result),
             LodestoneAppMessage::InstanceResetAnswered { instance, confirmed } => self.instance_reset_answered(instance, confirmed),
@@ -308,6 +312,12 @@ impl LodestoneLauncher {
                     .map(LodestoneAppMessage::Instance);
                 Task::batch([select, self.mods_checks_due()])
             }
+            // An in-place update is writing the mods folder, so the mods cannot be switched or removed until it ends.
+            LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Toggle { .. } | mods::Message::Menu { .. }))
+                if self.shown_instance_updating() =>
+            {
+                self.alerts.show(Alert::warn(lang::t("pack_update.busy.working"))).discard()
+            }
             LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Open(file_name))) => self.mod_row_pressed(file_name),
             LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Toggle { file_name, enabled })) => self.mod_toggle(file_name, enabled),
             LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Menu { file_name, action })) => {
@@ -321,6 +331,16 @@ impl LodestoneLauncher {
             LodestoneAppMessage::DatabaseReady(Ok(db)) => {
                 info!("Launcher database ready");
                 let sweep = downloads::sweep_partial_installs(db.clone(), self.paths.instances());
+                // An in-place update that an earlier launch left unfinished is finished or rolled back, before the library loads.
+                let settle = {
+                    let (paths, db) = (self.paths.clone(), db.clone());
+                    Task::future(async move {
+                        for id in crate::app::install::update::recover(paths, db).await {
+                            warn!("an update of instance {id} stopped before it committed, and was rolled back");
+                        }
+                    })
+                    .discard()
+                };
                 self.db = Some(db);
                 // The games a previous launcher left running are found through their pid files. Attaching
                 // to them sets their state, and then the library loads.
@@ -330,6 +350,7 @@ impl LodestoneLauncher {
                 );
                 Task::batch([
                     sweep,
+                    settle,
                     reattach,
                     self.load_shared(),
                     self.load_mod_sources(),

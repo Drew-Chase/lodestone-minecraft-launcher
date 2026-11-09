@@ -8,6 +8,7 @@ pub mod brand_tag;
 pub mod button;
 pub mod carousel;
 pub mod checkbox;
+pub mod chip;
 pub mod context_menu;
 pub mod dropdown;
 pub mod floating_dock;

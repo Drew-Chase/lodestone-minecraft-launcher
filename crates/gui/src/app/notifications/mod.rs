@@ -101,6 +101,8 @@ pub enum Action {
     Instance(String),
     /// Opens the instance's Mods tab.
     Mods(String),
+    /// Opens the instance's Versions tab, where its modpack can be moved onto the newer release.
+    Versions(String),
     /// Opens a file in the app its type belongs to.
     OpenFile(PathBuf),
     /// Opens the folder a file is in.
@@ -119,6 +121,20 @@ pub(super) fn install_done(job: u64, instance: &Instance) -> Draft {
         kind: Kind::InstallDone,
         subject: instance.name.clone(),
         detail: String::new(),
+        instance_id: Some(instance.id.clone()),
+        target: None,
+        created_at: now,
+    }
+}
+
+/// The draft of an instance moved onto a release of its modpack, in place. Its detail is the release's version number.
+pub(super) fn pack_updated(job: u64, instance: &Instance, version: &str) -> Draft {
+    let now = Local::now();
+    Draft {
+        key: event_key(&format!("pack-update:{job}"), now),
+        kind: Kind::PackUpdated,
+        subject: instance.name.clone(),
+        detail: version.to_owned(),
         instance_id: Some(instance.id.clone()),
         target: None,
         created_at: now,
@@ -172,6 +188,7 @@ pub(super) fn job_name(job: &Job) -> String {
     match &job.kind {
         JobKind::Install(request) => request.name.clone(),
         JobKind::Export(export) => export.name.clone(),
+        JobKind::PackUpdate(update) => update.instance.name.clone(),
         JobKind::Mod(_) | JobKind::Reinstall(_) => String::new(),
     }
 }
@@ -395,6 +412,7 @@ impl LodestoneLauncher {
         match action {
             Action::Logs(id) => self.open_instance_page(&id, Tab::Logs),
             Action::Instance(id) => self.open_instance_page(&id, Tab::Content),
+            Action::Versions(id) => self.open_instance_page(&id, Tab::Versions),
             Action::Mods(id) => self.open_instance_page(&id, Tab::Content),
             Action::OpenFile(path) => open_path(path),
             Action::ShowFolder(path) => match path.parent() {

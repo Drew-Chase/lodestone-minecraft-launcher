@@ -4,6 +4,8 @@
 
 mod added_content;
 mod notifications;
+mod pack_files;
+mod pack_update;
 mod playtime;
 mod server_pack;
 pub mod servers;
@@ -16,10 +18,11 @@ use std::time::Duration;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteRow, SqliteSynchronous};
 use sqlx::{Row, Sqlite, Transaction};
 
+use self::pack_files::write_pack_files;
 use crate::app::import::record::{ImportFormat, ImportOrigin, ImportRecord};
 use crate::app::launch_settings::InstanceSettings;
 use crate::app::pages::library::instance::{Biome, Instance, InstanceIcon, InstanceState, Loader};
-use crate::app::shared_library::{JarHash, ModSource, SharedRecord};
+use crate::app::shared_library::{JarHash, ModSource, PackFile, SharedRecord};
 
 /// How many icon recents are kept. The icon editor shows the newest few.
 const RECENT_ICON_LIMIT: i64 = 8;
@@ -80,7 +83,7 @@ impl Database {
             "SELECT id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
              last_played_at, installed_at, pinned, state, biome, art_seed, art_path, \
              icon_background, icon_symbol, icon_path, directory_name, java_component, version_id, \
-             source_url, source_platform, source_project_id, source_version, settings FROM instances",
+             source_url, source_platform, source_project_id, source_version, source_version_id, settings FROM instances",
         )
         .fetch_all(&self.pool)
         .await
@@ -118,6 +121,7 @@ impl Database {
                     source_platform: row.get("source_platform"),
                     source_project_id: row.get("source_project_id"),
                     source_version: row.get("source_version"),
+                    source_version_id: row.get("source_version_id"),
                     settings: settings_of(row.get("settings")),
                 }
             })
@@ -161,6 +165,12 @@ impl Database {
     /// Writes a new instance row and the mods it was installed with, in one transaction. The caller has already
     /// created the folder and written its files.
     pub async fn insert_instance(&self, instance: &Instance, sources: &[ModSource]) -> Result<(), String> {
+        self.insert_instance_with_files(instance, sources, &[]).await
+    }
+
+    /// Writes a new instance row, the mods it was installed with and the files its modpack release shipped, in one
+    /// transaction. The caller has already created the folder and written its files.
+    pub async fn insert_instance_with_files(&self, instance: &Instance, sources: &[ModSource], files: &[PackFile]) -> Result<(), String> {
         let (icon_background, icon_symbol, icon_path) = instance.icon.to_db();
         let mut transaction = self.pool.begin().await.map_err(|error| error.to_string())?;
         sqlx::query(
@@ -168,8 +178,8 @@ impl Database {
              (id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
               last_played_at, installed_at, pinned, state, biome, art_seed, art_path, \
               icon_background, icon_symbol, icon_path, directory_name, java_component, version_id, \
-              source_url, source_platform, source_project_id, source_version, settings) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              source_url, source_platform, source_project_id, source_version, source_version_id, settings) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&instance.id)
         .bind(&instance.name)
@@ -195,11 +205,13 @@ impl Database {
         .bind(&instance.source_platform)
         .bind(&instance.source_project_id)
         .bind(&instance.source_version)
+        .bind(&instance.source_version_id)
         .bind(settings_json(&instance.settings))
         .execute(&mut *transaction)
         .await
         .map_err(|error| error.to_string())?;
         write_mod_sources(&mut transaction, sources).await?;
+        write_pack_files(&mut transaction, &instance.id, files).await?;
         transaction.commit().await.map_err(|error| error.to_string())
     }
 
@@ -224,7 +236,7 @@ impl Database {
             .map_err(|error| error.to_string())
     }
 
-    /// Deletes an instance's row, and the mod records, cached hashes, world pins and added content it holds. The caller
+    /// Deletes an instance's row, and the mod records, the pack's file records, cached hashes, world pins and added content it holds. The caller
     /// removes its folder; nothing else refers to the row.
     pub async fn delete_instance(&self, id: &str) -> Result<(), String> {
         sqlx::query("DELETE FROM mod_sources WHERE instance_id = ?")
@@ -243,6 +255,16 @@ impl Database {
             .await
             .map_err(|error| error.to_string())?;
         sqlx::query("DELETE FROM world_pins WHERE instance_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+        sqlx::query("DELETE FROM pack_files WHERE instance_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+        sqlx::query("DELETE FROM pack_commits WHERE instance_id = ?")
             .bind(id)
             .execute(&self.pool)
             .await

@@ -63,25 +63,34 @@ impl LodestoneLauncher {
         };
         let mut tasks = Vec::new();
         while let Some(id) = self.downloads.next_start() {
-            let (Some(request), Some(keep)) = (self.downloads.request(id).cloned(), self.downloads.keep_flag(id)) else {
+            let Some(task) = self.start_job(id, &db) else {
                 break;
             };
-            let (task, abort) = Task::sip(
-                install::install(request, db.clone(), keep),
-                move |progress| queue(Message::Progress { job: id, progress }),
-                move |result| {
-                    queue(Message::Finished {
-                        job: id,
-                        result: result.map(Box::new),
-                    })
-                },
-            )
-            .abortable();
-            self.downloads.start(id, abort);
             tasks.push(task);
         }
         self.sync_pending();
         Task::batch(tasks)
+    }
+
+    /// Starts job `id` on its own task, as an install or an in-place update. `None` for a job that is neither, so the queue stops
+    /// rather than spinning on it.
+    fn start_job(&mut self, id: u64, db: &Database) -> Option<Task<LodestoneAppMessage>> {
+        let on_progress = move |progress| queue(Message::Progress { job: id, progress });
+        let on_finish = move |result: Result<Instance, String>| {
+            queue(Message::Finished {
+                job: id,
+                result: result.map(Box::new),
+            })
+        };
+        if let Some((request, keep)) = self.downloads.install_start(id) {
+            let (task, abort) = Task::sip(install::install(request, db.clone(), keep), on_progress, on_finish).abortable();
+            self.downloads.start(id, abort);
+            return Some(task);
+        }
+        let request = self.downloads.update_start(id)?;
+        let (task, abort) = Task::sip(install::update::update(request, db.clone()), on_progress, on_finish).abortable();
+        self.downloads.start(id, abort);
+        Some(task)
     }
 
     /// Applies a queue message: the installs' reports and results, and the popover's controls.
@@ -132,8 +141,14 @@ impl LodestoneLauncher {
                 }
             }
             Message::Cancel(job) => {
+                // An update that is writing the instance cannot be stopped without leaving it half-written, so it is refused.
+                if self.downloads.is_applying(job) {
+                    return self.alerts.show(Alert::warn(lang::t("pack_update.cannot_stop"))).discard();
+                }
                 let question = if self.downloads.is_export(job) {
                     lang::t("export.cancel_confirm")
+                } else if self.downloads.job(job).is_some_and(|job| job.update().is_some()) {
+                    lang::t("pack_update.cancel_confirm")
                 } else {
                     lang::t("new_instance.cancel_confirm")
                 };
@@ -193,7 +208,28 @@ impl LodestoneLauncher {
     fn install_finished(&mut self, job: u64, result: Result<Box<Instance>, String>) -> Task<LodestoneAppMessage> {
         let bytes = self.downloads.take_bytes(job);
         let mut tasks = vec![self.count_bytes(bytes), self.start_ready_downloads()];
+        // An in-place update replaces the instance's row, and the new-instance messages and the portable install do not apply.
+        let updating = self.downloads.job(job).is_some_and(|job| job.update().is_some());
         match result {
+            Ok(instance) if updating => {
+                info!("Updated instance {} to its new release", instance.name);
+                let version = instance.source_version.clone().unwrap_or_default();
+                tasks.push(self.record_notification(notifications::pack_updated(job, &instance, &version)));
+                self.downloads.finish(job, Ok(()));
+                self.library.add_instance(*instance);
+                self.refresh_instance_page();
+                tasks.push(self.load_instances());
+                tasks.push(self.load_added_content());
+            }
+            Err(error) if updating => {
+                warn!("Updating an instance failed: {error}");
+                self.downloads.finish(job, Err(error.clone()));
+                tasks.push(
+                    self.alerts
+                        .show(Alert::error(lang::t_with("pack_update.failed", &[("error", error.as_str())])))
+                        .discard(),
+                );
+            }
             Ok(instance) => {
                 info!("Installed instance {}", instance.name);
                 tasks.push(self.record_notification(notifications::install_done(job, &instance)));

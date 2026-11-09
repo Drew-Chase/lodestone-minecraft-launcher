@@ -14,26 +14,8 @@ use crate::app::lang;
 use crate::app::pages::discover::ProjectStatus;
 use crate::app::theme::{color, fonts, utility};
 
-/// A small rounded label: a tag, a loader or a Minecraft version.
-pub(super) fn chip<'a, M: 'a>(label: impl Into<String>) -> Element<'a, M> {
-    container(
-        Text::new(label.into())
-            .size(11)
-            .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::text_muted()),
-    )
-    .padding(Padding::new(0.0).left(8).right(8).top(3).bottom(3))
-    .style(|_| container::Style {
-        background: Some(Background::Color(color::surface_bg3())),
-        border: Border {
-            radius: 999.0.into(),
-            width: 1.0,
-            color: color::surface_line(),
-        },
-        ..container::Style::default()
-    })
-    .into()
-}
+// The chip and a loader's name are shared with the instance's Versions tab, so they live in `components::chip`.
+pub(super) use crate::app::components::chip::{chip, loader_label};
 
 /// A line icon in `tint`.
 pub(super) fn glyph<'a, M: 'a>(markup: &'static str, size: f32, tint: Color) -> Element<'a, M> {
@@ -110,20 +92,6 @@ pub(super) fn dimmed<'a>(label: &'static str) -> Element<'a, Message> {
         .padding(Padding::new(0.0).left(14).right(14).top(8).bottom(8))
         .disabled(true)
         .into()
-}
-
-/// A loader's name as it is shown: `fabric` is `Fabric`, and `neoforge` is `NeoForge`.
-pub(super) fn loader_label(name: &str) -> String {
-    match name {
-        "neoforge" => "NeoForge".to_string(),
-        other => {
-            let mut chars = other.chars();
-            match chars.next() {
-                Some(first) => first.to_uppercase().chain(chars).collect(),
-                None => String::new(),
-            }
-        }
-    }
 }
 
 /// The button a row of the versions takes that release: install a modpack, add a mod, or download anything else.

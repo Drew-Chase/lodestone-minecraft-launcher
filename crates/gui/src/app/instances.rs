@@ -172,6 +172,10 @@ impl LodestoneLauncher {
         if self.library.pending_install(id).is_some() {
             return Task::none();
         }
+        // An in-place update is writing the instance's folder, so the folder waits for it to end.
+        if self.downloads.update_for_instance(id).is_some() {
+            return self.alerts.show(Alert::warn(lang::t("pack_update.busy.working"))).discard();
+        }
         if self.games.is_active(id) {
             return self.alerts.show(Alert::warn(lang::t("instance.delete.running"))).discard();
         }
@@ -206,7 +210,8 @@ impl LodestoneLauncher {
             return Task::none();
         };
         let folder = self.paths.instance(&instance.directory_name);
-        Task::perform(remove_instance(db, folder, id.clone()), move |result| {
+        let kept = vec![self.paths.pack_base(&id), self.paths.pack_journal(&id)];
+        Task::perform(remove_instance(db, folder, kept, id.clone()), move |result| {
             LodestoneAppMessage::InstanceDeleted {
                 instance: id.clone(),
                 result,
@@ -524,12 +529,15 @@ pub(super) fn open_source(url: String) -> Task<LodestoneAppMessage> {
     )
 }
 
-/// Removes the instance's folder, then its row. The folder goes first: if a file is locked, the
-/// row stays and the delete can be tried again.
-async fn remove_instance(db: Database, folder: PathBuf, id: String) -> Result<(), String> {
-    let removal = tokio::task::spawn_blocking(move || remove_folder(&folder))
-        .await
-        .map_err(|error| error.to_string())?;
+/// Removes the instance's folder, then the folders the launcher keeps for it outside the instance, then its row. The folders
+/// go first: if a file is locked, the row stays and the delete can be tried again.
+async fn remove_instance(db: Database, folder: PathBuf, kept: Vec<PathBuf>, id: String) -> Result<(), String> {
+    let removal = tokio::task::spawn_blocking(move || {
+        remove_folder(&folder)?;
+        kept.iter().try_for_each(|path| remove_folder(path))
+    })
+    .await
+    .map_err(|error| error.to_string())?;
     removal?;
     db.delete_instance(&id).await
 }

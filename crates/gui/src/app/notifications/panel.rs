@@ -196,6 +196,7 @@ fn title_of(item: &Notification) -> String {
         Kind::LauncherUpdate => lang::t_with("notifications.launcher.title", &[("version", subject)]),
         Kind::InstallDone => lang::t_with("notifications.install.done.title", &[("name", subject)]),
         Kind::InstallFailed => lang::t_with("notifications.install.failed.title", &[("name", subject)]),
+        Kind::PackUpdated => lang::t_with("notifications.pack_update.done.title", &[("name", subject)]),
         Kind::ExportDone => lang::t_with("notifications.export.done.title", &[("name", subject)]),
         Kind::ExportFailed => lang::t_with("notifications.export.failed.title", &[("name", subject)]),
     }
@@ -211,6 +212,7 @@ fn body_of(item: &Notification) -> String {
         Kind::LauncherUpdate => lang::t("notifications.launcher.body").to_owned(),
         Kind::InstallDone => lang::t("notifications.install.done.body").to_owned(),
         Kind::InstallFailed => lang::t_with("notifications.install.failed.body", &[("error", detail)]),
+        Kind::PackUpdated => lang::t("notifications.pack_update.done.body").to_owned(),
         Kind::ExportDone => lang::t("notifications.export.done.body").to_owned(),
         Kind::ExportFailed => lang::t_with("notifications.export.failed.body", &[("error", detail)]),
     }
@@ -230,28 +232,31 @@ fn actions(item: &Notification) -> Vec<(&'static str, Action)> {
                     .map(|report| ("notifications.action.open_report", Action::OpenFile(PathBuf::from(report)))),
             )
             .collect(),
-        Kind::ModpackUpdate => item
-            .target
-            .as_deref()
-            .and_then(|target| target.split_once('/'))
-            .map(|(platform, project)| {
-                (
-                    "notifications.action.open_modpack",
-                    Action::Modpack {
-                        platform: platform.to_owned(),
-                        project: project.to_owned(),
-                        name: item.subject.clone(),
-                    },
-                )
-            })
+        Kind::ModpackUpdate => instance
+            .map(|id| ("notifications.action.update", Action::Versions(id)))
             .into_iter()
+            .chain(
+                item.target
+                    .as_deref()
+                    .and_then(|target| target.split_once('/'))
+                    .map(|(platform, project)| {
+                        (
+                            "notifications.action.open_modpack",
+                            Action::Modpack {
+                                platform: platform.to_owned(),
+                                project: project.to_owned(),
+                                name: item.subject.clone(),
+                            },
+                        )
+                    }),
+            )
             .collect(),
         Kind::ModUpdate => instance
             .map(|id| ("notifications.action.review_mods", Action::Mods(id)))
             .into_iter()
             .collect(),
         Kind::LauncherUpdate => vec![("notifications.action.update", Action::Update)],
-        Kind::InstallDone => instance
+        Kind::InstallDone | Kind::PackUpdated => instance
             .map(|id| ("notifications.action.open_instance", Action::Instance(id)))
             .into_iter()
             .collect(),

@@ -437,6 +437,7 @@ impl NewInstance {
             source_platform: None,
             source_project_id: None,
             source_version: None,
+            source_version_id: None,
             modpack: None,
         })
     }

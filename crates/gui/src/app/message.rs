@@ -67,6 +67,8 @@ pub enum LodestoneAppMessage {
     /// The resource page: its tabs, its answers, and its actions.
     Resource(ResourceMessage),
     Instance(InstanceMessage),
+    /// The Versions tab's actions: a move onto a release, once confirmed, and the update that comes of it.
+    PackUpdate(crate::app::pack_update::Message),
     Settings(SettingsMessage),
     /// The download queue: an install's progress or result, and the Downloads popover's controls.
     Downloads(DownloadsMessage),

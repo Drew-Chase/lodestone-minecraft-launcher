@@ -29,6 +29,7 @@ pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
         M::JoinDialog(_) => "update.JoinDialog",
         M::CoopSync(_) => "update.CoopSync",
         M::Instance(_) => "update.Instance",
+        M::PackUpdate(_) => "update.PackUpdate",
         M::Settings(_) => "update.Settings",
         M::Downloads(_) => "update.Downloads",
         M::Export(_) => "update.Export",

@@ -77,6 +77,26 @@ fn overrides_are_laid_into_the_instance_and_nothing_else_is_extracted() {
 }
 
 #[test]
+fn extract_reports_the_paths_it_wrote_relative_to_the_instance() {
+    let dir = scratch("written");
+    let zip_path = dir.join("pack.zip");
+    let game = dir.join("game");
+    archive(
+        &zip_path,
+        &[
+            ("overrides/config/a.toml", "x=1"),
+            ("overrides/mods/m.jar", "jar"),
+            ("other/readme.txt", "not written"),
+        ],
+    );
+    let at_root = extract(&zip_path, "overrides", "", &[], &game).expect("overrides extract");
+    assert_eq!(at_root, vec!["config/a.toml".to_string(), "mods/m.jar".to_string()]);
+    let in_folder = extract(&zip_path, "overrides", "bundle", &[], &game).expect("overrides extract into a folder");
+    assert_eq!(in_folder, vec!["bundle/config/a.toml".to_string(), "bundle/mods/m.jar".to_string()]);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn a_lodestone_package_lays_its_bundled_files_over_the_instance() {
     let dir = scratch("package");
     let source = dir.join("source/config/a.toml");

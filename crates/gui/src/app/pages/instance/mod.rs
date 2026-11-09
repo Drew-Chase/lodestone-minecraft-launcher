@@ -17,6 +17,8 @@ pub mod mods;
 pub mod packs;
 pub mod screenshots;
 pub mod settings;
+mod tab;
+pub mod versions;
 mod watch;
 pub mod world_menu;
 pub mod worlds;
@@ -47,30 +49,7 @@ use watch::{Change, Update};
 /// The page's horizontal gutter — 28px, per the design.
 const GUTTER: f32 = 28.0;
 
-/// The page's tabs, in tab-bar order. The page opens on the Content tab, which holds the instance's mods and its packs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Tab {
-    #[default]
-    Content,
-    Worlds,
-    Screenshots,
-    Logs,
-    Settings,
-}
-
-impl Tab {
-    pub const ALL: [Tab; 5] = [Tab::Content, Tab::Worlds, Tab::Screenshots, Tab::Logs, Tab::Settings];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Tab::Content => lang::t("instance.tab.content"),
-            Tab::Worlds => lang::t("instance.tab.worlds"),
-            Tab::Screenshots => lang::t("instance.tab.screenshots"),
-            Tab::Logs => lang::t("instance.tab.logs"),
-            Tab::Settings => lang::t("instance.tab.settings"),
-        }
-    }
-}
+pub use tab::Tab;
 
 /// Messages the instance page handles.
 #[derive(Debug, Clone)]
@@ -108,6 +87,8 @@ pub enum Message {
     Screenshots(screenshots::Message),
     Logs(logs::Message),
     Settings(settings::Message),
+    /// A message of the Versions tab. The root carries out the moves and the records before the page sees them.
+    Versions(versions::Message),
     /// The instance folder was read. Stale when `generation` has moved on.
     Scanned {
         generation: u64,
@@ -159,6 +140,7 @@ pub struct InstancePage {
     screenshots: screenshots::State,
     logs: logs::State,
     settings: settings::State,
+    versions: versions::State,
     /// The run whose console the Logs tab shows, when the runs panel opened one. `None` shows the
     /// newest run.
     console_run: Option<u64>,
@@ -195,6 +177,7 @@ impl InstancePage {
         self.worlds = worlds::State::default();
         self.screenshots = screenshots::State::default();
         self.logs = logs::State::default();
+        self.versions = versions::State::default();
         self.tab = Tab::Content;
         self.console_run = None;
         self.watch_pending.clear();
@@ -211,8 +194,19 @@ impl InstancePage {
     pub fn refresh(&mut self, instance: Instance, defaults: &LaunchDefaults) {
         if self.instance.as_ref().is_some_and(|shown| shown.id == instance.id) {
             self.settings.sync(&instance, defaults);
+            self.versions.refresh(&instance);
             self.instance = Some(instance);
         }
+    }
+
+    /// The release the Versions tab lists, for the root to read when it prepares an update.
+    pub fn versions(&self) -> &versions::State {
+        &self.versions
+    }
+
+    /// The Versions tab's state, for the root to mark the release an update is prepared for.
+    pub fn versions_mut(&mut self) -> &mut versions::State {
+        &mut self.versions
     }
 
     /// Hands the mods the folder holds now to the Mods tab, and to the count the masthead shows.
@@ -234,9 +228,11 @@ impl InstancePage {
                 self.tab = tab;
                 match &self.instance {
                     Some(instance) if tab == Tab::Settings => self.settings.open(instance).map(Message::Settings),
+                    Some(instance) if tab == Tab::Versions => self.versions.open(instance).map(Message::Versions),
                     _ => Task::none(),
                 }
             }
+            Message::Versions(message) => self.versions.update(message).map(Message::Versions),
             Message::Mods(message) => self.mods.update(message).map(Message::Mods),
             Message::Content(content::Message::Section(section)) => {
                 self.content_section = section;
@@ -583,7 +579,15 @@ impl InstancePage {
     }
 
     /// The page: fixed masthead, fixed tab row, and the tab body.
-    pub fn view<'a>(&'a self, viewport: Size, game: GameView<'a>, install: Option<&'a Pending>, pins: &'a WorldPins) -> Element<'a, Message> {
+    /// The page. `busy` is the reason the instance cannot be updated now, when there is one, which the Versions tab shows.
+    pub fn view<'a>(
+        &'a self,
+        viewport: Size,
+        game: GameView<'a>,
+        install: Option<&'a Pending>,
+        pins: &'a WorldPins,
+        busy: Option<&'static str>,
+    ) -> Element<'a, Message> {
         let Some(instance) = &self.instance else {
             return self.empty_state();
         };
@@ -595,7 +599,7 @@ impl InstancePage {
         let page = column![
             hero::hero(instance, self.files.as_ref(), controls, viewport),
             self.tab_bar(),
-            self.tab_body(instance, game.console, pins),
+            self.tab_body(instance, game.console, pins, busy),
         ]
         .width(Fill)
         .height(Fill);
@@ -633,15 +637,16 @@ impl InstancePage {
     /// bar itself, so the bar paints over the rule and every tab's whole slot
     /// is clickable.
     fn tab_bar(&self) -> Element<'_, Message> {
-        let active = Tab::ALL.iter().position(|tab| *tab == self.tab).unwrap_or_default();
+        let tabs = Tab::visible(self.instance.as_ref());
+        let active = tabs.iter().position(|tab| *tab == self.tab).unwrap_or_default();
 
         container(
-            Tabs::new(Tab::ALL.map(Tab::label))
+            Tabs::new(tabs.iter().map(|tab| tab.label()))
                 .underline()
                 .inset(GUTTER)
                 .width(Fill)
                 .active(active)
-                .on_select(|index| Message::TabSelected(Tab::ALL[index])),
+                .on_select(move |index| Message::TabSelected(tabs[index])),
         )
         .width(Fill)
         .padding(Padding::new(0.0).top(52.0))
@@ -666,9 +671,16 @@ impl InstancePage {
 
     /// The selected tab's content, padded to the page gutter. The log panel and the mod list fill the height
     /// and scroll themselves, so their headers and filter bars stay put; every other tab scrolls as a page.
-    fn tab_body<'a>(&'a self, instance: &'a Instance, console: Option<&'a VecDeque<logs::LogLine>>, pins: &'a WorldPins) -> Element<'a, Message> {
+    fn tab_body<'a>(
+        &'a self,
+        instance: &'a Instance,
+        console: Option<&'a VecDeque<logs::LogLine>>,
+        pins: &'a WorldPins,
+        busy: Option<&'static str>,
+    ) -> Element<'a, Message> {
         let content: Element<'a, Message> = match self.tab {
             Tab::Content => self.content_body(instance),
+            Tab::Versions => self.versions.view(busy).map(Message::Versions),
             Tab::Worlds => self.worlds.view(&instance.id, pins).map(Message::Worlds),
             Tab::Screenshots => screenshots::view(&self.screenshots).map(Message::Screenshots),
             Tab::Logs => self.logs.view(console).map(Message::Logs),

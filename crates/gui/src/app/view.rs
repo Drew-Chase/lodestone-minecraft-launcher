@@ -167,6 +167,13 @@ impl LodestoneLauncher {
             Some(dialog) => dialog.view().map(LodestoneAppMessage::Export),
             None => Space::new().into(),
         };
+        // The migration wizard of an in-place update covers the page the same way, beside the export dialog.
+        let wizard: Element<'_, LodestoneAppMessage> = match self.pack_wizard.as_ref() {
+            Some(wizard) => wizard
+                .view()
+                .map(|message| LodestoneAppMessage::PackUpdate(crate::app::pack_update::Message::Wizard(message))),
+            None => Space::new().into(),
+        };
         // The import dialog covers the page the same way, above the export dialog.
         let import: Element<'_, LodestoneAppMessage> = match self.import.as_ref() {
             Some(dialog) => dialog.view().map(LodestoneAppMessage::Import),
@@ -224,6 +231,7 @@ impl LodestoneLauncher {
                 content,
                 dialog,
                 export,
+                wizard,
                 import,
                 join,
                 servers_dialog,
@@ -398,7 +406,13 @@ impl LodestoneLauncher {
             Page::Friends => friends::view(),
             Page::Instance => self
                 .instance_page
-                .view(self.window_size, self.page_game_view(), self.instance_install(), &self.world_pins)
+                .view(
+                    self.window_size,
+                    self.page_game_view(),
+                    self.instance_install(),
+                    &self.world_pins,
+                    self.versions_busy(),
+                )
                 .map(LodestoneAppMessage::Instance),
             Page::Resource => match self.resource_status() {
                 Some(status) => self.resource.view(self.window_size, &status).map(LodestoneAppMessage::Resource),

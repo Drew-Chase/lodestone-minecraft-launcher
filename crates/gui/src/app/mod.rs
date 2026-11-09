@@ -24,6 +24,7 @@ mod mod_sources;
 mod new_instance;
 mod news;
 mod notifications;
+mod pack_update;
 pub mod pages;
 pub mod paths;
 pub mod perf;
@@ -213,6 +214,8 @@ pub struct LodestoneLauncher {
     coop_sync_open: bool,
     /// The export dialog, while it is open. It sits above the page, beside the alerts.
     export: Option<export::Dialog>,
+    /// The migration wizard of an in-place modpack update, while it is open. It sits above the page, beside the export dialog.
+    pack_wizard: Option<pack_update::wizard::PackWizard>,
     /// The Import Instance dialog, while it is open. It sits above the page, beside the export dialog.
     import: Option<import::Dialog>,
     /// The datapack dialog of a world, while it is open.
@@ -289,6 +292,7 @@ impl Default for LodestoneLauncher {
             join_dialog: None,
             coop_sync_open: false,
             export: None,
+            pack_wizard: None,
             import: None,
             datapacks: None,
             portable: portable::launch(),

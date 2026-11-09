@@ -97,6 +97,10 @@ impl LodestoneLauncher {
         if self.games.is_preparing(id) {
             return Task::none();
         }
+        // An instance whose files an in-place update is writing cannot start until the update ends.
+        if self.downloads.update_for_instance(id).is_some() {
+            return self.alerts.show(Alert::warn(lang::t("pack_update.busy.working"))).discard();
+        }
         if self.library.instance(id).is_none() || self.account.is_none() {
             warn!("Launch of {id} ignored: the instance is not loaded or nobody is signed in");
             return Task::none();
