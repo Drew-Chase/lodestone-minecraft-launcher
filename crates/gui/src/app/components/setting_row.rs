@@ -42,6 +42,22 @@ pub fn described_setting<'a, M: 'a>(name: impl Into<String>, description: impl I
     .into()
 }
 
+/// A row for a narrow window: the label and its description sit above the control, which keeps its own width. A row beside
+/// its control squeezes the control when the window leaves too little room for both.
+pub fn stacked_setting<'a, M: 'a>(name: impl Into<String>, description: impl Into<String>, control: impl Into<Element<'a, M>>) -> Element<'a, M> {
+    column![
+        label(name),
+        Text::new(description.into())
+            .size(11)
+            .font(fonts::Inter::REGULAR)
+            .color(color::text_muted()),
+        control.into(),
+    ]
+    .spacing(8)
+    .padding(Padding::new(0.0).top(14).bottom(14))
+    .into()
+}
+
 /// A section heading: a 22px icon tile drawn in `tint`, then the title and subtitle.
 pub fn section_header<'a, M: 'a>(icon: &'static str, tint: Color, title: &'static str, subtitle: &'static str) -> Element<'a, M> {
     row![

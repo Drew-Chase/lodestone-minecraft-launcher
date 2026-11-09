@@ -45,6 +45,7 @@ pub mod sidebar;
 pub mod slider;
 pub mod status;
 pub mod stepper;
+pub mod table;
 pub mod tabs;
 pub mod tile;
 pub mod toggle;

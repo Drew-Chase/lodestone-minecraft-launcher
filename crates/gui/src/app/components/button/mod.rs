@@ -123,20 +123,28 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
         }
     }
 
-    /// `.btn-primary` — bold 14px label in on-green ink.
+    /// `.btn-primary` — bold 14px label in on-green ink. The label stays on one line: a squeezed button grows its
+    /// text across lines otherwise (see the responsive pass in `components/page.rs`).
     pub fn primary(label: impl Into<String>) -> Self {
-        Self::content(iced::widget::Text::new(label.into()).size(14.0).line_height(1.0).font(fonts::Inter::BOLD))
-            .variant(Variant::Primary)
-            .padding(PRIMARY_PADDING)
+        Self::content(
+            iced::widget::Text::new(label.into())
+                .size(14.0)
+                .line_height(1.0)
+                .font(fonts::Inter::BOLD)
+                .wrapping(iced::widget::text::Wrapping::None),
+        )
+        .variant(Variant::Primary)
+        .padding(PRIMARY_PADDING)
     }
 
-    /// `.btn-ghost` — medium 13px label in `--ink-1`.
+    /// `.btn-ghost` — medium 13px label in `--ink-1`. The label stays on one line.
     pub fn ghost(label: impl Into<String>) -> Self {
         Self::content(
             iced::widget::Text::new(label.into())
                 .size(13.0)
                 .line_height(1.0)
-                .font(fonts::Inter::MEDIUM),
+                .font(fonts::Inter::MEDIUM)
+                .wrapping(iced::widget::text::Wrapping::None),
         )
         .variant(Variant::Ghost)
         .padding(GHOST_PADDING)
@@ -155,6 +163,7 @@ impl<'a, Message: Clone + 'a> TextButton<'a, Message> {
                     .size(13.0)
                     .line_height(1.0)
                     .font(fonts::Inter::MEDIUM)
+                    .wrapping(iced::widget::text::Wrapping::None)
                     .color(ink),
             ]
             .spacing(8)

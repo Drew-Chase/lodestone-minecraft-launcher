@@ -16,6 +16,24 @@ pub fn content_width(window_width: f32) -> f32 {
     (window_width - sidebar::WIDTH).min(MAX_CONTENT_WIDTH) - 2.0 * PAGE_SIDE
 }
 
+/// The content width under which a page takes its narrow layout. Toolbars wrap onto a second row, side panels stack or
+/// collapse, and a settings sidebar moves above its content. A 1280px window keeps the wide layouts; the 800px floor
+/// takes the narrow ones.
+pub const NARROW_BELOW: f32 = 960.0;
+
+/// The window height under which a page shortens its hero band, so the first rows of its list show on a short screen.
+pub const SHORT_BELOW: f32 = 700.0;
+
+/// Whether a window `window_width` wide lays its pages out narrow.
+pub fn is_narrow(window_width: f32) -> bool {
+    content_width(window_width) < NARROW_BELOW
+}
+
+/// Whether a window `window_height` tall is short.
+pub fn is_short(window_height: f32) -> bool {
+    window_height < SHORT_BELOW
+}
+
 #[cfg(test)]
 #[path = "../../../tests/app/components/page.rs"]
 mod tests;
