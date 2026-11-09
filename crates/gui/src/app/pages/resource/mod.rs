@@ -383,7 +383,7 @@ impl ResourcePage {
                 .and_then(|index| self.loaded_versions().get(index).map(|version| (index, version)))
             {
                 Some((index, version)) => version::view(self, index, version, status),
-                None => versions::view(self, status),
+                None => versions::view(self, status, window),
             },
         };
         let active = tabs.iter().position(|tab| *tab == shown).unwrap_or_default();

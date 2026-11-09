@@ -3,7 +3,7 @@
 
 use aurora_leaf::Icon;
 use iced::widget::Id;
-use iced::widget::{Space, Text, container, row, stack, text_input};
+use iced::widget::{Row, Space, Text, container, row, stack, text_input};
 use iced::{Background, Element, Fill, Length, Padding, alignment};
 
 use super::card::glyph;
@@ -151,10 +151,12 @@ fn status(page: &Discover) -> Element<'_, Message> {
         (Some(ms), false) => lang::t_with("discover.status.api", &[("ms", ms.to_string().as_str())]),
         (None, _) => String::new(),
     };
+    // One line: the source row gives this text only the room the chips leave, so it never wraps into a column of fragments.
     Text::new(text)
         .size(11)
         .font(fonts::JetBrainsMono::REGULAR)
         .color(color::text_placeholder())
+        .wrapping(iced::widget::text::Wrapping::None)
         .into()
 }
 
@@ -163,7 +165,11 @@ const TAB_WIDTH: f32 = 152.0;
 
 /// The content tabs. A tab the platform does not host is dimmed and cannot be picked.
 pub(super) fn tabs(page: &Discover) -> Element<'_, Message> {
-    row(TABS.into_iter().map(|content| tab(page, content))).spacing(4).into()
+    // The tabs wrap onto a second row when the window cannot hold all of them beside each other.
+    let tabs: Vec<Element<'_, Message>> = TABS.into_iter().map(|content| tab(page, content)).collect();
+    container(Row::with_children(tabs).spacing(4).width(Fill).wrap().vertical_spacing(4))
+        .width(Fill)
+        .into()
 }
 
 /// One content tab: a fixed-width target with its label centred, and the 2px bar along its bottom edge when it is the

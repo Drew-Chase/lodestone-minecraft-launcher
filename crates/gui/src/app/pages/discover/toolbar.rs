@@ -3,11 +3,11 @@
 //! pinned over the results.
 
 use aurora_leaf::Icon;
-use iced::widget::{Space, Text, container, opaque, row};
+use iced::widget::{Row, Space, Text, container, opaque, row};
 use iced::{Background, Element, Fill, Length, Padding, alignment};
 
 use super::{Discover, DiscoverView, GAP, Message, SIDE, target};
-use crate::app::components::{Select, scrollbar, segmented, select};
+use crate::app::components::{Select, TextButton, scrollbar, segmented, select};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
 use lodestone_platforms::{ContentType, SearchSort};
@@ -22,7 +22,7 @@ const INSTANCE_SELECT_WIDTH: f32 = 220.0;
 pub(super) const HEIGHT: f32 = select::TRIGGER_HEIGHT;
 
 /// The instance selector, the sort selector, the count and the layout switcher.
-pub(super) fn view(page: &Discover) -> Element<'_, Message> {
+pub(super) fn view(page: &Discover, narrow: bool) -> Element<'_, Message> {
     let mut controls: Vec<Element<'_, Message>> = Vec::new();
     if target::takes_target(page.content) {
         controls.push(instance_select(page));
@@ -31,6 +31,22 @@ pub(super) fn view(page: &Discover) -> Element<'_, Message> {
         controls.push(world_select(page));
     }
     controls.push(sort_select(page));
+    if narrow {
+        // The filter toggle joins the controls, and the whole toolbar wraps onto as many lines as the window needs.
+        controls.push(filters_toggle());
+        controls.push(count(page));
+        controls.push(switcher(page));
+        return container(
+            Row::with_children(controls)
+                .spacing(12)
+                .align_y(alignment::Vertical::Center)
+                .width(Fill)
+                .wrap()
+                .vertical_spacing(8),
+        )
+        .width(Fill)
+        .into();
+    }
     row![
         row(controls).spacing(8).align_y(alignment::Vertical::Center),
         Space::new().width(Fill),
@@ -48,8 +64,8 @@ pub(super) fn view(page: &Discover) -> Element<'_, Message> {
 /// pass beneath it. It spans the results' column, which starts beside the sidebar that stays where it is, and stops short
 /// of the scrollbar's track, which stays clear. `opaque` stops presses over the bar, so no card beneath can be pressed
 /// through it. The wheel still reaches the page.
-pub(super) fn pinned(page: &Discover) -> Element<'_, Message> {
-    let bar = container(view(page))
+pub(super) fn pinned(page: &Discover, narrow: bool) -> Element<'_, Message> {
+    let bar = container(view(page, narrow))
         .padding(Padding::new(GAP).left(0.0).right(SIDE - scrollbar::TRACK_WIDTH).bottom(GAP))
         .width(Fill)
         .style(|_| container::Style {
@@ -59,6 +75,13 @@ pub(super) fn pinned(page: &Discover) -> Element<'_, Message> {
     container(opaque(bar))
         .padding(Padding::new(0.0).right(scrollbar::TRACK_WIDTH))
         .width(Fill)
+        .into()
+}
+
+/// The button that opens the filter panel on a narrow window, where the filters are not beside the results.
+fn filters_toggle() -> Element<'static, Message> {
+    TextButton::ghost(lang::t("discover.filters.toggle"))
+        .on_press(Message::ToggleFilters)
         .into()
 }
 

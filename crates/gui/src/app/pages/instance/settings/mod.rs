@@ -515,7 +515,7 @@ impl State {
     }
 
     /// The tab: the sidebar, then the page of sections, which scrolls on its own beside the sidebar.
-    pub fn view<'a>(&'a self, instance: &'a Instance, folder: &'a Path) -> Element<'a, Message> {
+    pub fn view<'a>(&'a self, instance: &'a Instance, folder: &'a Path, narrow: bool) -> Element<'a, Message> {
         let Some(resolved) = self.resolved.as_ref() else {
             return Space::new().into();
         };
@@ -524,10 +524,11 @@ impl State {
             overrides: self.overrides.as_ref(),
             java: &self.java,
             ceiling_gb: self.ceiling_gb,
+            narrow,
         };
         let inherited = self.overrides.as_ref().map_or(0, InstanceSettings::inherited_count);
         let page = column![
-            block(Section::General, general::body(instance)),
+            block(Section::General, general::body(instance, narrow)),
             block(Section::JavaMemory, launch_rows::java_memory(shown, launch_edit)),
             block(Section::Window, launch_rows::window(shown, &self.draft, launch_edit, Message::Resolution),),
             block(Section::LaunchArgs, launch_rows::launch_args(shown, launch_edit)),

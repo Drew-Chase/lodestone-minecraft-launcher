@@ -88,6 +88,8 @@ pub enum InstallState {
 /// Messages the Discover page handles.
 #[derive(Debug, Clone)]
 pub enum Message {
+    /// The narrow window's filter panel was opened or shut, from its toolbar button.
+    ToggleFilters,
     /// A platform was picked in the source selector.
     SourceSelected(Source),
     /// A content tab was picked.

@@ -3,12 +3,14 @@
 
 use iced::mouse;
 use iced::widget::{Space, Text, column, container, mouse_area, row};
-use iced::{Element, Fill, Length, Padding, alignment};
+use iced::{Element, Fill, Length, Padding, Size, alignment};
 use lodestone_platforms::{ContentType, ContentVersion};
 
 use super::parts::{chip, loader_label, mod_row_action, mod_state, pager, row_action, section};
 use super::{CHANNELS, Message, PER_PAGE, ResourcePage, pages_of};
 use crate::app::components::Select;
+use crate::app::components::page::content_width;
+use crate::app::components::table::{self, Column, NAME_MIN};
 use crate::app::lang;
 use crate::app::pages::discover::{ProjectStatus, date_only, short_count};
 use crate::app::theme::{color, fonts};
@@ -21,20 +23,58 @@ const PLATFORM_WIDTH: f32 = 150.0;
 const DATE_WIDTH: f32 = 100.0;
 const COUNT_WIDTH: f32 = 90.0;
 const ACTION_WIDTH: f32 = 40.0;
+/// The gap between the table's cells, and the padding of the section and of each row either side.
+const CELL_GAP: f32 = 12.0;
+const SECTION_PAD: f32 = 18.0;
+const ROW_PAD: f32 = 16.0;
 /// The most game versions a row lists before it says how many more there are.
 const GAME_VERSIONS_PER_ROW: usize = 2;
 
+/// Which of the table's columns show, in the order [game versions, platform, date, downloads, action]. The downloads hide
+/// first, then the date, then the platform; the game versions and the action always show.
+type Shown = [bool; 5];
+
+/// The columns that show in a section `width` pixels wide.
+fn shown_columns(section_width: f32) -> Shown {
+    const COLUMNS: [Column; 5] = [
+        Column {
+            width: GAME_WIDTH,
+            hide: None,
+        },
+        Column {
+            width: PLATFORM_WIDTH,
+            hide: Some(2),
+        },
+        Column {
+            width: DATE_WIDTH,
+            hide: Some(1),
+        },
+        Column {
+            width: COUNT_WIDTH,
+            hide: Some(0),
+        },
+        Column {
+            width: ACTION_WIDTH,
+            hide: None,
+        },
+    ];
+    let available = section_width - 2.0 * SECTION_PAD - 2.0 * ROW_PAD;
+    let shown = table::fit(&COLUMNS, available, NAME_MIN, CELL_GAP);
+    [shown[0], shown[1], shown[2], shown[3], shown[4]]
+}
+
 /// The Versions tab: the filters, the page of releases as a table, and the pager under it.
-pub(super) fn view<'a>(page: &'a ResourcePage, status: &ProjectStatus) -> Element<'a, Message> {
+pub(super) fn view<'a>(page: &'a ResourcePage, status: &ProjectStatus, window: Size) -> Element<'a, Message> {
     let matched = page.filtered_versions();
     let pages = pages_of(matched.len());
     let current = page.versions_page.min(pages - 1);
     let versions = page.loaded_versions();
+    let shown = shown_columns(content_width(window.width));
     let mut rows: Vec<Element<'a, Message>> = matched
         .iter()
         .skip(current * PER_PAGE)
         .take(PER_PAGE)
-        .map(|&index| table_row(page, status, index, &versions[index]))
+        .map(|&index| table_row(page, status, index, &versions[index], shown))
         .collect();
     if rows.is_empty() {
         rows.push(
@@ -47,7 +87,7 @@ pub(super) fn view<'a>(page: &'a ResourcePage, status: &ProjectStatus) -> Elemen
     }
     column![
         filters(page, matched.len()),
-        section(column![table_header(), column(rows).width(Fill)].spacing(4)),
+        section(column![table_header(shown), column(rows).width(Fill)].spacing(4)),
         container(pager(current, pages, Message::VersionsPage))
             .width(Fill)
             .align_x(alignment::Horizontal::Center),
@@ -105,32 +145,66 @@ fn filters<'a>(page: &'a ResourcePage, count: usize) -> Element<'a, Message> {
     row(controls).spacing(8).align_y(alignment::Vertical::Center).width(Fill).into()
 }
 
-/// The table's heading row, labelled with the keys of its columns.
-fn table_header<'a>() -> Element<'a, Message> {
+/// The table's heading row, labelled with the keys of its columns, with the columns `shown` gives.
+fn table_header<'a>(shown: Shown) -> Element<'a, Message> {
     let label = |text: &'static str, width: Length| {
         Text::new(lang::t(text))
             .size(10)
             .font(fonts::JetBrainsMono::SEMI_BOLD)
             .color(color::text_placeholder())
+            .wrapping(iced::widget::text::Wrapping::None)
             .width(width)
     };
-    row![
-        label("resource.table.version", Length::Fill),
-        label("resource.table.game_version", Length::Fixed(GAME_WIDTH)),
-        label("resource.table.platform", Length::Fixed(PLATFORM_WIDTH)),
-        label("resource.table.published", Length::Fixed(DATE_WIDTH)),
-        label("resource.table.downloads", Length::Fixed(COUNT_WIDTH)),
-        Space::new().width(Length::Fixed(ACTION_WIDTH)),
-    ]
-    .spacing(12)
-    .padding(Padding::new(0.0).left(16).right(16).top(8).bottom(8))
-    .align_y(alignment::Vertical::Center)
-    .into()
+    let mut cells: Vec<Element<'a, Message>> = vec![label("resource.table.version", Length::Fill).into()];
+    if shown[0] {
+        cells.push(label("resource.table.game_version", Length::Fixed(GAME_WIDTH)).into());
+    }
+    if shown[1] {
+        cells.push(label("resource.table.platform", Length::Fixed(PLATFORM_WIDTH)).into());
+    }
+    if shown[2] {
+        cells.push(label("resource.table.published", Length::Fixed(DATE_WIDTH)).into());
+    }
+    if shown[3] {
+        cells.push(label("resource.table.downloads", Length::Fixed(COUNT_WIDTH)).into());
+    }
+    cells.push(Space::new().width(Length::Fixed(ACTION_WIDTH)).into());
+    row(cells)
+        .spacing(CELL_GAP)
+        .padding(Padding::new(0.0).left(ROW_PAD).right(ROW_PAD).top(8).bottom(8))
+        .align_y(alignment::Vertical::Center)
+        .into()
+}
+
+/// The facts of a release whose columns are hidden, in one line under its name, so the row loses no information.
+fn hidden_facts(version: &ContentVersion, shown: Shown) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    if !shown[0] {
+        parts.push(
+            version
+                .minecraft_versions
+                .iter()
+                .take(GAME_VERSIONS_PER_ROW)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+    }
+    if !shown[1] {
+        parts.push(version.loaders.iter().map(|loader| loader_label(loader)).collect::<Vec<_>>().join(", "));
+    }
+    if !shown[2] {
+        parts.push(date_only(version.date.as_deref()).to_string());
+    }
+    if !shown[3] {
+        parts.push(short_count(version.downloads));
+    }
+    (!parts.is_empty()).then(|| parts.join("  ·  "))
 }
 
 /// One release: its name and number, its game versions, platforms, date and downloads, and the action that takes it.
 /// A press on the row opens the release's page.
-fn table_row<'a>(page: &'a ResourcePage, status: &ProjectStatus, index: usize, version: &'a ContentVersion) -> Element<'a, Message> {
+fn table_row<'a>(page: &'a ResourcePage, status: &ProjectStatus, index: usize, version: &'a ContentVersion, shown: Shown) -> Element<'a, Message> {
     let name = version.name.as_deref().unwrap_or(version.version_number.as_str());
     let mut games: Vec<Element<'a, Message>> = version
         .minecraft_versions
@@ -148,33 +222,54 @@ fn table_row<'a>(page: &'a ResourcePage, status: &ProjectStatus, index: usize, v
         Some(listing) => row_action(listing.content, &version.id),
         None => Space::new().into(),
     };
-    let line = row![
-        column![
-            Text::new(name).size(14).font(fonts::Inter::SEMI_BOLD).color(color::text_headline()),
-            Text::new(version.version_number.as_str())
-                .size(11)
-                .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::text_placeholder()),
-        ]
-        .spacing(2)
-        .width(Fill),
-        row(games).spacing(4).width(Length::Fixed(GAME_WIDTH)),
-        row(platforms).spacing(4).width(Length::Fixed(PLATFORM_WIDTH)),
-        Text::new(date_only(version.date.as_deref()))
-            .size(12)
+    let mut name_lines = column![
+        Text::new(name).size(14).font(fonts::Inter::SEMI_BOLD).color(color::text_headline()),
+        Text::new(version.version_number.as_str())
+            .size(11)
             .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::text_muted())
-            .width(Length::Fixed(DATE_WIDTH)),
-        Text::new(short_count(version.downloads))
-            .size(12)
-            .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::text_muted())
-            .width(Length::Fixed(COUNT_WIDTH)),
-        container(action).width(Length::Fixed(ACTION_WIDTH)).align_x(alignment::Horizontal::Right),
+            .color(color::text_placeholder()),
     ]
-    .spacing(12)
-    .padding(Padding::new(0.0).left(16).right(16).top(12).bottom(12))
-    .align_y(alignment::Vertical::Center);
+    .spacing(2);
+    if let Some(facts) = hidden_facts(version, shown) {
+        name_lines = name_lines.push(Text::new(facts).size(11).font(fonts::Inter::REGULAR).color(color::text_muted()));
+    }
+    let mut cells: Vec<Element<'a, Message>> = vec![name_lines.width(Fill).into()];
+    if shown[0] {
+        cells.push(row(games).spacing(4).width(Length::Fixed(GAME_WIDTH)).into());
+    }
+    if shown[1] {
+        cells.push(row(platforms).spacing(4).width(Length::Fixed(PLATFORM_WIDTH)).into());
+    }
+    if shown[2] {
+        cells.push(
+            Text::new(date_only(version.date.as_deref()))
+                .size(12)
+                .font(fonts::JetBrainsMono::REGULAR)
+                .color(color::text_muted())
+                .width(Length::Fixed(DATE_WIDTH))
+                .into(),
+        );
+    }
+    if shown[3] {
+        cells.push(
+            Text::new(short_count(version.downloads))
+                .size(12)
+                .font(fonts::JetBrainsMono::REGULAR)
+                .color(color::text_muted())
+                .width(Length::Fixed(COUNT_WIDTH))
+                .into(),
+        );
+    }
+    cells.push(
+        container(action)
+            .width(Length::Fixed(ACTION_WIDTH))
+            .align_x(alignment::Horizontal::Right)
+            .into(),
+    );
+    let line = row(cells)
+        .spacing(CELL_GAP)
+        .padding(Padding::new(0.0).left(ROW_PAD).right(ROW_PAD).top(12).bottom(12))
+        .align_y(alignment::Vertical::Center);
     mouse_area(line)
         .on_press(Message::OpenVersion(index))
         .interaction(mouse::Interaction::Pointer)

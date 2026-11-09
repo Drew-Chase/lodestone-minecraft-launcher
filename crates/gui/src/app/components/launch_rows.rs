@@ -99,6 +99,8 @@ pub struct Shown<'a> {
     pub java: &'a JavaOptions,
     /// The largest heap the slider offers, in gigabytes: the machine's memory.
     pub ceiling_gb: u32,
+    /// Whether the window is narrow, so each row stacks its control under its label instead of beside it.
+    pub narrow: bool,
 }
 
 impl Shown<'_> {
@@ -173,8 +175,15 @@ impl EnvEdit {
     }
 }
 
-/// A row with its label, an optional hint and its control. A row whose setting is inherited shows an INHERITED tag.
-fn row_of<'a, M: 'a>(name: impl Into<String>, hint: Option<String>, control: impl Into<Element<'a, M>>, inherited: bool) -> Element<'a, M> {
+/// A row with its label, an optional hint and its control. A row whose setting is inherited shows an INHERITED tag. On a
+/// narrow window the control sits under the label, at its own width, instead of beside it, where it would be squeezed.
+fn row_of<'a, M: 'a>(
+    narrow: bool,
+    name: impl Into<String>,
+    hint: Option<String>,
+    control: impl Into<Element<'a, M>>,
+    inherited: bool,
+) -> Element<'a, M> {
     let mut title = row![setting_row::label(name)].spacing(8).align_y(alignment::Vertical::Center);
     if inherited {
         title = title.push(inherited_tag());
@@ -182,6 +191,12 @@ fn row_of<'a, M: 'a>(name: impl Into<String>, hint: Option<String>, control: imp
     let mut text = column![title].spacing(3);
     if let Some(hint) = hint {
         text = text.push(Text::new(hint).size(11).font(fonts::Inter::REGULAR).color(color::text_muted()));
+    }
+    if narrow {
+        return column![text, control.into()]
+            .spacing(10)
+            .padding(Padding::new(0.0).top(14).bottom(14))
+            .into();
     }
     row![text, Space::new().width(Fill), control.into()]
         .spacing(16)
@@ -242,6 +257,7 @@ pub fn collector_row<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(Launc
         .on_select(move |index| on(LaunchChange::Collector(Collector::ALL[index])))
         .width(200);
     row_of(
+        shown.narrow,
         lang::t("instance.settings.garbage_collector"),
         Some(lang::t("instance.settings.garbage_collector_hint").to_owned()),
         collector,
@@ -301,24 +317,28 @@ pub fn java_memory<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(LaunchC
     divided_panel(
         vec![
             row_of(
+                shown.narrow,
                 lang::t("instance.settings.java_runtime"),
                 Some(lang::t("instance.settings.java_runtime_hint").to_owned()),
                 java,
                 shown.inherits(Field::Java),
             ),
             row_of(
+                shown.narrow,
                 lang::t("instance.settings.allocated_memory"),
                 Some(allocation),
                 memory,
                 shown.inherits(Field::Memory),
             ),
             row_of(
+                shown.narrow,
                 lang::t("instance.settings.garbage_collector"),
                 Some(lang::t("instance.settings.garbage_collector_hint").to_owned()),
                 collector,
                 shown.inherits(Field::Collector),
             ),
             row_of(
+                shown.narrow,
                 lang::t("instance.settings.jvm_arguments"),
                 Some(lang::t("instance.settings.jvm_arguments_hint").to_owned()),
                 jvm,
@@ -358,12 +378,14 @@ pub fn display_rows<'a, M: Clone + 'static>(
 
     vec![
         row_of(
+            shown.narrow,
             lang::t("instance.settings.launch_mode_label"),
             None,
             mode,
             shown.inherits(Field::LaunchMode),
         ),
         row_of(
+            shown.narrow,
             lang::t("instance.settings.resolution"),
             None,
             resolution,
@@ -383,12 +405,14 @@ pub fn window<'a, M: Clone + 'static>(
     let quit = shown.values.quit_after_exit;
     let mut rows = display_rows(shown, draft, on.clone(), on_resolution);
     rows.push(row_of(
+        shown.narrow,
         lang::t("instance.settings.hide_launcher"),
         Some(lang::t("instance.settings.hide_launcher_hint").to_owned()),
         toggle(hide, on.clone(), LaunchChange::HideLauncher),
         shown.inherits(Field::HideLauncher),
     ));
     rows.push(row_of(
+        shown.narrow,
         lang::t("instance.settings.quit_after_exit"),
         None,
         toggle(quit, on, LaunchChange::QuitAfterExit),
@@ -430,6 +454,7 @@ pub fn launch_arg_rows<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(Lau
         .padding(Padding::new(0.0).left(12).right(12).top(8).bottom(8))
         .width(360);
     vec![row_of(
+        shown.narrow,
         lang::t("instance.settings.game_arguments"),
         Some(lang::t("instance.settings.game_arguments_hint").to_owned()),
         arguments,
@@ -459,24 +484,28 @@ pub fn advanced_rows<'a, M: Clone + 'static>(shown: Shown<'a>, on: impl Fn(Launc
     let integrity = shown.values.skip_integrity;
     vec![
         row_of(
+            shown.narrow,
             lang::t("instance.settings.env_vars"),
             Some(lang::t("instance.settings.env_vars_hint").to_owned()),
             environment,
             shown.inherits(Field::Env),
         ),
         row_of(
+            shown.narrow,
             lang::t("instance.settings.pre_launch_hook"),
             Some(lang::t("instance.settings.pre_launch_hook_hint").to_owned()),
             hook,
             shown.inherits(Field::PreLaunchHook),
         ),
         row_of(
+            shown.narrow,
             lang::t("instance.settings.verbose_logging"),
             Some(lang::t("instance.settings.verbose_logging_hint").to_owned()),
             toggle(verbose, on.clone(), LaunchChange::VerboseLogging),
             shown.inherits(Field::VerboseLogging),
         ),
         row_of(
+            shown.narrow,
             lang::t("instance.settings.skip_integrity"),
             Some(lang::t("instance.settings.skip_integrity_hint").to_owned()),
             toggle(integrity, on, LaunchChange::SkipIntegrity),

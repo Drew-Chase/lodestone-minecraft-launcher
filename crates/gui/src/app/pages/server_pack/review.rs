@@ -3,7 +3,7 @@
 
 use aurora_leaf::Icon;
 use iced::widget::{Space, button, column, container, image, mouse_area, row, text};
-use iced::{Alignment, Background, Border, Element, Fill, Length, Padding};
+use iced::{Alignment, Background, Border, Element, Fill, Length, Padding, Size};
 use lodestone_export::server_pack::Side;
 use lodestone_export::server_pack::plan::Choice;
 
@@ -11,9 +11,11 @@ use super::{Counts, Filter, FolderRow, Message, ModRow, Sort, State, Tab, steps}
 use crate::app::components::badge::Badge;
 use crate::app::components::checkbox::{self, State as Box};
 use crate::app::components::input;
+use crate::app::components::page::{PAGE_SIDE, content_width, is_narrow};
 use crate::app::components::panel::panel_with_padding;
 use crate::app::components::scrollbar::scroll;
 use crate::app::components::stepper::stepper;
+use crate::app::components::table::{self, Column, NAME_MIN};
 use crate::app::components::typography;
 use crate::app::components::{Select, Tabs, TextButton};
 use crate::app::lang;
@@ -27,13 +29,45 @@ const EVIDENCE_WIDTH: f32 = 200.0;
 const CHOICE_WIDTH: f32 = 150.0;
 /// The width of the filter rail.
 const RAIL_WIDTH: f32 = 210.0;
+/// The width of the filter rail on a narrow window, where the list needs the room.
+const NARROW_RAIL_WIDTH: f32 = 150.0;
+/// The gap between the list's cells, the gap between the rail and the list, and the padding of each row either side.
+const CELL_GAP: f32 = 12.0;
+const RAIL_GAP: f32 = 20.0;
+const ROW_PAD: f32 = 8.0;
+/// The page's padding either side, inside the step's margins.
+const PAGE_PAD: f32 = 32.0;
+
+/// Which of the list's optional columns show, in the order [side, evidence]. The evidence hides first, then the side. The
+/// choice always shows.
+type Shown = [bool; 2];
+
+/// The columns that show in a list `list_width` pixels wide.
+fn shown_columns(list_width: f32) -> Shown {
+    const COLUMNS: [Column; 3] = [
+        Column {
+            width: SIDE_WIDTH,
+            hide: Some(1),
+        },
+        Column {
+            width: EVIDENCE_WIDTH,
+            hide: Some(0),
+        },
+        Column {
+            width: CHOICE_WIDTH,
+            hide: None,
+        },
+    ];
+    let shown = table::fit(&COLUMNS, list_width - 2.0 * ROW_PAD, NAME_MIN, CELL_GAP);
+    [shown[0], shown[1]]
+}
 /// The side of a row's icon.
 const ICON: f32 = 28.0;
 
-/// The Review step, with its tab and footer.
-pub fn view(state: &State) -> Element<'_, Message> {
+/// The Review step, with its tab and footer. `window` is the window's inner size, which sets the rail and the list's columns.
+pub fn view(state: &State, window: Size) -> Element<'_, Message> {
     let body = match state.tab {
-        Tab::Mods => mods_tab(state),
+        Tab::Mods => mods_tab(state, window),
         Tab::Folders => folders_tab(state),
     };
     let caption = state.folder.display().to_string();
@@ -61,18 +95,22 @@ fn tabs(state: &State) -> Element<'_, Message> {
         .into()
 }
 
-/// The Mods tab: the filter rail beside the list, with the batch bar when rows are selected.
-fn mods_tab(state: &State) -> Element<'_, Message> {
+/// The Mods tab: the filter rail beside the list, with the batch bar when rows are selected. A narrow window narrows the rail,
+/// and the list drops its least useful columns to fit what is left.
+fn mods_tab(state: &State, window: Size) -> Element<'_, Message> {
     let counts = state.counts();
-    let rail = container(rail(state, &counts)).width(Length::Fixed(RAIL_WIDTH)).height(Fill);
-    let mut list = column![toolbar(state), header_row(state), list_rows(state)]
+    let rail_width = if is_narrow(window.width) { NARROW_RAIL_WIDTH } else { RAIL_WIDTH };
+    let rail = container(rail(state, &counts)).width(Length::Fixed(rail_width)).height(Fill);
+    let list_width = content_width(window.width) - 2.0 * (PAGE_PAD - PAGE_SIDE) - rail_width - RAIL_GAP;
+    let shown = shown_columns(list_width);
+    let mut list = column![toolbar(state), header_row(state, shown), list_rows(state, shown)]
         .spacing(10)
         .width(Fill)
         .height(Fill);
     if !state.selected.is_empty() {
         list = list.push(batch_bar(state));
     }
-    row![rail, list].spacing(20).width(Fill).height(Fill).into()
+    row![rail, list].spacing(RAIL_GAP).width(Fill).height(Fill).into()
 }
 
 /// The filter rail: every side with its count, and a note for the unsure mods.
@@ -189,7 +227,7 @@ fn toolbar(state: &State) -> Element<'_, Message> {
 }
 
 /// The column headings above the list. The first one is the select-all checkbox.
-fn header_row(state: &State) -> Element<'_, Message> {
+fn header_row(state: &State, shown: Shown) -> Element<'_, Message> {
     let all = !state.visible.is_empty() && state.visible.iter().all(|index| state.selected.contains(index));
     let some = state.visible.iter().any(|index| state.selected.contains(index));
     let box_state = if all {
@@ -201,24 +239,42 @@ fn header_row(state: &State) -> Element<'_, Message> {
     };
     let select_all = mouse_area(checkbox::mark(box_state)).on_press(Message::SelectVisible);
     let heading = |label: &'static str| typography::eyebrow(label).color(color::text_muted());
-    row![
+    let mut cells: Vec<Element<'_, Message>> = vec![
         row![select_all, heading(lang::t("server_pack.review.column.mod"))]
             .spacing(12)
             .align_y(Alignment::Center)
-            .width(Fill),
-        container(heading(lang::t("server_pack.review.column.side"))).width(Length::Fixed(SIDE_WIDTH)),
-        container(heading(lang::t("server_pack.review.column.evidence"))).width(Length::Fixed(EVIDENCE_WIDTH)),
-        container(heading(lang::t("server_pack.review.column.pack"))).width(Length::Fixed(CHOICE_WIDTH)),
-    ]
-    .spacing(12)
-    .align_y(Alignment::Center)
-    .padding(Padding::new(0.0).left(8.0).right(8.0))
-    .width(Fill)
-    .into()
+            .width(Fill)
+            .into(),
+    ];
+    if shown[0] {
+        cells.push(
+            container(heading(lang::t("server_pack.review.column.side")))
+                .width(Length::Fixed(SIDE_WIDTH))
+                .into(),
+        );
+    }
+    if shown[1] {
+        cells.push(
+            container(heading(lang::t("server_pack.review.column.evidence")))
+                .width(Length::Fixed(EVIDENCE_WIDTH))
+                .into(),
+        );
+    }
+    cells.push(
+        container(heading(lang::t("server_pack.review.column.pack")))
+            .width(Length::Fixed(CHOICE_WIDTH))
+            .into(),
+    );
+    row(cells)
+        .spacing(CELL_GAP)
+        .align_y(Alignment::Center)
+        .padding(Padding::new(0.0).left(ROW_PAD).right(ROW_PAD))
+        .width(Fill)
+        .into()
 }
 
 /// The rows of the visible mods, in a scrollable list, or a note when none show.
-fn list_rows(state: &State) -> Element<'_, Message> {
+fn list_rows(state: &State, shown: Shown) -> Element<'_, Message> {
     if state.mods.is_empty() {
         return panel_with_padding(
             typography::body(lang::t("server_pack.review.no_mods")).color(color::text_muted()),
@@ -231,12 +287,12 @@ fn list_rows(state: &State) -> Element<'_, Message> {
             .width(Fill)
             .into();
     }
-    let rows: Vec<Element<'_, Message>> = state.visible.iter().map(|&index| mod_row(state, index)).collect();
+    let rows: Vec<Element<'_, Message>> = state.visible.iter().map(|&index| mod_row(state, index, shown)).collect();
     scroll(column(rows).spacing(2).width(Fill)).width(Fill).height(Fill).into()
 }
 
 /// One mod's row: its checkbox and icon, its name and file, its side, its evidence and its choice.
-fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
+fn mod_row(state: &State, index: usize, shown: Shown) -> Element<'_, Message> {
     let Some(row_data) = state.mods.get(index) else {
         return Space::new().into();
     };
@@ -244,7 +300,7 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
     let selected = state.selected.contains(&index);
     let box_state = if selected { Box::Checked } else { Box::Unchecked };
     let check = checkbox::mark(box_state);
-    let name = column![
+    let mut name = column![
         typography::body(pretty_name(&detection.filename)).color(color::text_default()),
         text(detection.filename.clone())
             .size(11.0)
@@ -252,20 +308,41 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
             .color(color::text_muted()),
     ]
     .spacing(2);
+    // The columns a narrow list drops move under the name, so the row keeps what they say.
+    if !shown[0] {
+        name = name.push(side_badge(detection.side.clone()));
+    }
+    if !shown[1] {
+        name = name.push(
+            text(detection.evidence.clone())
+                .size(11.0)
+                .font(fonts::JetBrainsMono::REGULAR)
+                .color(color::text_muted()),
+        );
+    }
     let left = row![check, icon(row_data), name].spacing(12).align_y(Alignment::Center).width(Fill);
-    let side = container(side_badge(detection.side.clone())).width(Length::Fixed(SIDE_WIDTH));
-    let evidence = container(
-        text(detection.evidence.clone())
-            .size(11.0)
-            .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::text_muted()),
-    )
-    .width(Length::Fixed(EVIDENCE_WIDTH));
+    let mut cells: Vec<Element<'_, Message>> = vec![left.into()];
+    if shown[0] {
+        cells.push(container(side_badge(detection.side.clone())).width(Length::Fixed(SIDE_WIDTH)).into());
+    }
+    if shown[1] {
+        cells.push(
+            container(
+                text(detection.evidence.clone())
+                    .size(11.0)
+                    .font(fonts::JetBrainsMono::REGULAR)
+                    .color(color::text_muted()),
+            )
+            .width(Length::Fixed(EVIDENCE_WIDTH))
+            .into(),
+        );
+    }
     let choice = choice_select(index, state.choice_of(index));
-    let content = row![left, side, evidence, container(choice).width(Length::Fixed(CHOICE_WIDTH))]
-        .spacing(12)
+    cells.push(container(choice).width(Length::Fixed(CHOICE_WIDTH)).into());
+    let content = row(cells)
+        .spacing(CELL_GAP)
         .align_y(Alignment::Center)
-        .padding(Padding::new(0.0).left(8.0).right(8.0).top(8.0).bottom(8.0))
+        .padding(Padding::new(0.0).left(ROW_PAD).right(ROW_PAD).top(8.0).bottom(8.0))
         .width(Fill);
     let background = if selected {
         Some(Background::Color(color::primary_tint()))

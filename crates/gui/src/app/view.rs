@@ -426,15 +426,16 @@ impl LodestoneLauncher {
                     &self.credentials,
                     self.face.as_ref(),
                     self.updater.installs(),
+                    self.window_size,
                 )
                 .map(LodestoneAppMessage::Settings),
-            Page::Discover => self.discover.view().map(LodestoneAppMessage::Discover),
+            Page::Discover => self.discover.view(self.window_size).map(LodestoneAppMessage::Discover),
             Page::Worlds => self.worlds.view(self.window_size).map(LodestoneAppMessage::Worlds),
             // The wizard's footer and buttons sit at the page's foot, which does not scroll, so the floating bar would cover
             // them. The page keeps CLEARANCE free above the bar when the bar floats, as a scrolling page does at its end.
             Page::ServerPack => {
                 let clearance = if self.floating_bottom_bar() { CLEARANCE } else { 0.0 };
-                container(self.server_pack.view().map(LodestoneAppMessage::ServerPack))
+                container(self.server_pack.view(self.window_size).map(LodestoneAppMessage::ServerPack))
                     .padding(Padding::new(0.0).bottom(clearance))
                     .width(Fill)
                     .height(Fill)

@@ -24,13 +24,17 @@ mod types;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use crate::app::components::page;
 use crate::app::components::scrollbar;
 use crate::app::lang;
 use crate::app::pages::resource::Listing;
 use crate::app::shared_library::{self, AddedContent, ModSource, SharedRecord};
 use iced::widget::{Space, column, container, row, stack};
-use iced::{Element, Fill, Padding};
+use iced::{Element, Fill, Length, Padding, Size};
 use lodestone_platforms::{ContentType, Facets, SearchPage, SearchSort};
+
+/// The height of the filter panel a narrow window opens above the results. Its sections scroll inside it.
+const FILTERS_PANEL_HEIGHT: f32 = 340.0;
 
 pub use card::{date_only, scene_for, short_count};
 pub use images::{Picture, load as load_icon, load_image, pack_art};
@@ -96,6 +100,9 @@ pub struct Discover {
     remaining: f32,
     /// How far the content has scrolled down, as of the last scroll. The filter row pins once it reaches the top.
     scroll_y: f32,
+    /// Whether the narrow window's filter panel is open. The panel sits above the results, where the wide window keeps the
+    /// filters beside them.
+    filters_open: bool,
     /// The downloads on disk, by (shared folder, platform key, project id), with the record of the release each holds.
     library: HashMap<(String, String, String), SharedRecord>,
     /// The installs the page knows of, by (platform key, project id).
@@ -147,6 +154,7 @@ impl Discover {
             icons_loading: 0,
             remaining: f32::MAX,
             scroll_y: 0.0,
+            filters_open: false,
             library: HashMap::new(),
             installs: HashMap::new(),
             busy: HashSet::new(),
@@ -428,6 +436,10 @@ impl Discover {
     /// the network comes back as an [`Effect`] for the root to run.
     pub fn update(&mut self, message: Message) -> Vec<Effect> {
         match message {
+            Message::ToggleFilters => {
+                self.filters_open = !self.filters_open;
+                Vec::new()
+            }
             Message::SourceSelected(source) => {
                 if source == self.source || !source.enabled() {
                     return Vec::new();
@@ -637,7 +649,9 @@ impl Discover {
     /// The page. The header, with the source and tab rows, stays where it is. Beside the scrolling part, the sidebar keeps
     /// its place with a scrollbar of its own. The hero, the filters and the results scroll beneath the header, and once
     /// the page scrolls up to the filters they pin to the top of the scrolling part, with the results passing beneath.
-    pub fn view(&self) -> Element<'_, Message> {
+    pub fn view(&self, window: Size) -> Element<'_, Message> {
+        // A narrow window keeps the filters in a panel that opens from the toolbar, not beside the results.
+        let narrow = page::is_narrow(window.width);
         let fixed = container(column![header::view(self), header::source_row(self), header::tabs(self)].spacing(18))
             .padding(Padding::new(0.0).top(22).left(SIDE).right(SIDE))
             .width(Fill);
@@ -651,10 +665,19 @@ impl Discover {
         let filters: Element<'_, Message> = if pinned {
             Space::new().width(Fill).height(toolbar::HEIGHT).into()
         } else {
-            toolbar::view(self)
+            toolbar::view(self, narrow)
         };
+        // The narrow window's filter panel opens between the toolbar and the results, which keep their order.
+        let panel = (narrow && self.filters_open)
+            .then(|| sidebar::view(self))
+            .flatten()
+            .map(|panel| container(panel).width(Fill).height(Length::Fixed(FILTERS_PANEL_HEIGHT)));
         // The toolbar and the results form one column, which starts where the sidebar's margin and track end.
-        page = page.push(column![filters, results::view(self)].spacing(GAP).width(Fill));
+        let mut column_of_rows = column![filters].spacing(GAP).width(Fill);
+        if let Some(panel) = panel {
+            column_of_rows = column_of_rows.push(panel);
+        }
+        page = page.push(column_of_rows.push(results::view(self)));
         let content = container(page).padding(Padding::new(0.0).top(GAP).right(SIDE).bottom(BOTTOM)).width(Fill);
         let scrolled = scrollbar::scroll(content).id(CONTENT_ID).width(Fill).height(Fill).on_scroll(|viewport| {
             let content = viewport.content_bounds();
@@ -667,11 +690,15 @@ impl Discover {
         });
         // The pinned row lies over the scrolling content in a stack. The stack keeps the same shape whether or
         // not the row is pinned, so the scrollable keeps its place and its scroll position when the row pins.
-        let overlay: Element<'_, Message> = if pinned { toolbar::pinned(self) } else { Space::new().into() };
+        let overlay: Element<'_, Message> = if pinned { toolbar::pinned(self, narrow) } else { Space::new().into() };
         let layers = stack![scrolled, overlay].width(Fill).height(Fill);
         // The sidebar, or a space of the page's margin where there is none. The row has the same shape either way, so the
         // results keep their scroll position when the sidebar comes or goes.
-        let side: Element<'_, Message> = sidebar::view(self).unwrap_or_else(|| Space::new().width(SIDE).into());
+        let side: Element<'_, Message> = if narrow {
+            Space::new().width(SIDE).into()
+        } else {
+            sidebar::view(self).unwrap_or_else(|| Space::new().width(SIDE).into())
+        };
         column![fixed, row![side, layers].width(Fill).height(Fill)]
             .width(Fill)
             .height(Fill)

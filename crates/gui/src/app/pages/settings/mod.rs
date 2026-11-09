@@ -17,14 +17,15 @@ mod privacy;
 use std::path::{MAIN_SEPARATOR, Path};
 
 use aurora_leaf::Icon;
-use iced::widget::{Id, Space, column, container, row, stack, text, text_editor};
-use iced::{Element, Fill, Padding, Task, alignment};
+use iced::widget::{Id, Row, column, container, row, stack, text, text_editor};
+use iced::{Element, Fill, Padding, Size, Task, alignment};
 
 use self::draft::Draft;
 pub use self::edit::Edit;
 use self::network::speed::Meter;
 use crate::app::components::button::Variant;
 use crate::app::components::launch_rows::{self, Axis, EnvEdit, JavaOptions, ResolutionDraft, Shown};
+use crate::app::components::page;
 use crate::app::components::panel::{hairline, panel_with_padding};
 use crate::app::components::scroll_spy;
 use crate::app::components::setting_row::section_header;
@@ -415,12 +416,16 @@ impl Settings {
         accounts: &'a StoredCredentials,
         face: Option<&'a image::Handle>,
         can_update: bool,
+        window: Size,
     ) -> Element<'a, Message> {
         let shown = Shown {
             values: &self.values,
             overrides: None,
             java: &self.java,
             ceiling_gb: self.ceiling_gb,
+            // The global page keeps its rows beside their controls at every width: at the floor its content is 620px wide,
+            // which holds a label and its control. Only the instance page's narrower column stacks them.
+            narrow: false,
         };
         let sections = column![
             block(
@@ -439,18 +444,26 @@ impl Settings {
             .id(nav::column_id())
             .width(Fill)
             .padding(Padding::new(0.0).left(28.0).right(28.0).top(8.0).bottom(40.0));
-        let main = column![
-            header(self.draft.dirty()),
-            hairline(),
-            scrollbar::scroll(content)
-                .id(nav::content_id())
-                .on_scroll(nav::on_scroll)
+        // A narrow window moves the sections into a row of tabs under the heading, and the page takes the full width.
+        let narrow = page::is_narrow(window.width);
+        let scrolled = scrollbar::scroll(content)
+            .id(nav::content_id())
+            .on_scroll(nav::on_scroll)
+            .width(Fill)
+            .height(Fill);
+        let main: Element<'a, Message> = if narrow {
+            column![header(self.draft.dirty()), nav::strip(self.tab), hairline(), scrolled]
                 .width(Fill)
-                .height(Fill),
-        ]
-        .width(Fill)
-        .height(Fill);
-        let layout = row![nav::view(self.tab), main].width(Fill).height(Fill);
+                .height(Fill)
+                .into()
+        } else {
+            column![header(self.draft.dirty()), hairline(), scrolled].width(Fill).height(Fill).into()
+        };
+        let layout: Element<'a, Message> = if narrow {
+            main
+        } else {
+            row![nav::view(self.tab), main].width(Fill).height(Fill).into()
+        };
 
         if self.environment_open {
             let modal = launch_rows::environment_modal(
@@ -460,7 +473,7 @@ impl Settings {
             );
             return stack![layout, modal].width(Fill).height(Fill).into();
         }
-        layout.into()
+        layout
     }
 }
 
@@ -497,15 +510,25 @@ fn header<'a>(dirty: bool) -> Element<'a, Message> {
     let save = TextButton::labeled_icon(Icon::lucide().save(), lang::t("settings.save_changes"), Variant::Primary)
         .disabled(!dirty)
         .on_press(Message::Save);
+    // The buttons wrap beside the title, and keep the right edge, so a narrow window never runs them off the page.
+    let buttons: Vec<Element<'a, Message>> = vec![reset.into(), save.into()];
+    let actions = container(
+        Row::with_children(buttons)
+            .spacing(12)
+            .align_y(alignment::Vertical::Center)
+            .wrap()
+            .vertical_spacing(12)
+            .align_x(alignment::Horizontal::Right),
+    )
+    .width(Fill)
+    .align_x(alignment::Horizontal::Right);
     row![
         column![
             crate::h2!(lang::t("settings.page.title")),
             crate::body!(lang::t("settings.page.subtitle")),
         ]
         .spacing(8),
-        Space::new().width(Fill),
-        reset,
-        save,
+        actions,
     ]
     .spacing(12)
     .align_y(alignment::Vertical::Center)

@@ -3,13 +3,15 @@
 
 use aurora_leaf::Icon;
 use iced::widget::{Space, Text, column, container, row};
-use iced::{Color, Element, Fill, Length, Padding, alignment};
+use iced::{Color, Element, Fill, Length, Padding, Size, alignment};
 use lodestone_platforms::ContentVersion;
 
 use super::{Listing, Message, PAGE, Standing, State, standing};
 use crate::app::components::chip::{chip, loader_label};
 use crate::app::components::hint::hint;
 use crate::app::components::icon_button::{IconButtonStyle, secondary_button_style};
+use crate::app::components::page::content_width;
+use crate::app::components::table::{self, Column, NAME_MIN};
 use crate::app::components::{IconButton, TextButton, panel};
 use crate::app::lang;
 use crate::app::pages::discover::date_only;
@@ -24,11 +26,48 @@ const STATUS_WIDTH: f32 = 130.0;
 const ACTION_WIDTH: f32 = 250.0;
 /// How many Minecraft versions a row lists before it says how many more there are.
 const GAME_VERSIONS_PER_ROW: usize = 2;
+/// The gap between the table's cells, and the padding of the panel and of each row either side.
+const CELL_GAP: f32 = 12.0;
+const PANEL_PAD: f32 = 18.0;
+const ROW_PAD: f32 = 16.0;
+
+/// Which of the optional columns show, in the order [game versions, loader, date]. The date hides first, then the loader, then
+/// the game versions. The status and the actions always show.
+type Shown = [bool; 3];
+
+/// The columns that show in a page `width` pixels wide.
+fn shown_columns(width: f32) -> Shown {
+    const COLUMNS: [Column; 5] = [
+        Column {
+            width: GAME_WIDTH,
+            hide: Some(2),
+        },
+        Column {
+            width: LOADER_WIDTH,
+            hide: Some(1),
+        },
+        Column {
+            width: DATE_WIDTH,
+            hide: Some(0),
+        },
+        Column {
+            width: STATUS_WIDTH,
+            hide: None,
+        },
+        Column {
+            width: ACTION_WIDTH,
+            hide: None,
+        },
+    ];
+    let available = width - 2.0 * PANEL_PAD - 2.0 * ROW_PAD;
+    let shown = table::fit(&COLUMNS, available, NAME_MIN, CELL_GAP);
+    [shown[0], shown[1], shown[2]]
+}
 
 impl State {
     /// The tab. `busy` is the reason the instance cannot be updated now, when there is one: its actions are then shown but not
-    /// pressable.
-    pub fn view<'a>(&'a self, busy: Option<&'static str>) -> Element<'a, Message> {
+    /// pressable. `window` is the window's inner size, which decides the table's columns.
+    pub fn view<'a>(&'a self, busy: Option<&'static str>, window: Size) -> Element<'a, Message> {
         let mut page = column![self.installed_card()].spacing(18).width(Fill);
         if let Some(reason) = busy {
             page = page.push(note(reason));
@@ -37,7 +76,7 @@ impl State {
             Listing::Idle => note(lang::t("versions.not_platform")),
             Listing::Loading => note(lang::t("versions.loading")),
             Listing::Failed(error) => self.failed(error),
-            Listing::Loaded(versions) => self.releases(versions, busy),
+            Listing::Loaded(versions) => self.releases(versions, busy, shown_columns(content_width(window.width))),
         });
         page.into()
     }
@@ -71,19 +110,19 @@ impl State {
     }
 
     /// The releases as a table, the first page of them, with a button for the rest.
-    fn releases<'a>(&'a self, versions: &'a [ContentVersion], busy: Option<&'static str>) -> Element<'a, Message> {
-        let shown = PAGE.min(versions.len());
+    fn releases<'a>(&'a self, versions: &'a [ContentVersion], busy: Option<&'static str>, columns: Shown) -> Element<'a, Message> {
+        let listed = PAGE.min(versions.len());
         let mut rows: Vec<Element<'a, Message>> = versions
             .iter()
-            .take(shown)
-            .map(|version| self.release_row(versions, version, busy))
+            .take(listed)
+            .map(|version| self.release_row(versions, version, busy, columns))
             .collect();
         if rows.is_empty() {
             rows.push(note(lang::t("versions.none")));
         }
-        let mut table = column![table_header(), column(rows).spacing(4).width(Fill)].spacing(4).width(Fill);
-        if versions.len() > shown {
-            let more = lang::t_with("versions.more", &[("count", (versions.len() - shown).to_string().as_str())]);
+        let mut table = column![table_header(columns), column(rows).spacing(4).width(Fill)].spacing(4).width(Fill);
+        if versions.len() > listed {
+            let more = lang::t_with("versions.more", &[("count", (versions.len() - listed).to_string().as_str())]);
             table = table.push(
                 container(TextButton::ghost(more).on_press(Message::More))
                     .width(Fill)
@@ -94,7 +133,13 @@ impl State {
     }
 
     /// One release: its name and number, its Minecraft versions and loaders, its date, how it stands, and what its row does.
-    fn release_row<'a>(&'a self, versions: &[ContentVersion], version: &'a ContentVersion, busy: Option<&'static str>) -> Element<'a, Message> {
+    fn release_row<'a>(
+        &'a self,
+        versions: &[ContentVersion],
+        version: &'a ContentVersion,
+        busy: Option<&'static str>,
+        columns: Shown,
+    ) -> Element<'a, Message> {
         let standing = standing(versions, self.installed_id.as_deref(), &version.id);
         let enabled = busy.is_none() && self.preparing().is_none();
         let name = version.name.as_deref().unwrap_or(version.version_number.as_str());
@@ -120,32 +165,46 @@ impl State {
         } else {
             standing_label(standing)
         };
-        row![
-            column![
-                Text::new(name).size(14).font(fonts::Inter::SEMI_BOLD).color(color::text_headline()),
-                Text::new(version.version_number.as_str())
-                    .size(11)
-                    .font(fonts::JetBrainsMono::REGULAR)
-                    .color(color::text_placeholder()),
-            ]
-            .spacing(2)
-            .width(Fill),
-            row(games).spacing(4).width(Length::Fixed(GAME_WIDTH)),
-            row(loaders).spacing(4).width(Length::Fixed(LOADER_WIDTH)),
-            Text::new(date_only(version.date.as_deref()))
-                .size(12)
+        let mut name_lines = column![
+            Text::new(name).size(14).font(fonts::Inter::SEMI_BOLD).color(color::text_headline()),
+            Text::new(version.version_number.as_str())
+                .size(11)
                 .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::text_muted())
-                .width(Length::Fixed(DATE_WIDTH)),
-            container(chip(status)).width(Length::Fixed(STATUS_WIDTH)),
+                .color(color::text_placeholder()),
+        ]
+        .spacing(2);
+        if let Some(facts) = hidden_facts(version, columns) {
+            name_lines = name_lines.push(Text::new(facts).size(11).font(fonts::Inter::REGULAR).color(color::text_muted()));
+        }
+        let mut cells: Vec<Element<'a, Message>> = vec![name_lines.width(Fill).into()];
+        if columns[0] {
+            cells.push(row(games).spacing(4).width(Length::Fixed(GAME_WIDTH)).into());
+        }
+        if columns[1] {
+            cells.push(row(loaders).spacing(4).width(Length::Fixed(LOADER_WIDTH)).into());
+        }
+        if columns[2] {
+            cells.push(
+                Text::new(date_only(version.date.as_deref()))
+                    .size(12)
+                    .font(fonts::JetBrainsMono::REGULAR)
+                    .color(color::text_muted())
+                    .width(Length::Fixed(DATE_WIDTH))
+                    .into(),
+            );
+        }
+        cells.push(container(chip(status)).width(Length::Fixed(STATUS_WIDTH)).into());
+        cells.push(
             container(actions(&version.id, standing, enabled))
                 .width(Length::Fixed(ACTION_WIDTH))
-                .align_x(alignment::Horizontal::Right),
-        ]
-        .spacing(12)
-        .padding(Padding::new(0.0).left(16).right(16).top(12).bottom(12))
-        .align_y(alignment::Vertical::Center)
-        .into()
+                .align_x(alignment::Horizontal::Right)
+                .into(),
+        );
+        row(cells)
+            .spacing(CELL_GAP)
+            .padding(Padding::new(0.0).left(ROW_PAD).right(ROW_PAD).top(12).bottom(12))
+            .align_y(alignment::Vertical::Center)
+            .into()
     }
 }
 
@@ -213,27 +272,56 @@ fn tinted(foreground: Color, background: Color) -> IconButtonStyle {
     }
 }
 
-/// The table's heading row, labelled with the keys of its columns.
-fn table_header<'a>() -> Element<'a, Message> {
+/// The table's heading row, labelled with the keys of its columns, with the optional ones `shown` gives.
+fn table_header<'a>(shown: Shown) -> Element<'a, Message> {
     let label = |text: &'static str, width: Length| {
         Text::new(lang::t(text))
             .size(10)
             .font(fonts::JetBrainsMono::SEMI_BOLD)
             .color(color::text_placeholder())
+            .wrapping(iced::widget::text::Wrapping::None)
             .width(width)
     };
-    row![
-        label("resource.table.version", Length::Fill),
-        label("resource.table.game_version", Length::Fixed(GAME_WIDTH)),
-        label("versions.column.loader", Length::Fixed(LOADER_WIDTH)),
-        label("resource.table.published", Length::Fixed(DATE_WIDTH)),
-        label("versions.column.status", Length::Fixed(STATUS_WIDTH)),
-        Space::new().width(Length::Fixed(ACTION_WIDTH)),
-    ]
-    .spacing(12)
-    .padding(Padding::new(0.0).left(16).right(16).top(8).bottom(8))
-    .align_y(alignment::Vertical::Center)
-    .into()
+    let mut cells: Vec<Element<'a, Message>> = vec![label("resource.table.version", Length::Fill).into()];
+    if shown[0] {
+        cells.push(label("resource.table.game_version", Length::Fixed(GAME_WIDTH)).into());
+    }
+    if shown[1] {
+        cells.push(label("versions.column.loader", Length::Fixed(LOADER_WIDTH)).into());
+    }
+    if shown[2] {
+        cells.push(label("resource.table.published", Length::Fixed(DATE_WIDTH)).into());
+    }
+    cells.push(label("versions.column.status", Length::Fixed(STATUS_WIDTH)).into());
+    cells.push(Space::new().width(Length::Fixed(ACTION_WIDTH)).into());
+    row(cells)
+        .spacing(CELL_GAP)
+        .padding(Padding::new(0.0).left(ROW_PAD).right(ROW_PAD).top(8).bottom(8))
+        .align_y(alignment::Vertical::Center)
+        .into()
+}
+
+/// The facts of a release whose columns are hidden, in one line under its name, so the row loses no information.
+fn hidden_facts(version: &ContentVersion, shown: Shown) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    if !shown[0] {
+        parts.push(
+            version
+                .minecraft_versions
+                .iter()
+                .take(GAME_VERSIONS_PER_ROW)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+    }
+    if !shown[1] {
+        parts.push(version.loaders.iter().map(|loader| loader_label(loader)).collect::<Vec<_>>().join(", "));
+    }
+    if !shown[2] {
+        parts.push(date_only(version.date.as_deref()).to_string());
+    }
+    (!parts.is_empty()).then(|| parts.join("  ·  "))
 }
 
 /// The label a standing's status chip shows.

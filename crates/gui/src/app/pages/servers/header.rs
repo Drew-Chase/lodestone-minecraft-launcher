@@ -2,7 +2,7 @@
 //! refresh and Add server buttons.
 
 use aurora_leaf::Icon;
-use iced::widget::{Space, Text, column, container, row, stack, text_input};
+use iced::widget::{Row, Text, column, container, row, stack, text_input};
 use iced::{Element, Fill, Length, Padding, alignment};
 
 use super::{Message, State};
@@ -30,9 +30,8 @@ pub fn view(state: &State) -> Element<'_, Message> {
         Text::new(summary).size(12).font(fonts::Inter::REGULAR).color(color::text_muted()),
     ]
     .spacing(2);
-    row![
-        title,
-        Space::new().width(Fill),
+    // The search and the buttons wrap beside the title, and keep the right edge, so a narrow window moves them to a second line.
+    let actions: Vec<Element<'_, Message>> = vec![
         search_box(state.query()),
         hint(
             IconButton::new(Icon::lucide().refresh_cw())
@@ -49,19 +48,28 @@ pub fn view(state: &State) -> Element<'_, Message> {
                 Text::new(lang::t("servers.add"))
                     .size(13)
                     .font(fonts::Inter::BOLD)
-                    .color(color::primary_on()),
+                    .color(color::primary_on())
+                    .wrapping(iced::widget::text::Wrapping::None),
             ]
             .spacing(8)
             .align_y(alignment::Vertical::Center),
         )
         .variant(Variant::Primary)
         .padding(Padding::new(0.0).left(18).right(18).top(12).bottom(12))
-        .on_press(Message::Add),
-    ]
-    .spacing(12)
-    .align_y(alignment::Vertical::Center)
+        .on_press(Message::Add)
+        .into(),
+    ];
+    let actions = container(
+        Row::with_children(actions)
+            .spacing(12)
+            .align_y(alignment::Vertical::Center)
+            .wrap()
+            .vertical_spacing(12)
+            .align_x(alignment::Horizontal::Right),
+    )
     .width(Fill)
-    .into()
+    .align_x(alignment::Horizontal::Right);
+    row![title, actions].spacing(16).align_y(alignment::Vertical::Center).width(Fill).into()
 }
 
 /// The search field, with its icon on the left. Enter sends a submit, which opens the Add dialog on a valid address.

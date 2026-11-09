@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use iced::Element;
 use iced::widget::image;
+use iced::{Element, Size};
 use lodestone_export::plan::{DEFAULT_EXCLUDED, Selection};
 use lodestone_export::server_pack::plan::{self as pack, Choice};
 use lodestone_export::server_pack::{ModDetection, Side};
@@ -584,10 +584,10 @@ impl State {
     }
 
     /// The wizard's current step, drawn in full.
-    pub fn view(&self) -> Element<'_, Message> {
+    pub fn view(&self, window: Size) -> Element<'_, Message> {
         match self.step {
             Step::Scanning => progress::scanning(self),
-            Step::Review => review::view(self),
+            Step::Review => review::view(self, window),
             Step::Export => export::view(self),
             Step::Exporting => progress::exporting(self),
             Step::Done => done::view(self),

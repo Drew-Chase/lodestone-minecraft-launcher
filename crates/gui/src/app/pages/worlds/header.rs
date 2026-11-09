@@ -1,7 +1,7 @@
 //! The Worlds page's header: its title and summary, the search, and the New world and Import world menus.
 
 use aurora_leaf::Icon;
-use iced::widget::{Space, Text, column, container, row, stack, text_input};
+use iced::widget::{Row, Space, Text, column, container, row, stack, text_input};
 use iced::{Background, Border, Element, Fill, Length, Padding, alignment};
 use iced_color_extension::rgb;
 
@@ -26,17 +26,23 @@ pub fn view(state: &State) -> Element<'_, Message> {
         Text::new(state.summary()).size(12).font(fonts::Inter::REGULAR).color(color::text_muted()),
     ]
     .spacing(2);
-    row![
-        title,
-        Space::new().width(Fill),
+    // The search and the menus wrap beside the title, and keep the right edge, so a narrow window moves them to a second line.
+    let actions: Vec<Element<'_, Message>> = vec![
         search_box(&state.query),
         menu_button(state, Menu::Import, lang::t("worlds.import"), Icon::lucide().upload(), false),
         menu_button(state, Menu::New, lang::t("worlds.new"), Icon::lucide().plus(), true),
-    ]
-    .spacing(12)
-    .align_y(alignment::Vertical::Center)
+    ];
+    let actions = container(
+        Row::with_children(actions)
+            .spacing(12)
+            .align_y(alignment::Vertical::Center)
+            .wrap()
+            .vertical_spacing(12)
+            .align_x(alignment::Horizontal::Right),
+    )
     .width(Fill)
-    .into()
+    .align_x(alignment::Horizontal::Right);
+    row![title, actions].spacing(16).align_y(alignment::Vertical::Center).width(Fill).into()
 }
 
 /// The search field, with its glass on the left.
@@ -104,7 +110,11 @@ fn face(label: &'static str, glyph: &'static str, primary: bool) -> Element<'sta
     container(
         row![
             utility::icon(glyph, 14.0, Some((ink, ink))),
-            Text::new(label).size(13).font(fonts::Inter::BOLD).color(ink),
+            Text::new(label)
+                .size(13)
+                .font(fonts::Inter::BOLD)
+                .color(ink)
+                .wrapping(iced::widget::text::Wrapping::None),
         ]
         .spacing(8)
         .align_y(alignment::Vertical::Center),

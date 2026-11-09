@@ -599,7 +599,7 @@ impl InstancePage {
         let page = column![
             hero::hero(instance, self.files.as_ref(), controls, viewport),
             self.tab_bar(),
-            self.tab_body(instance, game.console, pins, busy),
+            self.tab_body(instance, game.console, pins, busy, viewport),
         ]
         .width(Fill)
         .height(Fill);
@@ -677,14 +677,18 @@ impl InstancePage {
         console: Option<&'a VecDeque<logs::LogLine>>,
         pins: &'a WorldPins,
         busy: Option<&'static str>,
+        viewport: Size,
     ) -> Element<'a, Message> {
         let content: Element<'a, Message> = match self.tab {
             Tab::Content => self.content_body(instance),
-            Tab::Versions => self.versions.view(busy).map(Message::Versions),
+            Tab::Versions => self.versions.view(busy, viewport).map(Message::Versions),
             Tab::Worlds => self.worlds.view(&instance.id, pins).map(Message::Worlds),
             Tab::Screenshots => screenshots::view(&self.screenshots).map(Message::Screenshots),
             Tab::Logs => self.logs.view(console).map(Message::Logs),
-            Tab::Settings => self.settings.view(instance, &self.folder).map(Message::Settings),
+            Tab::Settings => self
+                .settings
+                .view(instance, &self.folder, crate::app::components::page::is_narrow(viewport.width))
+                .map(Message::Settings),
         };
         // The mod list pads its own gutters, so its scrollbar sits in the page's gutter. The settings page scrolls its
         // sections beside its sidebar, so it takes the room the page leaves and pads its own bottom.

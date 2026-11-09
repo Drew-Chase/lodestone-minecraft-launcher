@@ -2,7 +2,7 @@
 //! its foot. A press scrolls the page to its section, and the page's scroll lights the section it reaches.
 
 use iced::widget::scrollable::Viewport;
-use iced::widget::{Id, Space, button, column, container, row, text};
+use iced::widget::{Id, Row, Space, button, column, container, row, text};
 use iced::{Background, Border, Element, Fill, Padding, Task, alignment};
 
 use super::{Message, Tab};
@@ -59,6 +59,52 @@ pub fn view<'a>(active: Tab) -> Element<'a, Message> {
         .padding(Padding::new(0.0).top(30.0).bottom(24.0).left(16.0).right(16.0))
         .width(WIDTH)
         .height(Fill)
+        .into()
+}
+
+/// The sections as tabs in a row above the page, for a narrow window: the sidebar would take the room the settings need.
+/// The row wraps onto a second line only when the window is narrower still.
+pub fn strip<'a>(active: Tab) -> Element<'a, Message> {
+    let items: Vec<Element<'a, Message>> = Tab::ALL.into_iter().map(|tab| strip_item(tab, tab == active)).collect();
+    container(Row::with_children(items).spacing(6).width(Fill).wrap().vertical_spacing(6))
+        .width(Fill)
+        .padding(Padding::new(0.0).left(28.0).right(28.0).bottom(12.0))
+        .into()
+}
+
+/// One section of the strip: its icon and title, tinted when it is the section at the top of the page.
+fn strip_item<'a>(tab: Tab, active: bool) -> Element<'a, Message> {
+    let ink = if active { color::primary() } else { color::text_muted() };
+    let label = text(lang::t(tab.title_key()))
+        .size(13)
+        .font(fonts::Inter::MEDIUM)
+        .color(ink)
+        .wrapping(iced::widget::text::Wrapping::None);
+    let content = row![utility::icon(tab.icon(), 16.0, Some((ink, ink))), label]
+        .spacing(8)
+        .align_y(alignment::Vertical::Center);
+    button(content)
+        .on_press(Message::Section(tab))
+        .padding(Padding::new(0.0).top(8.0).bottom(8.0).left(12.0).right(12.0))
+        .style(move |_, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            let background = if active {
+                Some(Background::Color(color::primary_tint()))
+            } else if hovered {
+                Some(Background::Color(color::surface_bg4()))
+            } else {
+                None
+            };
+            button::Style {
+                background,
+                text_color: ink,
+                border: Border {
+                    radius: 10.0.into(),
+                    ..Border::default()
+                },
+                ..button::Style::default()
+            }
+        })
         .into()
 }
 
