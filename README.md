@@ -14,35 +14,35 @@
 
 ## Screenshots
 
-> Design references for the new fully-native interface.
+> Screenshots of the new fully-native interface.
 
 <p align="center">
-  <img src="res/reference-images/01-login.png" alt="Login Screen" width="720" />
+  <img src="res/screenshots/01-login.png" alt="Login Screen" width="720" />
   <br /><em>Sign in with Microsoft, play offline, or explore in demo mode.</em>
 </p>
 
 <p align="center">
-  <img src="res/reference-images/02-library.png" alt="Library" width="720" />
+  <img src="res/screenshots/02-library.png" alt="Library" width="720" />
   <br /><em>Your instance library — launch, manage, and organize your Minecraft profiles.</em>
 </p>
 
 <p align="center">
-  <img src="res/reference-images/03-discover.png" alt="Discover" width="720" />
+  <img src="res/screenshots/03-discover.png" alt="Discover" width="720" />
   <br /><em>Browse mods, modpacks, shaders, resource packs, and more from Modrinth, CurseForge, ATLauncher, FTB, and Technic.</em>
 </p>
 
 <p align="center">
-  <img src="res/reference-images/04-instance.png" alt="Instance Page" width="720" />
+  <img src="res/screenshots/04-instance.png" alt="Instance Page" width="720" />
   <br /><em>Per-instance detail — mod management with enable/disable toggles.</em>
 </p>
 
 <p align="center">
-  <img src="res/reference-images/05-worlds.png" alt="Worlds" width="720" />
+  <img src="res/screenshots/05-worlds.png" alt="Worlds" width="720" />
   <br /><em>World management — browse, back up, and jump into your saves.</em>
 </p>
 
 <p align="center">
-  <img src="res/reference-images/06-servers.png" alt="Servers" width="720" />
+  <img src="res/screenshots/06-servers.png" alt="Servers" width="720" />
   <br /><em>Server browser — saved servers, ping, and player counts, with direct launch into multiplayer.</em>
 </p>
 
@@ -52,7 +52,7 @@
 </p>
 
 <p align="center">
-  <img src="res/reference-images/08-downloads.png" alt="Downloads" width="720" />
+  <img src="res/screenshots/08-downloads.png" alt="Downloads" width="720" />
   <br /><em>Download manager — track mod, modpack, and loader downloads in one place.</em>
 </p>
 
@@ -71,17 +71,17 @@
 ### Modals
 
 <p align="center">
-  <img src="res/reference-images/11-modal-new-instance.png" alt="New Instance Modal" width="640" />
+  <img src="res/screenshots/11-modal-new-instance.png" alt="New Instance Modal" width="640" />
   <br /><em>Create a new instance — pick your version and mod loader.</em>
 </p>
 
 <p align="center">
-  <img src="res/reference-images/12-modal-import.png" alt="Import Instance Modal" width="640" />
+  <img src="res/screenshots/12-modal-import.png" alt="Import Instance Modal" width="640" />
   <br /><em>Import instances from `.zip`, `.mrpack`, `.mcpack` files or URLs.</em>
 </p>
 
 <p align="center">
-  <img src="res/reference-images/13-modal-join-server.png" alt="Join Server Modal" width="640" />
+  <img src="res/screenshots/13-modal-join-server.png" alt="Join Server Modal" width="640" />
   <br /><em>Quick-connect to servers with a saved server list and ping info.</em>
 </p>
 
@@ -94,11 +94,11 @@
 
 | General | Accounts |
 |---------|----------|
-| <img src="res/reference-images/15-settings-general.png" alt="General Settings" width="100%" /> <em>General settings.</em> | <img src="res/reference-images/16-settings-accounts.png" alt="Accounts Settings" width="100%" /> <em>Manage your Microsoft and offline accounts.</em> |
+| <img src="res/screenshots/15-settings-general.png" alt="General Settings" width="100%" /> <em>General settings.</em> | <img src="res/screenshots/16-settings-accounts.png" alt="Accounts Settings" width="100%" /> <em>Manage your Microsoft and offline accounts.</em> |
 | **Java** | **Appearance** |
-| <img src="res/reference-images/17-settings-java.png" alt="Java Settings" width="100%" /> <em>Java runtimes — detection and per-instance matching.</em> | <img src="res/reference-images/18-settings-appearance.png" alt="Appearance Settings" width="100%" /> <em>Make it yours.</em> |
+| <img src="res/screenshots/17-settings-java.png" alt="Java Settings" width="100%" /> <em>Java runtimes — detection and per-instance matching.</em> | <img src="res/screenshots/18-settings-appearance.png" alt="Appearance Settings" width="100%" /> <em>Make it yours.</em> |
 | **Network** | **Privacy** |
-| <img src="res/reference-images/19-settings-network.png" alt="Network Settings" width="100%" /> <em>Network configuration.</em> | <img src="res/reference-images/20-settings-privacy.png" alt="Privacy Settings" width="100%" /> <em>Privacy controls.</em> |
+| <img src="res/screenshots/19-settings-network.png" alt="Network Settings" width="100%" /> <em>Network configuration.</em> | <img src="res/screenshots/20-settings-privacy.png" alt="Privacy Settings" width="100%" /> <em>Privacy controls.</em> |
 
 ### Website
 
