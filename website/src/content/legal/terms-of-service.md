@@ -21,19 +21,19 @@ You must be at least 18 years old to buy a subscription. Younger users may use t
 ## 3. The Service
 
 - The launcher is free to download and use. The account service includes free sign-in and friends. Cloud sync and sharing need a paid plan.
-- Each plan's storage, device and sharing limits are shown on the pricing page. We may change them for future billing periods. We'll give you at least 45 days notice before a change reduces a paid plan.
-- We work to keep the Service available, but we don't promise it will be uninterrupted. We may carry out maintenance, and we may add, change or stop features. If we stop a paid feature, we'll give you at least 45 days notice and a pro-rated refund for the unused part of any prepaid period.
+- Each plan's storage, device and sharing limits are shown on the pricing page. We may change them for future billing periods. We'll give you at least 45 days' notice before a change reduces a paid plan.
+- We work to keep the Service available, but we don't promise it will be uninterrupted. We may carry out maintenance, and we may add, change or stop features. If we stop a paid feature, we'll give you at least 45 days' notice and a pro-rated refund for the unused part of any prepaid period.
 
 ## 4. Subscriptions, trials and payments
 
-- **Plans.** Solo Sync, Friends and Unlimited are available monthly or yearly. Prices are in US dollars, as shown on the pricing page plus applicable taxes, which we collect where the law requires.
+- **Plans.** Solo Sync, Friends and Unlimited are available monthly or yearly. Prices are in US dollars, as shown on the pricing page, plus applicable taxes, which we collect where the law requires.
 - **Free trial.** Each paid plan starts with a 7-day free trial. A payment card is required to start it. Unless you cancel before the trial ends, your first subscription payment is charged when it ends.
 - **Renewal.** Subscriptions renew automatically at the end of each monthly or yearly period, at the price you were shown when you subscribed, until you cancel.
 - **Cancellation.** You can cancel at any time in the billing portal. Cancellation takes effect at the end of the current period, and you keep paid features until then.
 - **Payments.** Stripe processes payments, and its terms apply to your payment. We don't store your card number.
 - **Failed payments.** If a payment fails, we may retry it. If payment is not received within 14 days, your account moves to the free plan. The free plan has no storage for synced files. Section 5 explains what happens to your files.
-- **Refunds.** no refunds for partial periods, and full refunds for duplicate or failed charges. Nothing in these terms affects any refund right you have under the law.
-- **Price changes.** We'll give you at least 45 days notice of a price change. It applies from your next billing period.
+- **Refunds.** No refunds for partial periods, and full refunds for duplicate or failed charges. Nothing in these terms affects any refund right you have under the law.
+- **Price changes.** We'll give you at least 45 days' notice of a price change. It applies from your next billing period.
 - **Withdrawal rights.** Consumers in some countries may cancel a digital service within 14 days of buying it.
 
 ## 5. Your content
@@ -43,7 +43,7 @@ You must be at least 18 years old to buy a subscription. Younger users may use t
 - **Rights in your content.** You must have the rights to what you upload, including the licenses for mods, shaders, resource packs, skins and other third-party files. Follow each author's license. Also follow the [Minecraft End User License Agreement](https://www.minecraft.net/en-us/eula) and the [Minecraft usage guidelines](https://www.minecraft.net/en-us/usage-guidelines).
 - **Backups.** Syncing isn't a backup service. Keep your own copies of anything important. We don't guarantee that synced files will never be lost or damaged.
 - **Removal.** We may remove or disable content that breaks these terms or the law. Where we can, we'll tell you first and explain why.
-- **When subscription ends** If your subscription ends for what ever reason (failed payment, cancellation, dmca or breaking any of these terms) all account data is deleted 30 days after subscription terminiation.
+- **When subscription ends:** If your subscription ends for whatever reason (failed payment, cancellation, DMCA or breaking any of these terms), all account data is deleted 30 days after subscription termination.
 
 ## 6. Friends and sharing
 
@@ -103,7 +103,7 @@ We may update these terms. For material changes, we'll tell you by email or in t
 
 ## 15. Governing law and disputes
 
-These terms are governed by the laws of The United States of America, without regard to conflict-of-law rules. The courts of the State of Maine have exclusive jurisdiction, except where the law gives you the right to bring a claim where you live.
+These terms are governed by the laws of the United States of America, without regard to conflict-of-law rules. The courts of the State of Maine have exclusive jurisdiction, except where the law gives you the right to bring a claim where you live.
 
 ## 16. General
 
