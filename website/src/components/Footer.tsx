@@ -7,7 +7,7 @@ export default function Footer() {
             <div className="container">
                 <div className="foot-grid">
                     <div className="foot-brand">
-                        <a className="brand" href="#top">
+                        <a className="brand" href="/">
                             <span className="brand-mark"><Logo size={26}/></span>
                             Lodestone
                         </a>
@@ -17,37 +17,28 @@ export default function Footer() {
                         <h5>Product</h5>
                         <a href="#features">Features</a>
                         <a href="#download">Download</a>
-                        <a href="#changelog">Changelog</a>
-                        <a href="#roadmap">Roadmap</a>
+                        <a href="#pricing">Pricing</a>
                     </div>
                     <div className="foot-col">
                         <h5>Resources</h5>
-                        <a href="https://github.com/drew-chase/lodestone-minecraft-launcher/wiki" target="_blank" rel="noopener noreferrer">Documentation</a>
-                        <a href="#api">Modpack API</a>
-                        <a href="#brand">Brand kit</a>
-                        <a href="#status">Status</a>
+                        <a href="https://github.com/drew-chase/lodestone-minecraft-launcher#readme" target="_blank" rel="noopener noreferrer">Documentation</a>
+                        <a href="/brand">Brand kit</a>
                     </div>
                     <div className="foot-col">
                         <h5>Community</h5>
-                        <a href="#discord">Discord</a>
                         <a href="https://github.com/drew-chase/lodestone-minecraft-launcher" target="_blank" rel="noopener noreferrer">GitHub</a>
-                        <a href="#twitter">Twitter</a>
-                        <a href="#mastodon">Mastodon</a>
+                        <a href="https://github.com/sponsors/Drew-Chase" target="_blank" rel="noopener noreferrer">Sponsor</a>
                     </div>
                     <div className="foot-col">
-                        <h5>Company</h5>
-                        <a href="#about">About</a>
-                        <a href="#sponsor">Sponsor</a>
-                        <a href="#contact">Contact</a>
-                        <a href="#privacy">Privacy</a>
+                        <h5>Legal</h5>
+                        <a href="/terms">Terms of Service</a>
+                        <a href="/privacy">Privacy</a>
                     </div>
                 </div>
                 <div className="foot-bottom">
-                    <div>© 2026 Lodestone Project · MIT License · "Minecraft" is a trademark of Mojang Synergies AB.</div>
+                    <div>© 2026 Lodestone Project · <a href="https://github.com/drew-chase/lodestone-minecraft-launcher/blob/master/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a> · "Minecraft" is a trademark of Mojang Synergies AB.</div>
                     <div className="links">
-                        <a href="#discord"><Ic.discord size={16}/></a>
-                        <a href="#twitter"><Ic.twitter size={14}/></a>
-                        <a href="https://github.com/drew-chase/lodestone-minecraft-launcher" target="_blank" rel="noopener noreferrer"><Ic.github size={16}/></a>
+                        <a href="https://github.com/drew-chase/lodestone-minecraft-launcher" target="_blank" rel="noopener noreferrer" aria-label="GitHub"><Ic.github size={16}/></a>
                     </div>
                 </div>
             </div>
