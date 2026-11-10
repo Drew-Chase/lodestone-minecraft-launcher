@@ -1,18 +1,16 @@
 import PageShell from "../auth/PageShell.tsx";
+import Markdown from "./Markdown.tsx";
 
 interface LegalPageProps {
-    title: string;
-    paragraphs: string[];
+    markdown: string;
 }
 
-// A legal page with its placeholder notice. The final text replaces the paragraphs passed in.
-export default function LegalPage({title, paragraphs}: LegalPageProps) {
+// A legal page. Its text is a markdown file in src/content/legal, so the page and the file cannot drift apart.
+export default function LegalPage({markdown}: LegalPageProps) {
     return (
         <PageShell>
             <article className="acct-legal">
-                <h1 className="acct-title">{title}</h1>
-                <p className="acct-notice" role="note">Placeholder: the final text will replace this.</p>
-                {paragraphs.map((text) => <p key={text} className="acct-body">{text}</p>)}
+                <Markdown source={markdown}/>
             </article>
         </PageShell>
     );
