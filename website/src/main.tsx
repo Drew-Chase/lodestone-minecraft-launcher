@@ -8,6 +8,7 @@ import "./css/legal.css";
 import "./css/sso.css";
 import "./css/billing.css";
 import "./css/social.css";
+import "./css/brand.css";
 import AuthLayout from "./auth/AuthLayout.tsx";
 import DashboardLayout from "./components/dashboard/DashboardLayout.tsx";
 import {dashboardNav} from "./components/dashboard/nav.ts";
@@ -28,6 +29,7 @@ import ResetPasswordPage from "./pages/auth/ResetPasswordPage.tsx";
 import AccountPage from "./pages/auth/AccountPage.tsx";
 import TermsPage from "./pages/legal/TermsPage.tsx";
 import PrivacyPage from "./pages/legal/PrivacyPage.tsx";
+import BrandPage from "./pages/brand/BrandPage.tsx";
 import NotFoundPage from "./pages/NotFoundPage.tsx";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -56,6 +58,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                 </Route>
                 <Route path="/terms" element={<TermsPage/>}/>
                 <Route path="/privacy" element={<PrivacyPage/>}/>
+                <Route path="/brand" element={<BrandPage/>}/>
                 <Route path="*" element={<NotFoundPage/>}/>
             </Routes>
         </BrowserRouter>
