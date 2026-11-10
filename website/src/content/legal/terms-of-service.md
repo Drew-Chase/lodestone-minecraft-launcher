@@ -75,7 +75,7 @@ We may suspend or end accounts that break these rules.
 
 The Service relies on third parties, including sign-in providers, Stripe, Microsoft and Mojang for Minecraft, and Modrinth and CurseForge for content. Their terms and privacy policies apply to your dealings with them, and we aren't responsible for their services.
 
-Lodestone is not affiliated with Mojang Studios or Microsoft. Minecraft is a trademark of Mojang Studios.
+Lodestone is not affiliated with Mojang Synergies AB or Microsoft. Minecraft is a trademark of Mojang Synergies AB.
 
 ## 10. Open source
 
