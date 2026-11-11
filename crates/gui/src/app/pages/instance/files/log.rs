@@ -47,7 +47,7 @@ pub fn read_tail(path: &Path, max_lines: usize) -> Vec<LogLine> {
 fn parse(text: &str) -> Vec<LogLine> {
     let mut lines: Vec<LogLine> = Vec::new();
     for raw in text.lines().filter(|raw| !raw.trim().is_empty()) {
-        match parse_line(raw) {
+        match LogLine::from_prefixed(raw) {
             Some(line) => lines.push(line),
             None => {
                 let level = lines.last().map_or(LogLevel::Info, |previous| previous.level);
@@ -60,33 +60,6 @@ fn parse(text: &str) -> Vec<LogLine> {
         }
     }
     lines
-}
-
-/// One log line, or `None` when it has no `[time] [thread/LEVEL]` prefix.
-fn parse_line(raw: &str) -> Option<LogLine> {
-    let (time, rest) = raw.strip_prefix('[')?.split_once(']')?;
-    if time.len() != 8 {
-        return None;
-    }
-    let (tag, rest) = rest.trim_start().strip_prefix('[')?.split_once(']')?;
-    let level = level_of(tag.rsplit_once('/')?.1)?;
-    let message = rest.strip_prefix(':').unwrap_or(rest).trim_start();
-    Some(LogLine {
-        time: time.to_string(),
-        level,
-        message: message.to_string(),
-    })
-}
-
-/// The level a log4j tag names. Anything unrecognised is not a level.
-fn level_of(tag: &str) -> Option<LogLevel> {
-    match tag {
-        "DEBUG" | "TRACE" => Some(LogLevel::Debug),
-        "INFO" => Some(LogLevel::Info),
-        "WARN" => Some(LogLevel::Warn),
-        "ERROR" | "FATAL" => Some(LogLevel::Error),
-        _ => None,
-    }
 }
 
 #[cfg(test)]

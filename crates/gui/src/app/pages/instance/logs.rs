@@ -60,6 +60,18 @@ impl LogLevel {
             LogLevel::Error => "ERROR",
         }
     }
+
+    /// The level a log4j tag names: the `LEVEL` of a `[thread/LEVEL]` prefix, or the `level` of an XML event. Anything
+    /// unrecognised is not a level.
+    pub fn from_tag(tag: &str) -> Option<LogLevel> {
+        match tag {
+            "DEBUG" | "TRACE" => Some(LogLevel::Debug),
+            "INFO" => Some(LogLevel::Info),
+            "WARN" => Some(LogLevel::Warn),
+            "ERROR" | "FATAL" => Some(LogLevel::Error),
+            _ => None,
+        }
+    }
 }
 
 /// One line of the log.
@@ -68,6 +80,25 @@ pub struct LogLine {
     pub time: String,
     pub level: LogLevel,
     pub message: String,
+}
+
+impl LogLine {
+    /// Reads a `[HH:MM:SS] [thread/LEVEL]: message` line, the layout latest.log and the game's pattern output share. `None`
+    /// for a line without that prefix, or whose tag names no level.
+    pub fn from_prefixed(raw: &str) -> Option<LogLine> {
+        let (time, rest) = raw.strip_prefix('[')?.split_once(']')?;
+        if time.len() != 8 {
+            return None;
+        }
+        let (tag, rest) = rest.trim_start().strip_prefix('[')?.split_once(']')?;
+        let level = LogLevel::from_tag(tag.rsplit_once('/')?.1)?;
+        let message = rest.strip_prefix(':').unwrap_or(rest).trim_start();
+        Some(LogLine {
+            time: time.to_string(),
+            level,
+            message: message.to_string(),
+        })
+    }
 }
 
 /// The newest lines, oldest first, capped at [`MAX_LINES`].
