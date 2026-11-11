@@ -87,13 +87,14 @@ pub fn hero<'a>(instance: &'a Instance, files: Option<&InstanceFiles>, controls:
         Padding::new(0.0).left(24.0).top(16.0),
     );
 
-    // An instance from an external source links to its page; a local one reveals its folder.
-    let source = match &instance.source_url {
-        Some(_) => hint(
-            glass_button(Icon::lucide().external_link(), Message::OpenSource),
+    // An instance from a modpack opens that modpack's Discover page; a local one reveals its folder.
+    let from_modpack = instance.source_url.is_some() || instance.source_project_id.is_some();
+    let source = match from_modpack {
+        true => hint(
+            glass_button(Icon::lucide().compass(), Message::OpenSource),
             lang::t("instance.hero.open_source"),
         ),
-        None => hint(
+        false => hint(
             glass_button(Icon::lucide().folder(), Message::RevealFolder),
             lang::t("instance.menu.reveal"),
         ),

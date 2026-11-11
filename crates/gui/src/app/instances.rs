@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use iced::Task;
+use lodestone_platforms::ContentType;
 use tracing::{info, warn};
 
 use super::reveal::{open_file, reveal_file};
@@ -18,12 +19,13 @@ use crate::app::downloads;
 use crate::app::install::ART_DIR;
 use crate::app::lang;
 use crate::app::pages::Page;
-use crate::app::pages::discover::InstanceChoice;
+use crate::app::pages::discover::{InstanceChoice, Source as DiscoverSource};
 use crate::app::pages::instance::settings::{self, Edit};
 use crate::app::pages::instance::{Message as InstanceMessage, Tab};
 use crate::app::pages::library::instance::{Instance, InstanceIcon, Loader};
 use crate::app::pages::library::instance_menu::Action;
 use crate::app::pages::library::new_instance::{BannerChoice, IconChoice, banner};
+use crate::app::pages::resource::Listing;
 use crate::app::pages::worlds::Source;
 
 impl LodestoneLauncher {
@@ -271,10 +273,30 @@ impl LodestoneLauncher {
     }
 
     /// Opens the page the instance on the instance page was installed from, in the browser.
-    pub(super) fn open_current_source(&self) -> Task<LodestoneAppMessage> {
-        match self.instance_page.instance().and_then(|instance| instance.source_url.clone()) {
-            Some(url) => open_source(url),
-            None => Task::none(),
+    /// Opens the modpack the instance came from on its Discover product page, which returns to the instance. An instance
+    /// whose platform or project is unknown opens the modpack's web page instead.
+    pub(super) fn open_current_source(&mut self) -> Task<LodestoneAppMessage> {
+        let Some(instance) = self.instance_page.instance() else {
+            return Task::none();
+        };
+        let choice = InstanceChoice::of(instance);
+        let source = instance.source_platform.as_deref().and_then(DiscoverSource::from_key);
+        let listing = source.zip(instance.source_project_id.clone()).map(|(source, project_id)| Listing {
+            source,
+            content: ContentType::Modpack,
+            project_id,
+            name: instance.name.clone(),
+            author: None,
+            summary: String::new(),
+            downloads: 0,
+            icon_url: None,
+            web_url: instance.source_url.clone(),
+            updated: None,
+        });
+        let web = instance.source_url.clone();
+        match listing {
+            Some(listing) => self.open_resource(listing, Some(choice)),
+            None => web.map_or_else(Task::none, open_source),
         }
     }
 
