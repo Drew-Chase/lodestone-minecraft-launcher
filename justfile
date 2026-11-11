@@ -36,6 +36,12 @@ perf:
 profile:
     cargo run --profile profiling -p lodestone_launcher --features perf
 
+# Installs every Minecraft version's latest Forge build with real installers: about 63 installs, many gigabytes, an hour or
+# more. Narrow it with LODESTONE_FORGE_VERSIONS=1.20.1,26.3 and set LODESTONE_FORGE_JOBS (default 4). The table is written to
+# target/tmp/forge-install/report.md.
+forge-matrix:
+    cargo test -p lodestone_loaders --test forge_install -- --ignored --nocapture
+
 # Builds this machine's release files into dist/, named and zipped as .github/workflows/release.yml names them.
 package:
     @just _package

@@ -27,7 +27,13 @@ toml = "1"
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 zip = "9"
+# The Java manifest types behind piston-mc's `java` feature, which the matrix test reads Mojang's runtimes with.
+piston-mc = { workspace = true, features = ["java"] }
 
 [[test]]
 name = "mod_info"
 path = "tests/integration/mod_info.rs"
+
+[[test]]
+name = "forge_install"
+path = "tests/integration/forge_install/main.rs"
