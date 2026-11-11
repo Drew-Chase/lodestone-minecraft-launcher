@@ -122,3 +122,18 @@ fn the_jar_stem_drops_its_extension() {
     assert_eq!(jar_stem("sodium-1.0.jar"), "sodium-1.0");
     assert_eq!(jar_stem("sodium-1.0.jar.disabled"), "sodium-1.0");
 }
+
+#[test]
+fn only_the_kinds_a_mod_uses_a_library_for_are_dependents() {
+    assert_eq!(DependentKind::of(ModDependencyKind::Required), Some(DependentKind::Required));
+    assert_eq!(DependentKind::of(ModDependencyKind::Optional), Some(DependentKind::Optional));
+    assert_eq!(DependentKind::of(ModDependencyKind::Recommended), Some(DependentKind::Recommended));
+    assert_eq!(DependentKind::of(ModDependencyKind::Suggested), Some(DependentKind::Suggested));
+    for kind in [
+        ModDependencyKind::LoadBefore,
+        ModDependencyKind::Incompatible,
+        ModDependencyKind::Discouraged,
+    ] {
+        assert_eq!(DependentKind::of(kind), None, "{kind:?} does not make a mod a dependent");
+    }
+}

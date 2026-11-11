@@ -2,9 +2,22 @@
 //! are compiled as the `tests` child module of `mods`.
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use lodestone_loaders::ModDependencyKind;
+
 use super::*;
+
+/// Writes a Fabric jar at `path`, whose `fabric.mod.json` is `json`.
+fn fabric_jar(path: &Path, json: &str) {
+    let mut writer = zip::ZipWriter::new(fs::File::create(path).expect("jar file creates"));
+    writer
+        .start_file("fabric.mod.json", zip::write::SimpleFileOptions::default())
+        .expect("entry starts");
+    writer.write_all(json.as_bytes()).expect("entry writes");
+    writer.finish().expect("jar finishes");
+}
 
 /// A fresh folder under the system temp directory, named for the test.
 fn scratch(name: &str) -> PathBuf {
@@ -46,6 +59,36 @@ fn a_jar_without_metadata_keeps_its_file_name() {
     assert_eq!(jar.file_name, "sodium-0.5.8.jar");
     assert_eq!(jar.name, "sodium-0.5.8");
     assert!(jar.author.is_none() && jar.version.is_none());
+    assert!(
+        jar.id.is_none() && jar.dependencies.is_empty(),
+        "nothing is declared, so nothing names it"
+    );
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_jar_declares_its_id_and_the_dependencies_it_names() {
+    let root = scratch("declares");
+    fabric_jar(
+        &root.join("sodium.jar"),
+        r#"{
+            "schemaVersion": 1,
+            "id": "sodium",
+            "version": "0.5.8",
+            "name": "Sodium",
+            "depends": { "fabric-api": ">=0.50.0" },
+            "recommends": { "iris": "*" }
+        }"#,
+    );
+    let jar = scan(&root).remove(0);
+    assert_eq!(jar.id.as_deref(), Some("sodium"));
+    let needs: Vec<(&str, ModDependencyKind)> = jar
+        .dependencies
+        .iter()
+        .map(|dependency| (dependency.id.as_str(), dependency.kind))
+        .collect();
+    assert!(needs.contains(&("fabric-api", ModDependencyKind::Required)), "got {needs:?}");
+    assert!(needs.contains(&("iris", ModDependencyKind::Recommended)), "got {needs:?}");
     fs::remove_dir_all(&root).ok();
 }
 

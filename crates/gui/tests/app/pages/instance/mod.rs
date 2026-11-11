@@ -38,6 +38,8 @@ fn sample_files() -> InstanceFiles {
             name: "Sodium".to_string(),
             author: Some("JellySquid".to_string()),
             version: Some("0.5.8".to_string()),
+            id: None,
+            dependencies: Vec::new(),
             icon: None,
         }],
         worlds: vec![files::WorldFile {

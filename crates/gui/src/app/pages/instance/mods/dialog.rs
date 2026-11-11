@@ -1,6 +1,6 @@
 //! The Mods tab's dialogs, each a modal on top of the tab: linking a mod to the project it is, switching the mod to another
-//! release, and listing its dependencies. A dialog holds what its view needs. The root fetches what it shows and carries
-//! out what its buttons ask for, and the answers come back into the dialog.
+//! release, and listing its dependencies and its dependents. A dialog holds what its view needs. The root fetches what it
+//! shows and carries out what its buttons ask for, and the answers come back into the dialog.
 
 use std::collections::HashMap;
 
@@ -9,6 +9,7 @@ use iced::widget::scrollable::AbsoluteOffset;
 use iced::widget::{Id, Space, Text, column, container, image, operation, row, text_input};
 use iced::{Element, Fill, Padding, Task, alignment};
 use iced_color_extension::rgb;
+use lodestone_loaders::ModDependencyKind;
 use lodestone_platforms::{ContentVersion, DependencyKind, SearchResult};
 
 use crate::app::components::badge::Badge;
@@ -35,6 +36,7 @@ pub enum Dialog {
     Associate(Box<Associate>),
     Switch(Switch),
     Dependencies(Dependencies),
+    Dependents(Dependents),
 }
 
 /// A dialog's messages. The tab handles the local ones, and the root carries out the rest.
@@ -154,6 +156,46 @@ pub struct Line {
     pub installed: Option<String>,
 }
 
+/// The mods in the folder that name a library as a dependency. The jars declare them, so the list is complete when it opens.
+#[derive(Debug)]
+pub struct Dependents {
+    /// The library's name.
+    pub name: String,
+    /// The mods that name it, in the order the folder lists them.
+    pub lines: Vec<DependentLine>,
+}
+
+/// One mod that names a library: its name, how it names it, and whether it is switched on.
+#[derive(Debug, Clone)]
+pub struct DependentLine {
+    pub name: String,
+    pub kind: DependentKind,
+    pub enabled: bool,
+}
+
+/// How a mod names a library it uses. A mod that only orders itself before the library, or breaks with it, does not depend
+/// on it, so it is not a dependent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DependentKind {
+    Required,
+    Optional,
+    Recommended,
+    Suggested,
+}
+
+impl DependentKind {
+    /// The kind a declared dependency counts as, when the mod that declares it uses the dependency.
+    pub fn of(kind: ModDependencyKind) -> Option<Self> {
+        match kind {
+            ModDependencyKind::Required => Some(Self::Required),
+            ModDependencyKind::Optional => Some(Self::Optional),
+            ModDependencyKind::Recommended => Some(Self::Recommended),
+            ModDependencyKind::Suggested => Some(Self::Suggested),
+            ModDependencyKind::LoadBefore | ModDependencyKind::Incompatible | ModDependencyKind::Discouraged => None,
+        }
+    }
+}
+
 impl Dialog {
     /// Applies a local message to the dialog.
     pub fn local(&mut self, message: &Message) {
@@ -175,6 +217,7 @@ impl Dialog {
             Dialog::Associate(associate) => associate_view(associate),
             Dialog::Switch(switch) => switch_view(switch),
             Dialog::Dependencies(dependencies) => dependencies_view(dependencies),
+            Dialog::Dependents(dependents) => dependents_view(dependents),
         }
     }
 }
@@ -363,6 +406,25 @@ fn dependencies_view(dialog: &Dependencies) -> Element<'_, Message> {
         .into()
 }
 
+fn dependents_view(dialog: &Dependents) -> Element<'_, Message> {
+    let body: Element<'_, Message> = if dialog.lines.is_empty() {
+        muted(lang::t("instance.mods.dependents.empty"))
+    } else {
+        column(dialog.lines.iter().map(dependent_line).collect::<Vec<_>>())
+            .spacing(6)
+            .width(Fill)
+            .into()
+    };
+    Modal::new(lang::t_with("instance.mods.dependents.title", &[("name", dialog.name.as_str())]), body)
+        .subtitle(lang::t("instance.mods.dependents.subtitle"))
+        .icon(Icon::lucide().network(), color::primary(), color::primary_tint())
+        .footer(close_footer())
+        .on_close(Message::Close)
+        .close_on_scrim(true)
+        .width(WIDTH)
+        .into()
+}
+
 /// A platform's button in the search. The platform being searched is filled.
 fn platform_button(source: Source, selected: Source) -> Element<'static, Message> {
     let button = if source == selected {
@@ -493,6 +555,34 @@ fn kind_label(kind: DependencyKind) -> &'static str {
         DependencyKind::Optional => lang::t("instance.mods.deps.optional"),
         DependencyKind::Incompatible => lang::t("instance.mods.deps.incompatible"),
         DependencyKind::Embedded => lang::t("instance.mods.deps.embedded"),
+    }
+}
+
+/// One mod that names the library: its name, how it names it, and a badge when it is switched off.
+fn dependent_line(line: &DependentLine) -> Element<'_, Message> {
+    let mut content = row![
+        Text::new(line.name.as_str())
+            .size(13)
+            .font(fonts::Inter::SEMI_BOLD)
+            .color(color::text_headline()),
+        Badge::new(dependent_kind_label(line.kind), color::text_muted(), rgb!(255, 255, 255, 6%)).compact(),
+        Space::new().width(Fill),
+    ]
+    .spacing(10)
+    .align_y(alignment::Vertical::Center);
+    if !line.enabled {
+        content = content.push(Badge::new(lang::t("instance.mods.disabled"), color::text_muted(), rgb!(255, 255, 255, 6%)).compact());
+    }
+    content.width(Fill).into()
+}
+
+/// The label a dependent's kind shows as.
+fn dependent_kind_label(kind: DependentKind) -> &'static str {
+    match kind {
+        DependentKind::Required => lang::t("instance.mods.deps.required"),
+        DependentKind::Optional => lang::t("instance.mods.deps.optional"),
+        DependentKind::Recommended => lang::t("instance.mods.dependents.recommended"),
+        DependentKind::Suggested => lang::t("instance.mods.dependents.suggested"),
     }
 }
 

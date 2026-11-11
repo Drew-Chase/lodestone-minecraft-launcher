@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use iced::widget::image;
-use lodestone_loaders::{Fabric, Loader};
+use lodestone_loaders::{Fabric, Loader, ModDependency};
 
 /// One mod jar.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +18,10 @@ pub struct ModFile {
     pub author: Option<String>,
     /// The version the mod declares.
     pub version: Option<String>,
+    /// The id the mod declares. The dependencies of other mods name it.
+    pub id: Option<String>,
+    /// The dependencies the mod declares, each with the id it names and how the mod needs it.
+    pub dependencies: Vec<ModDependency>,
     /// The icon the mod declares in its jar, when it declares one that can be read.
     pub icon: Option<image::Handle>,
 }
@@ -46,9 +50,20 @@ pub fn scan(dir: &Path) -> Vec<ModFile> {
                 .and_then(|info| info.name.clone())
                 .filter(|name| !name.trim().is_empty())
                 .unwrap_or_else(|| jar.stem.clone());
+            let (author, id, version, dependencies) = match info {
+                Some(info) => (
+                    info.authors.into_iter().next(),
+                    Some(info.id).filter(|id| !id.trim().is_empty()),
+                    info.version,
+                    info.dependencies,
+                ),
+                None => (None, None, None, Vec::new()),
+            };
             ModFile {
-                author: info.as_ref().and_then(|info| info.authors.first().cloned()),
-                version: info.and_then(|info| info.version),
+                author,
+                id,
+                version,
+                dependencies,
                 icon: lodestone_loaders::mod_icon(&jar.path).map(image::Handle::from_bytes),
                 file_name: jar.file_name,
                 enabled: jar.enabled,

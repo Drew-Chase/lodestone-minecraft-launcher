@@ -1,4 +1,4 @@
-//! Listing a mod's dependencies, and opening one of them on its platform.
+//! Listing a mod's dependencies and its dependents, and opening one of the dependencies on its platform.
 
 use super::*;
 
@@ -34,6 +34,15 @@ impl LodestoneLauncher {
                 result,
             })
         })
+    }
+
+    /// Opens the dialog that lists the mods in the folder which name a library as a dependency. The folder's jars declare
+    /// them, so the dialog is complete at once and needs no platform.
+    pub(super) fn open_dependents(&mut self, file_name: String) -> Task<LodestoneAppMessage> {
+        if let Some(dependents) = self.instance_page.mods().dependents_of(&file_name) {
+            self.instance_page.mods_mut().open_dialog(Dialog::Dependents(dependents));
+        }
+        Task::none()
     }
 
     /// The dependencies arrived. They fill the dialog that asked, if it is still open for the same mod.

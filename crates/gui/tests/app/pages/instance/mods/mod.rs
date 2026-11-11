@@ -1,4 +1,5 @@
 use super::*;
+use lodestone_loaders::{ModDependency, ModDependencyKind};
 use lodestone_platforms::ContentType;
 
 /// A mod the folder holds, with the name and author given.
@@ -9,8 +10,45 @@ fn entry(file_name: &str, name: &str, author: Option<&str>, enabled: bool) -> Mo
         name: name.to_string(),
         author: author.map(str::to_string),
         version: None,
+        id: None,
+        dependencies: Vec::new(),
         icon: None,
     }
+}
+
+/// A mod the folder holds, which declares the id `id` and names each of `needs` as a dependency of the kind given.
+fn named(file_name: &str, name: &str, id: &str, enabled: bool, needs: &[(&str, ModDependencyKind)]) -> ModFile {
+    ModFile {
+        id: Some(id.to_string()),
+        dependencies: needs
+            .iter()
+            .map(|(needed, kind)| ModDependency {
+                id: needed.to_string(),
+                kind: *kind,
+                version_range: None,
+            })
+            .collect(),
+        ..entry(file_name, name, None, enabled)
+    }
+}
+
+/// A folder with Fabric API, which Sodium requires, and Iris, which optionally uses it while switched off. Lithium
+/// declares it incompatible, which is not a use, so Lithium is not a dependent.
+fn library_folder() -> State {
+    let mut state = State::default();
+    state.set_mods(vec![
+        named("fabric-api.jar", "Fabric API", "fabric-api", true, &[]),
+        named("iris.jar.disabled", "Iris", "iris", false, &[("fabric-api", ModDependencyKind::Optional)]),
+        named("sodium.jar", "Sodium", "sodium", true, &[("fabric-api", ModDependencyKind::Required)]),
+        named(
+            "lithium.jar",
+            "Lithium",
+            "lithium",
+            true,
+            &[("fabric-api", ModDependencyKind::Incompatible)],
+        ),
+    ]);
+    state
 }
 
 fn sample() -> State {
@@ -229,4 +267,78 @@ fn a_mod_being_acted_on_is_marked_until_it_lands() {
     assert!(state.busy.contains("sodium.jar"));
     state.set_busy("sodium.jar", false);
     assert!(!state.busy.contains("sodium.jar"));
+}
+
+#[test]
+fn a_mod_another_mod_uses_is_a_library() {
+    let state = library_folder();
+    assert!(state.row("fabric-api.jar").is_some_and(|row| row.library));
+    assert!(state.row("sodium.jar").is_some_and(|row| !row.library), "nothing names Sodium");
+}
+
+#[test]
+fn only_a_dependency_a_mod_uses_makes_a_library() {
+    let mut state = State::default();
+    state.set_mods(vec![
+        named(
+            "breaker.jar",
+            "Breaker",
+            "breaker",
+            true,
+            &[
+                ("a", ModDependencyKind::Incompatible),
+                ("b", ModDependencyKind::LoadBefore),
+                ("c", ModDependencyKind::Discouraged),
+            ],
+        ),
+        named("a.jar", "A", "a", true, &[]),
+        named("b.jar", "B", "b", true, &[]),
+        named("c.jar", "C", "c", true, &[]),
+    ]);
+    assert!(state.rows.iter().all(|row| !row.library), "no mod is used by another");
+}
+
+#[test]
+fn a_library_lists_the_mods_that_name_it_and_how_they_name_it() {
+    let state = library_folder();
+    let dependents = state.dependents_of("fabric-api.jar").expect("the folder holds Fabric API");
+    assert_eq!(dependents.name, "Fabric API");
+    let lines: Vec<(&str, DependentKind, bool)> = dependents
+        .lines
+        .iter()
+        .map(|line| (line.name.as_str(), line.kind, line.enabled))
+        .collect();
+    assert_eq!(
+        lines,
+        [("Iris", DependentKind::Optional, false), ("Sodium", DependentKind::Required, true)]
+    );
+}
+
+#[test]
+fn a_mod_nothing_names_has_no_dependents_to_list() {
+    let state = library_folder();
+    assert!(state.dependents_of("sodium.jar").is_some_and(|dependents| dependents.lines.is_empty()));
+    assert!(state.dependents_of("missing.jar").is_none(), "a folder without the mod has none");
+}
+
+#[test]
+fn a_switched_off_dependent_keeps_its_library() {
+    let mut state = library_folder();
+    state.renamed("sodium.jar", "sodium.jar.disabled", false);
+    assert!(
+        state.row("fabric-api.jar").is_some_and(|row| row.library),
+        "the dependency is still declared"
+    );
+    assert!(
+        state
+            .dependents_of("fabric-api.jar")
+            .is_some_and(|dependents| { dependents.lines.iter().any(|line| line.name == "Sodium" && !line.enabled) })
+    );
+}
+
+#[test]
+fn a_rescan_that_drops_the_last_dependent_ends_the_library() {
+    let mut state = library_folder();
+    state.set_mods(vec![named("fabric-api.jar", "Fabric API", "fabric-api", true, &[])]);
+    assert!(state.row("fabric-api.jar").is_some_and(|row| !row.library));
 }

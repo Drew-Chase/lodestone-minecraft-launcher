@@ -52,10 +52,13 @@ fn a_mod_without_metadata_is_described_by_its_file_name() {
             name: "mystery".to_string(),
             author: None,
             version: None,
+            id: None,
+            dependencies: Vec::new(),
             icon: None,
         },
         source: None,
         update: None,
+        library: false,
     };
     assert_eq!(subtitle(&row), "mystery.jar");
 }
@@ -69,10 +72,13 @@ fn a_mod_names_its_author_and_version_when_it_declares_them() {
             name: "Sodium".to_string(),
             author: Some("jellysquid3".to_string()),
             version: Some("0.5.8".to_string()),
+            id: None,
+            dependencies: Vec::new(),
             icon: None,
         },
         source: None,
         update: None,
+        library: false,
     };
     let line = subtitle(&row);
     assert!(line.contains("jellysquid3") && line.contains("0.5.8"), "got {line}");

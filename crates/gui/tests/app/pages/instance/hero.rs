@@ -28,6 +28,8 @@ fn the_mod_badge_counts_the_jars_the_scan_found() {
                 name: "A".to_string(),
                 author: None,
                 version: None,
+                id: None,
+                dependencies: Vec::new(),
                 icon: None,
             },
             ModFile {
@@ -36,6 +38,8 @@ fn the_mod_badge_counts_the_jars_the_scan_found() {
                 name: "B".to_string(),
                 author: None,
                 version: None,
+                id: None,
+                dependencies: Vec::new(),
                 icon: None,
             },
         ],

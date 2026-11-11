@@ -439,6 +439,7 @@ impl LodestoneLauncher {
             },
             Some(Action::Switch) => self.open_switch(file_name),
             Some(Action::Dependencies) => self.open_dependencies(file_name),
+            Some(Action::Dependents) => self.open_dependents(file_name),
             Some(Action::Associate) => self.open_link(file_name),
             Some(Action::Reveal) => self.reveal_mod(&file_name),
             Some(Action::Delete) => self.ask_mod_delete(file_name),

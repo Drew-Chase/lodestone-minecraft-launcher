@@ -18,7 +18,9 @@ use iced::{Background, Border, Element, Fill, Padding, Task, alignment};
 use iced_color_extension::rgb;
 use lodestone_platforms::ContentVersion;
 
-pub use dialog::{Associate, Dependencies, Dialog, Line, Message as DialogMessage, Picked, Switch, scroll_to_release};
+pub use dialog::{
+    Associate, Dependencies, DependentKind, DependentLine, Dependents, Dialog, Line, Message as DialogMessage, Picked, Switch, scroll_to_release,
+};
 pub use menu::Action;
 
 use super::GUTTER;
@@ -56,13 +58,15 @@ fn contains_ignore_case(haystack: &str, needle: &str) -> bool {
     haystack.to_lowercase().contains(&needle.to_lowercase())
 }
 
-/// One mod in the list: its jar, the platform source it was installed from when that is known, and the newer release
-/// the platform has when there is one.
+/// One mod in the list: its jar, the platform source it was installed from when that is known, the newer release the
+/// platform has when there is one, and whether another mod in the folder depends on it.
 #[derive(Debug)]
 pub struct Row {
     pub file: ModFile,
     pub source: Option<ModSource>,
     pub update: Option<ContentVersion>,
+    /// Whether another mod in the folder names this one as a dependency, which makes it a library.
+    pub library: bool,
 }
 
 /// The Mods tab's state.
@@ -100,6 +104,15 @@ pub fn project_key(record: &ModSource) -> String {
     format!("{}:{}", record.platform, record.project_id)
 }
 
+/// The ids that some mod in `mods` names as a dependency it uses. A mod carrying one of them is a library.
+fn libraries_of(mods: &[ModFile]) -> HashSet<String> {
+    mods.iter()
+        .flat_map(|file| &file.dependencies)
+        .filter(|dependency| DependentKind::of(dependency.kind).is_some())
+        .map(|dependency| dependency.id.clone())
+        .collect()
+}
+
 /// Messages the Mods tab handles, or passes to the root.
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -130,7 +143,14 @@ impl State {
         let present: HashSet<String> = mods.iter().map(|file| file.file_name.clone()).collect();
         self.sources.retain(|file_name, _| present.contains(file_name));
         self.updates.retain(|file_name, _| present.contains(file_name));
-        self.rows = mods.into_iter().map(|file| self.joined(file)).collect();
+        let libraries = libraries_of(&mods);
+        self.rows = mods
+            .into_iter()
+            .map(|file| {
+                let library = file.id.as_ref().is_some_and(|id| libraries.contains(id));
+                self.joined(file, library)
+            })
+            .collect();
         self.refilter();
     }
 
@@ -195,6 +215,34 @@ impl State {
     /// The row of the mod `file_name`, if the folder holds it.
     pub fn row(&self, file_name: &str) -> Option<&Row> {
         self.rows.iter().find(|row| row.file.file_name == file_name)
+    }
+
+    /// The dialog's list for the mod `file_name`: each mod in the folder that names it as a dependency it uses, with how
+    /// it names it. `None` when the folder does not hold the mod.
+    pub fn dependents_of(&self, file_name: &str) -> Option<Dependents> {
+        let target = self.row(file_name)?;
+        let id = target.file.id.as_deref();
+        let lines = self
+            .rows
+            .iter()
+            .filter_map(|row| {
+                let kind = row
+                    .file
+                    .dependencies
+                    .iter()
+                    .filter(|dependency| Some(dependency.id.as_str()) == id)
+                    .find_map(|dependency| DependentKind::of(dependency.kind))?;
+                Some(DependentLine {
+                    name: row.file.name.clone(),
+                    kind,
+                    enabled: row.file.enabled,
+                })
+            })
+            .collect();
+        Some(Dependents {
+            name: target.file.name.clone(),
+            lines,
+        })
     }
 
     /// The picture of the platform project a linked mod came from, once it has loaded.
@@ -332,12 +380,13 @@ impl State {
         }
     }
 
-    /// The row for `file`, joined to what is known of it.
-    fn joined(&self, file: ModFile) -> Row {
+    /// The row for `file`, joined to what is known of it. `library` says whether another mod in the folder depends on it.
+    fn joined(&self, file: ModFile, library: bool) -> Row {
         Row {
             source: self.sources.get(&file.file_name).cloned(),
             update: self.updates.get(&file.file_name).cloned(),
             file,
+            library,
         }
     }
 

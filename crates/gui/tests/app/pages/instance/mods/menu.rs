@@ -12,6 +12,8 @@ fn row(update: bool, source: bool) -> Row {
             name: "Sodium".to_string(),
             author: None,
             version: None,
+            id: None,
+            dependencies: Vec::new(),
             icon: None,
         },
         source: source.then(|| ModSource {
@@ -39,6 +41,15 @@ fn row(update: bool, source: bool) -> Row {
             channel: None,
             dependencies: Vec::new(),
         }),
+        library: false,
+    }
+}
+
+/// A library: a mod that other mods in the folder name as a dependency.
+fn library(source: bool) -> Row {
+    Row {
+        library: true,
+        ..row(false, source)
     }
 }
 
@@ -130,4 +141,55 @@ fn a_locked_menu_keeps_its_items_and_actions_in_step() {
     for (item, action) in menu.items.iter().zip(&menu.actions) {
         assert_eq!(matches!(item, MenuItem::Separator), action.is_none());
     }
+}
+
+#[test]
+fn a_library_offers_its_dependents_after_its_dependencies() {
+    assert_eq!(
+        menu(&library(true), false, false).actions,
+        [
+            Some(Action::Switch),
+            Some(Action::Dependencies),
+            Some(Action::Dependents),
+            None,
+            Some(Action::Associate),
+            Some(Action::Reveal),
+            None,
+            Some(Action::Delete)
+        ]
+    );
+}
+
+#[test]
+fn a_library_without_a_source_offers_its_dependents_alone() {
+    assert_eq!(
+        menu(&library(false), false, false).actions,
+        [
+            Some(Action::Dependents),
+            None,
+            Some(Action::Associate),
+            Some(Action::Reveal),
+            None,
+            Some(Action::Delete)
+        ]
+    );
+}
+
+#[test]
+fn a_locked_library_still_offers_its_dependents() {
+    assert_eq!(
+        menu(&library(true), false, true).actions,
+        [
+            Some(Action::Dependencies),
+            Some(Action::Dependents),
+            None,
+            Some(Action::Associate),
+            Some(Action::Reveal)
+        ]
+    );
+}
+
+#[test]
+fn a_mod_nothing_names_offers_no_dependents() {
+    assert!(!menu(&row(false, true), false, false).actions.contains(&Some(Action::Dependents)));
 }

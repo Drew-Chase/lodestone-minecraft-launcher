@@ -1,6 +1,7 @@
 //! The mod menu: the rows a mod's ⋯ button and a right-click on its row show, and the action each row asks for. The
 //! root carries the actions out. A mod with no recorded source has no switch or dependencies, since those need a
-//! project to read; an update row shows only when the platform has a newer release.
+//! project to read; an update row shows only when the platform has a newer release. A library, a mod that another mod in
+//! the folder names, offers its dependents, which the folder's jars answer, so it needs no source either.
 
 use aurora_leaf::Icon;
 
@@ -17,6 +18,8 @@ pub enum Action {
     Switch,
     /// Lists the dependencies of the mod's current release.
     Dependencies,
+    /// Lists the mods in the folder that name this mod as a dependency. Offered only to a library.
+    Dependents,
     /// Searches the platforms for the project the mod is, and records it.
     Associate,
     /// Shows the jar in the file browser, with the jar selected.
@@ -51,6 +54,9 @@ pub fn menu(row: &Row, busy: bool, locked: bool) -> Menu {
         }
         actions.push(Some(Action::Dependencies));
     }
+    if row.library {
+        actions.push(Some(Action::Dependents));
+    }
     if !actions.is_empty() {
         actions.push(None);
     }
@@ -76,6 +82,7 @@ fn item(action: Action, row: &Row) -> MenuItem {
         Action::Update => (update_label(row), Icon::lucide().arrow_up(), false),
         Action::Switch => (lang::t("instance.mods.menu.switch").to_owned(), Icon::lucide().repeat(), false),
         Action::Dependencies => (lang::t("instance.mods.menu.dependencies").to_owned(), Icon::lucide().layers(), false),
+        Action::Dependents => (lang::t("instance.mods.menu.dependents").to_owned(), Icon::lucide().network(), false),
         Action::Associate => (lang::t("instance.mods.menu.associate").to_owned(), Icon::lucide().link(), false),
         Action::Reveal => (lang::t("instance.mods.menu.reveal").to_owned(), Icon::lucide().folder(), false),
         Action::Delete => (lang::t("instance.mods.menu.delete").to_owned(), Icon::lucide().trash(), true),
