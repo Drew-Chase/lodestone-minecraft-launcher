@@ -6,6 +6,7 @@ pub mod games;
 pub mod identity;
 pub mod libraries;
 pub mod manifest;
+pub mod output;
 pub mod pidfile;
 pub mod prepare;
 pub mod rules;

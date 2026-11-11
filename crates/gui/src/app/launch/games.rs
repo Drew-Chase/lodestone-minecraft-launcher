@@ -14,6 +14,7 @@ use sipper::Sender as ProgressSender;
 use sipper::{Sipper, sipper};
 
 use super::GameMessage;
+use super::output::OutputReader;
 use super::pidfile::Record;
 use super::prepare::QuickPlay;
 use crate::app::pages::instance::logs::{LogLevel, LogLine, MAX_LINES};
@@ -161,6 +162,8 @@ pub struct Games {
     killed: HashSet<u64>,
     /// The console of each run this launcher started.
     console: HashMap<u64, VecDeque<LogLine>>,
+    /// Reads the standard output of each run into its console rows, so an event shows once it has arrived whole.
+    output: HashMap<u64, OutputReader>,
     /// The Microsoft session refresh in flight, and the launches that wait for it.
     refresh: Refresh,
     serial: u64,
@@ -315,27 +318,31 @@ impl Games {
 
     /// Takes the run `serial` once its exit arrives.
     pub fn take_running(&mut self, serial: u64) -> Option<Running> {
+        self.output.remove(&serial);
         self.running.remove(&serial)
     }
 
-    /// Adds a console line to the run `serial`, when it is still running.
+    /// Adds the console rows a line the run `serial` wrote makes, when it is still running. Standard output is read as the
+    /// game's log (see [`OutputReader`]), and standard error is shown as error lines.
     pub fn push_output(&mut self, serial: u64, stream: LogStream, line: String) {
         if !self.running.contains_key(&serial) {
             return;
         }
-        let log = self.console.entry(serial).or_default();
-        if log.len() == MAX_LINES {
-            log.pop_front();
-        }
-        let level = match stream {
-            LogStream::Stdout => LogLevel::Info,
-            LogStream::Stderr => LogLevel::Error,
+        let rows = match stream {
+            LogStream::Stdout => self.output.entry(serial).or_default().push(line),
+            LogStream::Stderr => vec![LogLine {
+                time: Local::now().format("%H:%M:%S").to_string(),
+                level: LogLevel::Error,
+                message: line,
+            }],
         };
-        log.push_back(LogLine {
-            time: Local::now().format("%H:%M:%S").to_string(),
-            level,
-            message: line,
-        });
+        let log = self.console.entry(serial).or_default();
+        for row in rows {
+            if log.len() == MAX_LINES {
+                log.pop_front();
+            }
+            log.push_back(row);
+        }
     }
 
     /// The status of `instance`: running while any of its runs goes, otherwise preparing or idle.
