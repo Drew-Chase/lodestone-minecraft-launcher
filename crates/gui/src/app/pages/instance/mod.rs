@@ -75,6 +75,10 @@ pub enum Message {
     LaunchNew(String),
     /// The Mods tab's Add was pressed. The root opens Discover on the mods of this instance.
     AddMods,
+    /// The padlock on the masthead was pressed for the locked instance `String`. The root asks before it unlocks the instance.
+    Unlock(String),
+    /// The open padlock on the masthead was pressed for the unlocked instance `String`. The root locks it at once.
+    Lock(String),
     /// Requests navigation — the root intercepts this before the page's
     /// `update` runs (the `<Link>` of this framework).
     Navigate(Page),
@@ -172,6 +176,7 @@ impl InstancePage {
         self.folder = folder.clone();
         self.files = None;
         self.mods = mods::State::default();
+        self.mods.set_locked(self.instance.as_ref().is_some_and(|shown| shown.locked));
         self.content_section = content::Section::default();
         self.packs = packs::State::default();
         self.worlds = worlds::State::default();
@@ -195,6 +200,7 @@ impl InstancePage {
         if self.instance.as_ref().is_some_and(|shown| shown.id == instance.id) {
             self.settings.sync(&instance, defaults);
             self.versions.refresh(&instance);
+            self.mods.set_locked(instance.locked);
             self.instance = Some(instance);
         }
     }
@@ -277,7 +283,9 @@ impl InstancePage {
             | Message::Kill
             | Message::Restart
             | Message::LaunchNew(_)
-            | Message::AddMods => Task::none(),
+            | Message::AddMods
+            | Message::Unlock(_)
+            | Message::Lock(_) => Task::none(),
             // Results for an instance the page no longer shows, and ticks the
             // Logs tab no longer needs.
             Message::Scanned { .. }

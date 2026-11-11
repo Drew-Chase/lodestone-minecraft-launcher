@@ -12,6 +12,7 @@ fn choice(loader: Loader) -> InstanceChoice {
         name: "Instance a".to_string(),
         loader,
         mc_version: "1.21.1".to_string(),
+        locked: false,
     }
 }
 
@@ -46,4 +47,15 @@ fn a_release_is_installed_switchable_addable_or_blocked_by_what_the_target_has()
         ModState::Unavailable
     );
     assert_eq!(mod_state(&status(None, None, false), Some("v1")), ModState::Unavailable);
+}
+
+#[test]
+fn a_locked_instance_keeps_the_mods_it_has_and_adds_or_switches_none() {
+    let mut locked = choice(Loader::Fabric);
+    locked.locked = true;
+    let target = Some(locked);
+    assert_eq!(mod_state(&status(target.clone(), Some("v1"), false), Some("v1")), ModState::Installed);
+    assert_eq!(mod_state(&status(target.clone(), Some("v1"), false), None), ModState::Added);
+    assert_eq!(mod_state(&status(target.clone(), Some("v1"), false), Some("v2")), ModState::Unavailable);
+    assert_eq!(mod_state(&status(target.clone(), None, false), Some("v2")), ModState::Unavailable);
 }

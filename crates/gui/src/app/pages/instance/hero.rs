@@ -98,8 +98,17 @@ pub fn hero<'a>(instance: &'a Instance, files: Option<&InstanceFiles>, controls:
             lang::t("instance.menu.reveal"),
         ),
     };
+    // The padlock comes first among the glass buttons. It asks to unlock a locked instance, and locks an unlocked one.
+    let installing = controls.install.is_some();
+    let top_actions: Element<'a, Message> = row![
+        lock_button(&instance.id, installing, instance.locked),
+        source,
+        glass_menu(instance, installing)
+    ]
+    .spacing(8)
+    .into();
     let top_right = layer(
-        row![source, glass_menu(instance, controls.install.is_some())].spacing(8).into(),
+        top_actions,
         alignment::Horizontal::Right,
         alignment::Vertical::Top,
         Padding::new(0.0).right(24.0).top(16.0),
@@ -337,10 +346,32 @@ fn glass_button(markup: &'static str, message: Message) -> Element<'static, Mess
     )
 }
 
+/// The padlock on the masthead, in its glass frame. A locked instance shows a closed padlock, and pressing it asks to unlock
+/// the instance. An unlocked instance shows an open one, and pressing it locks the instance at once. It is dimmed while the
+/// instance installs, since there is no lock to change until the install has made it.
+fn lock_button(id: &str, installing: bool, locked: bool) -> Element<'static, Message> {
+    let icon = if locked { Icon::lucide().lock() } else { Icon::lucide().lock_open() };
+    let button = IconButton::new(icon)
+        .size(36)
+        .radius(12.0)
+        .icon_size(14.0)
+        .style(glass_style())
+        .disabled(installing);
+    if installing {
+        return glass(button);
+    }
+    let (message, text) = if locked {
+        (Message::Unlock(id.to_string()), lang::t("instance.lock.hint"))
+    } else {
+        (Message::Lock(id.to_string()), lang::t("instance.lock.lock_hint"))
+    };
+    glass(hint(button.on_press(message), text))
+}
+
 /// The ⋯ menu in the glass frame: the instance's rows. Reveal is listed only for an instance from an
 /// external source, since the folder button reveals the rest.
 fn glass_menu(instance: &Instance, installing: bool) -> Element<'static, Message> {
-    let menu = instance_menu::menu(installing, instance.source_url.is_some());
+    let menu = instance_menu::menu(installing, instance.source_url.is_some(), instance.locked);
     let actions = menu.actions;
     glass(
         Dropdown::new(Icon::lucide().ellipsis_vertical())

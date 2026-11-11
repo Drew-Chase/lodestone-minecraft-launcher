@@ -11,6 +11,7 @@ fn choice(id: &str, mc_version: &str) -> InstanceChoice {
         name: format!("Instance {id}"),
         loader: Loader::Fabric,
         mc_version: mc_version.to_string(),
+        locked: false,
     }
 }
 

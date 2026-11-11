@@ -56,6 +56,8 @@ pub struct Dialog {
     pub(super) minecraft: String,
     pub(super) loader: String,
     pub(super) loader_version: Option<String>,
+    /// Whether the instance is locked to its modpack, which a Lodestone package keeps.
+    pub(super) locked: bool,
     pub(super) format: Format,
     pub(super) name: String,
     pub(super) version: String,
@@ -76,6 +78,7 @@ impl Dialog {
             minecraft: instance.mc_version.clone(),
             loader: instance.loader.to_db().to_string(),
             loader_version: instance.loader_version.clone(),
+            locked: instance.locked,
             format: Format::Mrpack,
             name: instance.name.clone(),
             version: "1.0.0".to_string(),
@@ -100,6 +103,7 @@ impl Dialog {
             minecraft: self.minecraft.clone(),
             loader: self.loader.clone(),
             loader_version: self.loader_version.clone(),
+            locked: self.locked,
         }
     }
 

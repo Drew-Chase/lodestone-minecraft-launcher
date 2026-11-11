@@ -83,7 +83,7 @@ impl Database {
             "SELECT id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
              last_played_at, installed_at, pinned, state, biome, art_seed, art_path, \
              icon_background, icon_symbol, icon_path, directory_name, java_component, version_id, \
-             source_url, source_platform, source_project_id, source_version, source_version_id, settings FROM instances",
+             source_url, source_platform, source_project_id, source_version, source_version_id, settings, locked FROM instances",
         )
         .fetch_all(&self.pool)
         .await
@@ -123,6 +123,7 @@ impl Database {
                     source_version: row.get("source_version"),
                     source_version_id: row.get("source_version_id"),
                     settings: settings_of(row.get("settings")),
+                    locked: row.get::<i64, _>("locked") != 0,
                 }
             })
             .collect())
@@ -142,7 +143,7 @@ impl Database {
             .map(|path| relative_to(path, folder).to_string_lossy().into_owned());
         sqlx::query(
             "UPDATE instances SET name = ?, mc_version = ?, loader_version = ?, version_id = ?, biome = ?, art_seed = ?, \
-             art_path = ?, icon_background = ?, icon_symbol = ?, icon_path = ?, settings = ? WHERE id = ?",
+             art_path = ?, icon_background = ?, icon_symbol = ?, icon_path = ?, settings = ?, locked = ? WHERE id = ?",
         )
         .bind(&instance.name)
         .bind(&instance.mc_version)
@@ -155,6 +156,7 @@ impl Database {
         .bind(icon_symbol)
         .bind(icon_path)
         .bind(settings_json(&instance.settings))
+        .bind(instance.locked as i64)
         .bind(&instance.id)
         .execute(&self.pool)
         .await
@@ -178,8 +180,8 @@ impl Database {
              (id, name, mc_version, loader, loader_version, playtime_seconds, mod_count, \
               last_played_at, installed_at, pinned, state, biome, art_seed, art_path, \
               icon_background, icon_symbol, icon_path, directory_name, java_component, version_id, \
-              source_url, source_platform, source_project_id, source_version, source_version_id, settings) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              source_url, source_platform, source_project_id, source_version, source_version_id, settings, locked) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&instance.id)
         .bind(&instance.name)
@@ -207,6 +209,7 @@ impl Database {
         .bind(&instance.source_version)
         .bind(&instance.source_version_id)
         .bind(settings_json(&instance.settings))
+        .bind(instance.locked as i64)
         .execute(&mut *transaction)
         .await
         .map_err(|error| error.to_string())?;

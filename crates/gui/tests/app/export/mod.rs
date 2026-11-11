@@ -48,7 +48,18 @@ fn metadata() -> Metadata {
         minecraft: "1.21.1".to_string(),
         loader: "fabric".to_string(),
         loader_version: Some("0.16.10".to_string()),
+        locked: false,
     }
+}
+
+#[test]
+fn the_dialog_writes_the_instance_lock_into_its_package() {
+    let folder = std::path::PathBuf::from("instances/pack");
+    let mut locked = crate::app::pages::library::instance::fixture("pack", "Pack", crate::app::pages::library::instance::Loader::Fabric);
+    locked.locked = true;
+    assert!(crate::app::export::dialog::Dialog::new(&locked, folder.clone()).metadata().locked);
+    let open = crate::app::pages::library::instance::fixture("open", "Open", crate::app::pages::library::instance::Loader::Fabric);
+    assert!(!crate::app::export::dialog::Dialog::new(&open, folder).metadata().locked);
 }
 
 #[test]

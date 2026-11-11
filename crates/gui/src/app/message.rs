@@ -136,6 +136,11 @@ pub enum LodestoneAppMessage {
     Datapacks(crate::app::world_datapacks::Message),
     /// What the platforms and the disk answered for the Mods tab.
     ModActions(mod_actions::Message),
+    /// The question about unlocking an instance was answered. The root unlocks the instance `id` when the answer is yes.
+    UnlockAnswered {
+        id: String,
+        confirmed: bool,
+    },
     /// The delete alert was answered for `instance`.
     InstanceDeleteAnswered {
         instance: String,

@@ -106,6 +106,16 @@ pub struct InstallRequest {
     pub modpack: Option<modpack::Payload>,
     /// The launch overrides the instance starts with. An empty set inherits every global default.
     pub settings: InstanceSettings,
+    /// Whether the instance is locked to its modpack once installed. Only a modpack installed from Discover sets it.
+    pub locked: bool,
+}
+
+impl InstallRequest {
+    /// The request with its instance locked to the modpack it installs. Discover's modpack installs are locked; an import is not.
+    pub(crate) fn into_locked(mut self) -> Self {
+        self.locked = true;
+        self
+    }
 }
 
 /// The stages an install goes through, in order.
@@ -509,6 +519,7 @@ async fn finish(
         source_version: request.source_version.clone(),
         source_version_id: request.source_version_id.clone(),
         settings: request.settings.clone(),
+        locked: request.locked,
     };
     // The mods the modpack names are recorded against the new instance, in the same transaction as its row.
     let sources: Vec<ModSource> = request.modpack.as_ref().map_or_else(Vec::new, |payload| {

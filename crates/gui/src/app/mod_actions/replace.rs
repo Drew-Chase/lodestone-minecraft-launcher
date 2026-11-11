@@ -6,6 +6,9 @@ impl LodestoneLauncher {
     /// Installs `release` in place of the mod `file_name`. Waits while a game runs on the instance, since it may have the
     /// jar open.
     pub(super) fn replace_mod(&mut self, file_name: String, release: ContentVersion) -> Task<LodestoneAppMessage> {
+        if self.shown_locked() {
+            return Task::none();
+        }
         let Some(context) = self.mods_context() else {
             return Task::none();
         };
@@ -89,6 +92,9 @@ impl LodestoneLauncher {
 
     /// Opens the switch dialog for a mod, and lists the releases of its project that fit the instance.
     pub(super) fn open_switch(&mut self, file_name: String) -> Task<LodestoneAppMessage> {
+        if self.shown_locked() {
+            return Task::none();
+        }
         let Some(context) = self.mods_context() else {
             return Task::none();
         };

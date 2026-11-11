@@ -35,6 +35,7 @@ fn request(name: &str) -> InstallRequest {
         source_version_id: None,
         modpack: None,
         settings: Default::default(),
+        locked: false,
     }
 }
 

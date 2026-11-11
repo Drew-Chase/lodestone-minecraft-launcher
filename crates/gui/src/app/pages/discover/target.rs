@@ -27,6 +27,9 @@ pub struct InstanceChoice {
     pub loader: Loader,
     /// The Minecraft version the instance runs.
     pub mc_version: String,
+    /// Whether the instance is locked to its modpack, which keeps mods from being added to or switched in it until it is
+    /// unlocked.
+    pub locked: bool,
 }
 
 impl InstanceChoice {
@@ -37,12 +40,19 @@ impl InstanceChoice {
             name: instance.name.clone(),
             loader: instance.loader,
             mc_version: instance.mc_version.clone(),
+            locked: instance.locked,
         }
     }
 
     /// Whether mods can run in the instance at all. A vanilla instance has no loader for them.
     pub fn takes_mods(&self) -> bool {
         self.loader != Loader::Vanilla
+    }
+
+    /// Whether mods can be added to the instance, or one it has switched to another release: it takes mods, and it is not
+    /// locked to its modpack.
+    pub fn accepts_mods(&self) -> bool {
+        self.takes_mods() && !self.locked
     }
 
     /// The loader the search filters by, named as the platforms name loaders. A vanilla instance filters by none.
@@ -123,7 +133,7 @@ impl Discover {
     /// Starts adding a mod, or one of its releases, to the target instance. Nothing starts without a target
     /// instance that takes mods, or when the mod is already in that instance or being added.
     pub fn add_mod(&mut self, project: Project) -> Vec<Effect> {
-        let Some(instance) = self.target().filter(|choice| choice.takes_mods()).cloned() else {
+        let Some(instance) = self.target().filter(|choice| choice.accepts_mods()).cloned() else {
             return Vec::new();
         };
         let key = (instance.id.clone(), project.source.key().to_string(), project.project_id.clone());
@@ -137,7 +147,7 @@ impl Discover {
     /// Starts swapping the mod's installed jar for the release `project` names, when the target instance has the mod at
     /// another release. Nothing starts when the release is installed already, or a change to the mod is in flight.
     pub fn replace_mod(&mut self, project: Project) -> Vec<Effect> {
-        let Some(instance) = self.target().filter(|choice| choice.takes_mods()).cloned() else {
+        let Some(instance) = self.target().filter(|choice| choice.accepts_mods()).cloned() else {
             return Vec::new();
         };
         let key = (instance.id.clone(), project.source.key().to_string(), project.project_id.clone());

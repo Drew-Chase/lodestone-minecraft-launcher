@@ -6,6 +6,9 @@ impl LodestoneLauncher {
     /// Asks before a mod's jar goes to the trash. The answer returns as `DeleteAnswered`. A game running on the instance
     /// may have the jar open, so the delete waits until it stops.
     pub(super) fn ask_mod_delete(&mut self, file_name: String) -> Task<LodestoneAppMessage> {
+        if self.shown_locked() {
+            return Task::none();
+        }
         let Some(context) = self.mods_context() else {
             return Task::none();
         };

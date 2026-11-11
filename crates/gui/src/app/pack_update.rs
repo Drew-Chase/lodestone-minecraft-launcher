@@ -177,8 +177,12 @@ impl LodestoneLauncher {
 
     /// Why the shown instance cannot be updated now, when it cannot: its game is running, or a job for it is still going.
     pub(super) fn versions_busy(&self) -> Option<&'static str> {
-        let id = self.instance_page.instance()?.id.as_str();
-        if self.games.is_active(id) {
+        let instance = self.instance_page.instance()?;
+        let id = instance.id.as_str();
+        // A locked instance is on the release its pack set, so no release is moved to or recorded until it is unlocked.
+        if instance.locked {
+            Some(lang::t("pack_update.busy.locked"))
+        } else if self.games.is_active(id) {
             Some(lang::t("pack_update.busy.playing"))
         } else if self.downloads.job_for_instance(id).is_some() {
             Some(lang::t("pack_update.busy.working"))

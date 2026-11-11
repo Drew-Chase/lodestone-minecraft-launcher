@@ -199,6 +199,10 @@ pub struct Instance {
     pub source_version_id: Option<String>,
     /// The launch settings this instance overrides. Each one it does not override inherits the global default.
     pub settings: InstanceSettings,
+    /// Whether the instance is locked to the modpack it was installed from. A locked instance keeps its mods, its loader,
+    /// its Minecraft version and its modpack release as the pack set them, until the user unlocks it. Only a Discover
+    /// modpack install locks one.
+    pub locked: bool,
 }
 
 impl Instance {
@@ -244,6 +248,7 @@ pub(crate) fn fixture(id: &str, name: &str, loader: Loader) -> Instance {
         directory_name: id.to_string(),
         java_component: None,
         version_id: None,
+        locked: false,
         source_url: None,
         source_platform: None,
         source_project_id: None,

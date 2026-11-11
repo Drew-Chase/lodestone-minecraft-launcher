@@ -110,7 +110,7 @@ impl Library {
                                 .spacing(14),
                             )
                             .on_press(Message::OpenInstance(hero.id.clone())),
-                            hero_actions(&hero.id, playing),
+                            hero_actions(&hero.id, playing, hero.locked),
                         ]
                         .spacing(14)
                         .padding(Padding::new(0.0).left(28).right(28).bottom(28)),
@@ -202,8 +202,8 @@ fn hero_icon_button(icon_markup: &'static str, on_press: Message) -> Element<'st
 }
 
 /// The hero's action row: Resume (or Play), a button that starts another process of the instance while
-/// it plays, the folder and settings buttons, and the instance menu.
-fn hero_actions(instance: &str, playing: bool) -> Element<'static, Message> {
+/// it plays, a padlock while the instance is locked, the folder and settings buttons, and the instance menu.
+fn hero_actions(instance: &str, playing: bool, locked: bool) -> Element<'static, Message> {
     let id = instance.to_owned();
     let resume = TextButton::content(
         row![
@@ -231,19 +231,25 @@ fn hero_actions(instance: &str, playing: bool) -> Element<'static, Message> {
             lang::t("game.new_process"),
         ));
     }
+    if locked {
+        actions = actions.push(hint(
+            hero_icon_button(Icon::lucide().lock(), Message::Unlock(id.clone())),
+            lang::t("instance.lock.hint"),
+        ));
+    }
     actions
         .push(hero_icon_button(Icon::lucide().folder(), Message::RevealInstance(id.clone())))
         .push(hero_icon_button(Icon::lucide().settings(), Message::EditInstance(id.clone())))
-        .push(hero_menu(&id))
+        .push(hero_menu(&id, locked))
         .spacing(10)
         .align_y(alignment::Vertical::Center)
         .into()
 }
 
 /// The hero's ⋯ menu: the card's rows, without Reveal, which the folder button beside it already does.
-fn hero_menu(instance: &str) -> Element<'static, Message> {
+fn hero_menu(instance: &str, locked: bool) -> Element<'static, Message> {
     let id = instance.to_owned();
-    let menu = instance_menu::menu(false, false);
+    let menu = instance_menu::menu(false, false, locked);
     let actions = menu.actions;
     Dropdown::new(Icon::lucide().ellipsis_vertical())
         .items(menu.items)

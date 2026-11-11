@@ -195,6 +195,7 @@ impl Job {
             source_version: request.source_version.clone(),
             source_version_id: request.source_version_id.clone(),
             settings: request.settings.clone(),
+            locked: request.locked,
         })
     }
 

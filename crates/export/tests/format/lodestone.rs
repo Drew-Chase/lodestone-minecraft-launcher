@@ -1,7 +1,7 @@
 use std::sync::atomic::AtomicBool;
 
 use super::*;
-use crate::format::Package;
+use crate::format::{Metadata, Package};
 use crate::progress::Progress;
 use crate::support::{curseforge, entry, metadata, modrinth, put, scratch};
 
@@ -9,7 +9,11 @@ const SODIUM: &str = "https://cdn.modrinth.com/data/AANobbMI/versions/abc/sodium
 
 /// A package of a linked mod, an unlinked mod and a config file, written at `bundle_linked`.
 fn package_bytes(root: &Path, bundle_linked: bool) -> Vec<u8> {
-    let metadata = metadata();
+    package_bytes_of(root, bundle_linked, &metadata())
+}
+
+/// The package of [`package_bytes`], for the instance `metadata` describes.
+fn package_bytes_of(root: &Path, bundle_linked: bool, metadata: &Metadata) -> Vec<u8> {
     let entries = vec![
         entry(
             "config/options.toml",
@@ -34,7 +38,7 @@ fn package_bytes(root: &Path, bundle_linked: bool) -> Vec<u8> {
     let package = Package {
         id: "pack-id".to_string(),
         exported_at: 1_700_000_000,
-        metadata: &metadata,
+        metadata,
         entries: &entries,
         bundle_linked,
     };
@@ -81,6 +85,29 @@ fn an_offline_package_bundles_every_file() {
     let manifest = read_manifest(&package_bytes(&root, true)[..]).expect("reads");
     assert_eq!(manifest.overrides.len(), 4);
     assert!(manifest.files.iter().all(|file| file.bundled));
+}
+
+#[test]
+fn a_locked_instance_is_locked_in_its_package() {
+    let root = scratch("lodestone-locked");
+    let mut locked = metadata();
+    locked.locked = true;
+    let manifest = read_manifest(&package_bytes_of(&root, false, &locked)[..]).expect("reads");
+    assert!(manifest.locked);
+}
+
+#[test]
+fn an_unlocked_instance_is_unlocked_in_its_package() {
+    let root = scratch("lodestone-unlocked");
+    let manifest = read_manifest(&package_bytes(&root, false)[..]).expect("reads");
+    assert!(!manifest.locked);
+}
+
+#[test]
+fn a_package_from_before_the_lock_restores_unlocked() {
+    let older = r#"{"format":1,"id":"older","name":"Older","version":"1.0.0","exportedAt":1,"minecraft":"1.21.1","loader":{"id":"fabric"}}"#;
+    let manifest: Manifest = serde_json::from_str(older).expect("an older manifest parses");
+    assert!(!manifest.locked);
 }
 
 #[test]

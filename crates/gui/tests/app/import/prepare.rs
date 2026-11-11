@@ -52,6 +52,7 @@ fn package_at(path: &Path) {
         minecraft: "1.21.1".to_string(),
         loader: "fabric".to_string(),
         loader_version: Some("0.16.10".to_string()),
+        locked: false,
     };
     let package = Package {
         id: "pack-id".to_string(),

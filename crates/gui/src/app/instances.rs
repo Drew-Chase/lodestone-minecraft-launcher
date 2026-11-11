@@ -147,6 +147,8 @@ impl LodestoneLauncher {
             Some(Action::Export) => self.open_export(id),
             Some(Action::ServerPack) => self.open_server_pack(id),
             Some(Action::Delete) => self.ask_instance_delete(id),
+            Some(Action::Lock) => self.lock_instance(id.to_owned()),
+            Some(Action::Unlock) => self.ask_unlock(id.to_owned()),
             Some(Action::CancelInstall) => match self.downloads.job_for_instance(id) {
                 Some(job) => self.downloads_message(downloads::Message::Cancel(job)),
                 None => Task::none(),
@@ -319,6 +321,11 @@ impl LodestoneLauncher {
         let Some(mut instance) = self.instance_page.instance().cloned() else {
             return Task::none();
         };
+        // A locked instance keeps the Minecraft version and loader its pack set. The Settings tab disables those pickers, and
+        // this refuses the edit should one still arrive.
+        if instance.locked && matches!(edit, Edit::MinecraftVersion(_) | Edit::LoaderBuild(_)) {
+            return Task::none();
+        }
         let folder = self.paths.instance(&instance.directory_name);
         let mut replaced = None;
         let mut tasks = Vec::new();
@@ -384,7 +391,7 @@ impl LodestoneLauncher {
 
     /// Saves an instance: the library copy and the page take it at once, and the database write runs behind them.
     /// Writes for one instance are kept in order (see [`KeyedWriter`]).
-    fn save_instance(&mut self, instance: Instance, replaced: Option<PathBuf>) -> Task<LodestoneAppMessage> {
+    pub(super) fn save_instance(&mut self, instance: Instance, replaced: Option<PathBuf>) -> Task<LodestoneAppMessage> {
         let folder = self.paths.instance(&instance.directory_name);
         let id = instance.id.clone();
         self.library.add_instance(instance.clone());

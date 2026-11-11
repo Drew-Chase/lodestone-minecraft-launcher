@@ -18,6 +18,7 @@ fn manifest(files: Vec<FileRecord>) -> Manifest {
         },
         files,
         overrides: Vec::new(),
+        locked: false,
     }
 }
 
@@ -138,4 +139,15 @@ fn the_instance_takes_the_given_id_and_the_package_versions() {
     assert_eq!(install.loader, Loader::Fabric);
     assert_eq!(install.loader_version.as_deref(), Some("0.16.10"));
     assert!(!install.directory_name.is_empty());
+}
+
+#[test]
+fn a_locked_package_installs_a_locked_instance_and_an_older_one_an_unlocked_instance() {
+    let root = std::env::temp_dir().join(format!("lodestone-package-locked-{}", std::process::id()));
+    let paths = LauncherPaths::new(&root);
+    let mut locked = manifest(Vec::new());
+    locked.locked = true;
+    assert!(request(&paths, &locked, payload(&locked, None), locked.id.clone(), &[]).locked);
+    let unlocked = manifest(Vec::new());
+    assert!(!request(&paths, &unlocked, payload(&unlocked, None), unlocked.id.clone(), &[]).locked);
 }

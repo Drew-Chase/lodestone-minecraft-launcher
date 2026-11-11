@@ -32,8 +32,9 @@ pub struct Menu {
     pub actions: Vec<Option<Action>>,
 }
 
-/// The menu for `row`. A mod with an action in flight has none, since its file is being replaced.
-pub fn menu(row: &Row, busy: bool) -> Menu {
+/// The menu for `row`. A mod with an action in flight has none, since its file is being replaced. A locked instance's menu
+/// leaves out the rows that change a mod: Update, Switch and Delete.
+pub fn menu(row: &Row, busy: bool, locked: bool) -> Menu {
     if busy {
         return Menu {
             items: Vec::new(),
@@ -41,11 +42,13 @@ pub fn menu(row: &Row, busy: bool) -> Menu {
         };
     }
     let mut actions = Vec::new();
-    if row.update.is_some() {
+    if row.update.is_some() && !locked {
         actions.push(Some(Action::Update));
     }
     if row.source.is_some() {
-        actions.push(Some(Action::Switch));
+        if !locked {
+            actions.push(Some(Action::Switch));
+        }
         actions.push(Some(Action::Dependencies));
     }
     if !actions.is_empty() {
@@ -53,8 +56,10 @@ pub fn menu(row: &Row, busy: bool) -> Menu {
     }
     actions.push(Some(Action::Associate));
     actions.push(Some(Action::Reveal));
-    actions.push(None);
-    actions.push(Some(Action::Delete));
+    if !locked {
+        actions.push(None);
+        actions.push(Some(Action::Delete));
+    }
     let items = actions
         .iter()
         .map(|action| match action {

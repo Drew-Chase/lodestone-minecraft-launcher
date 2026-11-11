@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use iced::widget::{Space, Text, column, row};
+use iced::widget::{Space, Text, column, container, row};
 use iced::{Element, Fill, Padding, alignment};
 use lodestone_loaders::LoaderVersion;
 
@@ -38,9 +38,13 @@ pub fn game_version<'a>(
     let minecraft = Select::new(ids.clone(), selected)
         .on_select(move |index| Message::Edit(Edit::MinecraftVersion(ids[index].clone())))
         .searchable()
+        .disabled(instance.locked)
         .width(180);
 
     let mut rows = vec![setting(lang::t("instance.settings.minecraft"), minecraft)];
+    if instance.locked {
+        rows.insert(0, locked_row());
+    }
 
     if instance.loader == Loader::Vanilla {
         let (ink, fill) = loader_palette(instance.loader);
@@ -73,8 +77,21 @@ fn loader_control<'a>(instance: &'a Instance, builds: Option<&'a [LoaderVersion]
         .placeholder(lang::t("instance.settings.loader_loading"))
         .on_select(move |index| Message::Edit(Edit::LoaderBuild(picks[index].clone())))
         .searchable()
+        .disabled(instance.locked)
         .width(180);
     row![badge, build].spacing(10).align_y(alignment::Vertical::Center).into()
+}
+
+/// The row that says why the versions cannot change: the instance is locked to its modpack.
+fn locked_row<'a>() -> Element<'a, Message> {
+    container(
+        Text::new(lang::t("instance.settings.locked"))
+            .size(12)
+            .font(fonts::Inter::REGULAR)
+            .color(color::text_muted()),
+    )
+    .padding(Padding::new(0.0).top(14).bottom(14))
+    .into()
 }
 
 /// A row that names a list's error.

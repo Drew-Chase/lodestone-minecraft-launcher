@@ -47,6 +47,8 @@ pub struct Metadata {
     pub loader: String,
     /// The loader's own version, for a modded instance.
     pub loader_version: Option<String>,
+    /// Whether the instance is locked to its modpack. A Lodestone package keeps the lock, so a restored copy stays locked.
+    pub locked: bool,
 }
 
 /// What a Lodestone package or a portable launcher holds: the identity of the package and the files it takes.

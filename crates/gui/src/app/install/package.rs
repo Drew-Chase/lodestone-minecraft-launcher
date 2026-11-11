@@ -138,6 +138,7 @@ pub(crate) fn request(paths: &LauncherPaths, manifest: &Manifest, payload: Paylo
         source_version_id: None,
         modpack: Some(payload),
         settings: Default::default(),
+        locked: manifest.locked,
     }
 }
 

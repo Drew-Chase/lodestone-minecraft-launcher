@@ -88,7 +88,7 @@ fn row_key(file_name: &str) -> u64 {
 fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
     let entry = &state.rows[index];
     let file = &entry.file;
-    let Menu { items, actions } = menu::menu(entry, state.busy.contains(&file.file_name));
+    let Menu { items, actions } = menu::menu(entry, state.busy.contains(&file.file_name), state.locked);
     let busy = state.busy.contains(&file.file_name);
     let (ink, fill) = if file.enabled {
         (color::primary(), color::primary_tint())
@@ -134,8 +134,9 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
     ]
     .spacing(4);
 
-    // A mod with a newer release shows a button that installs it, the same action as the menu's Update row.
-    let update = entry.update.as_ref().map(|release| {
+    // A mod with a newer release shows a button that installs it, the same action as the menu's Update row. A locked
+    // instance shows none.
+    let update = entry.update.as_ref().filter(|_| !state.locked).map(|release| {
         TextButton::labeled_icon(
             Icon::lucide().arrow_up(),
             lang::t_with("instance.mods.menu.update", &[("version", release.version_number.as_str())]),
@@ -149,10 +150,12 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
         })
     });
     let toggle_name = file.file_name.clone();
-    let switch = Toggle::new(file.enabled).disabled(busy).on_toggle_with(move |enabled| Message::Toggle {
-        file_name: toggle_name.clone(),
-        enabled,
-    });
+    let switch = Toggle::new(file.enabled)
+        .disabled(busy || state.locked)
+        .on_toggle_with(move |enabled| Message::Toggle {
+            file_name: toggle_name.clone(),
+            enabled,
+        });
     let more_name = file.file_name.clone();
     let more_actions = actions.clone();
     let more = Dropdown::new(Icon::lucide().ellipsis_vertical())

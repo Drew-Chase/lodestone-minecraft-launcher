@@ -473,3 +473,27 @@ async fn only_the_newest_imports_are_kept() {
     assert_eq!(kept[0].name, "pack 24");
     assert_eq!(kept[19].name, "pack 05");
 }
+
+#[tokio::test]
+async fn a_locked_instance_reads_back_locked_and_an_unlock_is_saved() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    let mut instance = fixture("pack-locked", "Pack", Loader::Fabric);
+    instance.locked = true;
+    db.insert_instance(&instance, &[]).await.expect("insert succeeds");
+    assert!(db.instances().await.expect("instances load")[0].locked);
+
+    instance.locked = false;
+    db.save_instance(&instance, std::path::Path::new("instances/pack-locked"))
+        .await
+        .expect("save succeeds");
+    assert!(!db.instances().await.expect("instances load")[0].locked);
+}
+
+#[tokio::test]
+async fn an_instance_is_unlocked_unless_its_install_locked_it() {
+    let db = Database::connect_in_memory().await.expect("in-memory db opens");
+    db.insert_instance(&fixture("plain", "Plain", Loader::Fabric), &[])
+        .await
+        .expect("insert succeeds");
+    assert!(!db.instances().await.expect("instances load")[0].locked);
+}

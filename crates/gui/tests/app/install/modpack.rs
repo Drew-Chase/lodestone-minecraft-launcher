@@ -116,6 +116,7 @@ fn a_lodestone_package_lays_its_bundled_files_over_the_instance() {
         minecraft: "1.20.1".to_string(),
         loader: "fabric".to_string(),
         loader_version: None,
+        locked: false,
     };
     let package = Package {
         id: "pack-id".to_string(),

@@ -342,6 +342,7 @@ fn request(paths: &LauncherPaths, meta: &Meta, directory_name: String) -> Instal
             packs: Vec::new(),
         }),
         settings: Default::default(),
+        locked: false,
     }
 }
 

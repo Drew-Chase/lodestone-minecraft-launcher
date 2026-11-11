@@ -46,6 +46,10 @@ pub struct Manifest {
     /// The paths inside `overrides/`, for the bundled files. Empty for a plain zip, whose files sit at their paths.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub overrides: Vec<String>,
+    /// Whether the instance was locked to its modpack when the package was written. A package from before the lock has none,
+    /// so it restores unlocked.
+    #[serde(default)]
+    pub locked: bool,
 }
 
 /// The loader the instance runs on.
@@ -104,6 +108,7 @@ pub fn manifest(package: &Package<'_>, bundle_linked: bool) -> Manifest {
         },
         files,
         overrides,
+        locked: package.metadata.locked,
     }
 }
 

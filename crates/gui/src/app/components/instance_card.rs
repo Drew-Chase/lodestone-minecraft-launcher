@@ -9,8 +9,10 @@ use std::rc::Rc;
 
 use crate::app::components::anim;
 use crate::app::components::context_menu::ContextMenu;
+use crate::app::components::hint::hint;
 use crate::app::components::hover_scale::HoverScale;
 use crate::app::components::hover_track::HoverTrack;
+use crate::app::components::icon_button::ghost_button_style;
 use crate::app::components::instance_art;
 use crate::app::components::instance_icon;
 use crate::app::lang;
@@ -27,7 +29,7 @@ use iced_color_extension::rgb;
 
 use crate::app::components::badge::{Badge, loader_palette};
 use crate::app::components::table::{self, Column};
-use crate::app::components::{Dropdown, ProgressBar, PulseDot, TextButton};
+use crate::app::components::{Dropdown, IconButton, ProgressBar, PulseDot, TextButton};
 use crate::app::downloads::{JobState, Pending};
 
 /// The grid card's art box height. The art sits one pixel inside the card's border, so its top edge is one
@@ -54,6 +56,8 @@ pub const COMPACT_ROW_HEIGHT: f32 = 64.0;
 pub const THUMB_SIZE: f32 = 44.0;
 /// One table row's fixed height (the header is not virtualized).
 pub const TABLE_ROW_HEIGHT: f32 = 52.0;
+/// The side of the padlock on a compact row or a table row, in pixels.
+const LIST_LOCK_SIZE: f32 = 28.0;
 
 /// What one instance's card or row sends: the Play button, a press on its body, the pointer
 /// entering and leaving a grid card, and the rows of its context menu.
@@ -62,6 +66,8 @@ pub struct InstanceMessages<Message> {
     pub play: Message,
     /// A press anywhere on the body, except the buttons.
     pub open: Message,
+    /// The padlock of a locked instance, which asks to unlock it.
+    pub unlock: Message,
     /// The pointer entered a grid card. Compact and Table rows do not hover.
     pub enter: Message,
     /// The pointer left a grid card.
@@ -254,6 +260,21 @@ fn menu_button<Message: Clone + 'static>(
         .into()
 }
 
+/// The padlock of a locked instance: a button that asks to unlock it. It is dimmed while the instance installs, since there is
+/// nothing to unlock until the install has made the instance.
+fn padlock<Message: Clone + 'static>(on_press: Message, installing: bool, size: f32) -> Element<'static, Message> {
+    let button = IconButton::new(Icon::lucide().lock())
+        .size(size)
+        .radius(8.0)
+        .icon_size(14.0)
+        .style(ghost_button_style())
+        .disabled(installing);
+    if installing {
+        return button.into();
+    }
+    hint(button.on_press(on_press), lang::t("instance.lock.hint"))
+}
+
 /// Wraps a card's or row's body in its context menu. The menu lists the instance's rows, or only Cancel
 /// install while the install has not ended, and picking a row sends `on_select`'s message.
 fn with_menu<Message: Clone + 'static>(
@@ -331,8 +352,13 @@ pub fn instance_card<Message: Clone + 'static>(
     install: Option<&Pending>,
     banner: Option<Handle>,
 ) -> Element<'static, Message> {
-    let menu = instance_menu::menu(install.is_some(), true);
+    let menu = instance_menu::menu(install.is_some(), true, instance.locked);
     let kebab = menu_button(&menu, Rc::clone(&messages.menu));
+    let lock: Element<'static, Message> = if instance.locked {
+        padlock(messages.unlock.clone(), install.is_some(), KEBAB_SIZE)
+    } else {
+        Space::new().into()
+    };
     let status: Element<'static, Message> = if instance.state == InstanceState::Playing {
         status_chip(instance.state)
     } else {
@@ -342,7 +368,7 @@ pub fn instance_card<Message: Clone + 'static>(
         card_art(instance, install, banner),
         art_shade(),
         column![
-            row![status, Space::new().width(Fill), kebab].align_y(alignment::Vertical::Top),
+            row![status, Space::new().width(Fill), lock, kebab].align_y(alignment::Vertical::Top),
             Space::new().height(Fill),
             row![
                 row![
@@ -396,6 +422,12 @@ pub fn compact_row<Message: Clone + 'static>(
     install: Option<&Pending>,
     thumb: Option<Handle>,
 ) -> Element<'static, Message> {
+    // A locked instance wears its padlock beside the loader chip, so the trailing group is built with it when it is locked.
+    let mut trailing = row![].spacing(12).align_y(alignment::Vertical::Center);
+    if instance.locked {
+        trailing = trailing.push(padlock(messages.unlock.clone(), install.is_some(), LIST_LOCK_SIZE));
+    }
+    let trailing = trailing.push(loader_chip(instance.loader)).push(play_slot(messages.play, install));
     let body = container(
         row![
             container(instance_art::thumbnail(instance, thumb)).width(THUMB_SIZE).height(THUMB_SIZE),
@@ -408,8 +440,7 @@ pub fn compact_row<Message: Clone + 'static>(
             ]
             .spacing(2),
             Space::new().width(Fill),
-            loader_chip(instance.loader),
-            play_slot(messages.play, install),
+            trailing,
         ]
         .spacing(12)
         .align_y(alignment::Vertical::Center)
@@ -424,7 +455,7 @@ pub fn compact_row<Message: Clone + 'static>(
     with_menu(
         mouse_area(body).on_press(messages.open).interaction(mouse::Interaction::Pointer),
         instance,
-        instance_menu::menu(install.is_some(), true),
+        instance_menu::menu(install.is_some(), true, instance.locked),
         messages.menu,
     )
 }
@@ -539,23 +570,29 @@ pub fn table_row<Message: Clone + 'static>(
     shown: TableColumns,
 ) -> Element<'static, Message> {
     // The name keeps one line and is clipped to its cell, so a long name never runs into the columns beside it.
-    let name = container(
-        column![
-            Text::new(instance.name.clone())
-                .size(15)
-                .font(fonts::Inter::EXTRA_BOLD)
-                .color(color::text_headline())
-                .wrapping(iced::widget::text::Wrapping::None),
-            Text::new(name_detail(instance, shown))
-                .size(10)
-                .font(fonts::JetBrainsMono::REGULAR)
-                .color(color::text_placeholder())
-                .wrapping(iced::widget::text::Wrapping::None),
-        ]
-        .spacing(2),
-    )
-    .width(Fill)
-    .clip(true);
+    let details = column![
+        Text::new(instance.name.clone())
+            .size(15)
+            .font(fonts::Inter::EXTRA_BOLD)
+            .color(color::text_headline())
+            .wrapping(iced::widget::text::Wrapping::None),
+        Text::new(name_detail(instance, shown))
+            .size(10)
+            .font(fonts::JetBrainsMono::REGULAR)
+            .color(color::text_placeholder())
+            .wrapping(iced::widget::text::Wrapping::None),
+    ]
+    .spacing(2);
+    // A locked instance wears its padlock before the name.
+    let text: Element<'static, Message> = if instance.locked {
+        row![padlock(messages.unlock.clone(), install.is_some(), LIST_LOCK_SIZE), details]
+            .spacing(10)
+            .align_y(alignment::Vertical::Center)
+            .into()
+    } else {
+        details.into()
+    };
+    let name = container(text).width(Fill).clip(true);
     let mut cells: Vec<Element<'static, Message>> = vec![name.into()];
     if shown.version {
         cells.push(
@@ -603,7 +640,7 @@ pub fn table_row<Message: Clone + 'static>(
     with_menu(
         mouse_area(body).on_press(messages.open).interaction(mouse::Interaction::Pointer),
         instance,
-        instance_menu::menu(install.is_some(), true),
+        instance_menu::menu(install.is_some(), true, instance.locked),
         messages.menu,
     )
 }

@@ -91,6 +91,8 @@ pub struct State {
     icons_asked: HashSet<String>,
     /// The file name of the row under the pointer, if any. The row lifts while it is set.
     hovered: Option<String>,
+    /// Whether the instance is locked to its modpack. A locked instance offers no action that changes a mod.
+    locked: bool,
 }
 
 /// The key of the platform project a record names, by platform and project id.
@@ -240,6 +242,11 @@ impl State {
     /// Closes the dialog on top of the tab, if one is open.
     pub fn close_dialog(&mut self) {
         self.dialog = None;
+    }
+
+    /// Records whether the instance is locked to its modpack. A locked Mods tab adds, updates, switches and removes no mod.
+    pub fn set_locked(&mut self, locked: bool) {
+        self.locked = locked;
     }
 
     /// Whether the folder holds any mod.
@@ -398,25 +405,28 @@ impl State {
 
     fn toolbar(&self, takes_mods: bool) -> Element<'_, Message> {
         let add = TextButton::labeled_icon(Icon::lucide().plus(), lang::t("instance.mods.add"), Variant::Primary);
-        let add = if takes_mods { add.on_press(Message::Add) } else { add.disabled(true) };
-        let add_hint = if takes_mods {
-            lang::t("instance.mods.add_hint")
-        } else {
+        // A locked instance takes no new mods until it is unlocked, so Add waits as it does for a vanilla instance.
+        let can_add = takes_mods && !self.locked;
+        let add = if can_add { add.on_press(Message::Add) } else { add.disabled(true) };
+        let add_hint = if !takes_mods {
             lang::t("instance.mods.add_vanilla")
+        } else if self.locked {
+            lang::t("instance.mods.add_locked")
+        } else {
+            lang::t("instance.mods.add_hint")
         };
-        iced::widget::row![
-            text_input(lang::t("instance.mods.filter_placeholder"), &self.filter.query)
-                .on_input(Message::Query)
-                .style(input::style)
-                .padding(Padding::new(0.0).left(14).right(14).top(10).bottom(10))
-                .size(13)
-                .width(Fill),
-            updates_chip(self.filter.updates_only, self.update_count()),
-            hint(add, add_hint),
-        ]
-        .spacing(10)
-        .align_y(alignment::Vertical::Center)
-        .into()
+        let filter = text_input(lang::t("instance.mods.filter_placeholder"), &self.filter.query)
+            .on_input(Message::Query)
+            .style(input::style)
+            .padding(Padding::new(0.0).left(14).right(14).top(10).bottom(10))
+            .size(13)
+            .width(Fill);
+        let mut bar = iced::widget::row![filter].spacing(10).align_y(alignment::Vertical::Center);
+        // A locked instance cannot install the newer releases the chip counts, so the chip is left out while it is locked.
+        if !self.locked {
+            bar = bar.push(updates_chip(self.filter.updates_only, self.update_count()));
+        }
+        bar.push(hint(add, add_hint)).into()
     }
 }
 

@@ -18,6 +18,7 @@ mod lang;
 mod launch;
 pub mod launch_settings;
 mod local_data;
+mod lock;
 mod message;
 mod mod_actions;
 mod mod_sources;

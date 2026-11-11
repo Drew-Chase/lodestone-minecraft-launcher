@@ -144,16 +144,20 @@ pub(super) enum ModState {
 /// The state of a release of a mod, given what the target instance has of the mod. `version` is the release the action
 /// takes, or `None` when it takes the newest that fits.
 pub(super) fn mod_state(status: &ProjectStatus, version: Option<&str>) -> ModState {
-    if !status.target.as_ref().is_some_and(|target| target.takes_mods()) {
-        ModState::Unavailable
-    } else if status.added_version.is_some() && status.added_version.as_deref() == version {
+    let Some(target) = status.target.as_ref().filter(|target| target.takes_mods()) else {
+        return ModState::Unavailable;
+    };
+    if status.added_version.is_some() && status.added_version.as_deref() == version {
         ModState::Installed
     } else if status.adding {
         ModState::Adding
-    } else if status.added && version.is_some() {
-        ModState::Switch
-    } else if status.added {
+    } else if status.added && version.is_none() {
         ModState::Added
+    } else if !target.accepts_mods() {
+        // A locked instance keeps the mods its pack set, so a mod it lacks cannot be added and one it has cannot be switched.
+        ModState::Unavailable
+    } else if status.added {
+        ModState::Switch
     } else {
         ModState::Add
     }

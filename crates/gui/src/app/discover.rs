@@ -559,7 +559,7 @@ impl LodestoneLauncher {
         })
     }
 
-    /// Downloads a modpack and prepares its install. The answer comes back as `Prepared`.
+    /// Downloads a modpack and prepares its install, locked to its pack. The answer comes back as `Prepared`.
     fn install_task(&self, project: Project) -> Task<LodestoneAppMessage> {
         let platform = project.source.key().to_string();
         let project_id = project.project_id.clone();
@@ -571,7 +571,7 @@ impl LodestoneLauncher {
             .collect();
         let paths = self.paths.clone();
         Task::perform(
-            async move { prepare_modpack(project, paths, taken).await.map(|(request, _)| request) },
+            async move { prepare_modpack(project, paths, taken).await.map(|(request, _)| request.into_locked()) },
             move |result| {
                 LodestoneAppMessage::Discover(Message::Prepared {
                     platform,

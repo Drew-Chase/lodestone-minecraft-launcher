@@ -422,6 +422,7 @@ impl NewInstance {
         Ok(InstallRequest {
             paths: self.paths.clone(),
             settings,
+            locked: false,
             name: name.to_string(),
             directory_name,
             mc_version: mc,

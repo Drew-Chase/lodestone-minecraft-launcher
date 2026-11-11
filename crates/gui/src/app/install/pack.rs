@@ -103,6 +103,7 @@ pub(crate) async fn request(
         source_version_id: release.map(|release| release.id),
         modpack: Some(payload),
         settings: Default::default(),
+        locked: false,
     })
 }
 

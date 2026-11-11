@@ -50,6 +50,8 @@ pub enum Message {
     EditInstance(String),
     /// Reveal an instance's folder in the file manager — the root does the IO.
     RevealInstance(String),
+    /// The padlock of a locked instance was pressed. The root asks before it unlocks the instance.
+    Unlock(String),
     /// A row of an instance's menu was picked. A separator sends `None`.
     InstanceMenu {
         instance: String,
@@ -244,7 +246,7 @@ impl Library {
             Message::Play(_) | Message::LaunchNew(_) => {}
             Message::OpenInstance(id) => info!("Open instance {id} requested"),
             // The root routes these: they need the database, the alerts or the instance page.
-            Message::EditInstance(_) | Message::RevealInstance(_) | Message::InstanceMenu { .. } => {}
+            Message::EditInstance(_) | Message::RevealInstance(_) | Message::Unlock(_) | Message::InstanceMenu { .. } => {}
             // The root handles the reload, the update and the New Instance messages: they need the database or the updater.
             Message::Reload
             | Message::OpenNewInstance

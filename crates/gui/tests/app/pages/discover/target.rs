@@ -8,6 +8,7 @@ fn choice(id: &str, loader: Loader, mc_version: &str) -> InstanceChoice {
         name: format!("Instance {id}"),
         loader,
         mc_version: mc_version.to_string(),
+        locked: false,
     }
 }
 
@@ -252,6 +253,16 @@ fn a_replaced_jar_is_recorded_at_its_new_release_in_the_cache() {
         .expect("the project is still added");
     assert_eq!(cached.version_id, "v2");
     assert_eq!(cached.file_name, "sodium-2.jar");
+}
+
+#[test]
+fn a_locked_instance_takes_no_mods_though_it_keeps_its_loader() {
+    let mut locked = choice("a", Loader::Fabric, "1.21.1");
+    locked.locked = true;
+    assert!(locked.takes_mods());
+    assert!(!locked.accepts_mods());
+    assert!(choice("b", Loader::Fabric, "1.21.1").accepts_mods());
+    assert!(!choice("c", Loader::Vanilla, "1.21.1").accepts_mods());
 }
 
 #[test]

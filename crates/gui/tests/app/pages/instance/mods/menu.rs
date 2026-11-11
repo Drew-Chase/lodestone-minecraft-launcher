@@ -45,7 +45,7 @@ fn row(update: bool, source: bool) -> Row {
 #[test]
 fn an_unassociated_mod_offers_only_associating_and_deleting() {
     assert_eq!(
-        menu(&row(false, false), false).actions,
+        menu(&row(false, false), false, false).actions,
         [Some(Action::Associate), Some(Action::Reveal), None, Some(Action::Delete)]
     );
 }
@@ -53,7 +53,7 @@ fn an_unassociated_mod_offers_only_associating_and_deleting() {
 #[test]
 fn an_associated_mod_offers_switching_and_its_dependencies() {
     assert_eq!(
-        menu(&row(false, true), false).actions,
+        menu(&row(false, true), false, false).actions,
         [
             Some(Action::Switch),
             Some(Action::Dependencies),
@@ -69,7 +69,7 @@ fn an_associated_mod_offers_switching_and_its_dependencies() {
 #[test]
 fn an_update_leads_the_menu_when_the_platform_has_one() {
     assert_eq!(
-        menu(&row(true, true), false).actions,
+        menu(&row(true, true), false, false).actions,
         [
             Some(Action::Update),
             Some(Action::Switch),
@@ -85,7 +85,7 @@ fn an_update_leads_the_menu_when_the_platform_has_one() {
 
 #[test]
 fn an_update_row_names_the_release_it_installs() {
-    let menu = menu(&row(true, true), false);
+    let menu = menu(&row(true, true), false, false);
     let MenuItem::Action { label, .. } = &menu.items[0] else {
         panic!("the first row is an action");
     };
@@ -94,13 +94,38 @@ fn an_update_row_names_the_release_it_installs() {
 
 #[test]
 fn a_mod_with_an_action_in_flight_has_no_menu() {
-    let menu = menu(&row(true, true), true);
+    let menu = menu(&row(true, true), true, false);
     assert!(menu.items.is_empty() && menu.actions.is_empty());
 }
 
 #[test]
 fn every_item_has_its_action_in_the_same_place() {
-    let menu = menu(&row(true, true), false);
+    let menu = menu(&row(true, true), false, false);
+    assert_eq!(menu.items.len(), menu.actions.len());
+    for (item, action) in menu.items.iter().zip(&menu.actions) {
+        assert_eq!(matches!(item, MenuItem::Separator), action.is_none());
+    }
+}
+
+#[test]
+fn a_locked_mod_offers_no_update_switch_or_delete() {
+    assert_eq!(
+        menu(&row(true, true), false, true).actions,
+        [Some(Action::Dependencies), None, Some(Action::Associate), Some(Action::Reveal)]
+    );
+}
+
+#[test]
+fn a_locked_unassociated_mod_offers_only_associating_and_revealing() {
+    assert_eq!(
+        menu(&row(false, false), false, true).actions,
+        [Some(Action::Associate), Some(Action::Reveal)]
+    );
+}
+
+#[test]
+fn a_locked_menu_keeps_its_items_and_actions_in_step() {
+    let menu = menu(&row(true, true), false, true);
     assert_eq!(menu.items.len(), menu.actions.len());
     for (item, action) in menu.items.iter().zip(&menu.actions) {
         assert_eq!(matches!(item, MenuItem::Separator), action.is_none());

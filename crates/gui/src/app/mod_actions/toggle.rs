@@ -11,7 +11,7 @@ impl LodestoneLauncher {
     /// A mod's switch was flipped. The jar is renamed on the blocking pool, and the row follows once the rename lands. A
     /// game running on the instance may have the jar open, so the switch waits until it stops, as a delete does.
     pub(in crate::app) fn mod_toggle(&mut self, file_name: String, enabled: bool) -> Task<LodestoneAppMessage> {
-        if self.instance_page.mods().is_busy(&file_name) {
+        if self.shown_locked() || self.instance_page.mods().is_busy(&file_name) {
             return Task::none();
         }
         let Some(to) = files::switched_name(&file_name, enabled) else {

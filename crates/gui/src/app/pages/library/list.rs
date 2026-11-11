@@ -226,6 +226,7 @@ fn instance_messages(instance: &Instance) -> InstanceMessages<Message> {
     InstanceMessages {
         play: Message::Play(id.clone()),
         open: Message::OpenInstance(id.clone()),
+        unlock: Message::Unlock(id.clone()),
         enter: Message::Hover {
             instance: id.clone(),
             hovered: true,

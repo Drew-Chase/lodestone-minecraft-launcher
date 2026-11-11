@@ -50,18 +50,19 @@ pub(super) fn view(page: &Discover) -> Element<'_, Message> {
     stack.into()
 }
 
-/// The line over the Mods tab's results when the instance it adds to runs vanilla Minecraft, which takes no mods.
+/// The line over the Mods tab's results when the instance it adds to cannot take mods: a vanilla instance runs without a
+/// loader to take them, and a locked instance takes none until it is unlocked.
 fn mods_note(page: &Discover) -> Option<Element<'_, Message>> {
-    if page.content != ContentType::Mod || page.target().is_none_or(|target| target.takes_mods()) {
+    if page.content != ContentType::Mod {
         return None;
     }
-    Some(
-        Text::new(lang::t("discover.mods.vanilla"))
-            .size(13)
-            .font(fonts::Inter::REGULAR)
-            .color(color::text_muted())
-            .into(),
-    )
+    let line = match page.target() {
+        None => return None,
+        Some(target) if !target.takes_mods() => lang::t("discover.mods.vanilla"),
+        Some(target) if target.locked => lang::t("discover.mods.locked"),
+        Some(_) => return None,
+    };
+    Some(Text::new(line).size(13).font(fonts::Inter::REGULAR).color(color::text_muted()).into())
 }
 
 /// The line under the filters: why a platform cannot be searched, the error of a failed
@@ -294,7 +295,7 @@ fn mod_action<'a>(page: &Discover, hit: &'a SearchResult) -> Element<'a, Message
         return disabled(lang::t("discover.action.adding"));
     }
     match page.target() {
-        Some(target) if target.takes_mods() => primary(lang::t("discover.action.add"), Icon::lucide().plus(), Message::AddMod(hit.id.clone())),
+        Some(target) if target.accepts_mods() => primary(lang::t("discover.action.add"), Icon::lucide().plus(), Message::AddMod(hit.id.clone())),
         _ => disabled(lang::t("discover.action.add")),
     }
 }

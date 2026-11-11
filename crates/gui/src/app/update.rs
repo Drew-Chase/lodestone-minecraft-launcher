@@ -129,6 +129,7 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Library(LibraryMessage::OpenInstance(id)) => self.open_instance_page(&id, Tab::Content),
             LodestoneAppMessage::Library(LibraryMessage::EditInstance(id)) => self.open_instance_page(&id, Tab::Settings),
             LodestoneAppMessage::Library(LibraryMessage::RevealInstance(id)) => self.reveal_instance(&id),
+            LodestoneAppMessage::Library(LibraryMessage::Unlock(id)) => self.ask_unlock(id),
             LodestoneAppMessage::Library(LibraryMessage::InstanceMenu { instance, action }) => self.instance_menu_action(&instance, action),
             LodestoneAppMessage::Library(LibraryMessage::OpenNewInstance) => self.open_new_instance(),
             LodestoneAppMessage::Library(LibraryMessage::OpenImport) => self.open_import(),
@@ -199,6 +200,8 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Instance(InstanceMessage::OpenSource) => self.open_current_source(),
             // The Mods tab's Add opens Discover on the instance's mods.
             LodestoneAppMessage::Instance(InstanceMessage::AddMods) => self.add_mods_from_instance(),
+            LodestoneAppMessage::Instance(InstanceMessage::Unlock(id)) => self.ask_unlock(id),
+            LodestoneAppMessage::Instance(InstanceMessage::Lock(id)) => self.lock_instance(id),
             LodestoneAppMessage::Instance(InstanceMessage::Packs(message)) => self.instance_packs(message),
             LodestoneAppMessage::PackActions(message) => self.pack_actions(message),
             LodestoneAppMessage::Datapacks(message) => self.datapack_message(message),
@@ -328,6 +331,7 @@ impl LodestoneLauncher {
                 self.mod_dialog_action(message)
             }
             LodestoneAppMessage::ModActions(message) => self.mod_actions_message(message),
+            LodestoneAppMessage::UnlockAnswered { id, confirmed } => self.unlock_answered(id, confirmed),
             LodestoneAppMessage::Instance(message) => self.instance_page.update(message).map(LodestoneAppMessage::Instance),
             LodestoneAppMessage::DatabaseReady(Ok(db)) => {
                 info!("Launcher database ready");
