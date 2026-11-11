@@ -362,7 +362,8 @@ impl LodestoneLauncher {
             Message::CheckDue => self.check_updates_if_due(),
             Message::Checked => {
                 self.notifications.checking = false;
-                Task::batch([self.load_notifications(), self.load_instances()])
+                // The checks record the mods they identify, so the Discover page reads its records again to show them as added.
+                Task::batch([self.load_notifications(), self.load_instances(), self.load_mod_sources()])
             }
         }
     }
