@@ -178,6 +178,11 @@ impl LodestoneLauncher {
         })
     }
 
+    /// The instance the Mods tab shows, as a resource page opened from the tab returns to it.
+    fn instance_origin(&self) -> Option<InstanceChoice> {
+        self.instance_page.instance().map(InstanceChoice::of)
+    }
+
     /// Whether `generation` is the instance the Mods tab shows now.
     fn mods_fresh(&self, generation: u64) -> bool {
         generation == self.instance_page.generation()
@@ -403,23 +408,27 @@ impl LodestoneLauncher {
         }
     }
 
-    /// Opens the resource page of the project a mod was installed from.
+    /// Opens the resource page of the project a mod was installed from. The page returns to the instance whose Mods tab
+    /// opened it.
     fn open_mod_resource(&mut self, record: &ModSource) -> Task<LodestoneAppMessage> {
         let Some(source) = Source::from_key(&record.platform) else {
             return Task::none();
         };
-        self.open_resource(Listing {
-            source,
-            content: ContentType::Mod,
-            project_id: record.project_id.clone(),
-            name: record.name.clone(),
-            author: None,
-            summary: String::new(),
-            downloads: 0,
-            icon_url: None,
-            web_url: None,
-            updated: None,
-        })
+        self.open_resource(
+            Listing {
+                source,
+                content: ContentType::Mod,
+                project_id: record.project_id.clone(),
+                name: record.name.clone(),
+                author: None,
+                summary: String::new(),
+                downloads: 0,
+                icon_url: None,
+                web_url: None,
+                updated: None,
+            },
+            self.instance_origin(),
+        )
     }
 
     /// Shows a mod's jar in the file browser, with the jar selected.

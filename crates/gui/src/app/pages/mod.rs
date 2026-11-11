@@ -51,8 +51,8 @@ pub enum Page {
     /// root's `InstancePage`; the route stays parameterless so the router
     /// keeps `Copy`/`Eq` history semantics.
     Instance,
-    /// A project's resource page, opened from Discover. The project lives in the root's `ResourcePage`, as the
-    /// instance page's does.
+    /// A project's resource page, opened from Discover or an instance's Mods tab. The project lives in the root's
+    /// `ResourcePage`, as the instance page's does.
     Resource,
     /// The server pack wizard, opened from an instance's menu. Its state lives in the root, as the instance page's does.
     ServerPack,

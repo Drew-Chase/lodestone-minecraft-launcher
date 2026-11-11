@@ -430,7 +430,7 @@ impl LodestoneLauncher {
             Effect::OpenInstance(id) => self.open_instance_page(&id, Tab::Content),
             Effect::RememberView(view) => self.remember_discover_view(view),
             Effect::Back => self.back_from_discover(),
-            Effect::OpenResource(listing) => self.open_resource(listing),
+            Effect::OpenResource(listing) => self.open_resource(listing, None),
             Effect::AddMod(request) => self.add_mod_task(*request),
             Effect::ReplaceMod { request, old_file } => self.replace_mod_task(*request, old_file),
             Effect::RecordModSources(records) => self.record_mod_sources(records),

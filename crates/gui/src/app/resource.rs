@@ -7,17 +7,19 @@ use iced::Task;
 use super::discover::{bundled_of, details_of, versions_of};
 use super::instances::open_source;
 use super::pages::Page;
-use super::pages::discover::{Effect as DiscoverEffect, Project, ProjectStatus, load_image};
+use super::pages::discover::{Effect as DiscoverEffect, InstanceChoice, Project, ProjectStatus, load_image};
+use super::pages::instance::Tab;
 use super::pages::resource::{Action, Effect, Listing, Message};
 use super::{LodestoneAppMessage, LodestoneLauncher, lang};
 
 impl LodestoneLauncher {
-    /// Opens a project's resource page. The card's data shows at once, and the details and releases are asked for.
-    pub(super) fn open_resource(&mut self, listing: Listing) -> Task<LodestoneAppMessage> {
+    /// Opens a project's resource page. The card's data shows at once, and the details and releases are asked for. `origin`
+    /// is the instance whose Mods tab opened the page, when one did, and its back step returns there.
+    pub(super) fn open_resource(&mut self, listing: Listing, origin: Option<InstanceChoice>) -> Task<LodestoneAppMessage> {
         let source = listing.source;
         let content = listing.content;
         let project_id = listing.project_id.clone();
-        let effects = self.resource.show(listing);
+        let effects = self.resource.show(listing, origin);
         let generation = self.resource.generation();
         let details_id = project_id.clone();
         let details = Task::perform(async move { details_of(source, content, &details_id).await }, move |result| {
@@ -65,10 +67,33 @@ impl LodestoneLauncher {
                     })
                 })
             }
-            Effect::Back => self.back_to_discover(),
+            Effect::Back => self.back_from_resource(),
             Effect::Act(action) => self.resource_action(action),
             Effect::Open(url) => open_source(url),
         }
+    }
+
+    /// Returns from the resource page to the page it was opened from: the instance whose Mods tab opened it, or Discover.
+    fn back_from_resource(&mut self) -> Task<LodestoneAppMessage> {
+        match self.resource.origin().map(|origin| origin.id.clone()) {
+            Some(id) => self.back_to_instance(&id),
+            None => self.back_to_discover(),
+        }
+    }
+
+    /// Returns to the instance a resource page was opened from. The instance is shown as it was left when it is the page
+    /// before, and is otherwise opened on its Content tab, where the Mods tab is. An instance that is gone returns to the
+    /// Library.
+    fn back_to_instance(&mut self, id: &str) -> Task<LodestoneAppMessage> {
+        let shown = self.instance_page.instance().is_some_and(|instance| instance.id == id);
+        if shown && self.router.back_page() == Some(Page::Instance) {
+            self.router.go_back();
+            return self.rescan_on_return();
+        }
+        if self.library.instance(id).is_none() {
+            return self.navigate(Page::Library);
+        }
+        self.open_instance_page(id, Tab::Content)
     }
 
     /// Returns from the resource page to Discover. When Discover is the page before it, the back step is taken, so Discover

@@ -23,7 +23,7 @@ use lodestone_platforms::{BundledProject, Channel, ContentDetails, ContentType, 
 use crate::app::components::button::Variant;
 use crate::app::components::{Tabs, TextButton, scrollbar};
 use crate::app::lang;
-use crate::app::pages::discover::{ProjectStatus, Source};
+use crate::app::pages::discover::{InstanceChoice, ProjectStatus, Source};
 
 /// The page's side margin, shared by its header and its body.
 const GUTTER: f32 = 28.0;
@@ -158,7 +158,7 @@ pub enum Message {
     OpenVersion(usize),
     /// The open version was closed.
     CloseVersion,
-    /// The back control was pressed: the page asks the root to return to Discover.
+    /// The back control was pressed: the page asks the root to return to the page it was opened from.
     Back,
 }
 
@@ -173,7 +173,7 @@ pub enum Effect {
     Act(Action),
     /// Open a link in the browser.
     Open(String),
-    /// Return from the page to Discover.
+    /// Return from the page to the page it was opened from.
     Back,
 }
 
@@ -181,6 +181,8 @@ pub enum Effect {
 #[derive(Default)]
 pub struct ResourcePage {
     listing: Option<Listing>,
+    /// The instance whose Mods tab opened the page. The back step returns to it instead of to Discover.
+    origin: Option<InstanceChoice>,
     /// Bumped by every [`ResourcePage::show`]. An answer for an older generation is for a project the page no
     /// longer shows, so it is dropped.
     generation: u64,
@@ -213,13 +215,15 @@ pub struct ResourcePage {
 }
 
 impl ResourcePage {
-    /// Shows a project, forgetting what the page held for the one before. The requests the page needs come back as
-    /// effects, and the answers carry [`ResourcePage::generation`].
-    pub fn show(&mut self, listing: Listing) -> Vec<Effect> {
+    /// Shows a project, forgetting what the page held for the one before. `origin` is the instance whose Mods tab opened
+    /// the project, when one did. The requests the page needs come back as effects, and the answers carry
+    /// [`ResourcePage::generation`].
+    pub fn show(&mut self, listing: Listing, origin: Option<InstanceChoice>) -> Vec<Effect> {
         let generation = self.generation + 1;
         *self = Self {
             generation,
             listing: Some(listing),
+            origin,
             ..Self::default()
         };
         let icon = self.listing.as_ref().and_then(|listing| listing.icon_url.clone());
@@ -234,6 +238,11 @@ impl ResourcePage {
     /// The project the page shows, once one has been opened.
     pub fn listing(&self) -> Option<&Listing> {
         self.listing.as_ref()
+    }
+
+    /// The instance the page returns to, when an instance's Mods tab opened it. Without one, the page returns to Discover.
+    pub fn origin(&self) -> Option<&InstanceChoice> {
+        self.origin.as_ref()
     }
 
     /// Carries out one message, and returns the requests it starts.
@@ -387,8 +396,12 @@ impl ResourcePage {
             },
         };
         let active = tabs.iter().position(|tab| *tab == shown).unwrap_or_default();
-        // The page has no other way back to Discover, so the header carries one.
-        let back: Element<'_, Message> = TextButton::labeled_icon(Icon::lucide().chevron_left(), lang::t("resource.back"), Variant::Ghost)
+        // The page has no other way back, so the header carries one: to the instance it was opened from, or to Discover.
+        let back_label = match self.origin() {
+            Some(origin) => lang::t_with("resource.back_to", &[("name", origin.name.as_str())]),
+            None => lang::t("resource.back").to_string(),
+        };
+        let back: Element<'_, Message> = TextButton::labeled_icon(Icon::lucide().chevron_left(), back_label, Variant::Ghost)
             .on_press(Message::Back)
             .into();
         column![

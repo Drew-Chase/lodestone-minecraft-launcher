@@ -69,7 +69,7 @@ fn release(id: &str, channel: Option<Channel>, minecraft: &[&str]) -> ContentVer
 #[test]
 fn a_page_offers_only_the_tabs_its_platform_has_data_for() {
     let mut page = ResourcePage::default();
-    page.show(listing());
+    page.show(listing(), None);
     assert_eq!(page.tabs(), vec![Tab::Overview, Tab::Versions], "the releases are still loading");
     let generation = page.generation();
     page.update(Message::Details {
@@ -90,9 +90,9 @@ fn a_page_offers_only_the_tabs_its_platform_has_data_for() {
 #[test]
 fn an_answer_for_a_project_the_page_has_left_is_dropped() {
     let mut page = ResourcePage::default();
-    page.show(listing());
+    page.show(listing(), None);
     let stale = page.generation();
-    page.show(listing());
+    page.show(listing(), None);
     page.update(Message::Details {
         generation: stale,
         result: Ok(Box::new(details(3))),
@@ -103,7 +103,7 @@ fn an_answer_for_a_project_the_page_has_left_is_dropped() {
 #[test]
 fn the_release_filters_keep_the_releases_on_their_channel_and_version() {
     let mut page = ResourcePage::default();
-    page.show(listing());
+    page.show(listing(), None);
     let generation = page.generation();
     page.update(Message::Versions {
         generation,
@@ -135,7 +135,7 @@ fn each_game_version_is_listed_once_in_the_order_the_releases_give_them() {
 #[test]
 fn a_gallery_picture_steps_within_the_gallery_only() {
     let mut page = ResourcePage::default();
-    page.show(listing());
+    page.show(listing(), None);
     let generation = page.generation();
     page.update(Message::Details {
         generation,
@@ -154,6 +154,22 @@ fn a_gallery_picture_steps_within_the_gallery_only() {
 #[test]
 fn back_asks_the_root_to_leave_the_page() {
     let mut page = ResourcePage::default();
-    page.show(listing());
+    page.show(listing(), None);
     assert!(matches!(page.update(Message::Back).as_slice(), [Effect::Back]));
+}
+
+#[test]
+fn the_page_returns_to_the_instance_that_opened_it_only_until_another_project_is_shown() {
+    let instance = InstanceChoice {
+        id: "ad-astra".to_string(),
+        name: "Ad Astra".to_string(),
+        loader: crate::app::pages::library::instance::Loader::Fabric,
+        mc_version: "1.20.1".to_string(),
+        locked: false,
+    };
+    let mut page = ResourcePage::default();
+    page.show(listing(), Some(instance));
+    assert_eq!(page.origin().map(|origin| origin.name.as_str()), Some("Ad Astra"));
+    page.show(listing(), None);
+    assert!(page.origin().is_none(), "a project opened from Discover returns to Discover");
 }
