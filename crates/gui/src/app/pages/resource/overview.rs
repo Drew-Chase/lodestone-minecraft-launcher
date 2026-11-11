@@ -1,4 +1,4 @@
-//! The overview: the project's readme beside the sidebar of its facts.
+//! The overview: the project's readme, or its HTML description, beside the sidebar of its facts.
 
 use iced::widget::{column, container, markdown, row, text};
 use iced::{Element, Fill, Length, Size};
@@ -7,7 +7,7 @@ use lodestone_platforms::DescriptionFormat;
 use super::parts::section;
 use super::readme::{ReadmeViewer, settings};
 use super::{Action, Load, Message, ResourcePage, sidebar};
-use crate::app::components::TextButton;
+use crate::app::components::{TextButton, html};
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
 
@@ -29,11 +29,20 @@ pub(super) fn view<'a>(page: &'a ResourcePage, window: Size) -> Element<'a, Mess
     }
 }
 
-/// The readme as markdown, or what stands in for it: the summary and a way to the platform's page, or a note that
-/// the project has nothing to read.
+/// The readme as markdown, or the description drawn from its HTML, or what stands in for them: the summary and a way
+/// to the platform's page, or a note that the project has nothing to read.
 fn body<'a>(page: &'a ResourcePage) -> Element<'a, Message> {
     if let Some(content) = &page.readme {
         return markdown::view_with(content.items(), settings(), &ReadmeViewer { pictures: &page.pictures });
+    }
+    if let Some(description) = page.description.as_ref().filter(|description| !description.is_empty()) {
+        let viewer = html::Viewer {
+            pictures: &page.pictures,
+            open: &page.spoilers,
+            on_link: Message::Link,
+            on_toggle: Message::Spoiler,
+        };
+        return html::view(description, &viewer);
     }
     match &page.details {
         Load::Loading => text_line(lang::t("resource.loading")),
@@ -44,7 +53,8 @@ fn body<'a>(page: &'a ResourcePage) -> Element<'a, Message> {
             if !summary.is_empty() {
                 lines = lines.push(text_line(summary));
             }
-            if details.description_format == DescriptionFormat::Html && details.description.is_some() {
+            // An HTML description that did not come, or has nothing drawable, is still on the platform's page.
+            if details.description_format == DescriptionFormat::Html {
                 let platform = page.listing().map_or("", |listing| listing.source.name());
                 lines = lines
                     .push(TextButton::ghost(lang::t_with("resource.read_on", &[("platform", platform)])).on_press(Message::Act(Action::OpenWeb)));

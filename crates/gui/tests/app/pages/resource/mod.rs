@@ -225,3 +225,95 @@ fn the_page_names_the_project_by_its_details_once_they_load() {
     });
     assert_eq!(page.name(), Some("Sodium"));
 }
+
+/// The details of a CurseForge project whose description is `html`.
+fn html_details(html: &str) -> ContentDetails {
+    ContentDetails {
+        description: Some(html.to_string()),
+        description_format: DescriptionFormat::Html,
+        ..details(0)
+    }
+}
+
+/// The picture addresses the effects ask for, in order.
+fn asked_pictures(effects: &[Effect]) -> Vec<String> {
+    effects
+        .iter()
+        .flat_map(|effect| match effect {
+            Effect::Pictures(urls) => urls.clone(),
+            _ => Vec::new(),
+        })
+        .collect()
+}
+
+/// A description with a picture before a spoiler, one inside it, and one after it.
+const DESCRIPTION: &str = "<p><img src=\"https://media.forgecdn.net/a.png\"></p>\
+    <h3>Mods</h3><div class=\"spoiler\"><img src=\"//i.imgur.com/b.png\"></div>\
+    <p><a href=\"/linkout?remoteUrl=https%253a%252f%252fdiscord.com%252finvite%252fx\"><img src=\"https://media.forgecdn.net/c.png\"></a></p>";
+
+#[test]
+fn an_html_description_is_read_and_its_visible_pictures_are_asked_for_in_reading_order() {
+    let mut page = ResourcePage::default();
+    page.show(listing(), None);
+    let generation = page.generation();
+    let effects = page.update(Message::Details {
+        generation,
+        result: Ok(Box::new(html_details(DESCRIPTION))),
+    });
+    assert!(page.readme.is_none(), "HTML is not read as markdown");
+    let description = page.description.as_ref().expect("the description is read");
+    assert_eq!(description.links, vec!["https://discord.com/invite/x".to_string()]);
+    assert_eq!(
+        asked_pictures(&effects),
+        vec!["https://media.forgecdn.net/a.png", "https://media.forgecdn.net/c.png"],
+        "the spoiler's picture waits until it is opened"
+    );
+}
+
+#[test]
+fn opening_a_spoiler_asks_for_its_pictures_once() {
+    let mut page = ResourcePage::default();
+    page.show(listing(), None);
+    let generation = page.generation();
+    page.update(Message::Details {
+        generation,
+        result: Ok(Box::new(html_details(DESCRIPTION))),
+    });
+    let opened = page.update(Message::Spoiler(0));
+    assert!(page.spoilers.contains(&0));
+    assert_eq!(asked_pictures(&opened), vec!["https://i.imgur.com/b.png"]);
+    let closed = page.update(Message::Spoiler(0));
+    assert!(!page.spoilers.contains(&0));
+    assert!(closed.is_empty());
+    assert!(page.update(Message::Spoiler(0)).is_empty(), "the picture was asked for already");
+}
+
+#[test]
+fn a_markdown_readme_has_no_html_description() {
+    let mut page = ResourcePage::default();
+    page.show(listing(), None);
+    let generation = page.generation();
+    let mut readme = details(0);
+    readme.description = Some("# Sodium".to_string());
+    page.update(Message::Details {
+        generation,
+        result: Ok(Box::new(readme)),
+    });
+    assert!(page.readme.is_some());
+    assert!(page.description.is_none());
+}
+
+#[test]
+fn showing_another_project_forgets_the_description_and_its_open_spoilers() {
+    let mut page = ResourcePage::default();
+    page.show(listing(), None);
+    let generation = page.generation();
+    page.update(Message::Details {
+        generation,
+        result: Ok(Box::new(html_details(DESCRIPTION))),
+    });
+    page.update(Message::Spoiler(0));
+    page.show(listing(), None);
+    assert!(page.description.is_none());
+    assert!(page.spoilers.is_empty());
+}

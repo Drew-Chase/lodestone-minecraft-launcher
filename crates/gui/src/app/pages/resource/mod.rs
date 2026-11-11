@@ -4,6 +4,7 @@
 //! answer for a project the page has since left is dropped.
 
 mod changelog;
+mod description;
 mod gallery;
 mod header;
 mod overview;
@@ -21,9 +22,9 @@ use iced::{Element, Fill, Padding, Size};
 use lodestone_platforms::{BundledProject, Channel, ContentDetails, ContentType, ContentVersion, DescriptionFormat};
 
 use crate::app::components::button::Variant;
-use crate::app::components::{Tabs, TextButton, scrollbar};
-use crate::app::lang;
+use crate::app::components::{Tabs, TextButton, html, scrollbar};
 use crate::app::pages::discover::{InstanceChoice, ProjectStatus, Source};
+use crate::app::{lang, perf};
 
 /// The page's side margin, shared by its header and its body.
 const GUTTER: f32 = 28.0;
@@ -33,6 +34,9 @@ const PER_PAGE: usize = 20;
 const GALLERY_PER_PAGE: usize = 12;
 /// The most readme pictures the page loads. The rest keep their alt text.
 const README_PICTURES: usize = 12;
+/// The most pictures of an HTML description the page loads at once: the first ones a reader can see, in reading order.
+/// A spoiler's pictures count once it is opened.
+const DESCRIPTION_PICTURES: usize = 40;
 /// The channels the Versions tab filters by, in the order its selector lists them. The first is any.
 const CHANNELS: [Option<Channel>; 4] = [None, Some(Channel::Release), Some(Channel::Beta), Some(Channel::Alpha)];
 
@@ -136,8 +140,10 @@ pub enum Message {
     Picture { url: String, handle: Option<image::Handle> },
     /// An action was pressed.
     Act(Action),
-    /// A link was pressed in a readme, a changelog or the sidebar.
+    /// A link was pressed in a readme, a description, a changelog or the sidebar.
     Link(String),
+    /// A spoiler of the description was opened or closed, by its index in the description.
+    Spoiler(usize),
     /// A page of the gallery was picked, by its index.
     GalleryPage(usize),
     /// A gallery picture was pressed, by its index in the gallery.
@@ -192,6 +198,10 @@ pub struct ResourcePage {
     game_versions: Vec<String>,
     /// The overview's readme, parsed once when the details land.
     readme: Option<markdown::Content>,
+    /// The overview's description when the platform writes it in HTML, read once when the details land.
+    description: Option<html::Document>,
+    /// The description's spoilers the reader has opened, by their index in the description.
+    spoilers: HashSet<usize>,
     /// The changelog of each version, parsed when its page is shown, by the version's index.
     changelogs: HashMap<usize, markdown::Content>,
     /// The pictures that have loaded, by address.
@@ -265,11 +275,16 @@ impl ResourcePage {
             Message::Details { generation, result } if generation == self.generation => match result {
                 Ok(details) => {
                     self.readme = readme_text(&details).map(|text| markdown::Content::parse(&readme::to_markdown(text)));
+                    self.description = description_html(&details).map(|text| {
+                        let _scope = perf::scope("resource.description");
+                        html::parse(text, description::resolve)
+                    });
                     let mut urls: Vec<String> = details.info.creators.iter().filter_map(|creator| creator.avatar_url.clone()).collect();
                     urls.extend(self.readme.as_ref().map(readme_pictures).unwrap_or_default());
                     self.details = Load::Loaded(details);
                     let mut effects = self.gallery_effects();
                     effects.extend(self.wanted_all(urls));
+                    effects.extend(self.description_effects());
                     effects
                 }
                 Err(error) => {
@@ -321,6 +336,12 @@ impl ResourcePage {
             }
             Message::Act(action) => vec![Effect::Act(action)],
             Message::Link(url) => vec![Effect::Open(url)],
+            Message::Spoiler(index) => {
+                if !self.spoilers.remove(&index) {
+                    self.spoilers.insert(index);
+                }
+                self.description_effects()
+            }
             Message::GalleryPage(page) => {
                 self.gallery_page = page;
                 self.gallery_effects()
@@ -487,6 +508,20 @@ impl ResourcePage {
         if fresh.is_empty() { Vec::new() } else { vec![Effect::Pictures(fresh)] }
     }
 
+    /// The description's pictures a reader can see, in reading order, up to the most the page loads. Each is asked for
+    /// once, so opening a spoiler asks only for the pictures inside it.
+    fn description_effects(&mut self) -> Vec<Effect> {
+        let urls: Vec<String> = self.description.as_ref().map_or_else(Vec::new, |description| {
+            description
+                .pictures(&self.spoilers)
+                .into_iter()
+                .take(DESCRIPTION_PICTURES)
+                .map(str::to_owned)
+                .collect()
+        });
+        self.wanted_all(urls)
+    }
+
     /// The thumbnails of the gallery page on screen.
     fn gallery_effects(&mut self) -> Vec<Effect> {
         let thumbnails: Vec<String> = self
@@ -568,6 +603,14 @@ fn readme_text(details: &ContentDetails) -> Option<&str> {
     match details.description_format {
         DescriptionFormat::Markdown => details.description.as_deref(),
         DescriptionFormat::Html => None,
+    }
+}
+
+/// The description a project's details carry, when the platform writes it in HTML, as CurseForge does.
+fn description_html(details: &ContentDetails) -> Option<&str> {
+    match details.description_format {
+        DescriptionFormat::Html => details.description.as_deref(),
+        DescriptionFormat::Markdown => None,
     }
 }
 
