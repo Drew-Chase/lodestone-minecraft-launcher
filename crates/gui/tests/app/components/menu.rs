@@ -45,6 +45,22 @@ fn open_close_lifecycle() {
 }
 
 #[test]
+fn a_closing_menu_unmounts_once_its_fade_has_run_out() {
+    let mut state = MenuState::new();
+    state.open();
+    state.open.tick(std::time::Instant::now() + std::time::Duration::from_secs(1));
+    state.close();
+    assert!(state.open.is_animating(), "the fade out is still running");
+    assert!(!state.finish_close(), "a menu that is still fading stays mounted");
+    assert_eq!(state.phase, Phase::Closing);
+
+    state.open.tick(std::time::Instant::now() + std::time::Duration::from_secs(2));
+    assert!(state.finish_close(), "the menu unmounts when the fade ends");
+    assert!(state.is_closed());
+    assert!(!state.finish_close(), "a menu unmounts only once");
+}
+
+#[test]
 fn selectability() {
     let items = items();
     assert!(items[0].is_selectable());

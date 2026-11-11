@@ -157,6 +157,15 @@ impl MenuState {
             self.open.set_target(0.0);
         }
     }
+
+    /// Unmounts the menu once its close animation has run out, and reports whether it did.
+    pub(crate) fn finish_close(&mut self) -> bool {
+        if self.phase == Phase::Closing && !self.open.is_animating() {
+            self.phase = Phase::Closed;
+            return true;
+        }
+        false
+    }
 }
 
 impl Default for MenuState {
@@ -424,9 +433,11 @@ impl<Message> Overlay<Message, Theme, BaseRenderer> for MenuOverlay<'_, Message>
         match event {
             Event::Window(window::Event::RedrawRequested(now)) => {
                 self.state.open.tick(*now);
-                // The overlay unmounts once the close animation has finished.
-                if self.state.phase == Phase::Closing && !self.state.open.is_animating() {
-                    self.state.phase = Phase::Closed;
+                // The overlay unmounts once the close animation has finished. Iced draws the overlays
+                // from the layout it built before this event, so a menu still open beside this one would
+                // draw in this one's place. Invalidating the layout rebuilds it for the overlays left.
+                if self.state.finish_close() {
+                    shell.invalidate_layout();
                 }
                 // An open search field keeps its caret blinking: wake again at the next flip.
                 if self.searchable && self.state.is_open() {
