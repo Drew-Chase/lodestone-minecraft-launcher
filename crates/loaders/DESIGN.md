@@ -151,7 +151,7 @@ folder: the version JSON goes to `versions/<id>/<id>.json` and libraries to `lib
 | Kind | Install |
 |---|---|
 | `Fabric` / `Quilt` | Fetch `<meta>/<mc>/<loader>/profile/json`, which inherits the Minecraft version. Write it under `versions/<id>/`, then download its libraries from their own base urls. No installer runs. |
-| `Forge` / `NeoForge` | `download_client` fetches the installer jar into `libraries/`. Seed `launcher_profiles.json` with `{"profiles":{}}`, then run `java -jar <installer> --installClient <dir>` (NeoForge: `--install-client`). The new `versions/<id>` folder is the result. Output lines stream to `lines`; dropping that receiver stops the installer. |
+| `Forge` / `NeoForge` | `download_client` fetches the installer jar into `libraries/`. Seed `launcher_profiles.json` with `{"profiles":{}}`, then run `java -jar <installer> --installClient <dir>` (NeoForge: `--install-client`). The new `versions/<id>` folder is the result. Output lines stream to `lines`; dropping that receiver stops the installer. **Forge 1.5.2 to 1.12.1** (an install profile with `versionInfo` and no `processors`) have no client flag, so nothing runs: `forge_profile::install` extracts the profile's `filePath` jar to `libraries/<install.path>`, downloads the libraries marked `clientreq` (checked against any listed SHA-1; a copy under the installer's `maven/` stands in for a failed download; a failure from `libraries.minecraft.net` is skipped, as the window does), and writes `versionInfo` unchanged as `versions/<target>/<target>.json`. The profile's `optionals` are not installed, since they are opt-in. The vanilla jar is not copied into the Forge folder: the launcher reads the client jar from the vanilla version. |
 | `Vanilla` | `InstallUnsupported`. The gui installs vanilla through piston-mc: client jar, libraries, assets. |
 
 Installers run on a blocking thread. A failed run keeps the last 40 output lines in
@@ -198,6 +198,7 @@ convenience, not a filter.
 | `InstallerFailed` | an installer exited unsuccessfully or was stopped | loader + status + last output lines |
 | `InstallerVersionMissing` | an installer exited cleanly without creating a version folder | loader + directory |
 | `InstallerMissing` | the installer jar was not downloaded | loader |
+| `InstallerUnreadable` | the installer jar is not a zip, its install profile is missing a field the install needs, or the universal jar it names is not inside it | loader + path + detail |
 
 ## 8. Testing strategy
 
@@ -214,4 +215,11 @@ No network in CI:
 - `tests/install.rs` covers version JSON placement, launcher profile seeding, installer
   discovery, and fake-`java` runs (unix) for success, failure, a missing version and a
   missing program.
+- `tests/forge_profile.rs` builds installer jars in-test and checks the `versionInfo` install:
+  layout detection, the universal jar's maven path, the version JSON, the `clientreq` filter,
+  the copy under `maven/` that stands in for a failed download, and the replacement of a damaged
+  library. Its downloads go to a refused local port, so no network is needed.
 - `examples/` are the live-network smoke tests, run manually.
+- `tests/integration/forge_install/` holds the Forge matrix: the latest build of every Minecraft version, downloaded and
+  installed with Mojang's runtimes, with a row per version. It is `#[ignore]`d and runs real installers, so run it with
+  `just forge-matrix`. Its offline checks (version choice, Java lookup, verification, installer layout) run in CI.

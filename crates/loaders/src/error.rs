@@ -143,6 +143,17 @@ pub enum LoaderError {
         loader: &'static str,
     },
 
+    /// A loader installer jar could not be read, or its install profile does not name what the install needs.
+    #[error("the {loader} installer at {} could not be read: {detail}", path.display())]
+    InstallerUnreadable {
+        /// The loader whose installer was read.
+        loader: &'static str,
+        /// The installer jar.
+        path: PathBuf,
+        /// What was wrong with it.
+        detail: String,
+    },
+
     /// The loader has no server install in this crate yet.
     #[error("the {loader} loader has no server install yet")]
     ServerUnsupported {

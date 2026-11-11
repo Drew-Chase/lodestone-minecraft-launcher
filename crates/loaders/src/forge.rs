@@ -8,6 +8,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::LoaderKind;
 use crate::error::LoaderError;
+use crate::forge_profile::{self, Layout};
 use crate::http::{download_installer, get_json};
 use crate::install::{
     InstalledVersion, finished_install, installer_jar, installer_marker, record_install, run_installer_task, seed_launcher_profiles,
@@ -109,8 +110,14 @@ impl LoaderKind for Forge {
         let Some(installer) = installer_jar(&jars) else {
             return Err(LoaderError::InstallerMissing { loader: Self::NAME });
         };
-        seed_launcher_profiles(game_dir)?;
-        let installed = run_installer_task(Self::NAME, minecraft, java, installer, "--installClient", game_dir, lines).await?;
+        // The builds before 1.12.2 have an installer with no client flag, so the profile is installed without running it.
+        let installed = match forge_profile::layout(installer.clone()).await? {
+            Layout::VersionInfo => forge_profile::install(http, installer, game_dir, lines, progress).await?,
+            Layout::Processors => {
+                seed_launcher_profiles(game_dir)?;
+                run_installer_task(Self::NAME, minecraft, java, installer, "--installClient", game_dir, lines).await?
+            }
+        };
         record_install(&marker, &installed)?;
         Ok(installed)
     }

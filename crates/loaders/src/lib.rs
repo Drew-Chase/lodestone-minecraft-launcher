@@ -37,7 +37,8 @@
 //! - Download a loader version's client libraries (`download_client`)
 //! - Install a loader version into a game folder (`install`): the version JSON under
 //!   `versions/`, the libraries under `libraries/`, and the installer run for Forge and
-//!   NeoForge
+//!   NeoForge. Forge builds before 1.12.2 have no installer that runs headless, so their
+//!   profile is installed without one.
 //! - Extract mod information from a jar (`extract_mod_info`)
 //!
 //! ## What this crate does NOT do
@@ -53,6 +54,7 @@
 mod error;
 mod fabric;
 mod forge;
+mod forge_profile;
 mod http;
 mod install;
 mod meta;
