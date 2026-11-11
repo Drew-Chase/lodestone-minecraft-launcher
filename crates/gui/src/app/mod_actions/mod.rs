@@ -178,9 +178,12 @@ impl LodestoneLauncher {
         })
     }
 
-    /// The instance the Mods tab shows, as a resource page opened from the tab returns to it.
-    fn instance_origin(&self) -> Option<InstanceChoice> {
-        self.instance_page.instance().map(InstanceChoice::of)
+    /// Opens a resource page from the Mods tab, on the instance the tab shows when one is shown.
+    pub(super) fn open_from_mods_tab(&mut self, listing: Listing) -> Task<LodestoneAppMessage> {
+        match self.instance_page.instance().map(InstanceChoice::of) {
+            Some(instance) => self.open_resource_from_instance(listing, instance),
+            None => self.open_resource(listing, None),
+        }
     }
 
     /// Whether `generation` is the instance the Mods tab shows now.
@@ -414,21 +417,18 @@ impl LodestoneLauncher {
         let Some(source) = Source::from_key(&record.platform) else {
             return Task::none();
         };
-        self.open_resource(
-            Listing {
-                source,
-                content: ContentType::Mod,
-                project_id: record.project_id.clone(),
-                name: record.name.clone(),
-                author: None,
-                summary: String::new(),
-                downloads: 0,
-                icon_url: None,
-                web_url: None,
-                updated: None,
-            },
-            self.instance_origin(),
-        )
+        self.open_from_mods_tab(Listing {
+            source,
+            content: ContentType::Mod,
+            project_id: record.project_id.clone(),
+            name: record.name.clone(),
+            author: None,
+            summary: String::new(),
+            downloads: 0,
+            icon_url: None,
+            web_url: None,
+            updated: None,
+        })
     }
 
     /// Shows a mod's jar in the file browser, with the jar selected.

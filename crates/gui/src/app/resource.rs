@@ -36,6 +36,16 @@ impl LodestoneLauncher {
         Task::batch(tasks)
     }
 
+    /// Opens a resource page from an instance's Mods tab, on that instance. The Discover page takes the instance as its
+    /// target, as its Add button does, so the page's instance selector and the actions of its releases read the instance.
+    /// The mods the launcher knows came from a platform are read again, so the page shows what the instance holds now.
+    pub(super) fn open_resource_from_instance(&mut self, listing: Listing, instance: InstanceChoice) -> Task<LodestoneAppMessage> {
+        self.sync_discover_instances();
+        self.discover.prepare_mods(instance.clone());
+        let sources = self.load_mod_sources();
+        Task::batch([self.open_resource(listing, Some(instance)), sources])
+    }
+
     /// Routes one message of the resource page: the page updates, and its effects run.
     pub(super) fn resource_message(&mut self, message: Message) -> Task<LodestoneAppMessage> {
         let effects = self.resource.update(message);
@@ -111,11 +121,13 @@ impl LodestoneLauncher {
         let Some(listing) = self.resource.listing().cloned() else {
             return Task::none();
         };
+        // The platform's name, once the details have loaded. A record keeps the name the action gives it.
+        let name = self.resource.name().unwrap_or(listing.name.as_str()).to_string();
         let project = |version_id: Option<String>| Project {
             source: listing.source,
             content: listing.content,
             project_id: listing.project_id.clone(),
-            name: listing.name.clone(),
+            name: name.clone(),
             web_url: listing.web_url.clone(),
             icon_url: listing.icon_url.clone(),
             game_versions: Vec::new(),

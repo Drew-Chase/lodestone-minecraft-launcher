@@ -173,3 +173,55 @@ fn the_page_returns_to_the_instance_that_opened_it_only_until_another_project_is
     page.show(listing(), None);
     assert!(page.origin().is_none(), "a project opened from Discover returns to Discover");
 }
+
+/// An instance on `minecraft`, the one a page is opened from.
+fn instance(minecraft: &str) -> InstanceChoice {
+    InstanceChoice {
+        id: "ad-astra".to_string(),
+        name: "Ad Astra".to_string(),
+        loader: crate::app::pages::library::instance::Loader::Fabric,
+        mc_version: minecraft.to_string(),
+        locked: false,
+    }
+}
+
+#[test]
+fn a_page_opened_from_an_instance_filters_to_its_minecraft_version() {
+    let mut page = ResourcePage::default();
+    page.show(listing(), Some(instance("1.20.1")));
+    let generation = page.generation();
+    page.update(Message::Versions {
+        generation,
+        result: Ok(vec![release("new", None, &["1.20.1"]), release("old", None, &["1.19.4"])]),
+    });
+    assert_eq!(page.game_version.as_deref(), Some("1.20.1"));
+    assert_eq!(page.filtered_versions(), vec![0]);
+}
+
+#[test]
+fn a_page_keeps_any_version_when_no_release_fits_the_instance() {
+    let mut page = ResourcePage::default();
+    page.show(listing(), Some(instance("1.20.1")));
+    let generation = page.generation();
+    page.update(Message::Versions {
+        generation,
+        result: Ok(vec![release("old", None, &["1.19.4"])]),
+    });
+    assert_eq!(page.game_version, None, "the filter must match what the selector shows");
+    assert_eq!(page.filtered_versions(), vec![0]);
+}
+
+#[test]
+fn the_page_names_the_project_by_its_details_once_they_load() {
+    let mut listing = listing();
+    listing.name = "sodium-fabric-0.5.8".to_string();
+    let mut page = ResourcePage::default();
+    page.show(listing, None);
+    assert_eq!(page.name(), Some("sodium-fabric-0.5.8"));
+    let generation = page.generation();
+    page.update(Message::Details {
+        generation,
+        result: Ok(Box::new(details(0))),
+    });
+    assert_eq!(page.name(), Some("Sodium"));
+}

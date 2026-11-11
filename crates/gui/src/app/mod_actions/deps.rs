@@ -70,21 +70,18 @@ impl LodestoneLauncher {
         };
         let source = dependencies.source;
         self.instance_page.mods_mut().close_dialog();
-        self.open_resource(
-            Listing {
-                source,
-                content: ContentType::Mod,
-                project_id: line.project_id,
-                name: line.name,
-                author: None,
-                summary: String::new(),
-                downloads: 0,
-                icon_url: None,
-                web_url: None,
-                updated: None,
-            },
-            self.instance_origin(),
-        )
+        self.open_from_mods_tab(Listing {
+            source,
+            content: ContentType::Mod,
+            project_id: line.project_id,
+            name: line.name,
+            author: None,
+            summary: String::new(),
+            downloads: 0,
+            icon_url: None,
+            web_url: None,
+            updated: None,
+        })
     }
 }
 

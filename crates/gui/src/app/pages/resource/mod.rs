@@ -245,6 +245,12 @@ impl ResourcePage {
         self.origin.as_ref()
     }
 
+    /// The project's name: the platform's once the details have loaded, and the name the page was opened with until then.
+    pub fn name(&self) -> Option<&str> {
+        let listing = self.listing.as_ref()?;
+        Some(self.details().map_or(listing.name.as_str(), |details| details.name.as_str()))
+    }
+
     /// Carries out one message, and returns the requests it starts.
     pub fn update(&mut self, message: Message) -> Vec<Effect> {
         match message {
@@ -274,6 +280,12 @@ impl ResourcePage {
             Message::Versions { generation, result } if generation == self.generation => match result {
                 Ok(versions) => {
                     self.game_versions = game_versions_of(&versions);
+                    // A page opened from an instance filters to the instance's Minecraft version, when the project has releases for it.
+                    if let Some(origin) = &self.origin
+                        && self.game_versions.contains(&origin.mc_version)
+                    {
+                        self.game_version = Some(origin.mc_version.clone());
+                    }
                     self.versions = Load::Loaded(versions);
                     if self.tab == Tab::Changelog {
                         self.changelog_effects()

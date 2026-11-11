@@ -36,7 +36,7 @@ pub(super) fn view<'a>(page: &'a ResourcePage, status: &ProjectStatus) -> Elemen
     let followers = details.and_then(|details| details.info.followers);
 
     let mut info: Vec<Element<'a, Message>> = vec![
-        Text::new(listing.name.as_str())
+        Text::new(page.name().unwrap_or(listing.name.as_str()))
             .size(24)
             .font(fonts::Inter::EXTRA_BOLD)
             .color(color::text_headline())
