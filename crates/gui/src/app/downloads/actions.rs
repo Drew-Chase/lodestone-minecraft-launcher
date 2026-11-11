@@ -220,6 +220,8 @@ impl LodestoneLauncher {
                 self.refresh_instance_page();
                 tasks.push(self.load_instances());
                 tasks.push(self.load_added_content());
+                // The update rewrote the instance's mod records, so the Discover page reads them again to show them as added.
+                tasks.push(self.load_mod_sources());
             }
             Err(error) if updating => {
                 warn!("Updating an instance failed: {error}");
@@ -236,8 +238,10 @@ impl LodestoneLauncher {
                 self.downloads.finish(job, Ok(()));
                 self.library.add_instance(*instance);
                 tasks.push(self.load_instances());
-                // The install recorded the packs it placed, so the Discover page reads its records again to show them as added.
+                // The install recorded the packs it placed and the mods it came with, so the Discover page reads its records
+                // again to show them as added.
                 tasks.push(self.load_added_content());
+                tasks.push(self.load_mod_sources());
                 tasks.push(self.portable_install_ended(job, Ok(())));
             }
             Err(error) => {
