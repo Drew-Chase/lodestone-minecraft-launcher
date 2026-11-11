@@ -6,7 +6,7 @@ use iced::widget::{Space, Text, column, container, mouse_area, row};
 use iced::{Element, Fill, Length, Padding, Size, alignment};
 use lodestone_platforms::{ContentType, ContentVersion};
 
-use super::parts::{chip, loader_label, mod_row_action, mod_state, pager, row_action, section};
+use super::parts::{chip, chip_row, loader_label, mod_row_action, mod_state, pager, row_action, section};
 use super::{CHANNELS, Message, PER_PAGE, ResourcePage, pages_of};
 use crate::app::components::Select;
 use crate::app::components::page::content_width;
@@ -235,10 +235,10 @@ fn table_row<'a>(page: &'a ResourcePage, status: &ProjectStatus, index: usize, v
     }
     let mut cells: Vec<Element<'a, Message>> = vec![name_lines.width(Fill).into()];
     if shown[0] {
-        cells.push(row(games).spacing(4).width(Length::Fixed(GAME_WIDTH)).into());
+        cells.push(container(chip_row(games)).width(Length::Fixed(GAME_WIDTH)).into());
     }
     if shown[1] {
-        cells.push(row(platforms).spacing(4).width(Length::Fixed(PLATFORM_WIDTH)).into());
+        cells.push(container(chip_row(platforms)).width(Length::Fixed(PLATFORM_WIDTH)).into());
     }
     if shown[2] {
         cells.push(

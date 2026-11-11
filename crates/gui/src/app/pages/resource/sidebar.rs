@@ -5,15 +5,13 @@ use iced::widget::{Space, Text, column, row};
 use iced::{Element, Fill, alignment};
 use lodestone_platforms::{ContentDetails, Creator, ProjectLinks, Side};
 
-use super::parts::{chip, heading, loader_label, picture, section};
+use super::parts::{chip, chip_row, heading, loader_label, picture, section};
 use super::{Message, ResourcePage};
 use crate::app::components::TextButton;
 use crate::app::lang;
 use crate::app::pages::discover::date_only;
 use crate::app::theme::{color, fonts};
 
-/// The most chips one row of a section holds.
-const CHIPS_PER_ROW: usize = 3;
 /// The most game versions the compatibility section lists before it says how many more there are.
 const VERSION_LIMIT: usize = 16;
 
@@ -29,7 +27,7 @@ pub(super) fn view<'a>(page: &'a ResourcePage) -> Element<'a, Message> {
         }
         if !details.info.categories.is_empty() {
             let tags: Vec<Element<'a, Message>> = details.info.categories.iter().map(|tag| chip(tag.as_str())).collect();
-            sections.push(section(column![heading(lang::t("resource.tags")), chip_rows(tags)].spacing(10)));
+            sections.push(section(column![heading(lang::t("resource.tags")), chip_row(tags)].spacing(10)));
         }
         if !details.info.creators.is_empty() {
             sections.push(section(
@@ -55,12 +53,12 @@ fn compatibility<'a>(page: &'a ResourcePage, details: Option<&'a ContentDetails>
             &[("count", (versions.len() - VERSION_LIMIT).to_string().as_str())],
         )));
     }
-    let mut body = vec![heading(lang::t("resource.minecraft")), chip_rows(shown)];
+    let mut body = vec![heading(lang::t("resource.minecraft")), chip_row(shown)];
     if let Some(details) = details {
         if !details.info.loaders.is_empty() {
             let loaders: Vec<Element<'a, Message>> = details.info.loaders.iter().map(|loader| chip(loader_label(loader))).collect();
             body.push(heading(lang::t("resource.platforms")));
-            body.push(chip_rows(loaders));
+            body.push(chip_row(loaders));
         }
         if !details.info.environments.is_empty() {
             let sides: Vec<Element<'a, Message>> = details
@@ -75,21 +73,10 @@ fn compatibility<'a>(page: &'a ResourcePage, details: Option<&'a ContentDetails>
                 })
                 .collect();
             body.push(heading(lang::t("resource.environments")));
-            body.push(chip_rows(sides));
+            body.push(chip_row(sides));
         }
     }
     section(column(body).spacing(10))
-}
-
-/// Chips laid out a few to a row, so a long list wraps instead of running off the sidebar.
-fn chip_rows<'a>(chips: Vec<Element<'a, Message>>) -> Element<'a, Message> {
-    let mut rows: Vec<Element<'a, Message>> = Vec::new();
-    let mut chips = chips.into_iter().peekable();
-    while chips.peek().is_some() {
-        let line: Vec<Element<'a, Message>> = chips.by_ref().take(CHIPS_PER_ROW).collect();
-        rows.push(row(line).spacing(6).into());
-    }
-    column(rows).spacing(6).into()
 }
 
 /// Whether the project lists any link.

@@ -15,7 +15,7 @@ use crate::app::pages::discover::ProjectStatus;
 use crate::app::theme::{color, fonts, utility};
 
 // The chip and a loader's name are shared with the instance's Versions tab, so they live in `components::chip`.
-pub(super) use crate::app::components::chip::{chip, loader_label};
+pub(super) use crate::app::components::chip::{chip, chip_row, loader_label};
 
 /// A line icon in `tint`.
 pub(super) fn glyph<'a, M: 'a>(markup: &'static str, size: f32, tint: Color) -> Element<'a, M> {

@@ -7,7 +7,7 @@ use iced::{Element, Fill, Length, alignment};
 use lodestone_platforms::{Channel, ContentType, ContentVersion};
 
 use super::header::primary_action;
-use super::parts::{chip, heading, loader_label, picture, section, stat};
+use super::parts::{chip, chip_row, heading, loader_label, picture, section, stat};
 use super::readme::{ReadmeViewer, settings};
 use super::{Load, Message, ResourcePage};
 use crate::app::components::TextButton;
@@ -74,10 +74,10 @@ pub(super) fn view<'a>(page: &'a ResourcePage, index: usize, version: &'a Conten
 fn compatibility<'a>(version: &ContentVersion) -> Element<'a, Message> {
     let games: Vec<Element<'a, Message>> = version.minecraft_versions.iter().map(|game| chip(game.as_str())).collect();
     let loaders: Vec<Element<'a, Message>> = version.loaders.iter().map(|loader| chip(loader_label(loader))).collect();
-    let mut body = vec![heading(lang::t("resource.minecraft")), row(games).spacing(6).into()];
+    let mut body = vec![heading(lang::t("resource.minecraft")), chip_row(games)];
     if !loaders.is_empty() {
         body.push(heading(lang::t("resource.platforms")));
-        body.push(row(loaders).spacing(6).into());
+        body.push(chip_row(loaders));
     }
     section(column(body).spacing(10))
 }

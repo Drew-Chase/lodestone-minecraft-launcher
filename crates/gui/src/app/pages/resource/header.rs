@@ -4,7 +4,7 @@ use aurora_leaf::Icon;
 use iced::widget::{Space, Text, column, row};
 use iced::{Element, Length, alignment};
 
-use super::parts::{ModState, chip, dimmed, mod_state, picture, primary, stat};
+use super::parts::{ModState, chip, chip_row, dimmed, mod_state, picture, primary, stat};
 use super::{Action, Listing, Message, ResourcePage};
 use crate::app::components::hint::hint;
 use crate::app::components::icon_button::ghost_button_style;
@@ -73,7 +73,7 @@ pub(super) fn view<'a>(page: &'a ResourcePage, status: &ProjectStatus) -> Elemen
     if let Some(details) = details {
         let tags: Vec<Element<'a, Message>> = details.info.categories.iter().take(TAG_LIMIT).map(|tag| chip(tag.as_str())).collect();
         if !tags.is_empty() {
-            info.push(row(tags).spacing(6).into());
+            info.push(chip_row(tags));
         }
     }
 

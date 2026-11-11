@@ -7,7 +7,7 @@ use iced::{Color, Element, Fill, Length, Padding, Size, alignment};
 use lodestone_platforms::ContentVersion;
 
 use super::{Listing, Message, PAGE, Standing, State, standing};
-use crate::app::components::chip::{chip, loader_label};
+use crate::app::components::chip::{chip, chip_row, loader_label};
 use crate::app::components::hint::hint;
 use crate::app::components::icon_button::{IconButtonStyle, secondary_button_style};
 use crate::app::components::page::content_width;
@@ -87,7 +87,7 @@ impl State {
             (Some(number), Some(_)) => lang::t_with("versions.installed", &[("version", number.as_str())]),
             _ => lang::t("versions.unknown").to_string(),
         };
-        let facts: Element<'a, Message> = row![chip(self.minecraft.as_str()), chip(loader_label(&self.loader))].spacing(6).into();
+        let facts: Element<'a, Message> = chip_row(vec![chip(self.minecraft.as_str()), chip(loader_label(&self.loader))]);
         panel::panel_with_padding(
             column![
                 heading(lang::t("versions.heading")),
@@ -178,10 +178,10 @@ impl State {
         }
         let mut cells: Vec<Element<'a, Message>> = vec![name_lines.width(Fill).into()];
         if columns[0] {
-            cells.push(row(games).spacing(4).width(Length::Fixed(GAME_WIDTH)).into());
+            cells.push(container(chip_row(games)).width(Length::Fixed(GAME_WIDTH)).into());
         }
         if columns[1] {
-            cells.push(row(loaders).spacing(4).width(Length::Fixed(LOADER_WIDTH)).into());
+            cells.push(container(chip_row(loaders)).width(Length::Fixed(LOADER_WIDTH)).into());
         }
         if columns[2] {
             cells.push(
