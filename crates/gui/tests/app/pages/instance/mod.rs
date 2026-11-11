@@ -26,7 +26,7 @@ fn idle_game() -> GameView<'static> {
 }
 
 /// What a scan of a small instance folder finds: one mod, one world, one
-/// capture and two log lines.
+/// server, one capture and two log lines.
 fn sample_files() -> InstanceFiles {
     InstanceFiles {
         folder_bytes: 1_200_000_000,
@@ -53,6 +53,11 @@ fn sample_files() -> InstanceFiles {
             icon: None,
             backdrop: None,
             backed_up: false,
+        }],
+        servers: vec![files::ServerFile {
+            name: "Aether Server".to_string(),
+            address: "play.aether.net".to_string(),
+            icon: None,
         }],
         screenshots: vec![files::ScreenshotFile {
             file_name: "2026-10-29_12.00.00.png".to_string(),

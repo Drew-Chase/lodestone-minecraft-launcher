@@ -285,6 +285,7 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::DeleteShared { index })) => {
                 self.shown_world(|instance| WorldMessage::SharedDelete { instance, index })
             }
+            LodestoneAppMessage::Instance(InstanceMessage::Worlds(worlds::Message::JoinServer(address))) => self.join_shown_server(address),
             LodestoneAppMessage::World(message) => self.world_message(message),
             LodestoneAppMessage::WorldPinsLoaded(rows) => self.world_pins_loaded(rows),
             LodestoneAppMessage::Worlds(WorldsMessage::World(message)) => self.world_message(message),

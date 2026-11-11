@@ -1,8 +1,13 @@
-//! The Servers page: the servers the player saved, each with its live ping, the games announced on the local network, and
-//! the buttons that join, save, edit and remove them. Pings run while the page is open, every ten seconds.
+//! The Servers page: the servers the player saved and the servers each instance's `servers.dat` lists, each with its live ping,
+//! the games announced on the local network, and the buttons that join, save, edit and remove them. Pings run while the page
+//! is open, every ten seconds.
 
 mod header;
+mod listed;
 mod row;
+mod scan;
+
+pub use scan::{InstanceServers, read_all};
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -20,6 +25,7 @@ use crate::app::components::scrollbar;
 use crate::app::database::servers::SavedServer;
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
+use listed::{Listed, merge};
 
 /// How long a game stays listed after its last announcement, before it counts as gone.
 const LAN_KEPT: Duration = Duration::from_secs(15);
@@ -72,15 +78,27 @@ pub enum RowAction {
 }
 
 impl RowAction {
-    /// The actions in the order a row's menu lists them. A menu row is picked by its place in this list.
+    /// The actions a saved server's menu lists, in order. A menu row is picked by its place in this list.
     pub const MENU: [RowAction; 5] = [RowAction::Join, RowAction::Copy, RowAction::Favorite, RowAction::Edit, RowAction::Remove];
+    /// The actions a server the launcher has not saved lists. Its favorite mark saves it to the launcher's list.
+    pub const UNSAVED_MENU: [RowAction; 3] = [RowAction::Join, RowAction::Copy, RowAction::Favorite];
+
+    /// The actions a row's menu lists, for a server the launcher `saved` or has not.
+    pub fn menu(saved: bool) -> &'static [RowAction] {
+        if saved { &Self::MENU } else { &Self::UNSAVED_MENU }
+    }
 }
 
-/// The Servers page's state: the saved servers, their pings, the games heard on the network, and what the page shows.
+/// The Servers page's state: the saved servers, what the instances list, their pings, the games heard on the network, and what
+/// the page shows.
 #[derive(Default)]
 pub struct State {
     saved: Vec<SavedServer>,
-    /// The latest ping of each saved server, by the address as it is written.
+    /// What each instance's `servers.dat` lists, in the order the instances come.
+    instances: Vec<InstanceServers>,
+    /// The saved servers, the instances' lists and the games announced now, merged by address: the favorites first, then by name.
+    listed: Vec<Listed>,
+    /// The latest ping of each server, by the address as it is written.
     probes: HashMap<String, Probe>,
     /// The games heard on the local network, each with when it was last announced.
     lan: Vec<(Instant, Announcement)>,
@@ -113,8 +131,11 @@ pub enum Message {
     Join(String),
     /// A row's favorite star was pressed, by the saved server's id.
     ToggleFavorite(i64),
-    /// A game on the local network was saved, by its title and address.
-    SaveHeard { name: String, address: String },
+    /// A server was saved to the launcher's list, by its name, address and favorite mark. A game on the local network is saved
+    /// without the mark, and a server an instance lists is saved as a favorite when its star is pressed.
+    Save { name: String, address: String, favorite: bool },
+    /// Every instance's `servers.dat` was read: one list for each instance that holds servers.
+    InstanceLists(Vec<InstanceServers>),
     /// A saved change was written, or the write failed. The list is read again.
     Written(Result<(), String>),
     /// The question about removing a saved server was answered.
@@ -122,9 +143,25 @@ pub enum Message {
 }
 
 impl State {
-    /// Takes the saved servers the database read.
+    /// Takes the saved servers the database read, and merges them with the instances' lists.
     pub fn set_saved(&mut self, saved: Vec<SavedServer>) {
         self.saved = saved;
+        self.rebuild();
+    }
+
+    /// Takes the servers each instance's `servers.dat` lists, and merges them with the saved servers.
+    pub fn set_instances(&mut self, instances: Vec<InstanceServers>) {
+        self.instances = instances;
+        self.rebuild();
+    }
+
+    /// Merges the saved servers, the instances' lists and the games announced now, again, after any of them changed. A server
+    /// that is no longer listed loses its ping with it.
+    fn rebuild(&mut self) {
+        let games: Vec<Announcement> = self.lan.iter().map(|(_, game)| game.clone()).collect();
+        self.listed = merge(&self.saved, &self.instances, &games);
+        let listed = &self.listed;
+        self.probes.retain(|address, _| listed.iter().any(|server| &server.address == address));
     }
 
     /// The search text the page filters its lists by.
@@ -132,14 +169,24 @@ impl State {
         &self.query
     }
 
-    /// The saved servers, favorites first.
+    /// The servers the launcher saved, favorites first. The database keeps each address once.
     pub fn saved(&self) -> &[SavedServer] {
         &self.saved
     }
 
-    /// Every saved server's address, as it is written, for a round of pings.
+    /// Every server the page lists: the saved ones and the ones an instance lists, each address once.
+    pub fn listed(&self) -> &[Listed] {
+        &self.listed
+    }
+
+    /// The listed server at `address`.
+    pub fn listed_at(&self, address: &str) -> Option<&Listed> {
+        self.listed.iter().find(|server| server.address == address)
+    }
+
+    /// Every listed server's address, as it is written, for a round of pings.
     pub fn addresses(&self) -> Vec<String> {
-        self.saved.iter().map(|server| server.address.clone()).collect()
+        self.listed.iter().map(|server| server.address.clone()).collect()
     }
 
     /// The saved server with `id`.
@@ -171,11 +218,13 @@ impl State {
         self.lan
             .retain(|(seen, known)| known.address != announcement.address && now.duration_since(*seen) < LAN_KEPT);
         self.lan.push((now, announcement));
+        self.rebuild();
     }
 
     /// Drops the games not announced for a while. Called on each round, so a game that stopped is listed no longer.
     pub fn forget_quiet_games(&mut self, now: Instant) {
         self.lan.retain(|(seen, _)| now.duration_since(*seen) < LAN_KEPT);
+        self.rebuild();
     }
 
     /// The games heard on the local network, newest first.
@@ -191,21 +240,24 @@ impl State {
         query.is_empty() || name.to_lowercase().contains(&query) || address.to_lowercase().contains(&query)
     }
 
-    /// The saved servers the tab and the search keep, in the order the page lists them.
-    fn shown_servers(&self) -> Vec<&SavedServer> {
-        self.saved
+    /// The listed servers the tab and the search keep, in the order the page lists them.
+    fn shown_servers(&self) -> Vec<&Listed> {
+        self.listed
             .iter()
-            .filter(|server| self.tab != Tab::Favorites || server.favorite)
+            .filter(|server| self.tab != Tab::Favorites || server.favorite())
             .filter(|server| self.matches(&server.name, &server.address))
             .collect()
     }
 
     /// How many servers answered, and how many players they hold between them.
     pub fn online_summary(&self) -> (usize, u32) {
-        self.probes.values().fold((0, 0), |(servers, players), probe| match probe {
-            Probe::Online(reply) => (servers + 1, players + reply.status.online),
-            _ => (servers, players),
-        })
+        self.listed
+            .iter()
+            .filter_map(|server| self.probes.get(&server.address))
+            .fold((0, 0), |(servers, players), probe| match probe {
+                Probe::Online(reply) => (servers + 1, players + reply.status.online),
+                _ => (servers, players),
+            })
     }
 
     /// Applies a message the page answers itself. The messages the root answers are left alone.
@@ -239,11 +291,11 @@ impl State {
     /// The tabs under the header, each with its count, underlined, and the live badge at their right.
     fn tabs(&self) -> Element<'_, Message> {
         let labels = [
-            format!("{} {}", lang::t("servers.tab.all"), self.saved.len()),
+            format!("{} {}", lang::t("servers.tab.all"), self.listed.len()),
             format!(
                 "{} {}",
                 lang::t("servers.tab.favorites"),
-                self.saved.iter().filter(|server| server.favorite).count()
+                self.listed.iter().filter(|server| server.favorite()).count()
             ),
             format!("{} 0", lang::t("servers.tab.realms")),
             format!("{} {}", lang::t("servers.tab.lan"), self.lan.len()),
@@ -256,11 +308,11 @@ impl State {
             .into()
     }
 
-    /// The saved servers the tab keeps, one row each, or a line saying there are none.
+    /// The servers the tab keeps, one row each, or a line saying there are none.
     fn servers_list(&self) -> Element<'_, Message> {
         let servers = self.shown_servers();
         if servers.is_empty() {
-            let key = if self.saved.is_empty() {
+            let key = if self.listed.is_empty() {
                 "servers.empty"
             } else if self.tab == Tab::Favorites {
                 "servers.empty_favorites"
@@ -271,7 +323,7 @@ impl State {
         }
         let rows = servers
             .into_iter()
-            .map(|server| row::saved(server, self.probe(&server.address)))
+            .map(|server| row::listed(server, self.probe(&server.address)))
             .collect::<Vec<_>>();
         Column::with_children(rows).spacing(12).width(Fill).into()
     }

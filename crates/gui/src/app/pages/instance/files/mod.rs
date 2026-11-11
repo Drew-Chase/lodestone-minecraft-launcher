@@ -10,12 +10,15 @@ mod log;
 mod mods;
 mod packs;
 mod screenshots;
+mod servers;
 pub mod world_archive;
 mod worlds;
 
 use std::path::Path;
 
+use flate2::read::GzDecoder;
 use iced::widget::image::Handle;
+use serde::de::DeserializeOwned;
 
 use crate::app::perf;
 
@@ -25,6 +28,7 @@ pub use backups::BackupFile;
 pub use mods::{ModFile, switched_name};
 pub use packs::{PackFile, name_of as pack_name};
 pub use screenshots::ScreenshotFile;
+pub use servers::ServerFile;
 pub use worlds::{Difficulty, GameMode, WorldFile};
 
 /// Everything the instance tabs show, read from one instance folder.
@@ -40,6 +44,8 @@ pub struct InstanceFiles {
     pub shader_packs: Vec<PackFile>,
     /// The saved worlds, most recently saved first.
     pub worlds: Vec<WorldFile>,
+    /// The servers the game's `servers.dat` lists, in the list's order.
+    pub servers: Vec<ServerFile>,
     /// The captures, most recent first.
     pub screenshots: Vec<ScreenshotFile>,
     /// The end of `logs/latest.log`, oldest line first.
@@ -63,6 +69,13 @@ pub fn scan_screenshots(folder: &Path) -> Vec<ScreenshotFile> {
     screenshots::scan(&folder.join("screenshots"))
 }
 
+/// The servers the game's `servers.dat` in the instance folder lists, in the list's order. A file that is missing or does
+/// not decode lists none.
+pub fn scan_servers(folder: &Path) -> Vec<ServerFile> {
+    let _scope = perf::scope("io.scan_servers");
+    servers::scan(folder)
+}
+
 /// The save in `path`, read again. `None` when its folder has no `level.dat`.
 pub fn read_world(path: &Path) -> Option<WorldFile> {
     worlds::read_world(path)
@@ -82,6 +95,7 @@ pub fn scan(folder: &Path) -> InstanceFiles {
         resource_packs: packs::scan(&folder.join("resourcepacks")),
         shader_packs: packs::scan(&folder.join("shaderpacks")),
         worlds: worlds::scan(&folder.join("saves")),
+        servers: scan_servers(folder),
         screenshots: screenshots::scan(&folder.join("screenshots")),
         log: read_log(folder),
     }
@@ -160,6 +174,20 @@ pub fn decode_rgba(path: &Path) -> Result<image::RgbaImage, String> {
 pub fn move_to_trash(path: &Path) -> Result<(), String> {
     let _scope = perf::scope("io.trash");
     trash::delete(path).map_err(|error| error.to_string())
+}
+
+/// The first two bytes of a gzip stream.
+const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
+
+/// Decodes the NBT file at `path`. The game gzip-compresses its files, but a file without the gzip header is read
+/// as it is. `None` when the file is missing or does not decode.
+fn read_nbt<T: DeserializeOwned>(path: &Path) -> Option<T> {
+    let bytes = std::fs::read(path).ok()?;
+    if bytes.starts_with(&GZIP_MAGIC) {
+        fastnbt::from_reader(GzDecoder::new(&bytes[..])).ok()
+    } else {
+        fastnbt::from_bytes(&bytes).ok()
+    }
 }
 
 /// The size of every file under `dir`, folders included. Symlinks are not

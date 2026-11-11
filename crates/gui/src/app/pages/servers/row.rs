@@ -1,6 +1,7 @@
-//! A row of the Servers page: a saved server, or a game heard on the network. A saved server shows its art, its name and
-//! address, its message of the day, its ping and players, and its menu and Join button. A game heard on the network shows
-//! its title and address, with buttons to save it and join it.
+//! A row of the Servers page: a listed server, or a game heard on the network. A listed server shows its art, its name and
+//! address, whether a game announces it on the network, the instances that list it, its message of the day, its ping and
+//! players, and its menu and Join button. The LAN tab's rows show a game heard on the network, with buttons to save it and
+//! join it.
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Duration;
@@ -10,13 +11,13 @@ use iced::widget::{Text, column, container, image, row, svg};
 use iced::{ContentFit, Element, Fill, Length, alignment};
 use lodestone_server::lan::Announcement;
 
+use super::listed::Listed;
 use super::{ART_SIZE, Message, Probe, Reply, RowAction};
 use crate::app::components::badge::Badge;
 use crate::app::components::icon_button::{IconButton, ghost_button_style};
 use crate::app::components::panel::panel_with_padding;
 use crate::app::components::scene_art::card_art_handle;
 use crate::app::components::{Dropdown, MenuItem, ProgressBar, TextButton};
-use crate::app::database::servers::SavedServer;
 use crate::app::lang;
 use crate::app::pages::library::instance::Biome;
 use crate::app::theme::{color, fonts};
@@ -33,12 +34,21 @@ const BIOMES: [Biome; 8] = [
     Biome::Mushroom,
 ];
 
-/// A saved server's row: its art, its name and address, its message of the day, its ping and players, its menu, and its
-/// Join button.
-pub fn saved<'a>(server: &'a SavedServer, probe: Option<&'a Probe>) -> Element<'a, Message> {
+/// A listed server's row: its art, its name and address, the instances that list it, its message of the day, its ping and
+/// players, its menu, and its Join button. The star marks a saved server as a favorite, and saves a server the launcher has not
+/// saved yet.
+pub fn listed<'a>(server: &'a Listed, probe: Option<&'a Probe>) -> Element<'a, Message> {
     let reply = match probe {
         Some(Probe::Online(reply)) => Some(reply.as_ref()),
         _ => None,
+    };
+    let star = match &server.saved {
+        Some(saved) => Message::ToggleFavorite(saved.id),
+        None => Message::Save {
+            name: server.name.clone(),
+            address: server.address.clone(),
+            favorite: true,
+        },
     };
     let mut name = row![
         Text::new(server.name.clone())
@@ -50,11 +60,11 @@ pub fn saved<'a>(server: &'a SavedServer, probe: Option<&'a Probe>) -> Element<'
             .radius(8.0)
             .icon_size(12.0)
             .style(ghost_button_style())
-            .on_press(Message::ToggleFavorite(server.id)),
+            .on_press(star),
     ]
     .spacing(8)
     .align_y(alignment::Vertical::Center);
-    if server.favorite {
+    if server.favorite() {
         name = name.push(Badge::new(lang::t("servers.favorite"), color::amber(), color::amber_tint()).compact());
     }
     let mut address = row![
@@ -69,6 +79,25 @@ pub fn saved<'a>(server: &'a SavedServer, probe: Option<&'a Probe>) -> Element<'
         address = address.push(Badge::new(reply.status.version.clone(), color::text_muted(), color::surface_bg3()).compact());
     }
     let mut identity = column![name, address].spacing(6).width(Fill);
+    if server.announced {
+        identity = identity.push(
+            Text::new(lang::t("servers.lan.announced"))
+                .size(12)
+                .font(fonts::Inter::REGULAR)
+                .color(color::text_muted()),
+        );
+    }
+    if !server.instances.is_empty() {
+        identity = identity.push(
+            Text::new(lang::t_with(
+                "servers.in_instances",
+                &[("instances", server.instances.join(", ").as_str())],
+            ))
+            .size(12)
+            .font(fonts::Inter::REGULAR)
+            .color(color::text_muted()),
+        );
+    }
     if let Some(reply) = reply.filter(|reply| !reply.status.motd.is_empty()) {
         identity = identity.push(
             Text::new(reply.status.motd.clone())
@@ -92,8 +121,10 @@ pub fn saved<'a>(server: &'a SavedServer, probe: Option<&'a Probe>) -> Element<'
     )
     .variant(crate::app::components::button::Variant::Primary)
     .on_press(Message::Join(server.address.clone()));
+    // The server's own ping icon comes first, and the icon its instance's list kept stands in until the ping answers.
+    let icon = reply.and_then(|reply| reply.icon.as_ref()).or(server.icon.as_ref());
     card(
-        row![art(reply, &server.address), identity, stats(probe, reply), menu(server), join,]
+        row![art(icon, &server.address), identity, stats(probe, reply), menu(server), join,]
             .spacing(16)
             .align_y(alignment::Vertical::Center),
     )
@@ -118,9 +149,10 @@ pub fn heard(game: &Announcement) -> Element<'_, Message> {
     ]
     .spacing(6)
     .width(Fill);
-    let save = TextButton::ghost(lang::t("servers.lan.save")).on_press(Message::SaveHeard {
+    let save = TextButton::ghost(lang::t("servers.lan.save")).on_press(Message::Save {
         name: game.title.clone(),
         address: address.clone(),
+        favorite: false,
     });
     let join = TextButton::content(
         Text::new(lang::t("servers.join"))
@@ -143,11 +175,11 @@ fn card<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
 }
 
 /// The row's art at the size the page gives it: the server's icon, or a scene chosen by the address when it has none.
-fn art<'a>(reply: Option<&'a Reply>, address: &str) -> Element<'a, Message> {
+fn art<'a>(icon: Option<&'a image::Handle>, address: &str) -> Element<'a, Message> {
     let width = Length::Fixed(ART_SIZE.width);
     let height = Length::Fixed(ART_SIZE.height);
-    let picture: Element<'a, Message> = match reply.and_then(|reply| reply.icon.clone()) {
-        Some(icon) => image(icon).width(width).height(height).content_fit(ContentFit::Cover).into(),
+    let picture: Element<'a, Message> = match icon {
+        Some(icon) => image(icon.clone()).width(width).height(height).content_fit(ContentFit::Cover).into(),
         None => {
             let (biome, seed) = scene(address);
             svg(card_art_handle(biome, seed, ART_SIZE)).width(width).height(height).into()
@@ -205,20 +237,22 @@ fn latency_ink(latency: Duration) -> iced::Color {
     }
 }
 
-/// The row's menu: the actions, in the order [`RowAction::MENU`] lists them, with the favorite's label as its mark stands.
-fn menu(server: &SavedServer) -> Element<'_, Message> {
-    let labels = RowAction::MENU.map(|action| match action {
-        RowAction::Join => (lang::t("servers.action.join"), false),
-        RowAction::Copy => (lang::t("servers.action.copy"), false),
-        RowAction::Favorite if server.favorite => (lang::t("servers.action.unfavorite"), false),
-        RowAction::Favorite => (lang::t("servers.action.favorite"), false),
-        RowAction::Edit => (lang::t("servers.action.edit"), false),
-        RowAction::Remove => (lang::t("servers.action.remove"), true),
-    });
-    let items = labels.map(|(label, danger)| MenuItem::Action {
-        label: label.to_owned(),
-        icon: None,
-        danger,
+/// The row's menu: the actions [`RowAction::menu`] lists for the server, with the favorite's label as its mark stands.
+fn menu(server: &Listed) -> Element<'_, Message> {
+    let items = RowAction::menu(server.saved.is_some()).iter().map(|action| {
+        let (label, danger) = match action {
+            RowAction::Join => (lang::t("servers.action.join"), false),
+            RowAction::Copy => (lang::t("servers.action.copy"), false),
+            RowAction::Favorite if server.favorite() => (lang::t("servers.action.unfavorite"), false),
+            RowAction::Favorite => (lang::t("servers.action.favorite"), false),
+            RowAction::Edit => (lang::t("servers.action.edit"), false),
+            RowAction::Remove => (lang::t("servers.action.remove"), true),
+        };
+        MenuItem::Action {
+            label: label.to_owned(),
+            icon: None,
+            danger,
+        }
     });
     let address = server.address.clone();
     Dropdown::new(Icon::lucide().ellipsis_vertical())

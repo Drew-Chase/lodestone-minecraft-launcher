@@ -4,13 +4,11 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use chrono::{DateTime, Local, Utc};
-use flate2::read::GzDecoder;
 use iced::widget::image::Handle;
 use serde::Deserialize;
-use serde::de::DeserializeOwned;
 
 use super::backups::is_backup_of;
-use super::{decode_world_art, dir_size};
+use super::{decode_world_art, dir_size, read_nbt};
 use crate::app::lang;
 
 /// World ticks per second. `Time` in `level.dat` counts ticks.
@@ -197,20 +195,6 @@ fn has_backup(path: &Path, folder: &str) -> bool {
     entries
         .filter_map(Result::ok)
         .any(|entry| entry.file_name().to_str().is_some_and(|name| is_backup_of(name, folder)))
-}
-
-/// The first two bytes of a gzip stream.
-const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
-
-/// Decodes the NBT file at `path`. The game gzip-compresses its files, but a file without the gzip header is read
-/// as it is. `None` when the file is missing or does not decode.
-fn read_nbt<T: DeserializeOwned>(path: &Path) -> Option<T> {
-    let bytes = std::fs::read(path).ok()?;
-    if bytes.starts_with(&GZIP_MAGIC) {
-        fastnbt::from_reader(GzDecoder::new(&bytes[..])).ok()
-    } else {
-        fastnbt::from_bytes(&bytes).ok()
-    }
 }
 
 /// The world seed, from the newest place that holds it. From Minecraft 26.1 it is `data.seed` in

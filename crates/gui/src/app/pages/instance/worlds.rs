@@ -1,7 +1,7 @@
 //! Worlds tab — the saved worlds as a two-column grid of cards, with a search field and the actions the Worlds
-//! pages share.
+//! pages share. Under the grid, the servers the instance's `servers.dat` lists, one row each, with a Join button.
 //!
-//! The list is read from the instance's `saves/` folder by [`super::files`]. `update` keeps the visible indices
+//! The lists are read from the instance folder by [`super::files`]. `update` keeps the visible indices
 //! current, so `view` only walks them. The actions that touch the disk or the game are the root's: this tab emits
 //! them and the root carries them out for the instance the page shows.
 
@@ -10,17 +10,18 @@ use std::rc::Rc;
 
 use aurora_leaf::Icon;
 use chrono::{DateTime, Local};
-use iced::widget::{Space, Text, column, container, row, text_input};
-use iced::{Background, Border, Color, Element, Fill, Length, Padding, Theme, alignment};
+use iced::widget::{Space, Text, column, container, image, row, text_input};
+use iced::{Background, Border, Color, ContentFit, Element, Fill, Length, Padding, Theme, alignment};
 use iced_color_extension::rgb;
 
-use super::files::WorldFile;
+use super::files::{ServerFile, WorldFile};
 use super::world_menu::Action;
 use crate::app::components::TextButton;
 use crate::app::components::button::Variant;
 use crate::app::components::grid::grid;
 use crate::app::components::input;
-use crate::app::components::panel::panel;
+use crate::app::components::panel::{panel, panel_with_padding};
+use crate::app::components::typography;
 use crate::app::components::world_card::{CARD_MAX_WIDTH, GRID_GAP, WorldLabels, WorldMessages, world_card};
 use crate::app::lang;
 use crate::app::shared_library::SharedEntry;
@@ -85,15 +86,22 @@ pub enum Message {
     DeleteShared {
         index: usize,
     },
+    /// Join was pressed for the server at this address, which the instance's `servers.dat` lists. The root launches the
+    /// instance on it.
+    JoinServer(String),
 }
 
 /// The Worlds tab's state.
 #[derive(Debug, Default)]
 pub struct State {
     worlds: Vec<WorldFile>,
+    /// The servers the instance's `servers.dat` lists, in the list's order.
+    servers: Vec<ServerFile>,
     query: String,
     /// Indices into `worlds` that pass the search, kept current by `update`.
     visible: Vec<usize>,
+    /// Indices into `servers` that pass the search, kept current by `update`.
+    visible_servers: Vec<usize>,
     /// The save whose card the pointer is over, if any.
     hovered: Option<PathBuf>,
     /// The dialog that adds shared worlds, while it is open.
@@ -104,6 +112,12 @@ impl State {
     /// Replaces the worlds with the ones the folder holds.
     pub fn set_worlds(&mut self, worlds: Vec<WorldFile>) {
         self.worlds = worlds;
+        self.refilter();
+    }
+
+    /// Replaces the servers with the ones the instance's `servers.dat` lists.
+    pub fn set_servers(&mut self, servers: Vec<ServerFile>) {
+        self.servers = servers;
         self.refilter();
     }
 
@@ -147,10 +161,12 @@ impl State {
             | Message::Rescanned { .. }
             | Message::OpenShared
             | Message::AddShared { .. }
-            | Message::DeleteShared { .. } => {}
+            | Message::DeleteShared { .. }
+            | Message::JoinServer(_) => {}
         }
     }
 
+    /// Keeps the indices of the worlds and the servers that pass the search.
     fn refilter(&mut self) {
         let query = self.query.to_lowercase();
         self.visible = self
@@ -158,6 +174,13 @@ impl State {
             .iter()
             .enumerate()
             .filter(|(_, world)| world.matches(&query))
+            .map(|(index, _)| index)
+            .collect();
+        self.visible_servers = self
+            .servers
+            .iter()
+            .enumerate()
+            .filter(|(_, server)| server.matches(&query))
             .map(|(index, _)| index)
             .collect();
     }
@@ -194,7 +217,29 @@ impl State {
                 .into()
         };
 
-        column![self.toolbar(), body].spacing(16).width(Fill).into()
+        let page = column![self.toolbar(), body].spacing(16).width(Fill);
+        match self.servers_section() {
+            Some(servers) => column![page, servers].spacing(32).width(Fill).into(),
+            None => page.into(),
+        }
+    }
+
+    /// The servers the instance's `servers.dat` lists, one row each, under the worlds. The section is left out while the
+    /// search keeps none of them.
+    fn servers_section(&self) -> Option<Element<'_, Message>> {
+        if self.visible_servers.is_empty() {
+            return None;
+        }
+        let rows: Vec<Element<'_, Message>> = self.visible_servers.iter().map(|&index| server_row(&self.servers[index])).collect();
+        Some(
+            column![
+                typography::eyebrow(lang::t("instance.worlds.servers")),
+                column(rows).spacing(10).width(Fill)
+            ]
+            .spacing(12)
+            .width(Fill)
+            .into(),
+        )
     }
 
     fn toolbar(&self) -> Element<'_, Message> {
@@ -263,6 +308,59 @@ fn messages(path: &Path) -> WorldMessages<Message> {
             hovered: false,
         },
     }
+}
+
+/// The side of a server's icon, or of the placeholder that stands in for it.
+const SERVER_ICON: f32 = 40.0;
+
+/// A server's row: its icon, its name and address, and the Join button that launches the instance on it.
+fn server_row(server: &ServerFile) -> Element<'_, Message> {
+    let icon: Element<'_, Message> = match &server.icon {
+        Some(handle) => image(handle.clone())
+            .width(SERVER_ICON)
+            .height(SERVER_ICON)
+            .content_fit(ContentFit::Cover)
+            .into(),
+        None => container(utility::icon(
+            Icon::lucide().server(),
+            18.0,
+            Some((color::text_placeholder(), color::text_placeholder())),
+        ))
+        .width(SERVER_ICON)
+        .height(SERVER_ICON)
+        .align_x(alignment::Horizontal::Center)
+        .align_y(alignment::Vertical::Center)
+        .style(|_| container::Style {
+            background: Some(Background::Color(color::surface_bg3())),
+            border: Border {
+                radius: 10.0.into(),
+                ..Border::default()
+            },
+            ..container::Style::default()
+        })
+        .into(),
+    };
+    let identity = column![
+        Text::new(server.name.clone())
+            .size(14)
+            .font(fonts::Inter::SEMI_BOLD)
+            .color(color::text_headline()),
+        Text::new(server.address.clone())
+            .size(12)
+            .font(fonts::JetBrainsMono::REGULAR)
+            .color(color::text_muted()),
+    ]
+    .spacing(4)
+    .width(Fill);
+    let join = TextButton::content(
+        Text::new(lang::t("servers.join"))
+            .size(13)
+            .font(fonts::Inter::BOLD)
+            .color(color::primary_on()),
+    )
+    .variant(Variant::Primary)
+    .on_press(Message::JoinServer(server.address.clone()));
+    panel_with_padding(row![icon, identity, join].spacing(14).align_y(alignment::Vertical::Center), 12.0)
 }
 
 /// The field inside the search box. It draws no fill or border of its own, so

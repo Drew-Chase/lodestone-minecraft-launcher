@@ -80,8 +80,8 @@ impl LodestoneLauncher {
             test: Test::Idle,
             error: None,
         });
-        // The saved servers the dialog lists are read; their pings follow once they are.
-        self.load_saved_servers()
+        // The servers the dialog lists are read; their pings follow once they are.
+        self.load_servers()
     }
 
     /// Joins the server at `address`: the instance played last launches and joins it. With no instance installed, the
@@ -100,6 +100,18 @@ impl LodestoneLauncher {
         match last_played {
             Some(id) => self.launch_run(&id, Some(QuickPlay::Server(server))),
             None => self.open_join_dialog(address),
+        }
+    }
+
+    /// Launches the instance the instance page shows, joining the server at `address`. The Worlds tab's Join button asks for
+    /// it, so a server joins from the instance whose `servers.dat` lists it.
+    pub(crate) fn join_shown_server(&mut self, address: String) -> Task<LodestoneAppMessage> {
+        let Some(id) = self.instance_page.instance().map(|instance| instance.id.clone()) else {
+            return Task::none();
+        };
+        match ServerAddress::parse(&address) {
+            Ok(server) => self.launch_run(&id, Some(QuickPlay::Server(server))),
+            Err(_) => Task::none(),
         }
     }
 
@@ -243,7 +255,8 @@ fn test_line(dialog: &JoinDialog) -> Option<Element<'_, Message>> {
     Some(text(line).size(12).font(fonts::JetBrainsMono::REGULAR).color(ink).into())
 }
 
-/// The saved servers, each a row that fills the address when it is pressed, and a link that adds a new one.
+/// The servers the launcher knows (saved, or in an instance's list), each a row that fills the address when it is pressed, and a
+/// link that adds a new one. A game only announced on the network is left out.
 fn saved_list<'a>(dialog: &'a JoinDialog, servers: &'a ServersState) -> Element<'a, Message> {
     let header = row![
         typography::eyebrow(lang::t("servers.join_dialog.saved")),
@@ -252,8 +265,9 @@ fn saved_list<'a>(dialog: &'a JoinDialog, servers: &'a ServersState) -> Element<
     ]
     .align_y(iced::alignment::Vertical::Center);
     let rows: Vec<Element<'a, Message>> = servers
-        .saved()
+        .listed()
         .iter()
+        .filter(|server| server.known())
         .map(|server| {
             let reply = match servers.probe(&server.address) {
                 Some(crate::app::pages::servers::Probe::Online(reply)) => Some(reply.as_ref()),
@@ -274,7 +288,7 @@ fn saved_list<'a>(dialog: &'a JoinDialog, servers: &'a ServersState) -> Element<
             .width(Fill);
             let players = reply.map_or_else(String::new, |reply| format!("{} / {}", reply.status.online, reply.status.max));
             let ping = reply.map_or_else(String::new, |reply| format!("{} ms", reply.status.latency.as_millis()));
-            let icon = reply.and_then(|reply| reply.icon.clone());
+            let icon = reply.and_then(|reply| reply.icon.clone()).or_else(|| server.icon.clone());
             let mut line = row![].spacing(12).align_y(iced::alignment::Vertical::Center);
             if let Some(icon) = icon {
                 line = line.push(image(icon).width(36.0).height(36.0));

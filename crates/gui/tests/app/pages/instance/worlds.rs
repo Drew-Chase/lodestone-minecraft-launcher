@@ -5,7 +5,7 @@
 use chrono::{Local, TimeZone};
 
 use super::*;
-use crate::app::pages::instance::files::{Difficulty, GameMode};
+use crate::app::pages::instance::files::{Difficulty, GameMode, ServerFile};
 use crate::app::shared_library::SharedEntry;
 
 fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Local> {
@@ -30,6 +30,42 @@ fn world(name: &str) -> WorldFile {
         backdrop: None,
         backed_up: false,
     }
+}
+
+fn server(name: &str, address: &str) -> ServerFile {
+    ServerFile {
+        name: name.to_owned(),
+        address: address.to_owned(),
+        icon: None,
+    }
+}
+
+#[test]
+fn the_search_keeps_the_servers_whose_name_or_address_contains_it() {
+    let mut state = State::default();
+    state.set_servers(vec![server("Ad Astra", "play.astra.net"), server("Creative", "192.168.1.42:25565")]);
+    assert_eq!(state.visible_servers, [0, 1]);
+
+    state.update(Message::Search("ASTRA".to_string()));
+    assert_eq!(state.visible_servers, [0]);
+
+    state.update(Message::Search("192.168".to_string()));
+    assert_eq!(state.visible_servers, [1]);
+}
+
+#[test]
+fn the_worlds_and_the_servers_share_one_search() {
+    let mut state = State::default();
+    state.set_worlds(vec![world("Aether Hub")]);
+    state.set_servers(vec![server("Aether Server", "a.example")]);
+
+    state.update(Message::Search("aether".to_string()));
+    assert_eq!(state.visible, [0]);
+    assert_eq!(state.visible_servers, [0]);
+
+    state.update(Message::Search("pixel".to_string()));
+    assert!(state.visible.is_empty());
+    assert!(state.visible_servers.is_empty());
 }
 
 #[test]

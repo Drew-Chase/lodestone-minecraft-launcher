@@ -24,8 +24,23 @@ use crate::app::pages::instance::{Message as InstanceMessage, Tab};
 use crate::app::pages::library::instance::{Instance, InstanceIcon, Loader};
 use crate::app::pages::library::instance_menu::Action;
 use crate::app::pages::library::new_instance::{BannerChoice, IconChoice, banner};
+use crate::app::pages::worlds::Source;
 
 impl LodestoneLauncher {
+    /// Every instance as the Worlds and Servers pages read them: its id and name, its version, and its game folder.
+    pub(super) fn instance_sources(&self) -> Vec<Source> {
+        self.library
+            .instances()
+            .iter()
+            .map(|instance| Source {
+                id: instance.id.clone(),
+                name: instance.name.clone(),
+                mc_version: instance.mc_version.clone(),
+                folder: self.paths.instance(&instance.directory_name),
+            })
+            .collect()
+    }
+
     /// Opens the Discover page on the Mods tab for the instance on screen, as the Mods tab's Add asks. The page's
     /// loader and Minecraft version become the filters, and the mods are added to this instance.
     pub(super) fn add_mods_from_instance(&mut self) -> Task<LodestoneAppMessage> {

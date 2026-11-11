@@ -20,7 +20,7 @@ use crate::app::pages::Page;
 use crate::app::pages::instance::files;
 use crate::app::pages::instance::files::WorldFile;
 use crate::app::pages::instance::world_menu::Action;
-use crate::app::pages::worlds::{Menu, Message as WorldsMessage, Scan, Source};
+use crate::app::pages::worlds::{Menu, Message as WorldsMessage, Scan};
 use crate::app::shared_library::SharedEntry;
 
 /// A world request from a Worlds page, or the answer to one. The instance is named by its id.
@@ -397,17 +397,7 @@ impl LodestoneLauncher {
     /// Opens the Worlds page's list of every instance's saves and backups, read on the blocking pool. The page takes
     /// the pins it lists with, and a scan that a newer one has overtaken is dropped when it lands.
     pub(super) fn open_worlds(&mut self) -> Task<LodestoneAppMessage> {
-        let sources: Vec<Source> = self
-            .library
-            .instances()
-            .iter()
-            .map(|instance| Source {
-                id: instance.id.clone(),
-                name: instance.name.clone(),
-                mc_version: instance.mc_version.clone(),
-                folder: self.paths.instance(&instance.directory_name),
-            })
-            .collect();
+        let sources = self.instance_sources();
         self.worlds.set_pins(self.world_pins.clone());
         let generation = self.worlds.begin_scan(&sources);
         Task::perform(

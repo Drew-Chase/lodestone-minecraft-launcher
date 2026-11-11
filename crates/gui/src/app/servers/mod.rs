@@ -1,6 +1,6 @@
-//! The Servers page's work: reading the saved servers, pinging them, listening for games on the local network, and the
-//! actions on a row. The page itself is `pages::servers`. The Add and Edit dialog is in `dialog`, and the Join Server dialog
-//! in `join`.
+//! The Servers page's work: reading the saved servers and the servers each instance's `servers.dat` lists, pinging them,
+//! listening for games on the local network, and the actions on a row. The page itself is `pages::servers`. The Add and Edit
+//! dialog is in `dialog`, and the Join Server dialog in `join`.
 
 pub mod dialog;
 pub mod join;
@@ -20,7 +20,7 @@ use tracing::warn;
 
 use super::components::alert::Alert;
 use super::lang;
-use super::pages::servers::{Message, Reply, RowAction, is_address};
+use super::pages::servers::{Message, Reply, RowAction, is_address, read_all};
 use super::{LodestoneAppMessage, LodestoneLauncher};
 
 /// How often the Servers page pings its servers while it is open.
@@ -31,9 +31,16 @@ const PING_TIMEOUT: Duration = Duration::from_secs(4);
 const PINGS_AT_ONCE: usize = 8;
 
 impl LodestoneLauncher {
-    /// Opens the Servers page: its saved servers are read, and every one is pinged.
+    /// Opens the Servers page: the games announced before are forgotten once they have been quiet, the servers are read, and
+    /// every one is pinged.
     pub(super) fn open_servers(&mut self) -> Task<LodestoneAppMessage> {
-        Task::batch([self.load_saved_servers(), self.ping_servers()])
+        self.servers.forget_quiet_games(Instant::now());
+        Task::batch([self.load_servers(), self.ping_servers()])
+    }
+
+    /// Reads the saved servers from the database, and the servers each instance's `servers.dat` lists.
+    pub(super) fn load_servers(&self) -> Task<LodestoneAppMessage> {
+        Task::batch([self.load_saved_servers(), self.load_instance_lists()])
     }
 
     /// Reads the saved servers from the database.
@@ -44,6 +51,22 @@ impl LodestoneLauncher {
         Task::perform(async move { db.saved_servers().await }, |result| {
             LodestoneAppMessage::Servers(Message::Loaded(result))
         })
+    }
+
+    /// Reads the servers each instance's `servers.dat` lists, on the blocking pool. The page merges them with the saved servers
+    /// when they land.
+    fn load_instance_lists(&self) -> Task<LodestoneAppMessage> {
+        let sources = self.instance_sources();
+        Task::perform(
+            async move { tokio::task::spawn_blocking(move || read_all(&sources)).await.unwrap_or_default() },
+            |lists| LodestoneAppMessage::Servers(Message::InstanceLists(lists)),
+        )
+    }
+
+    /// Pings the server at `address` alone, for a game that has just appeared on the local network.
+    fn ping_one(&mut self, address: String) -> Task<LodestoneAppMessage> {
+        self.servers.begin_probe(&address);
+        ping(address, Arc::new(Semaphore::new(PINGS_AT_ONCE)))
     }
 
     /// Pings every saved server, a few at a time. Each server keeps its last answer until the new one comes back.
@@ -72,6 +95,10 @@ impl LodestoneLauncher {
                 warn!("Could not read the saved servers: {error}");
                 Task::none()
             }
+            Message::InstanceLists(lists) => {
+                self.servers.set_instances(lists);
+                self.ping_servers()
+            }
             Message::Round => {
                 self.servers.forget_quiet_games(Instant::now());
                 self.ping_servers()
@@ -81,8 +108,11 @@ impl LodestoneLauncher {
                 Task::none()
             }
             Message::Heard(announcement) => {
+                // A game that has not been pinged yet is pinged at once, so its row shows its state without waiting for a round.
+                let address = announcement.address.to_string();
+                let unseen = self.servers.probe(&address).is_none();
                 self.servers.heard(announcement, Instant::now());
-                Task::none()
+                if unseen { self.ping_one(address) } else { Task::none() }
             }
             Message::Tab(_) | Message::Query(_) => {
                 self.servers.update(message);
@@ -93,16 +123,19 @@ impl LodestoneLauncher {
                 _ => Task::none(),
             },
             Message::Add => self.open_servers_dialog(None, String::new()),
-            Message::RowMenu { address, index } => match RowAction::MENU.get(index) {
-                Some(action) => self.row_action(address, *action),
-                None => Task::none(),
-            },
+            Message::RowMenu { address, index } => {
+                let saved = self.servers.listed_at(&address).is_some_and(|server| server.saved.is_some());
+                match RowAction::menu(saved).get(index) {
+                    Some(action) => self.row_action(address, *action),
+                    None => Task::none(),
+                }
+            }
             Message::Join(address) => self.join_server(address),
             Message::ToggleFavorite(id) => match self.servers.server(id).cloned() {
                 Some(server) => self.write_server(server.id, server.name, server.address, !server.favorite),
                 None => Task::none(),
             },
-            Message::SaveHeard { name, address } => self.save_new_server(name, address, false),
+            Message::Save { name, address, favorite } => self.save_new_server(name, address, favorite),
             Message::Written(Ok(())) => self.load_saved_servers(),
             Message::Written(Err(error)) => {
                 warn!("Could not save the server: {error}");
@@ -117,23 +150,33 @@ impl LodestoneLauncher {
         }
     }
 
-    /// Carries out a row's menu action on the row at `address`.
+    /// Carries out a row's menu action on the server at `address`. A server the launcher has not saved offers only the actions
+    /// [`RowAction::menu`] lists for it, and its favorite mark saves it.
     fn row_action(&mut self, address: String, action: RowAction) -> Task<LodestoneAppMessage> {
-        let Some(server) = self.servers.saved().iter().find(|server| server.address == address).cloned() else {
+        let Some(server) = self.servers.listed_at(&address).cloned() else {
             return Task::none();
         };
         match action {
             RowAction::Join => self.join_server(address),
             RowAction::Copy => iced::clipboard::write(address),
-            RowAction::Favorite => self.write_server(server.id, server.name, server.address, !server.favorite),
-            RowAction::Edit => self.open_servers_dialog(Some(server), String::new()),
-            RowAction::Remove => {
-                let message = lang::t_with("servers.remove.message", &[("name", server.name.as_str())]);
-                let id = server.id;
-                self.alerts
-                    .show(Alert::danger(message).title(lang::t("servers.remove.title")))
-                    .map(move |confirmed| LodestoneAppMessage::Servers(Message::RemoveAnswered { id, confirmed }))
-            }
+            RowAction::Favorite => match server.saved {
+                Some(saved) => self.write_server(saved.id, saved.name, saved.address, !saved.favorite),
+                None => self.save_new_server(server.name, server.address, true),
+            },
+            RowAction::Edit => match server.saved {
+                Some(saved) => self.open_servers_dialog(Some(saved), String::new()),
+                None => Task::none(),
+            },
+            RowAction::Remove => match server.saved {
+                Some(saved) => {
+                    let message = lang::t_with("servers.remove.message", &[("name", saved.name.as_str())]);
+                    let id = saved.id;
+                    self.alerts
+                        .show(Alert::danger(message).title(lang::t("servers.remove.title")))
+                        .map(move |confirmed| LodestoneAppMessage::Servers(Message::RemoveAnswered { id, confirmed }))
+                }
+                None => Task::none(),
+            },
         }
     }
 

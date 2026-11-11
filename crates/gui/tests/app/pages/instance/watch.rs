@@ -32,6 +32,14 @@ fn the_lock_a_running_game_holds_is_not_a_change_to_its_save() {
 }
 
 #[test]
+fn a_change_to_the_server_list_names_the_list_itself() {
+    let folder = folder();
+    assert_eq!(classify(&folder, &folder.join("servers.dat")), Some(Change::Servers));
+    assert_eq!(classify(&folder, &folder.join("servers.dat_old")), None);
+    assert_eq!(classify(&folder, &folder.join("servers.dat/inner")), None);
+}
+
+#[test]
 fn a_capture_change_names_the_png_file_directly_inside_the_folder() {
     let folder = folder();
     let shot = folder.join("screenshots/2026-10-30_09.00.00.png");

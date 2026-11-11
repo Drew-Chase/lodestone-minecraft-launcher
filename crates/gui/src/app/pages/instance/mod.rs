@@ -470,6 +470,7 @@ impl InstancePage {
         self.packs.set_packs(files.resource_packs.clone(), files.shader_packs.clone());
         self.mods.set_mods(files.mods.clone());
         self.worlds.set_worlds(files.worlds.clone());
+        self.worlds.set_servers(files.servers.clone());
         self.screenshots.set_shots(files.screenshots.clone());
         self.logs.set_lines(files.log.clone());
         self.files = Some(files);
@@ -504,13 +505,14 @@ impl InstancePage {
         )
     }
 
-    /// Merges what a read found into the instance's copy of its saves, captures, mods and packs, then hands each list to
-    /// its tab. A save or capture the watch did not report keeps its state, and so keeps its thumbnail.
+    /// Merges what a read found into the instance's copy of its saves, captures, mods, packs and servers, then hands each list
+    /// to its tab. A save or capture the watch did not report keeps its state, and so keeps its thumbnail.
     fn files_read(&mut self, updates: Vec<Update>) -> Task<Message> {
         self.reading = false;
         if let Some(files) = &mut self.files {
             let mut mods_changed = false;
             let mut packs_changed = false;
+            let mut servers_changed = false;
             for update in updates {
                 match update {
                     Update::Worlds(worlds) => files.worlds = worlds,
@@ -532,6 +534,10 @@ impl InstancePage {
                         files.shader_packs = shader;
                         packs_changed = true;
                     }
+                    Update::Servers(servers) => {
+                        files.servers = servers;
+                        servers_changed = true;
+                    }
                 }
             }
             files.worlds.sort_by_key(|world| std::cmp::Reverse(world.saved));
@@ -543,6 +549,9 @@ impl InstancePage {
             }
             if packs_changed {
                 self.packs.set_packs(files.resource_packs.clone(), files.shader_packs.clone());
+            }
+            if servers_changed {
+                self.worlds.set_servers(files.servers.clone());
             }
         }
         Task::batch([self.read_pending(), self.decode_viewer(), self.decode_next_thumbnail()])

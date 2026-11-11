@@ -1,7 +1,8 @@
-//! Watches the instance's `saves/`, `screenshots/`, `mods/`, `resourcepacks/` and `shaderpacks/` folders, so the Worlds,
-//! Screenshots, Mods and Content tabs follow the game and the files put in them. A game writes in bursts, so the events are
-//! gathered into a batch that is read back once the folders go quiet. The page applies what the batch reads; this module
-//! only reports which saves, captures, mod jars and packs changed.
+//! Watches the instance's `saves/`, `screenshots/`, `mods/`, `resourcepacks/` and `shaderpacks/` folders and its `servers.dat`,
+//! so the Worlds, Screenshots, Mods and Content tabs follow the game and the files put in them, and the Worlds tab's servers
+//! follow the game's list. A game writes in bursts, so the events are gathered into a batch that is read back once the folders
+//! go quiet. The page applies what the batch reads; this module only reports which saves, captures, mod jars, packs and
+//! server lists changed.
 
 use std::collections::{BTreeSet, HashSet};
 use std::ffi::OsStr;
@@ -17,12 +18,14 @@ use tokio::time::Instant;
 use tracing::warn;
 
 use super::Message;
-use super::files::{self, ModFile, PackFile, ScreenshotFile, WorldFile};
+use super::files::{self, ModFile, PackFile, ScreenshotFile, ServerFile, WorldFile};
 
 /// The folders the watch follows, each recursively once it exists.
 const FOLDERS: [&str; 5] = ["saves", "screenshots", "mods", "resourcepacks", "shaderpacks"];
 /// The lock a running game holds on a save, written inside the save's folder.
 const SESSION_LOCK: &str = "session.lock";
+/// The multiplayer list the game keeps directly inside the instance folder.
+const SERVER_LIST: &str = "servers.dat";
 /// How long the folders must stay quiet before a batch is read: half a second.
 const QUIET: Duration = Duration::from_millis(500);
 /// The longest a batch may wait, so a game that writes without pause still refreshes the tabs.
@@ -44,6 +47,8 @@ pub enum Change {
     /// The `resourcepacks` or `shaderpacks` folder itself, or an entry directly inside one, changed: both pack lists are read
     /// again.
     Packs,
+    /// `servers.dat` in the instance folder was created, changed or removed: the server list is read again.
+    Servers,
 }
 
 /// What reading a change back from disk found. A save or capture that is gone reads as `None`.
@@ -61,10 +66,12 @@ pub enum Update {
     Mods(Vec<ModFile>),
     /// Every resource pack in `resourcepacks/`, then every shader pack in `shaderpacks/`, each sorted by name.
     Packs(Vec<PackFile>, Vec<PackFile>),
+    /// The servers `servers.dat` lists, in the list's order.
+    Servers(Vec<ServerFile>),
 }
 
-/// The change a path reports, or `None` when it lies outside the five folders, or is neither a capture, a mod jar nor a
-/// pack's own entry.
+/// The change a path reports, or `None` when it lies outside the five folders and `servers.dat`, or is neither a capture, a mod
+/// jar, a pack's own entry nor the server list.
 pub fn classify(folder: &Path, path: &Path) -> Option<Change> {
     let relative = path.strip_prefix(folder).ok()?;
     let parts: Vec<&OsStr> = relative.components().map(|part| part.as_os_str()).collect();
@@ -79,6 +86,7 @@ pub fn classify(folder: &Path, path: &Path) -> Option<Change> {
         [root, _] if *root == OsStr::new("mods") && is_mod_jar(path) => Some(Change::Mods),
         // A pack is an entry of its folder, zip or folder alike, so any entry directly inside one counts, as the folder does.
         [root] | [root, _] if is_pack_folder(root) => Some(Change::Packs),
+        [root] if *root == OsStr::new(SERVER_LIST) => Some(Change::Servers),
         _ => None,
     }
 }
@@ -93,7 +101,7 @@ pub fn coalesce(changes: impl IntoIterator<Item = Change>) -> Vec<Change> {
         .filter(|change| match change {
             Change::World(_) => !worlds,
             Change::Shot(_) => !shots,
-            Change::Worlds | Change::Shots | Change::Mods | Change::Packs => true,
+            Change::Worlds | Change::Shots | Change::Mods | Change::Packs | Change::Servers => true,
         })
         .collect()
 }
@@ -119,6 +127,7 @@ pub fn read(folder: &Path, changes: Vec<Change>) -> Vec<Update> {
                 let (resource, shader) = files::scan_packs(folder);
                 Update::Packs(resource, shader)
             }
+            Change::Servers => Update::Servers(files::scan_servers(folder)),
         })
         .collect()
 }
