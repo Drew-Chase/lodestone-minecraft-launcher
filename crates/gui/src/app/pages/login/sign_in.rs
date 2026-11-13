@@ -52,10 +52,6 @@ impl Login {
             Flow::OfflinePrompt { username } => {
                 body = body.push(self.offline_form(username));
             }
-            // A stored sign-in is being restored silently.
-            Flow::Restoring { username } => {
-                body = body.push(self.restoring_panel(username));
-            }
             // Idle and Failed both offer the button (retry after a failure).
             Flow::Idle | Flow::Failed(_) => {
                 body = body.push(self.microsoft_button(lang::t("login.sign_in_microsoft"), Message::SignInMicrosoft));

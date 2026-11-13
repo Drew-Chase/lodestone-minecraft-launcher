@@ -42,6 +42,8 @@ fn refresh_token_grant_errors_map_to_a_clean_expiry_message() {
         None,
     ));
     let error = AuthError::from_refresh_token_error(invalid_grant);
+    assert!(matches!(error, AuthError::SignInExpired));
+    assert!(error.needs_sign_in());
     assert_eq!(
         error.to_string(),
         "microsoft sign-in failed: your saved Microsoft sign-in has expired — sign in again"

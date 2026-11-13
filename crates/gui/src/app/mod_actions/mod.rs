@@ -15,7 +15,7 @@ use tracing::warn;
 use super::LodestoneAppMessage;
 use super::LodestoneLauncher;
 use super::components::alert::Alert;
-use super::database::Database;
+use super::database::{Database, StoredModCheck};
 use super::discover::{MODRINTH, curseforge, details_of, versions_of};
 use super::install::mods::{add_to_instance, fits};
 use super::lang;
@@ -39,18 +39,38 @@ pub(crate) use replace::replace_jar;
 
 /// How many hits a search for a link asks a platform for.
 const SEARCH_LIMIT: u32 = 20;
-/// How long a full check of an instance's mods is trusted before the platforms are asked again.
+/// How long a full check of an instance's mods is trusted before the platforms are asked again. An older check still shows
+/// at once while the new one runs.
 const MOD_CHECK_TTL: Duration = Duration::from_secs(10 * 60);
-/// The least time between two checks of the Mods tab's mods against their platforms, across the whole launcher. The
-/// platforms rate-limit their answers, so a check asked for sooner waits until this has passed.
-const MOD_CHECK_INTERVAL: Duration = Duration::from_secs(120);
+/// The least time between two checks of the Mods tab's mods against their platforms, across the whole launcher. A check
+/// asks each platform in bulk, a few requests in all, so this only stops a burst of tab switches from repeating them.
+const MOD_CHECK_INTERVAL: Duration = Duration::from_secs(10);
 
-/// When an instance's mods were last checked in full, and the newer release each checked mod has, by file name. Kept for
-/// the session, so reopening the Mods tab shows the updates it found without asking the platforms again.
-#[derive(Debug)]
+/// When an instance's mods were last checked in full, and the newer release each checked mod has, by file name. It is kept
+/// in the database too, so the Mods tab shows the updates it found at once, in this session and the next, without asking
+/// the platforms again.
+#[derive(Debug, Clone)]
 pub struct ModCheck {
-    pub at: Instant,
+    /// When the last full check ran, in seconds since the Unix epoch.
+    pub checked_at: i64,
     pub updates: HashMap<String, ContentVersion>,
+}
+
+impl ModCheck {
+    /// Whether the check is recent enough to trust without asking the platforms again.
+    fn is_fresh(&self) -> bool {
+        let age = chrono::Utc::now().timestamp() - self.checked_at;
+        (0..MOD_CHECK_TTL.as_secs() as i64).contains(&age)
+    }
+}
+
+impl From<StoredModCheck> for ModCheck {
+    fn from(stored: StoredModCheck) -> Self {
+        Self {
+            checked_at: stored.checked_at,
+            updates: stored.updates,
+        }
+    }
 }
 
 /// What the platforms and the disk answered for the Mods tab. Each answer carries the `generation` of the instance it
@@ -63,11 +83,17 @@ pub enum Message {
         result: Result<Vec<ModSource>, String>,
     },
     /// The mods were checked against their platforms. A `full` check looked at every mod, and the others at the ones named.
+    /// The result is remembered for `instance` even when the page has moved on, and shown only while it is still there.
     Checked {
         generation: u64,
+        instance: String,
         full: bool,
         result: Result<Checks, String>,
     },
+    /// The checks kept in the database were read, once the database opened.
+    Kept(Result<Vec<StoredModCheck>, String>),
+    /// The check of `instance` was written to the database, or could not be.
+    CheckSaved { instance: String, result: Result<(), String> },
     /// The mods folder was read again after a change to it.
     Rescanned { generation: u64, mods: Vec<ModFile> },
     /// The question about deleting a mod was answered.
@@ -216,12 +242,16 @@ impl LodestoneLauncher {
     }
 
     /// Checks the shown instance's mods against their platforms, when the Mods tab is open and the folder has been read.
-    /// Entering the tab asks for a check each time. The launcher never starts two checks less than [`MOD_CHECK_INTERVAL`]
-    /// apart, so a check that comes too soon waits in a timer for the interval to pass, and then runs. Several requests in
-    /// that wait share one timer.
+    /// The updates the last check found show at once, whatever its age. Entering the tab asks for a check each time. The
+    /// launcher never starts two checks less than [`MOD_CHECK_INTERVAL`] apart, so a check that comes too soon waits in a
+    /// timer for the interval to pass, and then runs. Several requests in that wait share one timer.
     pub(super) fn mods_checks_due(&mut self) -> Task<LodestoneAppMessage> {
         let shown = self.instance_page.mods();
-        if self.instance_page.tab() != Tab::Content || shown.checking() || !shown.has_mods() {
+        if self.instance_page.tab() != Tab::Content || !shown.has_mods() {
+            return Task::none();
+        }
+        self.show_kept_check();
+        if self.instance_page.mods().checking() {
             return Task::none();
         }
         if let Some(started) = self.mod_check_started {
@@ -239,70 +269,118 @@ impl LodestoneLauncher {
         self.start_mod_checks()
     }
 
-    /// Starts a check of the shown instance's mods against their platforms now. A check with a full answer from the last
-    /// [`MOD_CHECK_TTL`] only looks up the jars with no record, and shows the updates it found before. Otherwise every
-    /// mod's update is checked.
+    /// Shows the updates remembered for the shown instance on the Mods tab's rows, before any platform is asked.
+    fn show_kept_check(&mut self) {
+        let Some(instance) = self.instance_page.instance().map(|instance| instance.id.clone()) else {
+            return;
+        };
+        let Some(check) = self.mod_checks.get(&instance) else {
+            return;
+        };
+        let names = self.instance_page.mods().file_names();
+        let updates = check.updates.clone();
+        self.instance_page.mods_mut().apply_checks(Vec::new(), updates, &names);
+    }
+
+    /// Starts a check of the shown instance's mods against their platforms now. A full check from the last
+    /// [`MOD_CHECK_TTL`] is trusted, so only the jars with no record are looked up. Otherwise every mod's update is
+    /// checked, while the older answer stays on screen.
     fn start_mod_checks(&mut self) -> Task<LodestoneAppMessage> {
         let (Some(context), Some(db)) = (self.mods_context(), self.db.clone()) else {
             return Task::none();
         };
         let generation = self.instance_page.generation();
+        let instance = context.instance.id.clone();
         let names = self.instance_page.mods().file_names();
         self.mod_check_started = Some(Instant::now());
         self.instance_page.mods_mut().set_checking(true);
-        match self
-            .mod_checks
-            .get(&context.instance.id)
-            .filter(|check| check.at.elapsed() < MOD_CHECK_TTL)
-        {
-            Some(check) => {
-                let updates = check.updates.clone();
-                self.instance_page.mods_mut().apply_checks(Vec::new(), updates, &names);
-                Task::perform(check_mods(db, context.check(), names, Some(Vec::new())), move |result| {
-                    LodestoneAppMessage::ModActions(Message::Checked {
-                        generation,
-                        full: false,
-                        result,
-                    })
-                })
-            }
-            None => Task::perform(check_mods(db, context.check(), names, None), move |result| {
-                LodestoneAppMessage::ModActions(Message::Checked {
-                    generation,
-                    full: true,
-                    result,
-                })
-            }),
+        let full = !self.mod_checks.get(&instance).is_some_and(ModCheck::is_fresh);
+        let records = if full { None } else { Some(Vec::new()) };
+        Task::perform(check_mods(db, context.check(), names, records), move |result| {
+            LodestoneAppMessage::ModActions(Message::Checked {
+                generation,
+                instance,
+                full,
+                result,
+            })
+        })
+    }
+
+    /// Remembers what a check of `instance` found, and keeps it in the database. A full check restarts the time it is
+    /// trusted for. A check of single mods only updates an instance that has a full check to remember.
+    pub(super) fn remember_checks(
+        &mut self,
+        instance: &str,
+        full: bool,
+        updates: &HashMap<String, ContentVersion>,
+        checked: &[String],
+    ) -> Task<LodestoneAppMessage> {
+        if !full && !self.mod_checks.contains_key(instance) {
+            return Task::none();
+        }
+        let now = chrono::Utc::now().timestamp();
+        let remembered = self.mod_checks.entry(instance.to_string()).or_insert_with(|| ModCheck {
+            checked_at: now,
+            updates: HashMap::new(),
+        });
+        for name in checked {
+            match updates.get(name) {
+                Some(release) => remembered.updates.insert(name.clone(), release.clone()),
+                None => remembered.updates.remove(name),
+            };
+        }
+        if full {
+            remembered.checked_at = now;
+        }
+        self.save_mod_check(instance)
+    }
+
+    /// A check that ran outside the Mods tab, such as the one at launch, found `checks` for `instance`. It is remembered
+    /// as a full check, and shows on the tab when the tab shows that instance.
+    pub(super) fn background_checks_found(&mut self, instance: String, checks: Checks) -> Task<LodestoneAppMessage> {
+        let save = self.remember_checks(&instance, true, &checks.updates, &checks.checked);
+        if self.instance_page.instance().is_some_and(|shown| shown.id == instance) {
+            self.instance_page
+                .mods_mut()
+                .apply_checks(checks.identified, checks.updates, &checks.checked);
+        }
+        save
+    }
+
+    /// Reads the checks kept in the database, once it has opened.
+    pub(super) fn load_kept_checks(&self) -> Task<LodestoneAppMessage> {
+        let Some(db) = self.db.clone() else {
+            return Task::none();
+        };
+        Task::perform(async move { db.mod_update_checks().await }, |result| {
+            LodestoneAppMessage::ModActions(Message::Kept(result))
+        })
+    }
+
+    /// Writes the remembered check of `instance` to the database, one write at a time per instance, so the newest one lands
+    /// last.
+    pub(super) fn save_mod_check(&mut self, instance: &str) -> Task<LodestoneAppMessage> {
+        let (Some(check), Some(_)) = (self.mod_checks.get(instance).cloned(), self.db.as_ref()) else {
+            return Task::none();
+        };
+        match self.mod_check_saves.request(instance.to_string(), check) {
+            Some(check) => self.write_mod_check(instance.to_string(), check),
+            None => Task::none(),
         }
     }
 
-    /// Applies a check to the Mods tab, and remembers the updates it found for the session. A full check restarts the time
-    /// the session trusts it for. A check of single mods only updates a session that has a full check to remember.
-    fn apply_checks(&mut self, full: bool, checks: Checks) {
-        let Some(instance) = self.instance_page.instance().map(|instance| instance.id.clone()) else {
-            return;
+    fn write_mod_check(&self, instance: String, check: ModCheck) -> Task<LodestoneAppMessage> {
+        let Some(db) = self.db.clone() else {
+            return Task::none();
         };
-        let Checks {
-            identified,
-            updates,
-            checked,
-        } = checks;
-        if full || self.mod_checks.contains_key(&instance) {
-            let remembered = self.mod_checks.entry(instance).or_insert_with(|| ModCheck {
-                at: Instant::now(),
-                updates: HashMap::new(),
-            });
-            for name in &checked {
-                match updates.get(name) {
-                    Some(release) => remembered.updates.insert(name.clone(), release.clone()),
-                    None => remembered.updates.remove(name),
-                };
-            }
-            if full {
-                remembered.at = Instant::now();
-            }
-        }
-        self.instance_page.mods_mut().apply_checks(identified, updates, &checked);
+        let stored = StoredModCheck {
+            instance: instance.clone(),
+            checked_at: check.checked_at,
+            updates: check.updates,
+        };
+        Task::perform(async move { db.save_mod_update_check(&stored).await }, move |result| {
+            LodestoneAppMessage::ModActions(Message::CheckSaved { instance, result })
+        })
     }
 
     /// Applies what came back for the Mods tab. An answer for an instance the page no longer shows is dropped.
@@ -321,17 +399,56 @@ impl LodestoneLauncher {
                 }
                 Task::none()
             }
-            Message::Checked { generation, full, result } if self.mods_fresh(generation) => {
-                self.instance_page.mods_mut().set_checking(false);
+            Message::Checked {
+                generation,
+                instance,
+                full,
+                result,
+            } => {
+                let shown = self.mods_fresh(generation);
+                if shown {
+                    self.instance_page.mods_mut().set_checking(false);
+                }
                 match result {
                     Ok(checks) => {
                         // The jars just identified are saved, so the Discover cache takes them too.
                         self.discover.note_sources(&checks.identified);
-                        self.apply_checks(full, checks)
+                        let save = self.remember_checks(&instance, full, &checks.updates, &checks.checked);
+                        if shown {
+                            self.instance_page
+                                .mods_mut()
+                                .apply_checks(checks.identified, checks.updates, &checks.checked);
+                        }
+                        save
                     }
-                    Err(error) => warn!("checking the mods failed: {error}"),
+                    Err(error) => {
+                        warn!("checking the mods failed: {error}");
+                        Task::none()
+                    }
+                }
+            }
+            Message::Kept(Ok(kept)) => {
+                // A check this session already made is newer than the one kept.
+                for stored in kept {
+                    self.mod_checks.entry(stored.instance.clone()).or_insert_with(|| stored.into());
+                }
+                if self.instance_page.tab() == Tab::Content {
+                    self.show_kept_check();
                 }
                 Task::none()
+            }
+            Message::Kept(Err(error)) => {
+                warn!("reading the kept mod checks failed: {error}");
+                Task::none()
+            }
+            Message::CheckSaved { instance, result } => {
+                if let Err(error) = result {
+                    warn!("keeping the mod check of {instance} failed: {error}");
+                }
+                match self.mod_check_saves.complete(&instance) {
+                    Some(next) => self.write_mod_check(instance, next),
+                    None => Task::none(),
+                }
             }
             Message::Rescanned { generation, mods } if self.mods_fresh(generation) => {
                 self.instance_page.set_mods(mods);

@@ -55,6 +55,11 @@ pub enum AuthError {
         message: String,
     },
 
+    /// The saved refresh token was refused (`invalid_grant`): it expired, was revoked, or was already spent. Only a new
+    /// sign-in helps.
+    #[error("microsoft sign-in failed: your saved Microsoft sign-in has expired — sign in again")]
+    SignInExpired,
+
     /// The device code expired before the sign-in was completed.
     #[error("the sign-in code expired; start the sign-in again")]
     DeviceCodeExpired,
@@ -104,6 +109,21 @@ pub enum AuthError {
 }
 
 impl AuthError {
+    /// Whether only the player can resolve this failure: the saved sign-in was refused, or the account cannot play as it
+    /// is. Trying again later cannot succeed, unlike a failure to reach a service.
+    pub fn needs_sign_in(&self) -> bool {
+        matches!(
+            self,
+            Self::SignInExpired
+                | Self::NoXboxAccount
+                | Self::XboxLiveUnavailable
+                | Self::RegionUnsupported
+                | Self::AdultVerificationRequired
+                | Self::ChildAccount
+                | Self::MinecraftNotOwned
+        )
+    }
+
     /// Logs an oauth2 failure and wraps its display text into
     /// [`AuthError::Microsoft`].
     pub(crate) fn microsoft(source: &impl std::fmt::Display) -> Self {
@@ -135,9 +155,7 @@ impl AuthError {
     ) -> Self {
         match &source {
             oauth2::RequestTokenError::ServerResponse(response) if response.error() == &oauth2::basic::BasicErrorResponseType::InvalidGrant => {
-                Self::Microsoft {
-                    message: "your saved Microsoft sign-in has expired — sign in again".to_string(),
-                }
+                Self::SignInExpired
             }
             _ => Self::microsoft(&source),
         }

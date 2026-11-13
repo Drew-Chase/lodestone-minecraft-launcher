@@ -22,12 +22,22 @@ zipcrawl = { version = "2.5.0", default-features = false }
 
 [profile.release]
 lto = true
-codegen-units = 1
+codegen-units = 16
 # Unwinding, so a panic in background work is a failed task and not the end of the launcher. The panic hook keeps a report of it.
 panic = "unwind"
 # Speed, not size: hashing, archive extraction and image decoding are CPU-bound and run on the launch path.
 opt-level = 3
 strip = true
+
+# aurora_leaf is generated code: six whole Iconify sets, one `&'static str` getter per icon and a `by_name` match with one arm
+# per icon (about 15,000 in material-symbols alone). Optimising it took LLVM ten minutes, nearly the whole release build,
+# and buys nothing: a getter returns a constant, and `by_name` is unused (LTO drops it). Debug builds already compile it
+# unoptimised, as a workspace crate. The rest of the release build keeps fat LTO and one codegen unit.
+[profile.release.package.aurora_leaf]
+opt-level = 0
+
+[profile.profiling.package.aurora_leaf]
+opt-level = 0
 
 # Dependencies (iced, wgpu, resvg, image, cosmic-text) run optimised in debug builds too, so
 # `cargo run` is usable. Workspace crates keep the default debug settings.

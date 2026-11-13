@@ -291,6 +291,18 @@ impl Platform<CurseForge> {
     pub async fn fitting_files(&self, project_id: &str, game_version: &str, loader: &str) -> Result<Vec<ContentVersion>, PlatformError> {
         curseforge::fitting_files(self.credential.as_deref(), project_id, game_version, loader).await
     }
+
+    /// The newest files of many projects that run on a Minecraft version and a loader, newest first, keyed by project id,
+    /// in two batched requests per hundred projects rather than one per project. A project CurseForge answered for is in the
+    /// map, with no files when none fits; a project missing from it could not be checked.
+    pub async fn latest_files(
+        &self,
+        project_ids: &[String],
+        game_version: &str,
+        loader: &str,
+    ) -> Result<HashMap<String, Vec<ContentVersion>>, PlatformError> {
+        curseforge::latest_files(self.credential.as_deref(), project_ids, game_version, loader).await
+    }
 }
 
 impl Platform<Ftb> {

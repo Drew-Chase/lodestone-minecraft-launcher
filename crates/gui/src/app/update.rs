@@ -359,6 +359,7 @@ impl LodestoneLauncher {
                     reattach,
                     self.load_shared(),
                     self.load_mod_sources(),
+                    self.load_kept_checks(),
                     self.load_added_content(),
                     self.load_world_pins(),
                     self.load_notifications(),
@@ -411,7 +412,6 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Login(LoginMessage::SelectLanguage(code)) => select_language(code),
             // Sign-in and account handling lives in `auth.rs`.
             LodestoneAppMessage::Login(message) => self.update_login(message),
-            LodestoneAppMessage::RestoreStart { username, refresh_token } => self.restore_sign_in(username, refresh_token),
             LodestoneAppMessage::CredentialsSaved(result) => self.credentials_saved(result),
             LodestoneAppMessage::SidebarNav {
                 group: NavGroup::Top,
@@ -426,6 +426,8 @@ impl LodestoneLauncher {
                 Task::none()
             }
             LodestoneAppMessage::AppearanceReady(Ok(appearance)) => self.apply_appearance(appearance),
+            LodestoneAppMessage::CachedAppearance(Some(appearance)) if self.face.is_none() => self.apply_appearance(appearance),
+            LodestoneAppMessage::CachedAppearance(_) => Task::none(),
             LodestoneAppMessage::AppearanceReady(Err(error)) => {
                 warn!("Player appearance unavailable: {error}");
                 self.face = None;

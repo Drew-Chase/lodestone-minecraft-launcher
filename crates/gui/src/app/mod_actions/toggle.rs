@@ -49,13 +49,15 @@ impl LodestoneLauncher {
                     self.discover.renamed(&instance, &file_name, &renamed);
                 }
                 self.instance_page.mods_mut().renamed(&file_name, &renamed, enabled);
+                let mut save = Task::none();
                 if let Some(instance) = self.instance_page.instance().map(|instance| instance.id.clone())
                     && let Some(check) = self.mod_checks.get_mut(&instance)
                     && let Some(release) = check.updates.remove(&file_name)
                 {
                     check.updates.insert(renamed, release);
+                    save = self.save_mod_check(&instance);
                 }
-                self.reload_sources(self.instance_page.generation())
+                Task::batch([save, self.reload_sources(self.instance_page.generation())])
             }
             Err(error) => {
                 warn!("Switching the mod {file_name} failed: {error}");

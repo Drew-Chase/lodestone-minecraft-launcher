@@ -10,7 +10,6 @@ use std::time::UNIX_EPOCH;
 
 use lodestone_platforms::{ContentType, ContentVersion, ModpackFile};
 use sha1::{Digest, Sha1};
-use tokio::task::JoinSet;
 use tracing::warn;
 
 use crate::app::database::Database;
@@ -19,9 +18,6 @@ use crate::app::install::mods::fitting;
 use crate::app::pages::discover::Source;
 use crate::app::perf;
 use crate::app::shared_library::{self, AddedContent, JarHash, ModSource};
-
-/// How many CurseForge projects are asked for their releases at once.
-const CURSEFORGE_AT_ONCE: usize = 4;
 
 /// The name of a file that sits directly in `folder` of a modpack, such as a jar in `mods/`, or `None` for any other path.
 pub(crate) fn direct_child<'a>(path: &'a str, folder: &str) -> Option<&'a str> {
@@ -293,7 +289,39 @@ async fn hash_in_background(
         .map_err(|error| error.to_string())
 }
 
+/// Hashes the named jars across the machine's cores, since a large folder's first check reads every jar. A handful of
+/// jars, or jars whose cached hashes all still match, take one thread.
 fn hash_jars(mods_dir: &Path, names: &[String], cached: &HashMap<String, JarHash>) -> (Vec<(String, String)>, Vec<JarHash>) {
+    const PER_THREAD: usize = 8;
+    const MOST_THREADS: usize = 8;
+    let stale = names.iter().filter(|name| !cached.contains_key(name.as_str())).count();
+    let threads = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZero::get)
+        .min(MOST_THREADS)
+        .min(stale.div_ceil(PER_THREAD).max(1));
+    if threads <= 1 {
+        return hash_some(mods_dir, names, cached);
+    }
+    let chunk = names.len().div_ceil(threads);
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = names
+            .chunks(chunk)
+            .map(|part| scope.spawn(move || hash_some(mods_dir, part, cached)))
+            .collect();
+        let mut hashes = Vec::with_capacity(names.len());
+        let mut fresh = Vec::new();
+        for worker in workers {
+            if let Ok((part_hashes, part_fresh)) = worker.join() {
+                hashes.extend(part_hashes);
+                fresh.extend(part_fresh);
+            }
+        }
+        (hashes, fresh)
+    })
+}
+
+/// Hashes the named jars on this thread. A cached hash whose size and modification time still match is reused.
+fn hash_some(mods_dir: &Path, names: &[String], cached: &HashMap<String, JarHash>) -> (Vec<(String, String)>, Vec<JarHash>) {
     let mut hashes = Vec::with_capacity(names.len());
     let mut fresh = Vec::new();
     for name in names {
@@ -373,68 +401,75 @@ async fn identify(instance: &str, hashed: &[(String, String)]) -> Result<Vec<Mod
     Ok(identified)
 }
 
-/// The newer release of each checked mod that has one, and the file names of the mods checked. A Modrinth mod is checked
-/// by its hash, all at once. A CurseForge mod is checked by listing its project's files, a few projects at a time. A mod
-/// with no hash, or whose platform gave no answer, is not checked, so its update stands as it was.
+/// The newer release of each checked mod that has one, and the file names of the mods checked. Each platform is asked in
+/// bulk, and both at once: Modrinth by the mods' hashes in one call, and CurseForge by the mods' projects in two batched
+/// calls, so a check costs a handful of requests however many mods there are. A mod with no hash, or whose platform gave
+/// no answer, is not checked, so its update stands as it was.
 async fn newer_releases(context: &CheckContext, records: &[ModSource]) -> Result<(HashMap<String, ContentVersion>, Vec<String>), String> {
-    let mut updates = HashMap::new();
-    let mut checked = Vec::new();
-
     let modrinth: Vec<&ModSource> = records
         .iter()
         .filter(|record| record.platform == Source::Modrinth.key() && record.sha1.is_some())
         .collect();
-    if !modrinth.is_empty() {
-        let hashes: Vec<String> = modrinth.iter().filter_map(|record| record.sha1.clone()).collect();
-        let latest = MODRINTH
-            .latest_by_hashes(&hashes, std::slice::from_ref(&context.loader), std::slice::from_ref(&context.minecraft))
-            .await
-            .map_err(|error| error.to_string())?;
-        for record in modrinth {
-            let Some(sha1) = record.sha1.as_deref() else {
-                continue;
-            };
-            checked.push(record.file_name.clone());
-            if let Some(release) = latest.get(sha1).filter(|release| release.id != record.version_id) {
-                updates.insert(record.file_name.clone(), release.clone());
-            }
+    let curseforge_records: Vec<&ModSource> = records.iter().filter(|record| record.platform == Source::CurseForge.key()).collect();
+    let (modrinth_latest, curseforge_latest) = tokio::join!(modrinth_latest(context, &modrinth), curseforge_latest(context, &curseforge_records));
+
+    let mut updates = HashMap::new();
+    let mut checked = Vec::new();
+    let modrinth_latest = modrinth_latest?;
+    for record in modrinth {
+        let Some(sha1) = record.sha1.as_deref() else {
+            continue;
+        };
+        checked.push(record.file_name.clone());
+        if let Some(release) = modrinth_latest.get(sha1).filter(|release| release.id != record.version_id) {
+            updates.insert(record.file_name.clone(), release.clone());
         }
     }
-
-    let curseforge_records: Vec<ModSource> = records
-        .iter()
-        .filter(|record| record.platform == Source::CurseForge.key())
-        .cloned()
-        .collect();
-    // Without an API key CurseForge cannot be asked, so its mods are left as they are.
-    let platform = curseforge_records.first().and_then(|_| curseforge().ok());
-    if let Some(platform) = platform {
-        for batch in curseforge_records.chunks(CURSEFORGE_AT_ONCE) {
-            let mut calls = JoinSet::new();
-            for record in batch.iter().cloned() {
-                let (loader, minecraft) = (context.loader.clone(), context.minecraft.clone());
-                calls.spawn(async move {
-                    let releases = platform.fitting_files(&record.project_id, &minecraft, &loader).await;
-                    (record, releases)
-                });
-            }
-            while let Some(joined) = calls.join_next().await {
-                let (record, releases) = joined.map_err(|error| error.to_string())?;
-                let releases = match releases {
-                    Ok(releases) => releases,
-                    Err(error) => {
-                        warn!("checking {} on CurseForge failed: {error}", record.name);
-                        continue;
-                    }
-                };
-                checked.push(record.file_name.clone());
-                if let Some(release) = fitting(releases, &context.loader, &context.minecraft).filter(|release| release.id != record.version_id) {
-                    updates.insert(record.file_name.clone(), release);
-                }
-            }
+    for record in curseforge_records {
+        let Some(releases) = curseforge_latest.get(&record.project_id) else {
+            continue;
+        };
+        checked.push(record.file_name.clone());
+        if let Some(release) = fitting(releases.clone(), &context.loader, &context.minecraft).filter(|release| release.id != record.version_id) {
+            updates.insert(record.file_name.clone(), release);
         }
     }
     Ok((updates, checked))
+}
+
+/// The newest release of each Modrinth mod's project for the instance, keyed by the hash of the jar it updates, from one
+/// call. No mods asks nothing.
+async fn modrinth_latest(context: &CheckContext, records: &[&ModSource]) -> Result<HashMap<String, ContentVersion>, String> {
+    let hashes: Vec<String> = records.iter().filter_map(|record| record.sha1.clone()).collect();
+    if hashes.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let _scope = perf::scope("net.mod_check.modrinth");
+    MODRINTH
+        .latest_by_hashes(&hashes, std::slice::from_ref(&context.loader), std::slice::from_ref(&context.minecraft))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// The newest files of each CurseForge mod's project for the instance, newest first, keyed by project id, from batched
+/// calls. Without an API key CurseForge cannot be asked, and a failed call is logged; either way its mods are left as they
+/// are.
+async fn curseforge_latest(context: &CheckContext, records: &[&ModSource]) -> HashMap<String, Vec<ContentVersion>> {
+    if records.is_empty() {
+        return HashMap::new();
+    }
+    let Ok(platform) = curseforge() else {
+        return HashMap::new();
+    };
+    let project_ids: Vec<String> = records.iter().map(|record| record.project_id.clone()).collect();
+    let _scope = perf::scope("net.mod_check.curseforge");
+    match platform.latest_files(&project_ids, &context.minecraft, &context.loader).await {
+        Ok(latest) => latest,
+        Err(error) => {
+            warn!("checking {} mods on CurseForge failed: {error}", records.len());
+            HashMap::new()
+        }
+    }
 }
 
 /// The SHA-1 of the file at `path`, as lowercase hex.
