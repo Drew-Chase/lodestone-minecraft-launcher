@@ -34,6 +34,12 @@ impl LodestoneLauncher {
                 Ok(Err(error)) => warn!("Removing the saved settings failed: {error}"),
                 Err(error) => warn!("Removing the saved settings failed: {error}"),
             }
+            // The faces kept on disk belong to the sign-ins, so they go with them.
+            match tokio::task::spawn_blocking(crate::app::appearance_cache::clear).await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => warn!("Removing the kept appearances failed: {error}"),
+                Err(error) => warn!("Removing the kept appearances failed: {error}"),
+            }
         })
         .discard();
 
@@ -50,6 +56,7 @@ impl LodestoneLauncher {
         self.skins = crate::app::pages::skins::Skins::default();
         self.pending_change = None;
         self.waiting_change = None;
+        self.restoring = None;
         self.adding_account = false;
         let save = self.save_credentials();
         Task::batch([remove_preferences, save, self.navigate(Page::Login)])

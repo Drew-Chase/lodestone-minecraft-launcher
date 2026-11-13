@@ -193,12 +193,6 @@ pub enum LodestoneAppMessage {
     /// `LODESTONE_RESIZE_PROFILE=1`; drives `window::resize` through a
     /// fixed size sequence for screen-recording measurements.
     ResizeProbe,
-    /// Boot-time restore: silently re-login a stored Microsoft refresh
-    /// token before showing the sign-in card.
-    RestoreStart {
-        username: String,
-        refresh_token: String,
-    },
     /// Tick the auth-services reachability probe.
     AuthProbeTick,
     /// The auth-services probe completed.
@@ -211,6 +205,9 @@ pub enum LodestoneAppMessage {
     },
     /// The account's skin and cape finished loading, for the sidebar's face and the Skins page's viewer.
     AppearanceReady(Result<Appearance, String>),
+    /// The appearance kept on disk for the account restored at boot, read before its sign-in lands. It shows only while no
+    /// fetched appearance has.
+    CachedAppearance(Option<Appearance>),
     /// A background credential write finished.
     CredentialsSaved(Result<(), String>),
     /// The open alert was answered (see `components::alert`).
@@ -218,7 +215,7 @@ pub enum LodestoneAppMessage {
     /// A game session message: a launch, a running game's output or exit, or a stop.
     Game(GameMessage),
     /// A Microsoft session refresh finished, with the new session or the reason it failed.
-    SessionRefreshed(Result<Session, String>),
+    SessionRefreshed(Result<Session, super::auth::RefreshError>),
     /// The performance overlay: its F3 toggle and its one-second refresh. See `perf`.
     Perf(perf::Message),
     /// Another launcher was started while this one runs. It asks this one to show its window.

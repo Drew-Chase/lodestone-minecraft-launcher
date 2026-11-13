@@ -178,31 +178,4 @@ impl Login {
         .spacing(10)
         .into()
     }
-
-    /// The silent sign-in panel shown while a stored refresh token is
-    /// being restored.
-    pub(super) fn restoring_panel(&self, username: &str) -> Element<'_, Message> {
-        container(
-            column![
-                Text::new(lang::t_with("login.restoring", &[("name", username)]))
-                    .size(13)
-                    .font(fonts::Inter::MEDIUM)
-                    .color(palette::text_muted()),
-                ProgressBar::new(0.0).indeterminate(true).height(3.0).width(Fill),
-            ]
-            .spacing(8),
-        )
-        .width(Fill)
-        .padding(12)
-        .style(|_| container::Style {
-            background: Some(Background::Color(rgb!(34, 255, 132, 6%))),
-            border: Border {
-                radius: 12.0.into(),
-                width: 1.0,
-                color: rgb!(34, 255, 132, 25%),
-            },
-            ..container::Style::default()
-        })
-        .into()
-    }
 }

@@ -13,6 +13,7 @@ use sipper::Sender as ProgressSender;
 use sipper::{Sipper, sipper};
 use tracing::{info, warn};
 
+use super::auth::RefreshError;
 use super::{Account, LodestoneAppMessage, LodestoneLauncher};
 use crate::app::components::alert::Alert;
 use crate::app::lang;
@@ -126,17 +127,9 @@ impl LodestoneLauncher {
                     .discard()
             }
             SessionCheck::Refresh(token) => {
+                // A refresh already running takes this launch among the ones waiting for it.
                 self.games.wait_for_session(id, serial, quick_play);
-                if !self.games.start_refresh(token.clone()) {
-                    // A refresh is already running, and this launch is among the ones waiting for it.
-                    return Task::none();
-                }
-                info!("Refreshing the Microsoft session before launching {id}");
-                let auth = self.auth.clone();
-                Task::perform(
-                    async move { auth.login_with_refresh_token(&token).await.map_err(|error| error.to_string()) },
-                    LodestoneAppMessage::SessionRefreshed,
-                )
+                self.start_session_refresh(token)
             }
         }
     }
@@ -186,14 +179,21 @@ impl LodestoneLauncher {
     }
 
     /// Applies the result of a Microsoft session refresh. The launches that waited for it start with
-    /// the new session, or all fail with the reason when the refresh failed.
-    pub(super) fn session_refreshed(&mut self, result: Result<Session, String>) -> Task<LodestoneAppMessage> {
+    /// the new session, or all fail with the reason when the refresh failed. The refresh that restores
+    /// the sign-in at boot also fetches the restored profile's appearance, or reports why it failed.
+    pub(super) fn session_refreshed(&mut self, result: Result<Session, RefreshError>) -> Task<LodestoneAppMessage> {
         let (spent, waiting) = self.games.finish_refresh();
+        // The refresh applies only while the signed-in session still holds the token it spent.
+        let current = spent.is_some_and(|token| self.signed_in_with_refresh_token(&token));
+        let restoring = self.restoring.take();
         match result {
             Ok(session) => {
-                // The new session replaces the signed-in one only while that one still holds the token the refresh spent.
-                let applied = spent.is_some_and(|token| self.signed_in_with_refresh_token(&token));
+                let applied = current;
                 let mut tasks = vec![if applied { self.keep_session(session) } else { Task::none() }];
+                if applied && restoring.is_some() {
+                    info!("Restored the Microsoft sign-in");
+                    tasks.push(self.appearance_task());
+                }
                 for (id, serial, quick_play) in waiting {
                     if !self.games.is_preparing_with(&id, serial) {
                         // The launch was stopped while it waited.
@@ -210,7 +210,7 @@ impl LodestoneLauncher {
                 Task::batch(tasks)
             }
             Err(error) => {
-                warn!("Refreshing the Microsoft session failed: {error}");
+                warn!("Refreshing the Microsoft session failed: {}", error.message);
                 let mut tasks = Vec::new();
                 let mut failed = false;
                 for (id, serial, _) in waiting {
@@ -219,16 +219,37 @@ impl LodestoneLauncher {
                 if failed {
                     tasks.push(
                         self.alerts
-                            .show(Alert::error(lang::t_with("launch.failed", &[("error", error.as_str())])))
+                            .show(Alert::error(lang::t_with("launch.failed", &[("error", error.message.as_str())])))
                             .discard(),
                     );
                 }
+                let mut alerted = failed;
                 if self.waiting_change.take().is_some() {
                     tasks.push(self.alerts.show(Alert::warn(lang::t("skins.sign_in_again"))).discard());
+                    alerted = true;
+                }
+                if let Some(username) = restoring
+                    && current
+                {
+                    tasks.push(self.restore_failed(username, error, alerted));
                 }
                 Task::batch(tasks)
             }
         }
+    }
+
+    /// Starts the single Microsoft session refresh, which spends `token`, unless one is already
+    /// running; then the caller waits for that one. The result comes back as `SessionRefreshed`.
+    pub(super) fn start_session_refresh(&mut self, token: String) -> Task<LodestoneAppMessage> {
+        if !self.games.start_refresh(token.clone()) {
+            return Task::none();
+        }
+        info!("Refreshing the Microsoft session");
+        let auth = self.auth.clone();
+        Task::perform(
+            async move { auth.login_with_refresh_token(&token).await.map_err(RefreshError::from) },
+            LodestoneAppMessage::SessionRefreshed,
+        )
     }
 
     /// Whether the signed-in account is a Microsoft session holding `token` as its refresh token.
