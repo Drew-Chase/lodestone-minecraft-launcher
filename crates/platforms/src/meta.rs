@@ -4,7 +4,7 @@
 ///
 /// Platforms declare which of these they cover (see the capability matrix in
 /// DESIGN.md §5); requests outside a platform's matrix are rejected up front.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ContentType {
     /// Mods (and mod-like plugins).
     Mod,
@@ -319,7 +319,7 @@ pub enum DescriptionFormat {
 }
 
 /// One downloadable file belonging to a [`ContentVersion`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ContentFile {
     /// The file's name on disk.
     pub name: String,
@@ -334,7 +334,7 @@ pub struct ContentFile {
 }
 
 /// One release of a project (mod file set) or pack (build).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ContentVersion {
     /// The platform's stable version id — store this, not the display name.
     pub id: String,
@@ -371,7 +371,7 @@ pub struct ContentVersion {
 }
 
 /// The channel a release is published on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Channel {
     /// A stable release.
     Release,
@@ -382,7 +382,7 @@ pub enum Channel {
 }
 
 /// How one release relates to another project.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DependencyKind {
     /// The release does not work without the other project.
     Required,
@@ -395,7 +395,7 @@ pub enum DependencyKind {
 }
 
 /// One project a release relates to.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct VersionDependency {
     /// How the release relates to the project.
     pub kind: DependencyKind,

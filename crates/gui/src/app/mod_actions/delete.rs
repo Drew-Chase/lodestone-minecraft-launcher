@@ -72,8 +72,8 @@ impl LodestoneLauncher {
                 };
                 self.instance_page.mods_mut().forget_source(&file_name);
                 self.discover.forget_source(&context.instance.id, &file_name);
-                self.forget_checked(&context.instance.id, &file_name);
-                Task::batch([self.forget_record(&context, file_name), self.rescan_mods(), self.load_instances()])
+                let forget = self.forget_checked(&context.instance.id, &file_name);
+                Task::batch([forget, self.forget_record(&context, file_name), self.rescan_mods(), self.load_instances()])
             }
             Err(error) => {
                 warn!("moving a mod to the trash failed: {error}");
@@ -84,11 +84,13 @@ impl LodestoneLauncher {
         }
     }
 
-    /// Forgets the update the session remembers for a jar that is gone or was replaced.
-    pub(super) fn forget_checked(&mut self, instance: &str, file_name: &str) {
-        if let Some(check) = self.mod_checks.get_mut(instance) {
-            check.updates.remove(file_name);
-        }
+    /// Forgets the update remembered for a jar that is gone or was replaced, and keeps the change.
+    pub(super) fn forget_checked(&mut self, instance: &str, file_name: &str) -> Task<LodestoneAppMessage> {
+        let removed = self
+            .mod_checks
+            .get_mut(instance)
+            .is_some_and(|check| check.updates.remove(file_name).is_some());
+        if removed { self.save_mod_check(instance) } else { Task::none() }
     }
 
     /// Forgets the record of a jar that is gone.

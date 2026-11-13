@@ -88,8 +88,9 @@ pub enum Message {
     Act(Action),
     /// The clock ticked: the background checks start if they are due.
     CheckDue,
-    /// The background checks finished, so the list and the instances are read again.
-    Checked,
+    /// The background checks finished, so the list and the instances are read again. Each instance whose mods were checked
+    /// comes with what the check found, which the Mods tab then shows without asking again.
+    Checked(Vec<(String, crate::app::mod_sources::Checks)>),
 }
 
 /// What a notification's button starts.
@@ -360,10 +361,15 @@ impl LodestoneLauncher {
                 self.notification_action(action)
             }
             Message::CheckDue => self.check_updates_if_due(),
-            Message::Checked => {
+            Message::Checked(found) => {
                 self.notifications.checking = false;
+                let mut tasks: Vec<Task<LodestoneAppMessage>> = found
+                    .into_iter()
+                    .map(|(instance, checks)| self.background_checks_found(instance, checks))
+                    .collect();
                 // The checks record the mods they identify, so the Discover page reads its records again to show them as added.
-                Task::batch([self.load_notifications(), self.load_instances(), self.load_mod_sources()])
+                tasks.extend([self.load_notifications(), self.load_instances(), self.load_mod_sources()]);
+                Task::batch(tasks)
             }
         }
     }
@@ -381,7 +387,9 @@ impl LodestoneLauncher {
         self.notifications.checking = true;
         self.notifications.checked_at = Some(Instant::now());
         let targets = self.check_targets();
-        Task::perform(checks::run(db, targets), |()| LodestoneAppMessage::Notifications(Message::Checked))
+        Task::perform(checks::run(db, targets), |found| {
+            LodestoneAppMessage::Notifications(Message::Checked(found))
+        })
     }
 
     /// The installed instances the checks look at, each with its modpack when it came from a platform.

@@ -66,14 +66,16 @@ impl LodestoneLauncher {
                 }
                 // The Discover page's cache is what the Versions tab marks as installed, so it takes the new release too.
                 self.discover.note_sources(&records);
-                self.forget_checked(&context.instance.id, &file_name);
-                let mut tasks = vec![self.rescan_mods(), self.load_instances()];
+                let forget = self.forget_checked(&context.instance.id, &file_name);
+                let mut tasks = vec![forget, self.rescan_mods(), self.load_instances()];
                 if let (Some(own), Some(db)) = (records.first().cloned(), self.db.clone()) {
                     let generation = self.instance_page.generation();
                     let check = check_mods(db, context.check(), Vec::new(), Some(vec![own]));
+                    let instance = context.instance.id.clone();
                     tasks.push(Task::perform(check, move |result| {
                         LodestoneAppMessage::ModActions(Message::Checked {
                             generation,
+                            instance,
                             full: false,
                             result,
                         })

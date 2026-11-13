@@ -48,8 +48,6 @@ enum Flow {
         /// The username as typed (pre-filled from storage).
         username: String,
     },
-    /// A stored Microsoft sign-in is being restored silently.
-    Restoring { username: String },
     /// The last attempt failed with a user-presentable message; the card
     /// offers a retry.
     Failed(String),
@@ -108,8 +106,6 @@ pub enum Message {
     OfflineUsernameChanged(String),
     /// The offline username form was submitted (button or Enter key).
     OfflineConfirm { username: String },
-    /// A stored Microsoft sign-in is being restored — display state only.
-    Restoring { username: String },
     /// Hover entered/exited the code (copy) region.
     CodeHover(bool),
     /// Hover entered/exited the verification-link region.
@@ -164,7 +160,6 @@ impl Login {
                     *stored = username;
                 }
             }
-            Message::Restoring { username } => self.flow = Flow::Restoring { username },
             Message::SignInFailed(error) => self.flow = Flow::Failed(error),
             Message::Reset => {
                 self.flow = Flow::Idle;

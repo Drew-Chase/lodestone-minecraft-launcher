@@ -11,7 +11,7 @@ use std::time::{Duration, Instant, SystemTime};
 use chrono::{Local, Timelike};
 use lodestone_launcher::perf;
 use tar::Builder;
-use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::{Layer, fmt, prelude::*};
 use xz2::stream::{Check, Stream};
@@ -31,6 +31,29 @@ const MAX_BYTES: u64 = 1024 * 1024 * 1024; // 1 GB
 
 /// Log file names, ordered to match the [`Target`] indices below.
 const LOG_FILES: [&str; 4] = ["debug.log", "latest.log", "error.log", "logs.ndjson"];
+
+/// Crates whose own logging is too heavy to keep at every level, with the most each may write. They keep their warnings
+/// and errors. iced_winit prints the window's settings at INFO with `{:#?}`, the 512px icon's pixels included: a million
+/// lines, about 20 MB, formatted on the main thread for every log file before the window opened, which held the window
+/// back by more than a second. wgpu traces every resource it creates and calloop every event it dispatches, about
+/// 130,000 lines in a short session, and each line is formatted on the thread that logs it, often the UI thread.
+const QUIET_TARGETS: [(&str, LevelFilter); 8] = [
+    ("iced_winit", LevelFilter::WARN),
+    ("wgpu_core", LevelFilter::INFO),
+    ("wgpu_hal", LevelFilter::INFO),
+    ("naga", LevelFilter::INFO),
+    ("calloop", LevelFilter::INFO),
+    ("h2", LevelFilter::INFO),
+    ("hyper_util", LevelFilter::INFO),
+    ("inotify", LevelFilter::INFO),
+];
+
+/// The filter of a log destination that keeps `level` and above, with the [`QUIET_TARGETS`] held to their own limit.
+fn level_filter(level: LevelFilter) -> Targets {
+    Targets::new()
+        .with_default(level)
+        .with_targets(QUIET_TARGETS.iter().map(|(target, most)| (*target, level.min(*most))))
+}
 
 /// Index into [`RollingLogs`] file/size arrays. Order matches [`LOG_FILES`].
 mod target {
@@ -81,7 +104,7 @@ impl RollingLogs {
         for file in &mut self.files {
             file.flush()?;
         }
-        archive(&self.dir)?;
+        archive(&self.dir, Take::Copy)?;
         for (file, size) in self.files.iter_mut().zip(self.sizes.iter_mut()) {
             file.set_len(0)?;
             file.seek(SeekFrom::Start(0))?;
@@ -257,7 +280,7 @@ pub fn setup_logging() -> color_eyre::Result<()> {
 
     // Per-launch roll: archive whatever the previous run left behind.
     if has_existing_logs(&dir) {
-        archive(&dir)?;
+        archive(&dir, Take::Move)?;
     }
 
     install_crash_report(dir.clone());
@@ -272,31 +295,31 @@ pub fn setup_logging() -> color_eyre::Result<()> {
         .with_ansi(false)
         .with_thread_names(true)
         .with_writer(LogWriter::new(&queue, target::DEBUG))
-        .with_filter(LevelFilter::TRACE);
+        .with_filter(level_filter(LevelFilter::TRACE));
 
     let latest_layer = fmt::layer()
         .with_ansi(false)
         .with_thread_names(true)
         .with_writer(LogWriter::new(&queue, target::LATEST))
-        .with_filter(LevelFilter::INFO);
+        .with_filter(level_filter(LevelFilter::INFO));
 
     let error_layer = fmt::layer()
         .with_ansi(false)
         .with_thread_names(true)
         .with_writer(LogWriter::new(&queue, target::ERROR))
-        .with_filter(LevelFilter::ERROR);
+        .with_filter(level_filter(LevelFilter::ERROR));
 
     let json_layer = fmt::layer()
         .json()
         .with_thread_names(true)
         .with_writer(LogWriter::new(&queue, target::JSON))
-        .with_filter(LevelFilter::TRACE);
+        .with_filter(level_filter(LevelFilter::TRACE));
 
     let console_filter = if cfg!(debug_assertions) { LevelFilter::DEBUG } else { LevelFilter::INFO };
     let console_layer = fmt::layer()
         .with_thread_names(true)
         .with_writer(LogWriter::new(&queue, target::CONSOLE))
-        .with_filter(console_filter);
+        .with_filter(level_filter(console_filter));
 
     tracing_subscriber::registry()
         .with(debug_layer)
@@ -330,6 +353,26 @@ fn fresh_file(dir: &Path, name: &str) -> io::Result<File> {
     OpenOptions::new().create(true).write(true).truncate(true).open(dir.join(name))
 }
 
+/// How [`archive`] takes the live log files into its staging folder.
+#[derive(Clone, Copy)]
+enum Take {
+    /// Copies them, for a size roll: the files are open and are truncated in place afterwards.
+    Copy,
+    /// Moves them, at launch: this process has not opened them, and a rename costs nothing, where copying the last run's
+    /// logs held up the start by their whole size. A file that cannot be moved, such as one another process holds open on
+    /// Windows, is copied instead.
+    Move,
+}
+
+impl Take {
+    fn stage(self, source: &Path, target: &Path) -> io::Result<()> {
+        if matches!(self, Take::Move) && fs::rename(source, target).is_ok() {
+            return Ok(());
+        }
+        fs::copy(source, target).map(|_| ())
+    }
+}
+
 /// Snapshot the current log files into a timestamped LZMA2 "Ultra" tarball:
 /// `{YYYY-MM-DD}.{ms-past-midnight}.tar.xz`.
 ///
@@ -340,11 +383,12 @@ fn fresh_file(dir: &Path, name: &str) -> io::Result<File> {
 /// the hot path on a detached thread, so the application (and further logging)
 /// resumes at once.
 ///
-/// The logs are *copied* rather than renamed on purpose: during a size roll the
+/// During a size roll the logs are *copied* rather than renamed on purpose: the
 /// live files are still open and truncated in place by [`RollingLogs::roll`],
 /// so moving the handles out from under it would break on Windows (sharing
-/// violation) and silently detach the handle on Unix.
-fn archive(dir: &Path) -> io::Result<()> {
+/// violation) and silently detach the handle on Unix. At launch nothing has them
+/// open yet, so they are moved, which is instant (see [`Take`]).
+fn archive(dir: &Path, take: Take) -> io::Result<()> {
     let now = Local::now();
     let ms_past_midnight = now.num_seconds_from_midnight() as u64 * 1000 + now.timestamp_subsec_millis() as u64;
     let stamp = format!("{}.{}", now.format("%Y-%m-%d"), ms_past_midnight);
@@ -357,7 +401,7 @@ fn archive(dir: &Path) -> io::Result<()> {
         let src = dir.join(name);
         match fs::metadata(&src) {
             Ok(meta) if meta.len() > 0 => {
-                fs::copy(&src, staging.join(name))?;
+                take.stage(&src, &staging.join(name))?;
                 staged.push(name);
             }
             Ok(_) => {}
