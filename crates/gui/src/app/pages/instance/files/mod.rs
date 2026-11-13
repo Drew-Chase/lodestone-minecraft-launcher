@@ -7,6 +7,7 @@
 
 mod backups;
 mod log;
+pub mod mod_index;
 mod mods;
 mod packs;
 mod screenshots;
@@ -86,19 +87,30 @@ pub fn read_shot(path: &Path) -> Option<ScreenshotFile> {
     screenshots::read(path)
 }
 
-/// Reads everything the instance tabs show from the instance folder at `folder`.
+/// Reads everything the instance tabs show from the instance folder at `folder`. Each part reads its own folder on its own
+/// thread, so the page waits for the slowest part rather than for all of them in turn.
 pub fn scan(folder: &Path) -> InstanceFiles {
     let _scope = perf::scope("io.scan");
-    InstanceFiles {
-        folder_bytes: dir_size(folder),
-        mods: mods::scan(&folder.join("mods")),
-        resource_packs: packs::scan(&folder.join("resourcepacks")),
-        shader_packs: packs::scan(&folder.join("shaderpacks")),
-        worlds: worlds::scan(&folder.join("saves")),
-        servers: scan_servers(folder),
-        screenshots: screenshots::scan(&folder.join("screenshots")),
-        log: read_log(folder),
-    }
+    std::thread::scope(|scope| {
+        let folder_bytes = scope.spawn(|| dir_size(folder));
+        let mods = scope.spawn(|| mods::scan(&folder.join("mods")));
+        let resource_packs = scope.spawn(|| packs::scan(&folder.join("resourcepacks")));
+        let shader_packs = scope.spawn(|| packs::scan(&folder.join("shaderpacks")));
+        let worlds = scope.spawn(|| worlds::scan(&folder.join("saves")));
+        let servers = scope.spawn(|| scan_servers(folder));
+        let screenshots = scope.spawn(|| screenshots::scan(&folder.join("screenshots")));
+        let log = read_log(folder);
+        InstanceFiles {
+            folder_bytes: folder_bytes.join().unwrap_or_default(),
+            mods: mods.join().unwrap_or_default(),
+            resource_packs: resource_packs.join().unwrap_or_default(),
+            shader_packs: shader_packs.join().unwrap_or_default(),
+            worlds: worlds.join().unwrap_or_default(),
+            servers: servers.join().unwrap_or_default(),
+            screenshots: screenshots.join().unwrap_or_default(),
+            log,
+        }
+    })
 }
 
 /// The last [`MAX_LINES`] lines of the instance's `logs/latest.log`.
@@ -191,15 +203,36 @@ fn read_nbt<T: DeserializeOwned>(path: &Path) -> Option<T> {
 }
 
 /// The size of every file under `dir`, folders included. Symlinks are not
-/// followed, so a link cannot make the walk loop or leave the instance.
+/// followed, so a link cannot make the walk loop or leave the instance. The folders directly inside `dir` are walked on
+/// their own threads, since a large instance (worlds, logs, mods) takes many file reads.
 fn dir_size(dir: &Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut files = 0;
+    let mut folders = Vec::new();
+    for entry in entries.filter_map(Result::ok) {
+        match entry.file_type() {
+            Ok(kind) if kind.is_dir() => folders.push(entry.path()),
+            Ok(kind) if kind.is_file() => files += entry.metadata().map_or(0, |metadata| metadata.len()),
+            _ => {}
+        }
+    }
+    std::thread::scope(|scope| {
+        let walks: Vec<_> = folders.iter().map(|folder| scope.spawn(move || walk_size(folder))).collect();
+        files + walks.into_iter().filter_map(|walk| walk.join().ok()).sum::<u64>()
+    })
+}
+
+/// The size of every file under `dir`, on this thread. Symlinks are not followed.
+fn walk_size(dir: &Path) -> u64 {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return 0;
     };
     entries
         .filter_map(Result::ok)
         .map(|entry| match entry.file_type() {
-            Ok(kind) if kind.is_dir() => dir_size(&entry.path()),
+            Ok(kind) if kind.is_dir() => walk_size(&entry.path()),
             Ok(kind) if kind.is_file() => entry.metadata().map_or(0, |metadata| metadata.len()),
             _ => 0,
         })

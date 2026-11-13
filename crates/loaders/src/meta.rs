@@ -3,7 +3,7 @@
 /// Why a mod declares a dependency, mirroring the semantics the metadata formats
 /// express (fabric depends/recommends/suggests/breaks/conflicts, forge/neoforge
 /// `type` + `mandatory`, quilt `depends`/`breaks`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ModDependencyKind {
     /// Must be present (`depends`, `mandatory = true`).
     Required,
@@ -22,7 +22,7 @@ pub enum ModDependencyKind {
 }
 
 /// One dependency declared by a mod.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ModDependency {
     /// The dependency's mod id.
     pub id: String,

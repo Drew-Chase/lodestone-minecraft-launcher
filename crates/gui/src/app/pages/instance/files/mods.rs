@@ -1,9 +1,14 @@
 //! The mod jars in `mods/`, each read for the metadata it declares.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 
 use iced::widget::image;
 use lodestone_loaders::{Fabric, Loader, ModDependency};
+
+use super::mod_index::{self, JarKey, Known};
 
 /// One mod jar.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,44 +40,94 @@ struct Jar {
     enabled: bool,
 }
 
-/// Reads every mod jar in `dir`, sorted by name. A jar whose metadata cannot be
-/// read is still listed, under its file name.
+/// Reads every mod jar in `dir`, sorted by name. A jar whose metadata cannot be read is still listed, under its file name.
+///
+/// Only the jars the index does not know yet are opened, several at once (see [`mod_index`]), so listing a folder again,
+/// or listing it after a mod is switched on or off, reads nothing but the folder itself.
 pub fn scan(dir: &Path) -> Vec<ModFile> {
-    // Vanilla declares no mod metadata, so the Fabric kind reads the jars of
-    // every loader: the detected format wins, whichever kind asked.
-    let loader = Loader::<Fabric>::new();
-    let mut mods: Vec<ModFile> = jars(dir)
+    let jars: Vec<(Jar, JarKey)> = jars(dir)
         .into_iter()
-        .map(|jar| {
-            let info = loader.extract_mod_info(&jar.path).ok();
-            let name = info
-                .as_ref()
-                .and_then(|info| info.name.clone())
-                .filter(|name| !name.trim().is_empty())
-                .unwrap_or_else(|| jar.stem.clone());
-            let (author, id, version, dependencies) = match info {
-                Some(info) => (
-                    info.authors.into_iter().next(),
-                    Some(info.id).filter(|id| !id.trim().is_empty()),
-                    info.version,
-                    info.dependencies,
-                ),
-                None => (None, None, None, Vec::new()),
-            };
+        .filter_map(|jar| {
+            let key = key_of(&jar)?;
+            Some((jar, key))
+        })
+        .collect();
+    let mut known = mod_index::entries(dir);
+    let missing: Vec<(&Path, &JarKey)> = jars
+        .iter()
+        .filter(|(_, key)| !known.contains_key(key))
+        .map(|(jar, key)| (jar.path.as_path(), key))
+        .collect();
+    let read = read_jars(&missing);
+    let mut changed = !read.is_empty();
+    known.extend(read.into_iter().map(|(key, entry)| (key, Arc::new(entry))));
+    // Entries of jars that are gone leave the index.
+    let held: HashSet<&JarKey> = jars.iter().map(|(_, key)| key).collect();
+    let before = known.len();
+    known.retain(|key, _| held.contains(key));
+    changed |= known.len() != before;
+
+    let mut mods: Vec<ModFile> = jars
+        .iter()
+        .map(|(jar, key)| {
+            let entry = known.get(key);
             ModFile {
-                author,
-                id,
-                version,
-                dependencies,
-                icon: lodestone_loaders::mod_icon(&jar.path).map(image::Handle::from_bytes),
-                file_name: jar.file_name,
+                name: entry.and_then(|entry| entry.name.clone()).unwrap_or_else(|| jar.stem.clone()),
+                author: entry.and_then(|entry| entry.author.clone()),
+                id: entry.and_then(|entry| entry.id.clone()),
+                version: entry.and_then(|entry| entry.version.clone()),
+                dependencies: entry.map(|entry| entry.dependencies.clone()).unwrap_or_default(),
+                icon: entry.and_then(|entry| entry.icon.clone()),
+                file_name: jar.file_name.clone(),
                 enabled: jar.enabled,
-                name,
             }
         })
         .collect();
+    mod_index::store(dir, known, changed);
     mods.sort_by_key(|entry| entry.name.to_lowercase());
     mods
+}
+
+/// How a jar is known to the index, from its file's size and modification time. `None` when the file cannot be read.
+fn key_of(jar: &Jar) -> Option<JarKey> {
+    let metadata = std::fs::metadata(&jar.path).ok()?;
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map_or(0, |since| u64::try_from(since.as_nanos()).unwrap_or(u64::MAX));
+    Some(JarKey {
+        stem: jar.stem.clone(),
+        size: metadata.len(),
+        modified,
+    })
+}
+
+/// Reads the jars across the machine's cores. Each thread takes an equal share; a few jars take one thread.
+fn read_jars(jars: &[(&Path, &JarKey)]) -> Vec<(JarKey, Known)> {
+    const PER_THREAD: usize = 4;
+    const MOST_THREADS: usize = 16;
+    if jars.is_empty() {
+        return Vec::new();
+    }
+    // Vanilla declares no mod metadata, so the Fabric kind reads the jars of every loader: the detected format wins,
+    // whichever kind asked.
+    let loader = Loader::<Fabric>::new();
+    let threads = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZero::get)
+        .min(MOST_THREADS)
+        .min(jars.len().div_ceil(PER_THREAD));
+    let read_share = |share: &[(&Path, &JarKey)]| -> Vec<(JarKey, Known)> {
+        share.iter().map(|(path, key)| ((*key).clone(), mod_index::read(&loader, path))).collect()
+    };
+    if threads <= 1 {
+        return read_share(jars);
+    }
+    let chunk = jars.len().div_ceil(threads);
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = jars.chunks(chunk).map(|share| scope.spawn(move || read_share(share))).collect();
+        workers.into_iter().filter_map(|worker| worker.join().ok()).flatten().collect()
+    })
 }
 
 /// How many mod jars `dir` holds, enabled or not.
