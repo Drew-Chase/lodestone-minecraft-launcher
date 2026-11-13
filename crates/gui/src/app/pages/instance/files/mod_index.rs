@@ -69,7 +69,13 @@ pub fn attach(db: Database) {
 /// Runs a database call from the blocking pool and waits for it. `None` without a database or a runtime to run it on.
 fn with_database<T>(call: impl AsyncFnOnce(&Database) -> Result<T, String>) -> Option<T> {
     let db = DATABASE.get()?;
-    let runtime = tokio::runtime::Handle::try_current().ok()?;
+    let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+        // The database is open but this thread is outside the runtime, so nothing is kept. Said once, so a caller that
+        // forgets to enter the runtime shows in the log rather than as an empty table.
+        static TOLD: std::sync::Once = std::sync::Once::new();
+        TOLD.call_once(|| warn!("The mod index ran outside the tokio runtime, so it keeps its entries in memory only"));
+        return None;
+    };
     match runtime.block_on(call(db)) {
         Ok(value) => Some(value),
         Err(error) => {

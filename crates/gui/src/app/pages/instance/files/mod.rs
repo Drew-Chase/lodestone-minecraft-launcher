@@ -91,9 +91,15 @@ pub fn read_shot(path: &Path) -> Option<ScreenshotFile> {
 /// thread, so the page waits for the slowest part rather than for all of them in turn.
 pub fn scan(folder: &Path) -> InstanceFiles {
     let _scope = perf::scope("io.scan");
+    // The mod index reaches the database through the tokio runtime, and a new thread starts outside it, so the thread that
+    // reads the mods enters the runtime this scan runs in. Without that the index silently kept nothing.
+    let runtime = tokio::runtime::Handle::try_current().ok();
     std::thread::scope(|scope| {
         let folder_bytes = scope.spawn(|| dir_size(folder));
-        let mods = scope.spawn(|| mods::scan(&folder.join("mods")));
+        let mods = scope.spawn(|| {
+            let _runtime = runtime.as_ref().map(tokio::runtime::Handle::enter);
+            mods::scan(&folder.join("mods"))
+        });
         let resource_packs = scope.spawn(|| packs::scan(&folder.join("resourcepacks")));
         let shader_packs = scope.spawn(|| packs::scan(&folder.join("shaderpacks")));
         let worlds = scope.spawn(|| worlds::scan(&folder.join("saves")));
