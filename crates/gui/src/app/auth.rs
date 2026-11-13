@@ -4,9 +4,10 @@
 //! credentials off the UI thread.
 
 use iced::Task;
-use lodestone_minecraft_authentication::Session;
+use lodestone_minecraft_authentication::{AuthError, Authentication, Profile, Session};
 use tracing::{debug, info, warn};
 
+use crate::app::appearance_cache;
 use crate::app::components::account_menu::{Entry as AccountEntry, Message as AccountMenuMessage};
 use crate::app::components::alert::Alert;
 use crate::app::lang;
@@ -55,7 +56,6 @@ impl LodestoneLauncher {
             }
             LoginMessage::SignInFinished(generation, Ok(session)) if generation == self.auth_generation => {
                 info!("Signed in as {}", session.profile.name);
-                self.restoring = None;
                 // Keep the refresh token so the next boot restores this sign-in silently. The new account plays by default.
                 let save = match &session.refresh_token {
                     Some(refresh_token) => {
@@ -80,14 +80,9 @@ impl LodestoneLauncher {
             }
             LoginMessage::SignInFinished(generation, Err(error)) if generation == self.auth_generation => {
                 warn!("Sign-in failed: {error}");
-                // A restore that fails means its refresh token was spent or revoked, so that account leaves the list.
-                // A new sign-in that fails leaves the list as it is.
-                let save = match self.restoring.take() {
-                    Some(username) if self.credentials.remove_microsoft(&username) => self.save_credentials(),
-                    _ => Task::none(),
-                };
+                // A new sign-in that fails leaves the account list as it is.
                 self.login.update(LoginMessage::SignInFailed(error));
-                save
+                Task::none()
             }
             // Results from cancelled generations — dropped silently.
             LoginMessage::DeviceCodeStarted(generation, _) | LoginMessage::SignInFinished(generation, _) => {
@@ -167,7 +162,6 @@ impl LodestoneLauncher {
             | LoginMessage::Reset
             | LoginMessage::CodeHover(_)
             | LoginMessage::LinkHover(_)
-            | LoginMessage::Restoring { .. }
             | LoginMessage::OfflinePrompt { .. }) => {
                 self.login.update(message);
                 Task::none()
@@ -175,19 +169,62 @@ impl LodestoneLauncher {
         }
     }
 
-    /// Boot-time restore: silently re-login the stored Microsoft refresh token of the account that plays by default,
-    /// before showing the sign-in card.
-    pub(super) fn restore_sign_in(&mut self, username: String, refresh_token: String) -> Task<LodestoneAppMessage> {
-        self.auth_generation = self.auth_generation.wrapping_add(1);
-        let generation = self.auth_generation;
-        info!("Restoring Microsoft sign-in for {username} (generation {generation})");
-        self.restoring = Some(username.clone());
-        self.login.update(LoginMessage::Restoring { username });
-        let auth = self.auth.clone();
-        Task::perform(
-            async move { auth.login_with_refresh_token(&refresh_token).await.map_err(|error| error.to_string()) },
-            move |result| LodestoneAppMessage::Login(LoginMessage::SignInFinished(generation, result)),
-        )
+    /// Boot: enters the launcher at once with the account that plays by default, so no network call stands between the
+    /// start and the first page. An offline profile plays as it is. A Microsoft account starts on a stand-in session that
+    /// is already due for a refresh, and that refresh runs in the background through the single refresh a launch uses. A
+    /// launch or a skin change pressed meanwhile waits for it, so the refresh token is never spent twice. The face shows
+    /// from the copy kept on disk until the restored profile is read.
+    pub(super) fn restore_at_boot(&mut self) -> Task<LodestoneAppMessage> {
+        let Some(account) = self.credentials.primary_account().cloned() else {
+            return Task::none();
+        };
+        match account {
+            StoredAccount::Offline { username } => {
+                info!("Starting as the offline profile {username}");
+                self.account = Some(Account::Offline { username });
+                Task::batch([self.appearance_task(), self.enter_launcher()])
+            }
+            StoredAccount::Microsoft(microsoft) => {
+                info!("Starting as {}; the Microsoft sign-in is restored in the background", microsoft.username);
+                self.account = Some(Account::Microsoft {
+                    session: stand_in_session(&microsoft),
+                });
+                self.restoring = Some(microsoft.username.clone());
+                let cached = cached_appearance(microsoft.uuid.clone());
+                let refresh = self.start_session_refresh(microsoft.refresh_token);
+                Task::batch([cached, refresh, self.enter_launcher()])
+            }
+        }
+    }
+
+    /// The restore at boot failed while the account still plays on its stand-in session. A refused sign-in drops the
+    /// account and opens the sign-in page with the reason, as a failed restore always did. A failure to reach the
+    /// services keeps the account: its session is still due, so the next launch tries again. `alerted` says whether a
+    /// launch that waited has already reported the failure.
+    pub(super) fn restore_failed(&mut self, username: String, error: RefreshError, alerted: bool) -> Task<LodestoneAppMessage> {
+        if !error.needs_sign_in {
+            warn!(
+                "Restoring the sign-in of {username} failed, and is tried again before the next launch: {}",
+                error.message
+            );
+            if alerted {
+                return Task::none();
+            }
+            return self
+                .alerts
+                .show(Alert::warn(lang::t_with("login.restore_unreachable", &[("name", username.as_str())])))
+                .discard();
+        }
+        warn!("The saved sign-in of {username} can no longer be used: {}", error.message);
+        let save = if self.credentials.remove_microsoft(&username) {
+            self.save_credentials()
+        } else {
+            Task::none()
+        };
+        self.account = None;
+        self.face = None;
+        self.login.update(LoginMessage::SignInFailed(error.message));
+        Task::batch([save, self.navigate(Page::Login)])
     }
 
     /// The page a successful sign-in leads to: the launcher, or the Settings page when the sign-in added an account.
@@ -209,28 +246,16 @@ impl LodestoneLauncher {
         };
         Task::perform(
             async move {
-                let Some(profile) = profile else {
-                    let skin_png = auth.fetch_default_steve_face().await.map_err(|error| error.to_string())?;
-                    return Ok(Appearance {
-                        skin_png,
-                        cape_png: None,
-                        slim: false,
-                    });
-                };
-                let skin_png = match &profile.skin_url {
-                    Some(url) => auth.fetch_skin(url).await,
-                    None => auth.fetch_default_steve_face().await,
+                let appearance = fetch_appearance(&auth, profile.as_ref()).await?;
+                // A Microsoft account keeps its appearance on disk, so the next start shows the face before it signs in.
+                if let Some(uuid) = profile.map(|profile| profile.id) {
+                    let kept = appearance.clone();
+                    let stored = tokio::task::spawn_blocking(move || appearance_cache::store(&uuid, &kept)).await;
+                    if let Ok(Err(error)) = stored {
+                        warn!("Keeping the appearance on disk failed: {error}");
+                    }
                 }
-                .map_err(|error| error.to_string())?;
-                let cape_png = match profile.capes.iter().find(|cape| cape.active) {
-                    Some(cape) => Some(auth.fetch_skin(&cape.url).await.map_err(|error| error.to_string())?),
-                    None => None,
-                };
-                Ok(Appearance {
-                    skin_png,
-                    cape_png,
-                    slim: profile.slim,
-                })
+                Ok(appearance)
             },
             LodestoneAppMessage::AppearanceReady,
         )
@@ -413,4 +438,75 @@ impl LodestoneLauncher {
             })
             .collect()
     }
+}
+
+/// Why a sign-in with a saved refresh token failed: the message to show, and whether only the player can resolve it, as
+/// opposed to a service that could not be reached.
+#[derive(Debug, Clone)]
+pub struct RefreshError {
+    pub message: String,
+    pub needs_sign_in: bool,
+}
+
+impl From<AuthError> for RefreshError {
+    fn from(error: AuthError) -> Self {
+        Self {
+            needs_sign_in: error.needs_sign_in(),
+            message: error.to_string(),
+        }
+    }
+}
+
+/// The session a saved Microsoft account plays on until its refresh lands. It carries the account's name, id and refresh
+/// token, and it expired long ago, so every launch or skin change refreshes it before it uses the token.
+fn stand_in_session(microsoft: &StoredMicrosoft) -> Session {
+    Session {
+        minecraft_token: String::new(),
+        expires_at: 0,
+        refresh_token: Some(microsoft.refresh_token.clone()),
+        profile: Profile {
+            id: microsoft.uuid.clone().unwrap_or_default(),
+            name: microsoft.username.clone(),
+            skin_url: None,
+            slim: false,
+            capes: Vec::new(),
+        },
+    }
+}
+
+/// Reads the appearance kept on disk for the account `uuid`, off the UI thread.
+fn cached_appearance(uuid: Option<String>) -> Task<LodestoneAppMessage> {
+    let Some(uuid) = uuid else {
+        return Task::none();
+    };
+    Task::perform(
+        async move { tokio::task::spawn_blocking(move || appearance_cache::load(&uuid)).await.ok().flatten() },
+        LodestoneAppMessage::CachedAppearance,
+    )
+}
+
+/// Fetches the skin and the worn cape of `profile`, or the vanilla Steve for an offline account or a profile with no skin.
+async fn fetch_appearance(auth: &Authentication, profile: Option<&Profile>) -> Result<Appearance, String> {
+    let Some(profile) = profile else {
+        let skin_png = auth.fetch_default_steve_face().await.map_err(|error| error.to_string())?;
+        return Ok(Appearance {
+            skin_png,
+            cape_png: None,
+            slim: false,
+        });
+    };
+    let skin_png = match &profile.skin_url {
+        Some(url) => auth.fetch_skin(url).await,
+        None => auth.fetch_default_steve_face().await,
+    }
+    .map_err(|error| error.to_string())?;
+    let cape_png = match profile.capes.iter().find(|cape| cape.active) {
+        Some(cape) => Some(auth.fetch_skin(&cape.url).await.map_err(|error| error.to_string())?),
+        None => None,
+    };
+    Ok(Appearance {
+        skin_png,
+        cape_png,
+        slim: profile.slim,
+    })
 }

@@ -1,3 +1,4 @@
+mod appearance_cache;
 mod auth;
 mod boot;
 mod clipboard;

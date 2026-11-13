@@ -247,17 +247,9 @@ impl LodestoneLauncher {
             SessionCheck::Fresh => self.send_profile_change(change),
             SessionCheck::SignInAgain => self.alerts.show(Alert::warn(lang::t("skins.sign_in_again"))).discard(),
             SessionCheck::Refresh(token) => {
+                // A refresh already under way takes this change among the ones waiting for it.
                 self.waiting_change = Some(change);
-                if !self.games.start_refresh(token.clone()) {
-                    // A refresh is already under way, and this change waits for it.
-                    return Task::none();
-                }
-                info!("Refreshing the Microsoft session before changing the skin or cape");
-                let auth = self.auth.clone();
-                Task::perform(
-                    async move { auth.login_with_refresh_token(&token).await.map_err(|error| error.to_string()) },
-                    LodestoneAppMessage::SessionRefreshed,
-                )
+                self.start_session_refresh(token)
             }
         }
     }

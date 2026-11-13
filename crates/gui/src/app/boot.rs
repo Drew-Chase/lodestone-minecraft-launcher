@@ -7,7 +7,6 @@ use crate::app::pages::library::LibraryView;
 use crate::app::pages::login::Message as LoginMessage;
 use crate::app::paths::{self, LauncherPaths};
 use crate::app::preferences::Preferences;
-use crate::app::storage::StoredAccount;
 use iced::window::{Level, Position};
 use iced::{Size, Task, window};
 use tracing::{info, warn};
@@ -102,20 +101,8 @@ impl LodestoneLauncher {
                 },
             ));
         }
-        // Silent re-login when a Microsoft refresh token is on file — the
-        // launcher goes straight to Home on success.
-        if let Some(StoredAccount::Microsoft(ms)) = app.credentials.primary_account().cloned() {
-            info!("PROBE restoring stored Microsoft sign-in for {}", ms.username);
-            tasks.push(Task::perform(
-                async {
-                    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-                },
-                move |_| LodestoneAppMessage::RestoreStart {
-                    username: ms.username,
-                    refresh_token: ms.refresh_token,
-                },
-            ));
-        }
+        // The account that plays by default enters the launcher at once. A Microsoft sign-in is restored in the background.
+        tasks.push(app.restore_at_boot());
         // First auth-services probe shortly after boot; the subscription
         // keeps it going every 15s.
         tasks.push(Task::perform(
