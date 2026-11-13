@@ -215,9 +215,11 @@ impl LodestoneLauncher {
                 self.discover.note_sources(std::slice::from_ref(&record));
                 let generation = self.instance_page.generation();
                 let check = check_mods(db, context.check(), Vec::new(), Some(vec![record]));
+                let instance = context.instance.id.clone();
                 let check = Task::perform(check, move |result| {
                     LodestoneAppMessage::ModActions(Message::Checked {
                         generation,
+                        instance,
                         full: false,
                         result,
                     })

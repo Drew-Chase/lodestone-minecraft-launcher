@@ -24,12 +24,14 @@ use crate::sealed;
 
 mod cdn;
 mod fingerprint;
+mod latest;
 
 use cdn::direct_url;
 pub use fingerprint::FingerprintMatch;
 pub(crate) use fingerprint::fingerprint_match;
 #[cfg(test)]
 use fingerprint::fingerprint_match_of;
+pub(crate) use latest::latest_files;
 
 /// Marker for CurseForge (https://www.curseforge.com). Requires an API key —
 /// see [`Platform::<CurseForge>::with_api_key`](crate::Platform::with_api_key).
@@ -76,15 +78,27 @@ fn sort_field(sort: SearchSort) -> u32 {
     }
 }
 
-/// Builds a client carrying the API key header plus the full url for `path`.
+/// Builds a client carrying the API key header plus the full url for `path`. The client is built once per key and shared,
+/// so calls reuse its connections rather than opening a new TLS session each time. New network settings build a new one.
 /// Fails up front when the handle has no credential.
 fn request(credential: Option<&str>, path: &str) -> Result<(String, reqwest::Client), PlatformError> {
+    /// The shared client, with the key and the network settings it was built with.
+    static CLIENT: std::sync::Mutex<Option<(String, lodestone_net::Config, reqwest::Client)>> = std::sync::Mutex::new(None);
     let Some(key) = credential else {
         return Err(PlatformError::UnexpectedResponse {
             url: format!("{BASE}{path}"),
             status: 401,
         });
     };
+    let config = lodestone_net::current();
+    if let Some((_, _, client)) = CLIENT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+        .filter(|(kept, built, _)| kept == key && *built == config)
+    {
+        return Ok((format!("{BASE}{path}"), client.clone()));
+    }
     let mut headers = reqwest::header::HeaderMap::new();
     let value = reqwest::header::HeaderValue::from_str(key).map_err(|_| PlatformError::Download {
         url: format!("{BASE}{path}"),
@@ -99,6 +113,7 @@ fn request(credential: Option<&str>, path: &str) -> Result<(String, reqwest::Cli
             url: BASE.to_string(),
             source: Box::new(source),
         })?;
+    *CLIENT.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some((key.to_string(), config, client.clone()));
     Ok((format!("{BASE}{path}"), client))
 }
 

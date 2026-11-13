@@ -3,11 +3,14 @@
 //! sqlx migrations.
 
 mod added_content;
+mod mod_checks;
 mod notifications;
 mod pack_files;
 mod pack_update;
 mod playtime;
 mod server_pack;
+
+pub use mod_checks::StoredModCheck;
 pub mod servers;
 
 use std::path::{Path, PathBuf};
@@ -253,6 +256,11 @@ impl Database {
             .await
             .map_err(|error| error.to_string())?;
         sqlx::query("DELETE FROM jar_hashes WHERE instance_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| error.to_string())?;
+        sqlx::query("DELETE FROM mod_update_checks WHERE instance_id = ?")
             .bind(id)
             .execute(&self.pool)
             .await

@@ -7,12 +7,13 @@ use std::time::Duration;
 
 use chrono::Local;
 use lodestone_platforms::{ContentType, ContentVersion};
+use tokio::task::JoinSet;
 use tracing::warn;
 
 use super::{Draft, Kind};
 use crate::app::database::Database;
 use crate::app::discover::versions_of;
-use crate::app::mod_sources::{CheckContext, check_mods};
+use crate::app::mod_sources::{CheckContext, Checks, check_mods};
 use crate::app::pages::discover::Source;
 
 /// How long after a check the next one may start.
@@ -94,14 +95,34 @@ fn jar_names(mods: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Checks each instance in turn. An instance that cannot be checked is logged and left out, and the rest still run.
-pub async fn run(db: Database, targets: Vec<Target>) {
-    for target in &targets {
-        if let Some(pack) = &target.pack {
-            check_pack(&db, target, pack).await;
+/// How many instances are checked at once. Each check asks every platform in bulk, so this bounds the requests in flight.
+const INSTANCES_AT_ONCE: usize = 3;
+
+/// Checks the instances, a few at a time. An instance that cannot be checked is logged and left out, and the rest still
+/// run. Returns what each instance's mod check found, so the Mods tab can show it without asking again.
+pub async fn run(db: Database, targets: Vec<Target>) -> Vec<(String, Checks)> {
+    let mut found = Vec::new();
+    let mut checks = JoinSet::new();
+    for target in targets {
+        if checks.len() >= INSTANCES_AT_ONCE
+            && let Some(Ok(Some(result))) = checks.join_next().await
+        {
+            found.push(result);
         }
-        check_mods_of(&db, target).await;
+        let db = db.clone();
+        checks.spawn(async move {
+            if let Some(pack) = &target.pack {
+                check_pack(&db, &target, pack).await;
+            }
+            check_mods_of(&db, &target).await.map(|checks| (target.id.clone(), checks))
+        });
     }
+    while let Some(joined) = checks.join_next().await {
+        if let Ok(Some(result)) = joined {
+            found.push(result);
+        }
+    }
+    found
 }
 
 /// Checks an instance's modpack against its platform, and records a newer release, or the baseline when there is none.
@@ -137,11 +158,13 @@ async fn check_pack(db: &Database, target: &Target, pack: &Pack) {
     }
 }
 
-/// Checks an instance's mods against their platforms, and records how many have a newer release.
-async fn check_mods_of(db: &Database, target: &Target) {
-    let names = jar_names(&target.folder.join("mods"));
+/// Checks an instance's mods against their platforms, and records how many have a newer release. Returns what the check
+/// found, or `None` when the instance has no mods or the check failed.
+async fn check_mods_of(db: &Database, target: &Target) -> Option<Checks> {
+    let mods = target.folder.join("mods");
+    let names = tokio::task::spawn_blocking(move || jar_names(&mods)).await.unwrap_or_default();
     if names.is_empty() {
-        return;
+        return None;
     }
     let context = CheckContext {
         instance: target.id.clone(),
@@ -153,12 +176,12 @@ async fn check_mods_of(db: &Database, target: &Target) {
         Ok(checks) => checks,
         Err(error) => {
             warn!("Could not check the mods of {}: {error}", target.name);
-            return;
+            return None;
         }
     };
     let count = checks.updates.len();
     if count == 0 {
-        return;
+        return Some(checks);
     }
     let draft = Draft {
         key: format!("mods:{}:{count}", target.id),
@@ -172,6 +195,7 @@ async fn check_mods_of(db: &Database, target: &Target) {
     if let Err(error) = db.record_notification(&draft).await {
         warn!("Could not record the mod check of {}: {error}", target.name);
     }
+    Some(checks)
 }
 
 #[cfg(test)]

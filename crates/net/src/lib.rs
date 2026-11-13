@@ -40,6 +40,11 @@ pub fn set(config: Config) {
     *CONFIG.write().unwrap_or_else(PoisonError::into_inner) = config;
 }
 
+/// The settings new clients are built with now. A client kept for reuse compares them with its own, to know when to rebuild.
+pub fn current() -> Config {
+    CONFIG.read().unwrap_or_else(PoisonError::into_inner).clone()
+}
+
 /// The reqwest builder every client of the launcher starts from, with the current settings applied.
 pub fn builder() -> reqwest::ClientBuilder {
     let config = CONFIG.read().unwrap_or_else(PoisonError::into_inner).clone();
