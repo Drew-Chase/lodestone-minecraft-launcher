@@ -71,11 +71,11 @@ jobs:
           fi
 
       - name: Build the launcher
-        run: cargo build --release -p lodestone_launcher
+        run: cargo build --profile dist -p lodestone_launcher
 
       - name: Zip the launcher
         shell: pwsh
-        run: Compress-Archive -Path target/release/lodestone_launcher.exe -DestinationPath "Lodestone-$env:TAG-windows-x64.zip"
+        run: Compress-Archive -Path target/dist/lodestone_launcher.exe -DestinationPath "Lodestone-$env:TAG-windows-x64.zip"
 
       - name: Build the installer
         shell: pwsh
@@ -85,7 +85,7 @@ jobs:
             $env:Path += ";${env:ProgramFiles(x86)}\NSIS"
           }
           $out = Join-Path $env:GITHUB_WORKSPACE "Lodestone-$env:TAG-setup.exe"
-          $bin = Join-Path $env:GITHUB_WORKSPACE "target\release"
+          $bin = Join-Path $env:GITHUB_WORKSPACE "target\dist"
           makensis "/DAPP_VERSION=$env:BASE" "/DBIN_DIR=$bin" "/DOUT_FILE=$out" res\installer.nsi
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -124,12 +124,12 @@ jobs:
 
       - name: Build both architectures into one binary
         run: |
-          cargo build --release -p lodestone_launcher --target aarch64-apple-darwin
-          cargo build --release -p lodestone_launcher --target x86_64-apple-darwin
+          cargo build --profile dist -p lodestone_launcher --target aarch64-apple-darwin
+          cargo build --profile dist -p lodestone_launcher --target x86_64-apple-darwin
           mkdir -p target/universal
           lipo -create -output target/universal/lodestone_launcher \
-            target/aarch64-apple-darwin/release/lodestone_launcher \
-            target/x86_64-apple-darwin/release/lodestone_launcher
+            target/aarch64-apple-darwin/dist/lodestone_launcher \
+            target/x86_64-apple-darwin/dist/lodestone_launcher
 
       - name: Bundle Lodestone.app and the disk image
         run: |
@@ -168,10 +168,10 @@ jobs:
           fi
 
       - name: Build the launcher
-        run: cargo build --release -p lodestone_launcher
+        run: cargo build --profile dist -p lodestone_launcher
 
       - name: Archive the launcher
-        run: tar -czf "Lodestone-$TAG-linux-x86_64.tar.gz" -C target/release lodestone_launcher
+        run: tar -czf "Lodestone-$TAG-linux-x86_64.tar.gz" -C target/dist lodestone_launcher
 
       - uses: actions/upload-artifact@v4
         with:
