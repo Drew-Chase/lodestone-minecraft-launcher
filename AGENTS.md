@@ -104,6 +104,14 @@ Do not add "Co-Authored-By", "Generated with", or any other AI attribution to co
 
 Do not create new branches unless the user explicitly asks for one. Commit on the branch that is checked out, and ask before creating one.
 
+## Pull Requests
+When drafting a pull request (PR), make it standalone:
+
+- Base it on `master`.
+- Do not chain PRs, where one PR builds on another PR's branch.
+- Do not link it to another PR in its description.
+- Do not make it depend on another PR being merged first, or require a particular merge order.
+
 ## Agent Memory
 
 Update your persistent agent memory as you discover codepaths, dependency relationships, architectural patterns, platform-specific implementations, and performance-critical sections. This builds institutional knowledge across conversations. Write concise notes about what you found and where.
