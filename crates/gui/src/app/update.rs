@@ -348,6 +348,8 @@ impl LodestoneLauncher {
                     })
                     .discard()
                 };
+                // The Mods tab's index keeps its entries in the database's cache section from now on.
+                crate::app::pages::instance::files::mod_index::attach(db.clone());
                 self.db = Some(db);
                 // The games a previous launcher left running are found through their pid files. Attaching
                 // to them sets their state, and then the library loads.

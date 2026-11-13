@@ -8,7 +8,7 @@ use std::time::UNIX_EPOCH;
 use iced::widget::image;
 use lodestone_loaders::{Fabric, Loader, ModDependency};
 
-use super::mod_index::{self, JarKey, Known};
+use super::mod_index::{self, JarKey, Read};
 
 /// One mod jar.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,14 +58,17 @@ pub fn scan(dir: &Path) -> Vec<ModFile> {
         .filter(|(_, key)| !known.contains_key(key))
         .map(|(jar, key)| (jar.path.as_path(), key))
         .collect();
-    let read = read_jars(&missing);
-    let mut changed = !read.is_empty();
-    known.extend(read.into_iter().map(|(key, entry)| (key, Arc::new(entry))));
+    let mut added = Vec::new();
+    for (key, read) in read_jars(&missing) {
+        added.push((key.clone(), read.icon_png));
+        known.insert(key, Arc::new(read.known));
+    }
     // Entries of jars that are gone leave the index.
     let held: HashSet<&JarKey> = jars.iter().map(|(_, key)| key).collect();
-    let before = known.len();
-    known.retain(|key, _| held.contains(key));
-    changed |= known.len() != before;
+    let removed: Vec<JarKey> = known.keys().filter(|key| !held.contains(key)).cloned().collect();
+    for key in &removed {
+        known.remove(key);
+    }
 
     let mut mods: Vec<ModFile> = jars
         .iter()
@@ -83,7 +86,7 @@ pub fn scan(dir: &Path) -> Vec<ModFile> {
             }
         })
         .collect();
-    mod_index::store(dir, known, changed);
+    mod_index::store(dir, known, added, removed);
     mods.sort_by_key(|entry| entry.name.to_lowercase());
     mods
 }
@@ -104,7 +107,7 @@ fn key_of(jar: &Jar) -> Option<JarKey> {
 }
 
 /// Reads the jars across the machine's cores. Each thread takes an equal share; a few jars take one thread.
-fn read_jars(jars: &[(&Path, &JarKey)]) -> Vec<(JarKey, Known)> {
+fn read_jars(jars: &[(&Path, &JarKey)]) -> Vec<(JarKey, Read)> {
     const PER_THREAD: usize = 4;
     const MOST_THREADS: usize = 16;
     if jars.is_empty() {
@@ -117,7 +120,7 @@ fn read_jars(jars: &[(&Path, &JarKey)]) -> Vec<(JarKey, Known)> {
         .map_or(1, std::num::NonZero::get)
         .min(MOST_THREADS)
         .min(jars.len().div_ceil(PER_THREAD));
-    let read_share = |share: &[(&Path, &JarKey)]| -> Vec<(JarKey, Known)> {
+    let read_share = |share: &[(&Path, &JarKey)]| -> Vec<(JarKey, Read)> {
         share.iter().map(|(path, key)| ((*key).clone(), mod_index::read(&loader, path))).collect()
     };
     if threads <= 1 {

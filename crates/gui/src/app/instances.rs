@@ -20,6 +20,7 @@ use crate::app::install::ART_DIR;
 use crate::app::lang;
 use crate::app::pages::Page;
 use crate::app::pages::discover::{InstanceChoice, Source as DiscoverSource};
+use crate::app::pages::instance::files::mod_index;
 use crate::app::pages::instance::settings::{self, Edit};
 use crate::app::pages::instance::{Message as InstanceMessage, Tab};
 use crate::app::pages::library::instance::{Instance, InstanceIcon, Loader};
@@ -576,6 +577,7 @@ pub(super) fn open_source(url: String) -> Task<LodestoneAppMessage> {
 /// Removes the instance's folder, then the folders the launcher keeps for it outside the instance, then its row. The folders
 /// go first: if a file is locked, the row stays and the delete can be tried again.
 async fn remove_instance(db: Database, folder: PathBuf, kept: Vec<PathBuf>, id: String) -> Result<(), String> {
+    let mods = folder.join("mods");
     let removal = tokio::task::spawn_blocking(move || {
         remove_folder(&folder)?;
         kept.iter().try_for_each(|path| remove_folder(path))
@@ -583,7 +585,13 @@ async fn remove_instance(db: Database, folder: PathBuf, kept: Vec<PathBuf>, id: 
     .await
     .map_err(|error| error.to_string())?;
     removal?;
-    db.delete_instance(&id).await
+    db.delete_instance(&id).await?;
+    // The Mods tab's index of the folder is cache, so a failure to drop it is only logged.
+    mod_index::forget(&mods);
+    if let Err(error) = db.forget_mod_index(&mod_index::folder_key(&mods)).await {
+        tracing::warn!("Could not drop the mod index of a deleted instance: {error}");
+    }
+    Ok(())
 }
 
 /// Removes `folder` and everything in it. A folder that is already gone counts as removed.

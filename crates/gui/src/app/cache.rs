@@ -1,6 +1,7 @@
 //! Clearing the launcher's caches: what it can fetch or work out again. That is the cache folder (Discover pictures, the
-//! news feed, the mod index, staged updates and server pack staging), the faces kept for the accounts, the mods' update
-//! checks and jar hashes in the database, and the answers to recent platform requests held in memory. Settings, sign-ins,
+//! news feed, staged updates and server pack staging), the faces kept for the accounts, the database's cache section and
+//! mod caches (the mod index, the mods' update checks and jar hashes), and what is held in memory (the mod index and the
+//! answers to recent platform requests). Settings, sign-ins,
 //! instances, worlds, shared downloads and the records of where each mod came from stay.
 
 use std::path::{Path, PathBuf};
@@ -51,6 +52,7 @@ impl LodestoneLauncher {
         }
         // What is held in memory goes now, so nothing reads it again before the files are gone.
         self.mod_checks.clear();
+        mod_index::clear();
         lodestone_platforms::clear_answer_cache();
         let db = self.db.clone();
         Task::perform(
@@ -92,10 +94,6 @@ impl LodestoneLauncher {
 fn clear_files(kept: &[&str]) -> Result<u64, String> {
     let mut freed = 0;
     let mut failure = None;
-    // The mod index is in memory as well as in the cache folder.
-    if let Err(error) = mod_index::clear() {
-        failure.get_or_insert(error.to_string());
-    }
     let mut targets: Vec<PathBuf> = Vec::new();
     if let Some(cache) = paths::cache_dir()
         && let Ok(entries) = std::fs::read_dir(&cache)

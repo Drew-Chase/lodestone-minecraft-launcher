@@ -3,28 +3,27 @@
 //!
 //! A jar is known by its folder, its name without `.disabled`, its size and its modification time. Switching a mod on or
 //! off renames it and keeps both, so it keeps its entry, while any change to its bytes reads it again. Entries live in
-//! memory for the session and in `mod-index/` in the cache folder across starts, one file per mods folder. Icons are kept
-//! scaled to twice the tile they fill, so a list never decodes a full-size picture while it draws.
+//! memory for the session and in the `cache_mod_index` table of the launcher database across starts, with each icon as a
+//! PNG blob scaled to twice the tile it fills, so a list never decodes a full-size picture while it draws.
+//!
+//! Every function here may wait on the database, so it runs on tokio's blocking pool, where the scans run. Without a
+//! database (before it opens, or outside the launcher's runtime) the index works from memory alone.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock, PoisonError};
 
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD;
 use iced::widget::image;
 use lodestone_loaders::ModDependency;
-use serde::{Deserialize, Serialize};
-use sha1::{Digest, Sha1};
 use tracing::warn;
+
+use crate::app::database::{Database, ModIndexKey, ModIndexRow};
 
 /// The side, in pixels, an icon is kept at: twice the Mods tab's 44px tile, so it stays sharp on a 2x display.
 const ICON_SIDE: u32 = 88;
-/// The version of the file format. A file of another version is read as empty, so its folder is read again.
-const FORMAT: u32 = 1;
 
 /// How a jar is known: its name without `.disabled`, its size and its modification time in nanoseconds.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) struct JarKey {
     pub stem: String,
     pub size: u64,
@@ -42,11 +41,15 @@ pub(super) struct Known {
     pub dependencies: Vec<ModDependency>,
     /// The icon, scaled, ready to draw. The same handle is shared by every scan, so the picture is uploaded once.
     pub icon: Option<image::Handle>,
-    /// The scaled icon as PNG bytes, for the file on disk.
-    icon_png: Option<Vec<u8>>,
 }
 
-/// One mods folder's entries, and whether its file has been read this session.
+/// A jar just read: what it declares, and its scaled icon as PNG bytes for the database.
+pub(super) struct Read {
+    pub known: Known,
+    pub icon_png: Option<Vec<u8>>,
+}
+
+/// One mods folder's entries, and whether its rows have been read this session.
 #[derive(Default)]
 struct Folder {
     loaded: bool,
@@ -55,7 +58,28 @@ struct Folder {
 
 static INDEX: LazyLock<Mutex<HashMap<PathBuf, Folder>>> = LazyLock::new(Default::default);
 
-/// The entries known for `dir`, read from its file the first time a session asks.
+/// The launcher database, once it has opened.
+static DATABASE: OnceLock<Database> = OnceLock::new();
+
+/// Gives the index the launcher database, so entries are kept across starts. The root calls it once the database opens.
+pub fn attach(db: Database) {
+    let _ = DATABASE.set(db);
+}
+
+/// Runs a database call from the blocking pool and waits for it. `None` without a database or a runtime to run it on.
+fn with_database<T>(call: impl AsyncFnOnce(&Database) -> Result<T, String>) -> Option<T> {
+    let db = DATABASE.get()?;
+    let runtime = tokio::runtime::Handle::try_current().ok()?;
+    match runtime.block_on(call(db)) {
+        Ok(value) => Some(value),
+        Err(error) => {
+            warn!("The mod index could not reach the database: {error}");
+            None
+        }
+    }
+}
+
+/// The entries known for `dir`, read from the database the first time a session asks.
 pub(super) fn entries(dir: &Path) -> HashMap<JarKey, Arc<Known>> {
     if let Some(folder) = INDEX
         .lock()
@@ -65,46 +89,87 @@ pub(super) fn entries(dir: &Path) -> HashMap<JarKey, Arc<Known>> {
     {
         return folder.entries.clone();
     }
-    let entries = load(dir);
+    let key = folder_key(dir);
+    let Some(rows) = with_database(async |db| db.mod_index(&key).await) else {
+        // Without the database the folder is read as new, and its rows are read when it is open next time.
+        return INDEX
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(dir)
+            .map(|folder| folder.entries.clone())
+            .unwrap_or_default();
+    };
+    let loaded: HashMap<JarKey, Arc<Known>> = rows.into_iter().map(entry_of).collect();
     let mut index = INDEX.lock().unwrap_or_else(PoisonError::into_inner);
     let folder = index.entry(dir.to_path_buf()).or_default();
     if !folder.loaded {
         folder.loaded = true;
-        // A scan that finished while the file was read keeps what it found.
-        for (key, known) in entries {
+        // A scan that finished while the rows were read keeps what it found.
+        for (key, known) in loaded {
             folder.entries.entry(key).or_insert(known);
         }
     }
     folder.entries.clone()
 }
 
-/// Makes `entries` what `dir` holds, in memory and on disk. The file is written only when `changed`.
-pub(super) fn store(dir: &Path, entries: HashMap<JarKey, Arc<Known>>, changed: bool) {
-    if changed && let Err(error) = save(dir, &entries) {
-        warn!("Could not keep the mod index of {}: {error}", dir.display());
+/// Makes `entries` what `dir` holds. The jars just read are written to the database and the rows of jars that are gone
+/// removed, so a scan writes only what changed.
+pub(super) fn store(dir: &Path, entries: HashMap<JarKey, Arc<Known>>, added: Vec<(JarKey, Option<Vec<u8>>)>, removed: Vec<JarKey>) {
+    if !added.is_empty() || !removed.is_empty() {
+        let key = folder_key(dir);
+        let rows: Vec<ModIndexRow> = added
+            .into_iter()
+            .filter_map(|(jar, icon)| {
+                let known = entries.get(&jar)?;
+                Some(ModIndexRow {
+                    stem: jar.stem,
+                    size: jar.size,
+                    modified: jar.modified,
+                    name: known.name.clone(),
+                    author: known.author.clone(),
+                    version: known.version.clone(),
+                    id: known.id.clone(),
+                    dependencies: known.dependencies.clone(),
+                    icon,
+                })
+            })
+            .collect();
+        let gone: Vec<ModIndexKey> = removed
+            .into_iter()
+            .map(|jar| ModIndexKey {
+                stem: jar.stem,
+                size: jar.size,
+                modified: jar.modified,
+            })
+            .collect();
+        with_database(async |db| db.update_mod_index(&key, &rows, &gone).await);
     }
     let mut index = INDEX.lock().unwrap_or_else(PoisonError::into_inner);
-    index.insert(dir.to_path_buf(), Folder { loaded: true, entries });
+    let loaded = index.get(dir).is_some_and(|folder| folder.loaded);
+    index.insert(dir.to_path_buf(), Folder { loaded, entries });
 }
 
-/// Forgets every entry, in memory and on disk, so every mods folder is read again.
-pub fn clear() -> std::io::Result<()> {
+/// Forgets the entries of the mods folder `dir` in memory, as when its instance is deleted. The root removes its rows.
+pub fn forget(dir: &Path) {
+    INDEX.lock().unwrap_or_else(PoisonError::into_inner).remove(dir);
+}
+
+/// Forgets every entry in memory, so every mods folder is read again. Clear cache empties the table beside it.
+pub fn clear() {
     INDEX.lock().unwrap_or_else(PoisonError::into_inner).clear();
-    match root() {
-        Some(root) => match std::fs::remove_dir_all(root) {
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
-            _ => Ok(()),
-        },
-        None => Ok(()),
-    }
+}
+
+/// The text a mods folder is stored under.
+pub fn folder_key(dir: &Path) -> String {
+    dir.to_string_lossy().into_owned()
 }
 
 /// Reads what the jar at `path` declares. Its icon is decoded and scaled here, off the UI thread.
-pub(super) fn read(loader: &lodestone_loaders::Loader<lodestone_loaders::Fabric>, path: &Path) -> Known {
+pub(super) fn read(loader: &lodestone_loaders::Loader<lodestone_loaders::Fabric>, path: &Path) -> Read {
     let info = loader.extract_mod_info(path).ok();
     let icon_png = lodestone_loaders::mod_icon(path).and_then(|bytes| scaled_png(&bytes));
     let icon = icon_png.as_deref().and_then(handle_from_png);
-    match info {
+    let known = match info {
         Some(info) => Known {
             name: info.name.filter(|name| !name.trim().is_empty()),
             author: info.authors.into_iter().next(),
@@ -112,7 +177,6 @@ pub(super) fn read(loader: &lodestone_loaders::Loader<lodestone_loaders::Fabric>
             version: info.version,
             dependencies: info.dependencies,
             icon,
-            icon_png,
         },
         None => Known {
             name: None,
@@ -121,99 +185,27 @@ pub(super) fn read(loader: &lodestone_loaders::Loader<lodestone_loaders::Fabric>
             id: None,
             dependencies: Vec::new(),
             icon,
-            icon_png,
         },
-    }
-}
-
-/// The folder the index files live in.
-fn root() -> Option<PathBuf> {
-    Some(crate::app::paths::cache_dir()?.join("mod-index"))
-}
-
-/// The index file of `dir`, named by the SHA-1 of its path, so any folder name fits.
-fn file_of(dir: &Path) -> Option<PathBuf> {
-    let digest = Sha1::digest(dir.to_string_lossy().as_bytes());
-    Some(root()?.join(format!("{digest:x}.json")))
-}
-
-/// The file on disk.
-#[derive(Serialize, Deserialize)]
-struct IndexFile {
-    format: u32,
-    entries: Vec<StoredEntry>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct StoredEntry {
-    key: JarKey,
-    name: Option<String>,
-    author: Option<String>,
-    version: Option<String>,
-    id: Option<String>,
-    dependencies: Vec<ModDependency>,
-    /// The scaled icon as base64 PNG.
-    icon: Option<String>,
-}
-
-/// The entries in `dir`'s file. A missing, unreadable or older file gives none.
-fn load(dir: &Path) -> HashMap<JarKey, Arc<Known>> {
-    let Some(text) = file_of(dir).and_then(|path| std::fs::read(path).ok()) else {
-        return HashMap::new();
     };
-    let file: IndexFile = match serde_json::from_slice(&text) {
-        Ok(file) => file,
-        Err(error) => {
-            warn!("The mod index of {} does not read, so the folder is read again: {error}", dir.display());
-            return HashMap::new();
-        }
-    };
-    if file.format != FORMAT {
-        return HashMap::new();
-    }
-    file.entries
-        .into_iter()
-        .map(|entry| {
-            let icon_png = entry.icon.and_then(|icon| STANDARD.decode(icon).ok());
-            let icon = icon_png.as_deref().and_then(handle_from_png);
-            let known = Known {
-                name: entry.name,
-                author: entry.author,
-                version: entry.version,
-                id: entry.id,
-                dependencies: entry.dependencies,
-                icon,
-                icon_png,
-            };
-            (entry.key, Arc::new(known))
-        })
-        .collect()
+    Read { known, icon_png }
 }
 
-fn save(dir: &Path, entries: &HashMap<JarKey, Arc<Known>>) -> Result<(), String> {
-    let Some(path) = file_of(dir) else {
-        return Ok(());
+/// The entry a database row holds. Its icon is decoded here, so drawing never decodes it.
+fn entry_of(row: ModIndexRow) -> (JarKey, Arc<Known>) {
+    let known = Known {
+        name: row.name,
+        author: row.author,
+        version: row.version,
+        id: row.id,
+        dependencies: row.dependencies,
+        icon: row.icon.as_deref().and_then(handle_from_png),
     };
-    let file = IndexFile {
-        format: FORMAT,
-        entries: entries
-            .iter()
-            .map(|(key, known)| StoredEntry {
-                key: key.clone(),
-                name: known.name.clone(),
-                author: known.author.clone(),
-                version: known.version.clone(),
-                id: known.id.clone(),
-                dependencies: known.dependencies.clone(),
-                icon: known.icon_png.as_deref().map(|png| STANDARD.encode(png)),
-            })
-            .collect(),
+    let key = JarKey {
+        stem: row.stem,
+        size: row.size,
+        modified: row.modified,
     };
-    let json = serde_json::to_vec(&file).map_err(|error| error.to_string())?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    lodestone_fs::write_atomic(&path, &json).map_err(|error| error.to_string())
+    (key, Arc::new(known))
 }
 
 /// The icon `bytes` decode to, scaled to fit [`ICON_SIDE`], as PNG. A picture already that small is kept as it is.
