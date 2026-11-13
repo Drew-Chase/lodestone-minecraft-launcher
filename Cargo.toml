@@ -22,7 +22,7 @@ zipcrawl = { version = "2.5.0", default-features = false }
 
 [profile.release]
 lto = true
-codegen-units = 1
+codegen-units = 16
 # Unwinding, so a panic in background work is a failed task and not the end of the launcher. The panic hook keeps a report of it.
 panic = "unwind"
 # Speed, not size: hashing, archive extraction and image decoding are CPU-bound and run on the launch path.
