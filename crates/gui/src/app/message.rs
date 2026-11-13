@@ -118,6 +118,10 @@ pub enum LodestoneAppMessage {
     SkinFileMoved(Result<(), String>),
     /// The answer to the question whether to clear the saved settings and the sign-ins.
     LocalDataAnswered(bool),
+    /// The question about clearing the caches was answered.
+    CacheAnswered(bool),
+    /// The caches were cleared, with the bytes freed, or the reason they could not all be.
+    CacheCleared(Result<u64, String>),
     /// The Minecraft version list fetched at launch, when Auto-update game versions is on.
     VersionsPrefetched(Result<std::sync::Arc<crate::app::install::catalog::Releases>, String>),
     /// The launcher database finished opening (schema migrations ran).

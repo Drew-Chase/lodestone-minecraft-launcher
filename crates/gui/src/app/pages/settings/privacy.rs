@@ -101,11 +101,12 @@ fn not_enforced<'a>() -> Element<'a, Message> {
         .into()
 }
 
-/// The three data actions: open the data folder, export the settings, and clear the local data in red.
+/// The data actions: open the data folder, export the settings, clear the caches, and clear the local data in red.
 fn data_actions<'a>() -> Element<'a, Message> {
     row![
         TextButton::labeled_icon(Icon::lucide().folder(), lang::t("settings.privacy.open_data"), Variant::Ghost).on_press(Message::OpenDataFolder),
         TextButton::labeled_icon(Icon::lucide().upload(), lang::t("settings.privacy.export"), Variant::Ghost).on_press(Message::ExportSettings),
+        TextButton::labeled_icon(Icon::lucide().eraser(), lang::t("settings.privacy.clear_cache"), Variant::Ghost).on_press(Message::ClearCache),
         TextButton::labeled_icon(Icon::lucide().trash(), lang::t("settings.privacy.clear"), Variant::Danger).on_press(Message::ClearLocalData),
     ]
     .spacing(12)

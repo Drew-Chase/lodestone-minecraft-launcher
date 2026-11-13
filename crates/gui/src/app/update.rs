@@ -224,6 +224,8 @@ impl LodestoneLauncher {
             LodestoneAppMessage::AccountMenu(message) => self.account_menu(message),
             LodestoneAppMessage::ProfileChangeConfirmed(confirmed) => self.profile_change_confirmed(confirmed),
             LodestoneAppMessage::LocalDataAnswered(confirmed) => self.local_data_answered(confirmed),
+            LodestoneAppMessage::CacheAnswered(confirmed) => self.cache_answered(confirmed),
+            LodestoneAppMessage::CacheCleared(result) => self.cache_cleared(result),
             LodestoneAppMessage::ProfileChanged(result) => self.profile_changed(result),
             LodestoneAppMessage::Skins(message) => self.update_skins(message),
             LodestoneAppMessage::SkinsLoaded(scan) => {
@@ -346,6 +348,8 @@ impl LodestoneLauncher {
                     })
                     .discard()
                 };
+                // The Mods tab's index keeps its entries in the database's cache section from now on.
+                crate::app::pages::instance::files::mod_index::attach(db.clone());
                 self.db = Some(db);
                 // The games a previous launcher left running are found through their pid files. Attaching
                 // to them sets their state, and then the library loads.
@@ -402,6 +406,7 @@ impl LodestoneLauncher {
             LodestoneAppMessage::DataFolderAnswered { folder, confirmed } => self.data_folder_answered(folder, confirmed),
             LodestoneAppMessage::DataFolderMoved { folder, result } => self.data_folder_moved(folder, result),
             LodestoneAppMessage::Settings(SettingsMessage::ClearLocalData) => self.ask_clear_local_data(),
+            LodestoneAppMessage::Settings(SettingsMessage::ClearCache) => self.ask_clear_cache(),
             LodestoneAppMessage::Settings(SettingsMessage::Account(action)) => match action {
                 AccountAction::MakePrimary(index) => self.switch_account(index),
                 AccountAction::SignOut(index) => self.remove_account(index),

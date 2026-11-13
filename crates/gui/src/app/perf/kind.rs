@@ -56,6 +56,8 @@ pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
         M::AccountMenu(_) => "update.AccountMenu",
         M::ProfileChangeConfirmed(_) => "update.ProfileChangeConfirmed",
         M::LocalDataAnswered(_) => "update.LocalDataAnswered",
+        M::CacheAnswered(_) => "update.CacheAnswered",
+        M::CacheCleared(_) => "update.CacheCleared",
         M::ProfileChanged(_) => "update.ProfileChanged",
         M::Skins(_) => "update.Skins",
         M::SkinsLoaded(_) => "update.SkinsLoaded",

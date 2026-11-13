@@ -40,6 +40,11 @@ pub(crate) fn client() -> Client {
 /// The answers to recent GETs. Every handle shares one cache, as they share the connection pool.
 static ANSWERS: LazyLock<Mutex<AnswerCache>> = LazyLock::new(|| Mutex::new(AnswerCache::new(ANSWER_TTL, ANSWER_CAPACITY)));
 
+/// Drops every kept answer, so the next request of each url goes to the network.
+pub(crate) fn clear_answers() {
+    ANSWERS.lock().unwrap_or_else(PoisonError::into_inner).entries.clear();
+}
+
 /// Response bodies by url. A body is kept until it is `ttl` old, and the oldest is dropped when the
 /// cache is full.
 struct AnswerCache {

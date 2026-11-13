@@ -3,6 +3,7 @@
 //! sqlx migrations.
 
 mod added_content;
+mod cache;
 mod mod_checks;
 mod notifications;
 mod pack_files;
@@ -10,6 +11,7 @@ mod pack_update;
 mod playtime;
 mod server_pack;
 
+pub use cache::{ModIndexKey, ModIndexRow};
 pub use mod_checks::StoredModCheck;
 pub mod servers;
 

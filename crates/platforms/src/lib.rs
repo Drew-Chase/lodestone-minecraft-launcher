@@ -81,6 +81,12 @@ pub use meta::{
     Side, VersionDependency,
 };
 pub use modrinth::Modrinth;
+
+/// Drops the answers to recent requests that every platform handle shares, so the next request of each goes to the
+/// network. The launcher's Clear cache calls it.
+pub fn clear_answer_cache() {
+    http::clear_answers();
+}
 pub use simple_download_utility::DownloadProgress;
 pub use technic::Technic;
 
