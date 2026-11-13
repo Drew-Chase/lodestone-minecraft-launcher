@@ -1,6 +1,7 @@
 mod appearance_cache;
 mod auth;
 mod boot;
+mod cache;
 mod clipboard;
 pub mod components;
 mod coop_sync;

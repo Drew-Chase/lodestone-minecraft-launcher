@@ -58,3 +58,15 @@ impl Database {
             .map_err(|error| error.to_string())
     }
 }
+
+impl Database {
+    /// Empties the caches the database keeps for mods: the kept update checks and the jars' hashes. Both are worked out
+    /// again on the next check. The records of where each mod came from stay.
+    pub async fn clear_mod_caches(&self) -> Result<(), String> {
+        let mut transaction = self.pool.begin().await.map_err(|error| error.to_string())?;
+        for table in ["DELETE FROM mod_update_checks", "DELETE FROM jar_hashes"] {
+            sqlx::query(table).execute(&mut *transaction).await.map_err(|error| error.to_string())?;
+        }
+        transaction.commit().await.map_err(|error| error.to_string())
+    }
+}

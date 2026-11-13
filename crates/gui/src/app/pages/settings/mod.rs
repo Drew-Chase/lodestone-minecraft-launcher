@@ -117,6 +117,8 @@ pub enum Message {
     ExportSettings,
     /// Asks before the saved settings and the sign-ins are cleared. The root asks.
     ClearLocalData,
+    /// Asks before the caches are cleared. The root asks, and clears them.
+    ClearCache,
     /// Commits the draft. The root applies the values and saves them.
     Save,
     /// Throws away the edits.
@@ -274,6 +276,7 @@ impl Settings {
             | Message::UseDefaultDataFolder
             | Message::OpenDataFolder
             | Message::ClearLocalData
+            | Message::ClearCache
             | Message::Save
             | Message::Account(_) => Task::none(),
             Message::ExportSettings => self.export_settings(),

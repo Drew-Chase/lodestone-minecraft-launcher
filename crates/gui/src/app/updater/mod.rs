@@ -124,6 +124,12 @@ impl Updater {
         }
     }
 
+    /// Whether an update's files are staged in the cache folder, or being written there: one downloading, waiting to be
+    /// installed, or being installed. Clear cache leaves them while this holds.
+    pub fn holds_files(&self) -> bool {
+        matches!(self.status, Status::Downloading { .. } | Status::Ready(_) | Status::Installing(_))
+    }
+
     /// Whether this copy can install an update itself. The Settings page shows its auto-update switch only then.
     pub fn installs(&self) -> bool {
         self.target.installs()
