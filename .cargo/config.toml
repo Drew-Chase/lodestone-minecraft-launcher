@@ -1,5 +1,8 @@
 [env]
 ICONIFY_API_URL="https://iconify.dclabs.app"
+# Every folder the launcher writes (config, cache, instances, Java runtimes, logs) goes under this one in a dev run, so the
+# installed launcher's folders stay untouched. `relative` resolves it against the workspace root, whatever the working directory.
+APP_DIRECTORY = { value = "target/dev-env", relative = true }
 # rustc 1.99 overflows its default stack while it generates aurora_leaf's icon set in release builds. rustc's own
 # advice is a larger compiler stack, which this sets for every rustc that cargo runs.
 RUST_MIN_STACK="67108864"
