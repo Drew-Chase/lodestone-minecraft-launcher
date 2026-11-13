@@ -1,4 +1,5 @@
-use std::path::Path;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
 use super::*;
 
@@ -47,4 +48,26 @@ fn only_a_file_inside_a_macos_bundle_is_taken_as_one() {
 fn a_macos_portable_launcher_keeps_its_folders_beside_its_bundle() {
     let launcher = Path::new("/Volumes/USB/Lodestone.app/Contents/MacOS/lodestone_launcher");
     assert_eq!(portable_root(launcher, "pkg-1"), Path::new("/Volumes/USB/lodestone-portable/pkg-1"));
+}
+
+#[test]
+fn an_unset_or_blank_app_directory_changes_nothing() {
+    assert_eq!(app_directory(None), None);
+    assert_eq!(app_directory(Some(OsStr::new(""))), None);
+    assert_eq!(app_directory(Some(OsStr::new("   "))), None);
+}
+
+#[test]
+fn an_app_directory_is_kept_as_an_absolute_path() {
+    let dir = std::env::temp_dir().join("lodestone-dev-env");
+    assert_eq!(app_directory(Some(dir.as_os_str())), Some(dir.clone()));
+}
+
+#[test]
+fn a_development_root_keeps_its_config_data_and_cache_under_it() {
+    let roots = FixedRoots::under(PathBuf::from("/dev/lodestone-env"));
+    assert_eq!(roots.root, Path::new("/dev/lodestone-env"));
+    assert_eq!(roots.config, Path::new("/dev/lodestone-env/config"));
+    assert_eq!(roots.data, Path::new("/dev/lodestone-env/data"));
+    assert_eq!(roots.cache, Path::new("/dev/lodestone-env/cache"));
 }

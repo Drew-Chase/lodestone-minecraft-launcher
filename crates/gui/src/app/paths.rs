@@ -4,6 +4,7 @@
 //! is downloaded once: the Java runtimes, the version JSON and client jars, the
 //! libraries, the asset index and objects, extracted natives and log configs.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -119,7 +120,7 @@ impl LauncherPaths {
 }
 
 impl Default for LauncherPaths {
-    /// The default data folder, or the portable root when the launcher is portable.
+    /// The default data folder, or the data folder of the fixed root (portable or development) when one applies.
     fn default() -> Self {
         Self::new(resolve_data_root(None))
     }
@@ -127,12 +128,35 @@ impl Default for LauncherPaths {
 
 /// The roots a portable launcher keeps its files under. They are set once, before the window opens, when the launcher
 /// carries a package.
-static PORTABLE_ROOTS: OnceLock<PortableRoots> = OnceLock::new();
+static PORTABLE_ROOTS: OnceLock<FixedRoots> = OnceLock::new();
 
-struct PortableRoots {
+/// The roots a development run keeps its files under, from `APP_DIRECTORY` (see `.cargo/config.toml`). They are set once,
+/// before the window opens, so a development run never touches the installed launcher's folders.
+static DEVELOPMENT_ROOTS: OnceLock<FixedRoots> = OnceLock::new();
+
+/// One root, and the three folders the launcher keeps its files in under it.
+struct FixedRoots {
+    root: PathBuf,
     config: PathBuf,
     data: PathBuf,
     cache: PathBuf,
+}
+
+impl FixedRoots {
+    /// The config, data and cache folders under `root`: `config/`, `data/` and `cache/`.
+    fn under(root: PathBuf) -> Self {
+        Self {
+            config: root.join("config"),
+            data: root.join("data"),
+            cache: root.join("cache"),
+            root,
+        }
+    }
+}
+
+/// The fixed root the launcher runs under: a portable launcher's, else a development run's, else none.
+fn fixed_roots() -> Option<&'static FixedRoots> {
+    PORTABLE_ROOTS.get().or_else(|| DEVELOPMENT_ROOTS.get())
 }
 
 /// The app bundle that a macOS launcher runs from: `Lodestone.app` for `Lodestone.app/Contents/MacOS/<launcher>`. None for
@@ -159,28 +183,37 @@ pub fn portable_root(executable: &Path, id: &str) -> PathBuf {
 /// never shares a library, a database or a sign-in with the launcher installed beside it, and it keeps nothing outside its
 /// own folder.
 pub fn use_portable_roots(id: &str, executable: &Path) {
-    let root = portable_root(executable, id);
-    let roots = PortableRoots {
-        config: root.join("config"),
-        data: root.join("data"),
-        cache: root.join("cache"),
-    };
-    let _ = PORTABLE_ROOTS.set(roots);
+    let _ = PORTABLE_ROOTS.set(FixedRoots::under(portable_root(executable, id)));
+}
+
+/// Keeps the launcher's files under the folder `APP_DIRECTORY` names, as a development run does. An unset or blank value
+/// changes nothing. Set once, before the window opens.
+pub fn use_app_directory(value: Option<&OsStr>) {
+    if let Some(root) = app_directory(value) {
+        let _ = DEVELOPMENT_ROOTS.set(FixedRoots::under(root));
+    }
+}
+
+/// The folder `APP_DIRECTORY` names, made absolute. None when the variable is unset or blank.
+fn app_directory(value: Option<&OsStr>) -> Option<PathBuf> {
+    let value = value.filter(|value| !value.to_string_lossy().trim().is_empty())?;
+    let path = PathBuf::from(value);
+    Some(std::path::absolute(&path).unwrap_or(path))
 }
 
 /// The folder the launcher keeps its settings, its sign-in, its database and the records of its running games in:
-/// `<config dir>/lodestone`, or the portable root's `config` folder when the launcher is portable.
+/// `<config dir>/lodestone`, or the `config` folder of the portable or development root when one applies.
 pub fn config_dir() -> Option<PathBuf> {
-    match PORTABLE_ROOTS.get() {
+    match fixed_roots() {
         Some(roots) => Some(roots.config.clone()),
         None => dirs::config_dir().map(|dir| dir.join("lodestone")),
     }
 }
 
 /// The folder the launcher keeps caches in, such as the news feed, downloaded pictures and staged updates:
-/// `<cache dir>/lodestone`, or the portable root's `cache` folder when the launcher is portable.
+/// `<cache dir>/lodestone`, or the `cache` folder of the portable or development root when one applies.
 pub fn cache_dir() -> Option<PathBuf> {
-    match PORTABLE_ROOTS.get() {
+    match fixed_roots() {
         Some(roots) => Some(roots.cache.clone()),
         None => dirs::cache_dir().map(|dir| dir.join("lodestone")),
     }
@@ -191,15 +224,20 @@ pub fn logs_dir() -> Option<PathBuf> {
     config_dir().map(|dir| dir.join("logs"))
 }
 
-/// The data folder the launcher keeps unless the user chooses another: `<data dir>/lodestone`.
+/// The data folder the launcher keeps unless the user chooses another: `<data dir>/lodestone`, or the `data` folder of the
+/// portable or development root when one applies.
 pub fn default_data_root() -> PathBuf {
-    dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("lodestone")
+    match fixed_roots() {
+        Some(roots) => roots.data.clone(),
+        None => dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("lodestone"),
+    }
 }
 
-/// The data root the launcher works under. A portable launcher uses its own root. Otherwise it uses `chosen`, the folder
-/// the user picked on the Settings page, and the default folder when there is none.
+/// The data root the launcher works under. A portable launcher or a development run uses its own root, whatever `chosen`
+/// holds. Otherwise it uses `chosen`, the folder the user picked on the Settings page, and the default folder when there is
+/// none.
 pub fn resolve_data_root(chosen: Option<&Path>) -> PathBuf {
-    match PORTABLE_ROOTS.get() {
+    match fixed_roots() {
         Some(roots) => roots.data.clone(),
         None => chosen.map_or_else(default_data_root, Path::to_path_buf),
     }
@@ -208,6 +246,20 @@ pub fn resolve_data_root(chosen: Option<&Path>) -> PathBuf {
 /// Whether the launcher is portable. A portable launcher's data folder is its own, and cannot be moved.
 pub fn is_portable() -> bool {
     PORTABLE_ROOTS.get().is_some()
+}
+
+/// Whether the data folder is fixed in place: a portable launcher's, or a development run's. A fixed folder cannot be moved.
+pub fn data_folder_fixed() -> bool {
+    fixed_roots().is_some()
+}
+
+/// The folder a development run keeps the launcher's files in, from `APP_DIRECTORY`. None for a portable launcher, whose
+/// own root is the one in use.
+pub fn development_root() -> Option<PathBuf> {
+    if is_portable() {
+        return None;
+    }
+    DEVELOPMENT_ROOTS.get().map(|roots| roots.root.clone())
 }
 
 #[cfg(test)]

@@ -59,7 +59,7 @@ pub fn view<'a>(
 }
 
 /// The folder the launcher keeps its data in, shown with the home folder as `~`, with buttons that open it and move it. A
-/// portable launcher's folder is its own, so it has no move buttons.
+/// portable launcher's folder and a development run's are fixed, so they have no move buttons.
 fn folder_row<'a>(paths: &LauncherPaths) -> Element<'a, Message> {
     let root = paths.root();
     // The path wraps within a fixed width, and the buttons sit under it, so a long path never squeezes the row's label.
@@ -72,7 +72,7 @@ fn folder_row<'a>(paths: &LauncherPaths) -> Element<'a, Message> {
     let mut buttons = row![TextButton::ghost(lang::t("settings.general.open_folder")).on_press(Message::OpenDataFolder)]
         .spacing(12)
         .align_y(alignment::Vertical::Center);
-    if !paths::is_portable() {
+    if !paths::data_folder_fixed() {
         buttons = buttons.push(TextButton::ghost(lang::t("settings.general.change_folder")).on_press(Message::ChooseDataFolder));
         if root != paths::default_data_root() {
             buttons = buttons.push(TextButton::ghost(lang::t("settings.general.default_folder")).on_press(Message::UseDefaultDataFolder));

@@ -8,10 +8,11 @@ use aurora_leaf::FontFamily;
 use color_eyre::Result;
 use tracing::info;
 
-/// Chooses the launcher's roots: a launcher that carries a package takes its own, so its logs and files stay apart.
-/// Call it before [`logs_dir`] and before logging starts.
+/// Chooses the launcher's roots: a launcher that carries a package takes its own, so its logs and files stay apart, and a
+/// development run takes the folder `APP_DIRECTORY` names. Call it before [`logs_dir`] and before logging starts.
 pub fn prepare() {
     app::portable::prepare();
+    app::paths::use_app_directory(std::env::var_os("APP_DIRECTORY").as_deref());
 }
 
 pub fn run() -> Result<()> {
@@ -23,6 +24,9 @@ pub fn run() -> Result<()> {
         info!("Starting the portable launcher for {}", portable.manifest.name);
     }
     info!("Starting Lodestone Launcher v{}#{}", LodestoneLauncher::VERSION, LodestoneLauncher::BUILD);
+    if let Some(root) = app::paths::development_root() {
+        info!("Development run: the launcher keeps its files under {}", root.display());
+    }
     iced::application(LodestoneLauncher::boot, LodestoneLauncher::update, LodestoneLauncher::view)
         .title(LodestoneLauncher::TITLE)
         .window(LodestoneLauncher::window_settings())

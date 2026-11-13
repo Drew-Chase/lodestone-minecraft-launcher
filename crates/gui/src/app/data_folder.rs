@@ -191,6 +191,10 @@ impl LodestoneLauncher {
 
     /// Asks for the folder the data should move to. It is refused while the data is busy.
     pub(super) fn choose_data_folder(&mut self) -> Task<LodestoneAppMessage> {
+        // A portable launcher's or a development run's data folder is fixed, so it is never moved.
+        if paths::data_folder_fixed() {
+            return Task::none();
+        }
         if let Some(reason) = self.data_busy() {
             return self.alerts.show(Alert::error(reason)).discard();
         }
@@ -212,6 +216,9 @@ impl LodestoneLauncher {
 
     /// Checks the folder, then asks the user to confirm the move. A folder that cannot take the data is explained instead.
     fn ask_data_move(&mut self, folder: PathBuf) -> Task<LodestoneAppMessage> {
+        if paths::data_folder_fixed() {
+            return Task::none();
+        }
         if let Some(reason) = self.data_busy() {
             return self.alerts.show(Alert::error(reason)).discard();
         }
