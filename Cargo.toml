@@ -20,10 +20,8 @@ simple_download_utility = { version = "0.1.1" }
 modcrawl = { version = "0.7.0", default-features = false }
 zipcrawl = { version = "2.5.0", default-features = false }
 
-# Local release builds (`cargo build --release`, `just build`). ThinLTO and 16 codegen units let every crate, the launcher
-# included, optimise across all cores, rather than in one serial pass at the end. The published builds use `dist`.
 [profile.release]
-lto = "thin"
+lto = true
 codegen-units = 16
 # Unwinding, so a panic in background work is a failed task and not the end of the launcher. The panic hook keeps a report of it.
 panic = "unwind"
@@ -31,21 +29,14 @@ panic = "unwind"
 opt-level = 3
 strip = true
 
-# The published builds (`just package`, `just dist`, `just dmg` and the release workflow): whole-program LTO with one codegen
-# unit, for the fastest binary. Most of it runs on one core, which is why local builds use `release`. Output: `target/dist`.
-[profile.dist]
-inherits = "release"
-lto = "fat"
-codegen-units = 1
-
 # aurora_leaf is generated code: six whole Iconify sets, one `&'static str` getter per icon and a `by_name` match with one arm
 # per icon (about 15,000 in material-symbols alone). Optimising it took LLVM ten minutes, nearly the whole release build,
 # and buys nothing: a getter returns a constant, and `by_name` is unused (LTO drops it). Debug builds already compile it
-# unoptimised, as a workspace crate.
+# unoptimised, as a workspace crate. The rest of the release build keeps fat LTO and one codegen unit.
 [profile.release.package.aurora_leaf]
 opt-level = 0
 
-[profile.dist.package.aurora_leaf]
+[profile.profiling.package.aurora_leaf]
 opt-level = 0
 
 # Dependencies (iced, wgpu, resvg, image, cosmic-text) run optimised in debug builds too, so
@@ -53,9 +44,8 @@ opt-level = 0
 [profile.dev.package."*"]
 opt-level = 3
 
-# The published builds' optimisation and LTO with symbols, for sampling profilers (`just profile`), so a profile measures what
-# ships.
+# Release optimisation and LTO with symbols, for sampling profilers (`just profile`).
 [profile.profiling]
-inherits = "dist"
+inherits = "release"
 debug = "line-tables-only"
 strip = "none"
