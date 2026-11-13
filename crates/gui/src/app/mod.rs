@@ -129,6 +129,8 @@ pub struct LodestoneLauncher {
     mod_check_started: Option<std::time::Instant>,
     /// Whether a check that came too soon is waiting for its interval to pass.
     mod_check_timer: bool,
+    /// Keeps the database writes of each instance's mod check in order.
+    mod_check_saves: KeyedWriter<String, mod_actions::ModCheck>,
     settings: Settings,
     /// The Discover page: the platform searches, and the results on screen.
     discover: Discover,
@@ -248,6 +250,7 @@ impl Default for LodestoneLauncher {
             mod_checks: HashMap::new(),
             mod_check_started: None,
             mod_check_timer: false,
+            mod_check_saves: KeyedWriter::default(),
             settings: Settings::default(),
             discover: {
                 let mut discover = Discover::new(discover::opening_source());

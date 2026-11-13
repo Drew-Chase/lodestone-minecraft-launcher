@@ -359,6 +359,7 @@ impl LodestoneLauncher {
                     reattach,
                     self.load_shared(),
                     self.load_mod_sources(),
+                    self.load_kept_checks(),
                     self.load_added_content(),
                     self.load_world_pins(),
                     self.load_notifications(),
