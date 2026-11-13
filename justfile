@@ -18,8 +18,8 @@ build:
 
 # Builds Lodestone.app and a DMG for this Mac's architecture, into dist/. Run on macOS.
 dmg:
-    cargo build --profile dist -p lodestone_launcher
-    version="$(cargo pkgid -p lodestone_launcher | sed 's/.*[#@]//')" && cargo xtask bundle-macos --binary target/dist/lodestone_launcher --version "$version" --out dist --dmg "dist/Lodestone-v${version}-macos.dmg"
+    cargo build --release -p lodestone_launcher
+    version="$(cargo pkgid -p lodestone_launcher | sed 's/.*[#@]//')" && cargo xtask bundle-macos --binary target/release/lodestone_launcher --version "$version" --out dist --dmg "dist/Lodestone-v${version}-macos.dmg"
 
 # This will app update the version and publish a tag to github to initiate CICD
 publish version="":
@@ -65,12 +65,12 @@ _package:
     # The same two targets and deployment target as the release workflow, joined into one universal binary.
     rustup target add aarch64-apple-darwin x86_64-apple-darwin
     export MACOSX_DEPLOYMENT_TARGET=11.0
-    cargo build --profile dist -p lodestone_launcher --target aarch64-apple-darwin
-    cargo build --profile dist -p lodestone_launcher --target x86_64-apple-darwin
+    cargo build --release -p lodestone_launcher --target aarch64-apple-darwin
+    cargo build --release -p lodestone_launcher --target x86_64-apple-darwin
     mkdir -p target/universal dist
     lipo -create -output target/universal/lodestone_launcher \
-        target/aarch64-apple-darwin/dist/lodestone_launcher \
-        target/x86_64-apple-darwin/dist/lodestone_launcher
+        target/aarch64-apple-darwin/release/lodestone_launcher \
+        target/x86_64-apple-darwin/release/lodestone_launcher
     cargo xtask bundle-macos --binary target/universal/lodestone_launcher --version "{{base}}" --out dist --dmg "dist/Lodestone-{{tag}}-macos-universal.dmg"
     ditto -c -k --sequesterRsrc --keepParent dist/Lodestone.app "dist/Lodestone-{{tag}}-macos-universal.zip"
 
@@ -82,22 +82,22 @@ _package:
     [ -n "${key//[[:space:]]/}" ] || { echo "Set LODESTONE_CURSEFORGE_KEY to the CurseForge API key first. CI reads it from the CURSEFORGE_API_KEY secret." >&2; exit 1; }
     [ "$(uname -m)" = x86_64 ] || { echo "The Linux release is x86_64 only, and this machine is $(uname -m)." >&2; exit 1; }
     # CI builds on Ubuntu 22.04 so the binary runs on older glibc. A newer distro can produce a binary that does not.
-    cargo build --profile dist -p lodestone_launcher
+    cargo build --release -p lodestone_launcher
     mkdir -p dist
-    tar -czf "dist/Lodestone-{{tag}}-linux-x86_64.tar.gz" -C target/dist lodestone_launcher
+    tar -czf "dist/Lodestone-{{tag}}-linux-x86_64.tar.gz" -C target/release lodestone_launcher
 
 [windows]
 _package:
     #!powershell.exe -NoProfile
     if ([string]::IsNullOrWhiteSpace($env:LODESTONE_CURSEFORGE_KEY)) { [Console]::Error.WriteLine('Set LODESTONE_CURSEFORGE_KEY to the CurseForge API key first. CI reads it from the CURSEFORGE_API_KEY secret.'); exit 1 }
-    cargo build --profile dist -p lodestone_launcher
+    cargo build --release -p lodestone_launcher
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     New-Item -ItemType Directory -Force dist | Out-Null
-    Compress-Archive -Path target/dist/lodestone_launcher.exe -DestinationPath dist/Lodestone-{{tag}}-windows-x64.zip -Force -ErrorAction Stop
+    Compress-Archive -Path target/release/lodestone_launcher.exe -DestinationPath dist/Lodestone-{{tag}}-windows-x64.zip -Force -ErrorAction Stop
     $nsis = (Get-Command makensis -ErrorAction SilentlyContinue).Source
     if (-not $nsis) { $nsis = @("${env:ProgramFiles(x86)}\NSIS\makensis.exe", "${env:ProgramFiles(x86)}\NSIS\Bin\makensis.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1 }
     if (-not $nsis) { [Console]::Error.WriteLine('makensis was not found. Install NSIS (winget install NSIS.NSIS) and run this again.'); exit 1 }
-    & $nsis "/DAPP_VERSION={{base}}" "/DBIN_DIR=$((Resolve-Path target/dist).Path)" "/DOUT_FILE=$((Resolve-Path dist).Path)\Lodestone-{{tag}}-setup.exe" res\installer.nsi
+    & $nsis "/DAPP_VERSION={{base}}" "/DBIN_DIR=$((Resolve-Path target/release).Path)" "/DOUT_FILE=$((Resolve-Path dist).Path)\Lodestone-{{tag}}-setup.exe" res\installer.nsi
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 [unix]
