@@ -15,7 +15,7 @@ use crate::app::theme::{color, fonts};
 use lodestone_platforms::ContentType;
 
 /// The side of the project's picture in the header.
-const ICON_SIZE: f32 = 96.0;
+pub(super) const ICON_SIZE: f32 = 96.0;
 /// The width of the header's instance selector.
 const SELECT_WIDTH: f32 = 220.0;
 /// The most tags the header lists.
@@ -78,7 +78,7 @@ pub(super) fn view<'a>(page: &'a ResourcePage, status: &ProjectStatus) -> Elemen
     }
 
     row![
-        picture(listing.icon_url.as_deref().and_then(|url| page.picture(url)), ICON_SIZE),
+        picture(listing.icon_url.as_deref().and_then(|url| page.icon(url, ICON_SIZE)), ICON_SIZE),
         column(info).spacing(8).width(Length::Fill),
         actions(listing, status),
     ]

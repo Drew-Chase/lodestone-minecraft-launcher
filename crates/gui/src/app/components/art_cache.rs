@@ -1,9 +1,11 @@
 //! The library's scene art, rendered to pixels in the background. iced rasterises an SVG while it draws,
 //! and it evicts the raster it has not drawn lately, so an SVG card was rasterised again on the UI thread
 //! each time the library came back. Here each picture is rendered once on the blocking pool, and the views
-//! draw the finished bitmap. The root keeps the cache; the library names the pictures its rows need.
+//! draw the finished bitmap. The root keeps the cache; the library names the pictures its rows need, and a
+//! picture nobody has drawn for a while is dropped (see `retention`).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::time::Instant;
 
 use iced::Task;
 use iced::widget::image::Handle;
@@ -12,6 +14,7 @@ use resvg::{tiny_skia, usvg};
 use super::scene_art::{SIZE_STEP, card_wrapped, hero_wrapped, scene_text};
 use crate::app::pages::library::instance::Biome;
 use crate::app::perf;
+use crate::app::retention::Retained;
 
 /// Which picture a key renders.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -57,7 +60,7 @@ impl ArtKey {
 /// draws, and each render comes back as a message.
 #[derive(Default)]
 pub struct ArtCache {
-    ready: HashMap<ArtKey, Handle>,
+    ready: Retained<ArtKey, Handle>,
     pending: HashSet<ArtKey>,
     failed: HashSet<ArtKey>,
 }
@@ -76,12 +79,22 @@ impl ArtCache {
             .map(|(_, handle)| handle.clone())
     }
 
-    /// Drops every picture and render that `wanted` does not name, so a resize or a scroll does not keep the
-    /// sizes it passed through.
-    pub fn retain(&mut self, wanted: &HashSet<ArtKey>) {
-        self.ready.retain(|key, _| wanted.contains(key));
-        self.pending.retain(|key| wanted.contains(key));
-        self.failed.retain(|key| wanted.contains(key));
+    /// Counts the pictures `keys` names as used now, so the sweep keeps them while the library shows them.
+    pub fn touch(&mut self, keys: &[ArtKey], now: Instant) {
+        for key in keys {
+            self.ready.touch(key, now);
+        }
+    }
+
+    /// Drops the pictures nobody has drawn for a while (see `retention`). Returns how many it dropped.
+    pub fn sweep(&mut self, now: Instant) -> usize {
+        self.ready.sweep(now).len()
+    }
+
+    /// Drops every rendered picture and every failure, so the library renders them again. Renders still running land as usual.
+    pub fn clear(&mut self) {
+        self.ready.clear();
+        self.failed.clear();
     }
 
     /// The keys among `wanted` that are neither rendered, rendering, nor failed, each once.
@@ -90,7 +103,7 @@ impl ArtCache {
         wanted
             .iter()
             .copied()
-            .filter(|key| !self.ready.contains_key(key) && !self.pending.contains(key) && !self.failed.contains(key))
+            .filter(|key| !self.ready.contains(key) && !self.pending.contains(key) && !self.failed.contains(key))
             .filter(|key| seen.insert(*key))
             .collect()
     }
@@ -116,9 +129,7 @@ impl ArtCache {
             return;
         }
         match handle {
-            Some(handle) => {
-                self.ready.insert(key, handle);
-            }
+            Some(handle) => self.ready.insert(key, handle, Instant::now()),
             None => {
                 self.failed.insert(key);
             }

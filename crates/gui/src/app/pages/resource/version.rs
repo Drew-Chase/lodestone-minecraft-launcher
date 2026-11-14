@@ -107,7 +107,7 @@ fn contents<'a>(page: &'a ResourcePage) -> Element<'a, Message> {
         Load::Loaded(projects) => column(projects.iter().map(|project| {
             let number = project.version_number.clone().unwrap_or_default();
             row![
-                picture(project.icon_url.as_deref().and_then(|url| page.picture(url)), 32.0),
+                picture(project.icon_url.as_deref().and_then(|url| page.icon(url, super::SMALL_ICON)), 32.0),
                 column![
                     Text::new(project.name.as_str())
                         .size(13)

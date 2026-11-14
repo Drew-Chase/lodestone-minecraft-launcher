@@ -28,6 +28,7 @@ impl LodestoneLauncher {
         if self.news.is_stale(Local::now()) && self.news.begin_fetch() {
             tasks.push(fetch());
         }
+        tasks.push(self.news_pictures());
         Task::batch(tasks)
     }
 
@@ -67,7 +68,7 @@ impl LodestoneLauncher {
     }
 
     /// Starts loading the pictures the page shows and has not asked for yet.
-    fn news_pictures(&mut self) -> Task<LodestoneAppMessage> {
+    pub(super) fn news_pictures(&mut self) -> Task<LodestoneAppMessage> {
         Task::batch(self.news.take_missing_pictures().into_iter().map(picture))
     }
 }

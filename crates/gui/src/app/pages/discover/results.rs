@@ -1,14 +1,20 @@
 //! The results: the grid, the compact rows or the table, the action each
-//! project offers, and the lines that say why there is nothing to show.
+//! project offers, and the lines that say why there is nothing to show. Only
+//! the rows on screen, and a few either side, are built: spacers stand in for
+//! the rest, so the page keeps the length of the whole list (see `window`).
 
 use aurora_leaf::Icon;
 use iced::mouse;
-use iced::widget::{Text, column, container, mouse_area, responsive, row};
-use iced::{Background, Border, Element, Fill, Length, Padding, alignment};
+use iced::widget::{Space, Text, column, container, mouse_area, responsive, row};
+use iced::{Background, Border, Element, Fill, Length, Padding, Size, alignment};
 use iced_color_extension::rgb;
 use lodestone_platforms::{ContentType, SearchResult};
 
-use super::card::{CARD_RADIUS, compact_row, glyph, grid_card, panel, skeleton_card, skeleton_row, skeleton_table_row, table_header, table_row};
+use super::card::{
+    CARD_RADIUS, THUMB_SIZE, TITLE_ICON_SIZE, compact_row, glyph, grid_card, panel, skeleton_card, skeleton_row, skeleton_table_row, table_header,
+    table_row,
+};
+use super::window::{self, Rows};
 use super::{Discover, DiscoverView, InstallState, Message, Source};
 use crate::app::components::button::Variant;
 use crate::app::components::hover_scale::HoverScale;
@@ -18,17 +24,20 @@ use crate::app::lang;
 use crate::app::theme::{color, fonts};
 
 /// The narrowest a grid card may be.
-const CARD_MIN_WIDTH: f32 = 280.0;
+pub(super) const CARD_MIN_WIDTH: f32 = 280.0;
 /// The space between cards and rows.
-const GAP: f32 = 16.0;
+pub(super) const GAP: f32 = 16.0;
 /// The width at which compact rows sit two to a line.
-const COMPACT_TWO_COLUMNS: f32 = 760.0;
+pub(super) const COMPACT_TWO_COLUMNS: f32 = 760.0;
+/// The height of the table's header row, above its first row. It is an estimate, so the window starts a little low; the
+/// rows built above the screen cover the difference.
+pub(super) const TABLE_HEADER_HEIGHT: f32 = 34.0;
 /// How many rows of placeholders a layout shows while its results load: a screenful, or the rows a page adds.
 const SKELETON_ROWS: usize = 3;
 
 /// The results in the chosen layout, with the lines that explain an empty or failed search and a Mods tab with no
-/// instance that takes mods.
-pub(super) fn view(page: &Discover) -> Element<'_, Message> {
+/// instance that takes mods. `window` is the window's size, which the rows on screen are counted from.
+pub(super) fn view(page: &Discover, window: Size) -> Element<'_, Message> {
     let mut stack = column![].spacing(16).width(Fill);
     if let Some(line) = mods_note(page) {
         stack = stack.push(line);
@@ -41,9 +50,13 @@ pub(super) fn view(page: &Discover) -> Element<'_, Message> {
         // The grid and the compact rows count their columns from the width their column gives them, so they are laid
         // out at that width rather than at the window's.
         let layout: Element<'_, Message> = match page.view {
-            DiscoverView::Grid => responsive(move |size| grid_layout(page, size.width)).height(Length::Shrink).into(),
-            DiscoverView::Compact => responsive(move |size| compact_layout(page, size.width)).height(Length::Shrink).into(),
-            DiscoverView::Table => table_layout(page),
+            DiscoverView::Grid => responsive(move |size| grid_layout(page, size.width, window))
+                .height(Length::Shrink)
+                .into(),
+            DiscoverView::Compact => responsive(move |size| compact_layout(page, size.width, window))
+                .height(Length::Shrink)
+                .into(),
+            DiscoverView::Table => table_layout(page, window),
         };
         stack = stack.push(layout);
     }
@@ -102,66 +115,122 @@ fn unavailable(source: Source) -> Element<'static, Message> {
         .into()
 }
 
-/// The grid: as many cards a row as `width` allows, each at least `CARD_MIN_WIDTH` wide.
-fn grid_layout(page: &Discover, width: f32) -> Element<'_, Message> {
-    let available = width.max(CARD_MIN_WIDTH);
-    let columns = ((available + GAP) / (CARD_MIN_WIDTH + GAP)).floor().clamp(1.0, 4.0) as usize;
-    let width = (available - GAP * (columns as f32 - 1.0)) / columns as f32;
-    let cells = page
-        .results
-        .hits
-        .iter()
-        .map(|hit| {
+/// The grid: as many cards a row as `width` allows, each at least `CARD_MIN_WIDTH` wide. Only the rows on screen are built.
+fn grid_layout(page: &Discover, width: f32, window: Size) -> Element<'_, Message> {
+    let shape = window::shape(DiscoverView::Grid, width);
+    let columns = shape.columns;
+    let card_width = (width.max(CARD_MIN_WIDTH) - GAP * (columns as f32 - 1.0)) / columns as f32;
+    let cells = page.results.hits.len() + pending(page) * columns;
+    let rows = window::rows(
+        page.scroll_y,
+        window::results_top(page, window.width),
+        window.height,
+        shape.pitch(),
+        cells.div_ceil(columns),
+    );
+    let built = built_rows(rows, columns, cells, |index| match page.results.hits.get(index) {
+        Some(hit) => {
             let card = grid_card(
                 page.source,
                 hit,
-                width,
+                card_width,
                 page.artwork(hit.banner_url.as_deref()),
-                page.artwork(hit.icon_url.as_deref()),
+                page.icon_artwork(hit.icon_url.as_deref(), TITLE_ICON_SIZE),
                 action(page, hit),
             );
             hoverable(card, page, &hit.id)
-        })
-        .chain((0..pending(page) * columns).map(|_| skeleton_card(width)))
-        .collect();
-    grid::grid(cells, columns, GAP)
+        }
+        None => skeleton_card(card_width),
+    });
+    windowed(built, rows, shape.pitch(), GAP)
 }
 
-/// The compact rows: two to a line when `width` is wide enough, one otherwise.
-fn compact_layout(page: &Discover, width: f32) -> Element<'_, Message> {
-    let available = width.max(320.0);
-    let columns = if available >= COMPACT_TWO_COLUMNS { 2 } else { 1 };
-    let cells = page
-        .results
-        .hits
-        .iter()
-        .map(|hit| {
-            pressable(
-                page,
-                compact_row(page.source, hit, page.artwork(hit.icon_url.as_deref()), action(page, hit)),
-                &hit.id,
-            )
-        })
-        .chain((0..pending(page) * columns).map(|_| skeleton_row()))
-        .collect();
-    grid::grid(cells, columns, GAP)
+/// The compact rows: two to a line when `width` is wide enough, one otherwise. Only the rows on screen are built.
+fn compact_layout(page: &Discover, width: f32, window: Size) -> Element<'_, Message> {
+    let shape = window::shape(DiscoverView::Compact, width);
+    let columns = shape.columns;
+    let cells = page.results.hits.len() + pending(page) * columns;
+    let rows = window::rows(
+        page.scroll_y,
+        window::results_top(page, window.width),
+        window.height,
+        shape.pitch(),
+        cells.div_ceil(columns),
+    );
+    let built = built_rows(rows, columns, cells, |index| match page.results.hits.get(index) {
+        Some(hit) => pressable(
+            page,
+            compact_row(
+                page.source,
+                hit,
+                page.icon_artwork(hit.icon_url.as_deref(), THUMB_SIZE),
+                action(page, hit),
+            ),
+            &hit.id,
+        ),
+        None => skeleton_row(),
+    });
+    windowed(built, rows, shape.pitch(), GAP)
 }
 
-/// The table: a header row, then one row per project.
-fn table_layout(page: &Discover) -> Element<'_, Message> {
-    let rows = page
-        .results
-        .hits
-        .iter()
-        .map(|hit| {
-            pressable(
+/// The table: a header row, then one row per project. Only the rows on screen are built, under the header.
+fn table_layout(page: &Discover, window: Size) -> Element<'_, Message> {
+    let shape = window::shape(DiscoverView::Table, 0.0);
+    let cells = page.results.hits.len() + pending(page) * 2;
+    let rows = window::rows(
+        page.scroll_y,
+        window::results_top(page, window.width),
+        window.height,
+        shape.pitch(),
+        cells,
+    );
+    let built: Vec<Element<'_, Message>> = (rows.first..rows.end)
+        .map(|index| match page.results.hits.get(index) {
+            Some(hit) => pressable(
                 page,
-                table_row(page.source, hit, page.artwork(hit.icon_url.as_deref()), action(page, hit)),
+                table_row(
+                    page.source,
+                    hit,
+                    page.icon_artwork(hit.icon_url.as_deref(), THUMB_SIZE),
+                    action(page, hit),
+                ),
                 &hit.id,
-            )
+            ),
+            None => skeleton_table_row(),
         })
-        .chain((0..pending(page) * 2).map(|_| skeleton_table_row()));
-    container(column![table_header(), column(rows)]).width(Fill).style(panel).into()
+        .collect();
+    container(column![table_header(), windowed(built, rows, shape.pitch(), 0.0)])
+        .width(Fill)
+        .style(panel)
+        .into()
+}
+
+/// The rows the window builds, each a line of `columns` cells. `cell` builds the cell at an index, which is a hit, or a
+/// placeholder past the last hit.
+fn built_rows<'a>(rows: Rows, columns: usize, cells: usize, cell: impl Fn(usize) -> Element<'a, Message>) -> Vec<Element<'a, Message>> {
+    (rows.first..rows.end)
+        .map(|row_index| {
+            let start = row_index * columns;
+            let line: Vec<Element<'a, Message>> = (start..(start + columns).min(cells)).map(&cell).collect();
+            grid::line(line, columns, GAP)
+        })
+        .collect()
+}
+
+/// The built rows with spacers above and below. Together they are as tall as the whole list, so the page's length, its
+/// scrollbar and the point where it asks for the next page do not change with the window.
+fn windowed<'a>(built: Vec<Element<'a, Message>>, rows: Rows, pitch: f32, gap: f32) -> Element<'a, Message> {
+    let mut stack = column![].spacing(gap).width(Fill);
+    if let Some(height) = window::top_spacer(rows, pitch, gap) {
+        stack = stack.push(Space::new().height(height));
+    }
+    for line in built {
+        stack = stack.push(line);
+    }
+    if let Some(height) = window::bottom_spacer(rows, pitch, gap) {
+        stack = stack.push(Space::new().height(height));
+    }
+    stack.into()
 }
 
 /// How many rows of placeholders the layouts add beneath the results: a few while a search is loading, none otherwise.

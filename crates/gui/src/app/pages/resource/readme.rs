@@ -2,12 +2,11 @@
 //! their pictures, so the HTML is turned into markdown first: an `<img>` becomes a markdown image, a `<br>` a line
 //! break, and any other tag goes while its text stays. Fenced code blocks are left alone.
 
-use std::collections::HashMap;
-
 use iced::widget::{container, image, markdown, rich_text};
 use iced::{Element, Fill, Theme};
 
 use super::Message;
+use crate::app::retention::Retained;
 use crate::app::theme::color;
 
 /// The settings the markdown draws with: body text at 14 px, and the platform's link colour.
@@ -22,7 +21,7 @@ pub fn settings() -> markdown::Settings {
 /// Draws a readme's pictures from the ones the page has loaded, and its links as page messages. A picture still
 /// loading, or one that failed, shows its alt text.
 pub struct ReadmeViewer<'a> {
-    pub pictures: &'a HashMap<String, image::Handle>,
+    pub pictures: &'a Retained<String, image::Handle>,
 }
 
 impl<'a> markdown::Viewer<'a, Message> for ReadmeViewer<'a> {

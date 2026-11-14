@@ -123,7 +123,8 @@ impl LodestoneLauncher {
         }
         Task::batch(icons.into_iter().map(|url| {
             let answer = url.clone();
-            Task::perform(load_image(url), move |handle| {
+            // The dialog draws each hit's icon in a 32 px square.
+            Task::perform(load_icon(url, crate::app::scale::device_px(32.0)), move |handle| {
                 LodestoneAppMessage::ModActions(Message::Icon {
                     generation,
                     url: answer.clone(),
@@ -254,7 +255,8 @@ async fn search_mods(source: Source, text: String, loader: String, minecraft: St
 /// The picture a platform gives a project, or `None` when the project has none or the picture does not load.
 pub(super) async fn project_picture(source: Source, project_id: String) -> Option<image::Handle> {
     let details = details_of(source, ContentType::Mod, &project_id).await.ok()?;
-    load_image(details.icon_url?).await
+    // The Mods tab draws each project's icon in a 44 px tile.
+    load_icon(details.icon_url?, crate::app::scale::device_px(44.0)).await
 }
 
 /// The releases of a project a link may name, the one that fits the jar best, and the jar's SHA-1. The release with a file

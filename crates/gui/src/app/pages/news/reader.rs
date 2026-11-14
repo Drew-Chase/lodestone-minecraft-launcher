@@ -1,8 +1,6 @@
 //! The patch note reader: a way back to the list, then a Java Edition patch note's version and kind, its title, its picture,
 //! and its body, drawn as markdown. Links in the body open in the browser.
 
-use std::collections::HashMap;
-
 use iced::widget::{Space, Text, column, container, image, markdown, rich_text, row};
 use iced::{Element, Fill, Padding, Theme};
 
@@ -12,6 +10,7 @@ use crate::app::components::TextButton;
 use crate::app::components::badge::Badge;
 use crate::app::lang;
 use crate::app::news::feed::{Feed, absolute};
+use crate::app::retention::Retained;
 use crate::app::theme::{color, fonts};
 
 /// The height of the reader's picture.
@@ -21,7 +20,7 @@ const HEIGHT: f32 = 260.0;
 const BOTTOM: f32 = 32.0;
 
 /// The reader: the patch note at `reading`, or nothing when the feed no longer has it.
-pub fn view<'a>(reading: &'a Reading, feed: &'a Feed, pictures: &'a HashMap<String, image::Handle>) -> Element<'a, Message> {
+pub fn view<'a>(reading: &'a Reading, feed: &'a Feed, pictures: &'a Retained<String, image::Handle>) -> Element<'a, Message> {
     let Some(patch) = feed.patches.get(reading.index) else {
         return Space::new().into();
     };
@@ -60,7 +59,7 @@ fn settings() -> markdown::Settings {
 /// Draws a patch note's pictures from the ones the page has loaded, and its links as page messages. A picture still
 /// loading, or one that failed, shows its alt text.
 struct PatchViewer<'a> {
-    pictures: &'a HashMap<String, image::Handle>,
+    pictures: &'a Retained<String, image::Handle>,
 }
 
 impl<'a> markdown::Viewer<'a, Message> for PatchViewer<'a> {

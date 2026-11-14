@@ -18,7 +18,7 @@ use crate::app::lang;
 use crate::app::theme::{color, fonts};
 
 /// The width of a section's card. The scrollbar's track sits beside the cards, in the width `scrollbar::TRACK_WIDTH` takes.
-const WIDTH: f32 = 240.0;
+pub(super) const WIDTH: f32 = 240.0;
 /// The space between the sidebar's scrollbar and the results.
 const COLUMN_GAP: f32 = 16.0;
 /// How many choices a section lists before its "Show more" switch.
@@ -52,6 +52,12 @@ fn has_sections(facets: &Facets) -> bool {
         || !facets.category_groups.is_empty()
         || facets.environments
         || facets.open_source
+}
+
+/// Whether the sidebar shows: the platform's filters have loaded, and they offer a section. Its width is part of the results'
+/// width, so the window reads it too.
+pub(super) fn shown(page: &Discover) -> bool {
+    page.facets().is_some_and(has_sections)
 }
 
 /// The sidebar, or nothing when the platform offers no filter for the tab. It runs beside the scrolling part of the page,

@@ -8,11 +8,12 @@
 //! size they are drawn at, so the art is never stretched and their rounded
 //! corners stay circular. Those wrappers are cached per size.
 
-use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex, OnceLock, PoisonError};
+use std::time::Instant;
 
 use crate::app::pages::library::instance::Biome;
 use crate::app::perf;
+use crate::app::retention::Retained;
 use iced::Size;
 use iced::widget::svg::Handle;
 
@@ -126,7 +127,19 @@ static HANDLES: OnceLock<Vec<Handle>> = OnceLock::new();
 /// and height.
 type GeneratedKey = (Wrapper, usize, u32, u32);
 
-static GENERATED: LazyLock<Mutex<HashMap<GeneratedKey, Handle>>> = LazyLock::new(Mutex::default);
+/// The wrappers built so far. A size nobody has drawn for a while is dropped by the sweep, so a window that was resized
+/// through many sizes does not keep them all.
+static GENERATED: LazyLock<Mutex<Retained<GeneratedKey, Handle>>> = LazyLock::new(Mutex::default);
+
+/// Drops the wrappers nobody has drawn for a while (see `retention`). Returns how many it dropped.
+pub fn sweep_generated(now: Instant) -> usize {
+    GENERATED.lock().unwrap_or_else(PoisonError::into_inner).sweep(now).len()
+}
+
+/// Drops every wrapper, which the views build again when they draw.
+pub fn clear_generated() {
+    GENERATED.lock().unwrap_or_else(PoisonError::into_inner).clear();
+}
 
 /// The instance-page wrappers that are generated at a size.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -178,7 +191,8 @@ fn generated(wrapper: Wrapper, biome: Biome, seed: u64, size: Size) -> Handle {
 
     let mut cache = GENERATED.lock().unwrap_or_else(PoisonError::into_inner);
     let key = (wrapper, index, width, height);
-    if let Some(handle) = cache.get(&key) {
+    let now = Instant::now();
+    if let Some(handle) = cache.get_touch(&key, now) {
         perf::count("art.hit", 1);
         return handle.clone();
     }
@@ -191,7 +205,7 @@ fn generated(wrapper: Wrapper, biome: Biome, seed: u64, size: Size) -> Handle {
         Wrapper::HeroArt => rounded_wrapped(scene, width, height, DISCOVER_HERO_ART_RADIUS, false),
     };
     let handle = Handle::from_memory(svg.into_bytes());
-    cache.insert(key, handle.clone());
+    cache.insert(key, handle.clone(), now);
     handle
 }
 

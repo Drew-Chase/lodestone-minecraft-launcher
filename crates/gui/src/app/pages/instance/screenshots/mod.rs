@@ -9,6 +9,7 @@ mod viewer;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use iced::widget::image::Handle;
 use iced::widget::{Text, mouse_area};
@@ -19,6 +20,7 @@ use crate::app::components::grid::grid;
 use crate::app::components::panel::panel;
 use crate::app::components::screenshot_tile::{Caption, photo_tile};
 use crate::app::lang;
+use crate::app::retention::Retained;
 use crate::app::theme::{color, fonts};
 
 pub use menu::Action;
@@ -84,8 +86,10 @@ pub struct State {
     shots: Vec<ScreenshotFile>,
     /// Captures whose thumbnails have not been decoded yet, in display order.
     pending: VecDeque<PathBuf>,
-    /// Decoded thumbnails by file path.
-    thumbnails: HashMap<PathBuf, Handle>,
+    /// Decoded thumbnails by file path. Each expires once nothing has used it for a while (see `sweep_thumbnails`).
+    thumbnails: Retained<PathBuf, Handle>,
+    /// Captures whose thumbnail would not decode, so they are not decoded again.
+    failed: HashSet<PathBuf>,
     /// The capture the viewer shows, as an index into `shots`. `None` while the viewer is closed.
     viewer: Option<usize>,
     /// Full-size images by file path. Only the viewer's capture and its neighbours are kept.
@@ -111,12 +115,12 @@ impl State {
                 .map(|shot| shot.path.clone())
                 .collect()
         };
-        self.thumbnails.retain(|path, _| unchanged.contains(path));
+        self.thumbnails.retain(|path| unchanged.contains(path));
         self.full.retain(|path, _| unchanged.contains(path));
         self.decoding.retain(|path| unchanged.contains(path));
         self.pending = shots
             .iter()
-            .filter(|shot| !self.thumbnails.contains_key(&shot.path))
+            .filter(|shot| !self.thumbnails.contains(&shot.path))
             .map(|shot| shot.path.clone())
             .collect();
         self.shots = shots;
@@ -156,9 +160,37 @@ impl State {
     /// keeps its placeholder.
     pub fn store(&mut self, path: PathBuf, handle: Option<Handle>) {
         self.decoding_thumbnail = false;
-        if let Some(handle) = handle {
-            self.thumbnails.insert(path, handle);
+        match handle {
+            Some(handle) => self.thumbnails.insert(path, handle, Instant::now()),
+            None => {
+                self.failed.insert(path);
+            }
         }
+    }
+
+    /// Counts the thumbnails as used while the tab is on show, and drops those nobody has used for a while. While the tab is on
+    /// show, a capture that has no thumbnail, and has not failed to decode, is queued so the grid fills in. Returns how many
+    /// thumbnails it dropped.
+    pub fn sweep_thumbnails(&mut self, now: Instant, current: bool) -> usize {
+        if current {
+            self.thumbnails.touch_all(now);
+            if self.pending.is_empty() {
+                let missing: Vec<PathBuf> = self
+                    .shots
+                    .iter()
+                    .filter(|shot| !self.thumbnails.contains(&shot.path) && !self.failed.contains(&shot.path))
+                    .map(|shot| shot.path.clone())
+                    .collect();
+                self.pending.extend(missing);
+            }
+        }
+        self.thumbnails.sweep(now).len()
+    }
+
+    /// Drops every thumbnail, so the grid decodes them again while the tab is on show.
+    pub fn clear_thumbnails(&mut self) {
+        self.thumbnails.clear();
+        self.failed.clear();
     }
 
     /// The index of the capture the viewer shows, while the viewer is open.

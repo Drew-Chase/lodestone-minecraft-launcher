@@ -13,6 +13,7 @@ mod header;
 mod hero;
 mod hover;
 pub(crate) mod images;
+mod pictures;
 mod place;
 mod query;
 mod results;
@@ -21,6 +22,7 @@ mod source;
 mod target;
 mod toolbar;
 mod types;
+mod window;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -28,8 +30,9 @@ use crate::app::components::page;
 use crate::app::components::scrollbar;
 use crate::app::lang;
 use crate::app::pages::resource::Listing;
+use crate::app::retention::Retained;
 use crate::app::shared_library::{self, AddedContent, ModSource, SharedRecord};
-use iced::widget::{Space, column, container, row, stack};
+use iced::widget::{Space, column, container, image, row, stack};
 use iced::{Element, Fill, Length, Padding, Size};
 use lodestone_platforms::{ContentType, Facets, SearchPage, SearchSort};
 
@@ -37,7 +40,7 @@ use lodestone_platforms::{ContentType, Facets, SearchPage, SearchSort};
 const FILTERS_PANEL_HEIGHT: f32 = 340.0;
 
 pub use card::{date_only, scene_for, short_count};
-pub use images::{Picture, load as load_icon, load_image, pack_art};
+pub use images::{Asset, load_banner, load_icon, load_image, pack_art};
 pub use source::Source;
 pub use target::{AddRequest, InstanceChoice, WorldChoice, takes_target};
 
@@ -55,10 +58,6 @@ pub const CONTENT_ID: &str = "discover-content";
 
 /// How close to the end of the results, in pixels, the page asks for the next one.
 const LOAD_AHEAD: f32 = 900.0;
-
-/// How many pictures load at once. A page of results asks for all its pictures together, and decoding them as one burst
-/// is what stalls the window when the tabs change, so the rest wait for a place.
-const ICONS_AT_ONCE: usize = 4;
 
 /// The space between the page's blocks, and above the first of them. A pinned filter row keeps the same gap above it.
 const GAP: f32 = 18.0;
@@ -87,13 +86,15 @@ pub struct Discover {
     generation: u64,
     facets: HashMap<(Source, ContentType), Facets>,
     cache: query::Cache,
-    icons: HashMap<String, Picture>,
-    /// The picture addresses that could not be had, so the scene stands in for them.
-    failed: HashSet<String>,
-    /// The icon addresses already asked for, loaded or not, so none is asked for twice.
-    requested: HashSet<String>,
+    /// The pictures loaded, by what each draws. A picture expires once nothing has used it for a while (see `pictures`).
+    pictures: Retained<Asset, image::Handle>,
+    /// The pictures that could not be had, so the scene stands in for them.
+    failed: HashSet<Asset>,
+    /// The pictures already asked for, loaded or not, so none is asked for twice. A picture that expires is forgotten here,
+    /// so it is asked for again when it comes back on screen.
+    requested: HashSet<Asset>,
     /// The pictures the results on screen need, waiting for a place among the loads in flight.
-    icon_queue: VecDeque<String>,
+    icon_queue: VecDeque<Asset>,
     /// How many pictures are loading now.
     icons_loading: usize,
     /// How far the content runs past the bottom of the window, as of the last scroll.
@@ -147,7 +148,7 @@ impl Discover {
             generation: 0,
             facets: HashMap::new(),
             cache: query::Cache::default(),
-            icons: HashMap::new(),
+            pictures: Retained::default(),
             failed: HashSet::new(),
             requested: HashSet::new(),
             icon_queue: VecDeque::new(),
@@ -217,19 +218,6 @@ impl Discover {
     /// The filters of the selected platform and tab, once they have loaded.
     pub(super) fn facets(&self) -> Option<&Facets> {
         self.facets.get(&(self.source, self.content))
-    }
-
-    /// The art a project shows: the platform's picture once it has loaded, a placeholder while it
-    /// loads, and the generated scene only when the platform gave no picture or it could not be had.
-    pub(super) fn artwork(&self, url: Option<&str>) -> Artwork<'_> {
-        match url {
-            None => Artwork::Scene,
-            Some(url) => match self.icons.get(url) {
-                Some(picture) => Artwork::Loaded(picture),
-                None if self.failed.contains(url) => Artwork::Scene,
-                None => Artwork::Loading,
-            },
-        }
     }
 
     /// Whether the project is already in its shared folder for the current tab.
@@ -531,17 +519,8 @@ impl Discover {
                 }
                 Vec::new()
             }
-            Message::IconReady { url, picture } => {
-                // The load has ended, so its place is free for the next picture in the queue.
-                self.icons_loading = self.icons_loading.saturating_sub(1);
-                match picture {
-                    Some(picture) => {
-                        self.icons.insert(url, picture);
-                    }
-                    None => {
-                        self.failed.insert(url);
-                    }
-                }
+            Message::PictureReady { asset, handle } => {
+                self.picture_ready(asset, handle);
                 Vec::new()
             }
             Message::Open(url) => vec![Effect::Open(url)],
@@ -611,41 +590,6 @@ impl Discover {
         effects
     }
 
-    /// The icon addresses the page should start loading now. The addresses of the hits on screen join a queue, each
-    /// address once, and as many as the loads in flight leave room for are taken from its front. A queued address whose
-    /// hit has gone is dropped, and asked for again if the hit comes back.
-    pub fn wanted_icons(&mut self) -> Vec<String> {
-        let shown: HashSet<String> = self
-            .results
-            .hits
-            .iter()
-            .flat_map(|hit| [&hit.icon_url, &hit.banner_url])
-            .flatten()
-            .cloned()
-            .collect();
-        let mut dropped = Vec::new();
-        self.icon_queue.retain(|url| {
-            let keep = shown.contains(url);
-            if !keep {
-                dropped.push(url.clone());
-            }
-            keep
-        });
-        for url in dropped {
-            self.requested.remove(&url);
-        }
-        // In the order the hits are listed, so the pictures at the top of the page load first.
-        for url in self.results.hits.iter().flat_map(|hit| [&hit.icon_url, &hit.banner_url]).flatten() {
-            if self.requested.insert(url.clone()) {
-                self.icon_queue.push_back(url.clone());
-            }
-        }
-        let room = ICONS_AT_ONCE.saturating_sub(self.icons_loading);
-        let started = room.min(self.icon_queue.len());
-        self.icons_loading += started;
-        self.icon_queue.drain(..started).collect()
-    }
-
     /// The page. The header, with the source and tab rows, stays where it is. Beside the scrolling part, the sidebar keeps
     /// its place with a scrollbar of its own. The hero, the filters and the results scroll beneath the header, and once
     /// the page scrolls up to the filters they pin to the top of the scrolling part, with the results passing beneath.
@@ -677,7 +621,7 @@ impl Discover {
         if let Some(panel) = panel {
             column_of_rows = column_of_rows.push(panel);
         }
-        page = page.push(column_of_rows.push(results::view(self)));
+        page = page.push(column_of_rows.push(results::view(self, window)));
         let content = container(page).padding(Padding::new(0.0).top(GAP).right(SIDE).bottom(BOTTOM)).width(Fill);
         let scrolled = scrollbar::scroll(content).id(CONTENT_ID).width(Fill).height(Fill).on_scroll(|viewport| {
             let content = viewport.content_bounds();

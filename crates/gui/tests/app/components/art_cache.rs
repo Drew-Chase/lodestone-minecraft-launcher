@@ -1,6 +1,9 @@
 //! Tests for `art_cache`. They live here rather than inline and reach the private render through `super`.
 
+use std::time::Duration;
+
 use super::*;
+use crate::app::retention::IDLE;
 
 fn key(biome: Biome, width: f32) -> ArtKey {
     ArtKey::new(Kind::Card, biome, 1, width, 179.0)
@@ -56,7 +59,7 @@ fn the_nearest_width_stands_in_while_another_size_renders() {
 }
 
 #[test]
-fn a_resize_drops_the_pictures_it_no_longer_needs() {
+fn a_picture_nobody_draws_expires_and_one_that_is_drawn_stays() {
     let mut cache = ArtCache::default();
     let kept = key(Biome::Forest, 340.0);
     let dropped = key(Biome::Ocean, 340.0);
@@ -64,20 +67,22 @@ fn a_resize_drops_the_pictures_it_no_longer_needs() {
     cache.finish(kept, Some(picture()));
     cache.finish(dropped, Some(picture()));
 
-    cache.retain(&HashSet::from([kept]));
+    let start = Instant::now();
+    cache.touch(&[kept], start + Duration::from_secs(20));
+    assert_eq!(cache.sweep(start + Duration::from_secs(40)), 1, "only the picture nobody drew expires");
     assert!(cache.get(kept).is_some());
     assert!(cache.get(dropped).is_none());
 }
 
 #[test]
-fn a_render_for_a_key_that_was_dropped_is_ignored() {
+fn a_render_that_lands_after_its_page_left_expires_like_any_other_picture() {
     let mut cache = ArtCache::default();
     let wanted = key(Biome::Forest, 340.0);
     let _ = cache.request(vec![wanted], |_, _| ());
-    cache.retain(&HashSet::new());
-
     cache.finish(wanted, Some(picture()));
-    assert!(cache.get(wanted).is_none(), "the render no longer belongs to the page");
+
+    assert_eq!(cache.sweep(Instant::now() + IDLE + Duration::from_secs(1)), 1);
+    assert!(cache.get(wanted).is_none(), "nothing draws it, so it is gone");
 }
 
 #[test]

@@ -22,19 +22,19 @@ use crate::app::theme::{color, fonts};
 pub const GRID_ART_HEIGHT: f32 = 150.0;
 /// A grid card's height: the art, the name and author, the footer and about three lines of summary. A longer
 /// summary scrolls in its body.
-const GRID_CARD_HEIGHT: f32 = 330.0;
+pub(super) const GRID_CARD_HEIGHT: f32 = 330.0;
 /// A card's corner radius. Its border and its hover ring follow it, and its art sits a pixel inside it.
 pub const CARD_RADIUS: f32 = 16.0;
 /// A compact row's height. Every row is this tall, and a summary longer than its body scrolls.
-const COMPACT_ROW_HEIGHT: f32 = 172.0;
+pub(super) const COMPACT_ROW_HEIGHT: f32 = 172.0;
 /// A table row's height. Every row is this tall, and a summary longer than its cell scrolls.
-const TABLE_ROW_HEIGHT: f32 = 88.0;
+pub(super) const TABLE_ROW_HEIGHT: f32 = 88.0;
 /// The height of a line of text as a multiple of its size: iced's default line height.
 const LINE_SPACING: f32 = 1.3;
 /// The side of a compact row's and a table row's thumbnail.
 pub const THUMB_SIZE: f32 = 44.0;
 /// The side of the icon beside a grid card's name, as the library card's icon is drawn.
-const TITLE_ICON_SIZE: f32 = 36.0;
+pub const TITLE_ICON_SIZE: f32 = 36.0;
 /// The width of the table's source column, and of its numbers.
 const TABLE_SOURCE_WIDTH: f32 = 130.0;
 const TABLE_NUMBER_WIDTH: f32 = 110.0;
@@ -142,7 +142,7 @@ fn loading_surface<'a>(source: Source, width: f32, height: f32, corners: Radius)
 /// The picture a thumbnail shows: the platform's picture, or the scene when the platform gave none.
 fn thumb<'a>(source: Source, hit: &SearchResult, artwork: Artwork<'_>, size: f32) -> Element<'a, Message> {
     match artwork {
-        Artwork::Loaded(picture) => image(picture.icon.clone()).width(size).height(size).into(),
+        Artwork::Loaded(handle) => image(handle.clone()).width(size).height(size).into(),
         Artwork::Loading => loading_surface(source, size, size, Radius::default()),
         Artwork::Scene => {
             let (biome, seed) = scene_for(source, &hit.id);
@@ -204,8 +204,8 @@ impl Corners {
 pub fn cover_art<'a>(source: Source, hit: &SearchResult, artwork: Artwork<'_>, width: f32, height: f32, corners: Corners) -> Element<'a, Message> {
     let drawn = height + corners.bleed();
     match artwork {
-        Artwork::Loaded(picture) => cut(
-            image(picture.banner.clone())
+        Artwork::Loaded(handle) => cut(
+            image(handle.clone())
                 .width(width)
                 .height(drawn)
                 .content_fit(ContentFit::Cover)

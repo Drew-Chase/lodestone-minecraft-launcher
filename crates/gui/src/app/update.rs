@@ -30,7 +30,7 @@ use iced_borderless_window_resize_handle_widget::drag_resize;
 use std::path::PathBuf;
 use tracing::{debug, info, warn};
 
-use super::{LodestoneAppMessage, LodestoneLauncher, NavGroup, downloads, probe_enabled, updater};
+use super::{LodestoneAppMessage, LodestoneLauncher, NavGroup, downloads, probe_enabled, scale, updater};
 
 impl LodestoneLauncher {
     pub fn update(&mut self, message: LodestoneAppMessage) -> Task<LodestoneAppMessage> {
@@ -48,13 +48,14 @@ impl LodestoneLauncher {
     }
 
     /// Keeps the library's scene art rendered for the rows and the hero it shows, and starts the renders it
-    /// lacks. The library is on show only on Home, so the art is only kept up to date there.
+    /// lacks. The library is on show only on Home, so the art is only counted as used there; the sweep drops
+    /// what is left unused once the library is left.
     fn sync_art(&mut self) -> Task<LodestoneAppMessage> {
         if self.router.current() != Page::Library {
             return Task::none();
         }
         let keys = self.library.art_keys(self.window_size);
-        self.art.retain(&keys.iter().copied().collect());
+        self.art.touch(&keys, std::time::Instant::now());
         let missing = self.art.missing(&keys);
         self.art.request(missing, |key, handle| LodestoneAppMessage::ArtReady { key, handle })
     }
@@ -73,6 +74,17 @@ impl LodestoneLauncher {
             LodestoneAppMessage::WindowCreation(id) => {
                 info!("Window id acquired: {id:?}");
                 self.id = id;
+                match id {
+                    Some(id) => iced::window::scale_factor(id).map(LodestoneAppMessage::ScaleFactor),
+                    None => Task::none(),
+                }
+            }
+            LodestoneAppMessage::ScaleFactor(factor) => {
+                scale::set(factor);
+                Task::none()
+            }
+            LodestoneAppMessage::SweepCaches => {
+                self.sweep_caches();
                 Task::none()
             }
             LodestoneAppMessage::WindowStartResize(direction) => match self.id {
@@ -101,14 +113,14 @@ impl LodestoneLauncher {
             LodestoneAppMessage::NavBack => {
                 if self.router.go_back() {
                     info!("Navigated back to {}", self.router.current().title());
-                    return self.rescan_on_return();
+                    return Task::batch([self.rescan_on_return(), self.reshow_pictures()]);
                 }
                 Task::none()
             }
             LodestoneAppMessage::NavForward => {
                 if self.router.go_forward() {
                     info!("Navigated forward to {}", self.router.current().title());
-                    return self.rescan_on_return();
+                    return Task::batch([self.rescan_on_return(), self.reshow_pictures()]);
                 }
                 Task::none()
             }
@@ -188,7 +200,7 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Instance(InstanceMessage::Back) => {
                 if self.router.go_back() {
                     info!("Navigated back to {}", self.router.current().title());
-                    return self.rescan_on_return();
+                    return Task::batch([self.rescan_on_return(), self.reshow_pictures()]);
                 }
                 Task::none()
             }

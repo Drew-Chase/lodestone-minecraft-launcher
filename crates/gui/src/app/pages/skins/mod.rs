@@ -190,6 +190,8 @@ pub struct Skins {
     generation: u64,
     /// Whether a drawing is running, so that the next one waits for it.
     previews_drawing: bool,
+    /// When the page was last on show, which is how long the frames have gone unused (see `sweep_previews`).
+    previews_used: Option<Instant>,
     /// The moment the previews' clock started, and the seconds of motion it has run.
     clock_start: Option<Instant>,
     clock: f32,
@@ -222,6 +224,7 @@ impl Default for Skins {
             cached_look: None,
             generation: 0,
             previews_drawing: false,
+            previews_used: None,
             clock_start: None,
             clock: 0.0,
         }
@@ -489,6 +492,24 @@ impl Skins {
         self.latest.clear();
         self.cached_look = None;
         self.generation += 1;
+    }
+
+    /// Drops the 3D previews' frames once the page has been away for [`crate::app::retention::IDLE`]. The page draws them again
+    /// when it is shown. While the page is on show, its previews count as used. Returns how many frames it dropped.
+    pub fn sweep_previews(&mut self, now: Instant, current: bool) -> usize {
+        if current {
+            self.previews_used = Some(now);
+            return 0;
+        }
+        let away = self
+            .previews_used
+            .is_none_or(|used| now.saturating_duration_since(used) > crate::app::retention::IDLE);
+        if !away || self.frames.is_empty() {
+            return 0;
+        }
+        let count = self.frames.len();
+        self.forget_frames();
+        count
     }
 
     /// The slots of the skins in the open sections, in the order the page shows them.

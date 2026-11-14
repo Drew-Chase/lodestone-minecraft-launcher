@@ -5,7 +5,7 @@ mod feature;
 mod grid;
 mod reader;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use aurora_leaf::Icon;
@@ -19,6 +19,7 @@ use crate::app::components::{Tabs, TextButton, scrollbar};
 use crate::app::lang;
 use crate::app::news::feed::{Feed, absolute};
 use crate::app::news::markdown::to_markdown;
+use crate::app::retention::Retained;
 use crate::app::theme::{color, fonts};
 
 /// How many posts, or patch notes, the page shows before "Show more".
@@ -55,7 +56,7 @@ pub struct State {
     /// How many times "Show more" was pressed since the list last changed.
     more: usize,
     reading: Option<Reading>,
-    pictures: HashMap<String, image::Handle>,
+    pictures: Retained<String, image::Handle>,
     /// The pictures asked for, loaded or not, so no picture is asked for twice.
     requested: HashSet<String>,
 }
@@ -135,8 +136,29 @@ impl State {
     /// Keeps a loaded picture. A picture that failed to load is kept as nothing, and its place shows a plain panel.
     pub fn picture(&mut self, url: String, handle: Option<image::Handle>) {
         if let Some(handle) = handle {
-            self.pictures.insert(url, handle);
+            self.pictures.insert(url, handle, std::time::Instant::now());
         }
+    }
+
+    /// Counts the pictures of the News page as used while the page is on show, and drops the ones nobody has used for a
+    /// while. The page forgets what it asked for of each one it drops, so it asks again when the picture comes back. Returns
+    /// how many it dropped.
+    pub fn sweep_pictures(&mut self, now: std::time::Instant, current: bool) -> usize {
+        if current {
+            self.pictures.touch_all(now);
+        }
+        let dropped = self.pictures.sweep(now);
+        let count = dropped.len();
+        for url in dropped {
+            self.requested.remove(&url);
+        }
+        count
+    }
+
+    /// Drops every picture the page holds, and what it asked for, so the page asks again.
+    pub fn clear_pictures(&mut self) {
+        self.pictures.clear();
+        self.requested.clear();
     }
 
     /// The minecraft.net article a post opens on, by the post's place in the feed.

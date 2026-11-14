@@ -69,3 +69,38 @@ fn an_instance_keeps_its_icon_and_banner_as_pngs() {
     assert_eq!(icon.dimensions(), (ICON_SIDE, ICON_SIDE));
     assert_eq!(banner.dimensions(), (BANNER_WIDTH, BANNER_HEIGHT));
 }
+
+#[test]
+fn an_icon_is_fitted_within_its_square_and_never_enlarged() {
+    assert_eq!(fit_within(512, 512, 88), (88, 88));
+    assert_eq!(fit_within(1024, 512, 88), (88, 44), "the longer edge fits and the proportions stay");
+    assert_eq!(fit_within(40, 30, 88), (40, 30), "a picture that already fits keeps its size");
+    assert_eq!(fit_within(1000, 1, 88), (88, 1), "a sliver keeps at least one pixel");
+}
+
+#[test]
+fn an_icon_copy_is_a_png_at_the_size_it_is_drawn() {
+    let picture = RgbaImage::from_pixel(512, 256, Rgba([10, 200, 90, 255]));
+    let mut bytes = Vec::new();
+    picture
+        .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
+        .expect("the picture encodes");
+
+    let (_, png) = fit_icon(&bytes, 88).expect("the icon fits");
+    let kept = ::image::load_from_memory(&png).expect("the copy is a PNG").to_rgba8();
+    assert_eq!(kept.dimensions(), (88, 44));
+    assert_eq!(*kept.get_pixel(44, 22), Rgba([10, 200, 90, 255]), "the copy is the picture, resized");
+}
+
+#[test]
+fn a_small_icon_is_kept_at_its_own_size() {
+    let picture = RgbaImage::from_pixel(40, 40, Rgba([1, 2, 3, 255]));
+    let mut bytes = Vec::new();
+    picture
+        .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
+        .expect("the picture encodes");
+
+    let (_, png) = fit_icon(&bytes, 88).expect("the icon fits");
+    let kept = ::image::load_from_memory(&png).expect("the copy is a PNG").to_rgba8();
+    assert_eq!(kept.dimensions(), (40, 40));
+}

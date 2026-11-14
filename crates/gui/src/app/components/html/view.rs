@@ -2,7 +2,7 @@
 //! kept only where it reads against the panel. Pictures come from the ones the page has loaded and show a placeholder
 //! until then. A press on a link or a linked picture, or on a spoiler's toggle, sends the message the caller names.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use aurora_leaf::Icon;
 use iced::widget::text::{Span as TextSpan, Wrapping};
@@ -17,6 +17,7 @@ use crate::app::components::button::Variant;
 use crate::app::components::panel;
 use crate::app::components::tile::tile;
 use crate::app::lang;
+use crate::app::retention::Retained;
 use crate::app::theme::{color, fonts, utility};
 
 /// The gap between blocks: iced's markdown spacing at the page's text size.
@@ -45,7 +46,7 @@ const BULLETS: [&str; 3] = ["•", "◦", "▪"];
 /// What the view needs besides the document: the pictures the page has loaded, by address; the spoilers the reader has
 /// opened; and the messages a link and a spoiler toggle send.
 pub struct Viewer<'a, Message> {
-    pub pictures: &'a HashMap<String, image::Handle>,
+    pub pictures: &'a Retained<String, image::Handle>,
     pub open: &'a HashSet<usize>,
     pub on_link: fn(String) -> Message,
     pub on_toggle: fn(usize) -> Message,
@@ -69,7 +70,7 @@ pub fn view<'a, Message: Clone + 'a>(document: &'a Document, viewer: &Viewer<'a,
 /// What one draw of a document reads. It is copied into the drawing of each block.
 struct Drawer<'a, Message> {
     document: &'a Document,
-    pictures: &'a HashMap<String, image::Handle>,
+    pictures: &'a Retained<String, image::Handle>,
     open: &'a HashSet<usize>,
     on_link: fn(String) -> Message,
     on_toggle: fn(usize) -> Message,

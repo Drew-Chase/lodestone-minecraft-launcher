@@ -9,12 +9,14 @@ mod gallery;
 mod header;
 mod overview;
 mod parts;
+mod pictures;
 mod readme;
 mod sidebar;
 mod version;
 mod versions;
 
 use std::collections::{HashMap, HashSet};
+use std::time::Instant;
 
 use aurora_leaf::Icon;
 use iced::widget::{column, container, image, markdown};
@@ -24,7 +26,8 @@ use lodestone_platforms::{BundledProject, Channel, ContentDetails, ContentType, 
 use crate::app::components::button::Variant;
 use crate::app::components::{Tabs, TextButton, html, scrollbar};
 use crate::app::pages::discover::{InstanceChoice, ProjectStatus, Source};
-use crate::app::{lang, perf};
+use crate::app::retention::Retained;
+use crate::app::{lang, perf, scale};
 
 /// The page's side margin, shared by its header and its body.
 const GUTTER: f32 = 28.0;
@@ -37,6 +40,8 @@ const README_PICTURES: usize = 12;
 /// The most pictures of an HTML description the page loads at once: the first ones a reader can see, in reading order.
 /// A spoiler's pictures count once it is opened.
 const DESCRIPTION_PICTURES: usize = 40;
+/// The side, in logical pixels, of the icons drawn at 32 px: creator avatars and the icons of bundled projects.
+pub(super) const SMALL_ICON: f32 = 32.0;
 /// The channels the Versions tab filters by, in the order its selector lists them. The first is any.
 const CHANNELS: [Option<Channel>; 4] = [None, Some(Channel::Release), Some(Channel::Beta), Some(Channel::Alpha)];
 
@@ -138,6 +143,8 @@ pub enum Message {
     },
     /// A picture came back, or could not be had (`None`).
     Picture { url: String, handle: Option<image::Handle> },
+    /// An icon came back, drawn `px` device pixels square, or could not be had (`None`).
+    IconLoaded { url: String, px: u32, handle: Option<image::Handle> },
     /// An action was pressed.
     Act(Action),
     /// A link was pressed in a readme, a description, a changelog or the sidebar.
@@ -173,6 +180,8 @@ pub enum Message {
 pub enum Effect {
     /// Load these pictures.
     Pictures(Vec<String>),
+    /// Load these icons, each at the side it is drawn at, in device pixels.
+    Icons(Vec<(String, u32)>),
     /// Load the projects a modpack release bundles, for the answer of `generation`.
     Contents { generation: u64, version: Box<ContentVersion> },
     /// Carry out an action on the project.
@@ -204,10 +213,14 @@ pub struct ResourcePage {
     spoilers: HashSet<usize>,
     /// The changelog of each version, parsed when its page is shown, by the version's index.
     changelogs: HashMap<usize, markdown::Content>,
-    /// The pictures that have loaded, by address.
-    pictures: HashMap<String, image::Handle>,
-    /// The addresses already asked for, loaded or not, so none is asked for twice.
+    /// The pictures that have loaded, by address. Each is kept while the page shows it, and for a while after (see `retention`).
+    pictures: Retained<String, image::Handle>,
+    /// The addresses already asked for, loaded or not, so none is asked for twice. A picture that expires is forgotten here.
     requested: HashSet<String>,
+    /// The icons that have loaded, by address and the side they are drawn at in device pixels.
+    icons: Retained<(String, u32), image::Handle>,
+    /// The icons already asked for, loaded or not, by the same keys.
+    requested_icons: HashSet<(String, u32)>,
     /// The projects the open modpack version bundles.
     contents: Load<Vec<BundledProject>>,
     /// The version the contents are for, by id.
@@ -237,7 +250,7 @@ impl ResourcePage {
             ..Self::default()
         };
         let icon = self.listing.as_ref().and_then(|listing| listing.icon_url.clone());
-        self.wanted_all(icon)
+        self.wanted_icons(icon, header::ICON_SIZE)
     }
 
     /// The generation the answers for the project shown must carry.
@@ -279,11 +292,12 @@ impl ResourcePage {
                         let _scope = perf::scope("resource.description");
                         html::parse(text, description::resolve)
                     });
-                    let mut urls: Vec<String> = details.info.creators.iter().filter_map(|creator| creator.avatar_url.clone()).collect();
-                    urls.extend(self.readme.as_ref().map(readme_pictures).unwrap_or_default());
+                    let avatars: Vec<String> = details.info.creators.iter().filter_map(|creator| creator.avatar_url.clone()).collect();
+                    let readme_urls: Vec<String> = self.readme.as_ref().map(readme_pictures).unwrap_or_default();
                     self.details = Load::Loaded(details);
                     let mut effects = self.gallery_effects();
-                    effects.extend(self.wanted_all(urls));
+                    effects.extend(self.wanted_icons(avatars, SMALL_ICON));
+                    effects.extend(self.wanted_all(readme_urls));
                     effects.extend(self.description_effects());
                     effects
                 }
@@ -321,7 +335,7 @@ impl ResourcePage {
                 Ok(bundled) => {
                     let urls: Vec<String> = bundled.iter().filter_map(|project| project.icon_url.clone()).collect();
                     self.contents = Load::Loaded(bundled);
-                    self.wanted_all(urls)
+                    self.wanted_icons(urls, SMALL_ICON)
                 }
                 Err(error) => {
                     self.contents = Load::Failed(error);
@@ -330,7 +344,13 @@ impl ResourcePage {
             },
             Message::Picture { url, handle } => {
                 if let Some(handle) = handle {
-                    self.pictures.insert(url, handle);
+                    self.pictures.insert(url, handle, Instant::now());
+                }
+                Vec::new()
+            }
+            Message::IconLoaded { url, px, handle } => {
+                if let Some(handle) = handle {
+                    self.icons.insert((url, px), handle, Instant::now());
                 }
                 Vec::new()
             }

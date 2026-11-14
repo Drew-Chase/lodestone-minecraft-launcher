@@ -91,6 +91,8 @@ pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
         M::Resource(_) => "update.Resource",
         M::CloseRequested(_) => "update.CloseRequested",
         M::CloseAnswered(_) => "update.CloseAnswered",
+        M::SweepCaches => "update.SweepCaches",
+        M::ScaleFactor(_) => "update.ScaleFactor",
     }
 }
 

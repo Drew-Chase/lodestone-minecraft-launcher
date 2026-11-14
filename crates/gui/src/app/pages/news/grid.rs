@@ -1,7 +1,5 @@
 //! The News page's cards: posts and patch notes in rows of equal cards, and the pieces every card shares.
 
-use std::collections::HashMap;
-
 use chrono::NaiveDate;
 use iced::widget::{Column, Row, Space, Text, column, container, image, mouse_area};
 use iced::{Background, ContentFit, Element, Fill, Length, Padding, mouse};
@@ -12,6 +10,7 @@ use crate::app::components::badge::Badge;
 use crate::app::components::panel::panel_with_padding;
 use crate::app::lang;
 use crate::app::news::feed::{Feed, absolute};
+use crate::app::retention::Retained;
 use crate::app::theme::{color, fonts};
 
 /// The height of a card's picture.
@@ -19,7 +18,7 @@ pub const COVER_HEIGHT: f32 = 160.0;
 
 /// A picture the page has loaded, cropped to fill a box `height` tall and the width of its column. A picture still loading,
 /// or one that did not load, shows as a plain panel of the same size.
-pub fn cover<'a>(pictures: &'a HashMap<String, image::Handle>, url: &str, height: f32) -> Element<'a, Message> {
+pub fn cover<'a>(pictures: &'a Retained<String, image::Handle>, url: &str, height: f32) -> Element<'a, Message> {
     match pictures.get(url) {
         Some(handle) => image(handle.clone())
             .width(Fill)
@@ -63,12 +62,12 @@ pub fn category_badge<'a>(category: &Category) -> Element<'a, Message> {
 }
 
 /// The posts at `places` in the feed, in rows of `columns` cards.
-pub fn posts<'a>(feed: &'a Feed, places: &[usize], pictures: &'a HashMap<String, image::Handle>, columns: usize) -> Element<'a, Message> {
+pub fn posts<'a>(feed: &'a Feed, places: &[usize], pictures: &'a Retained<String, image::Handle>, columns: usize) -> Element<'a, Message> {
     grid(places.iter().map(|&place| post_card(feed, place, pictures)).collect(), columns)
 }
 
 /// One post as a card: its picture, its date, title and summary. A press opens the post on minecraft.net.
-fn post_card<'a>(feed: &'a Feed, place: usize, pictures: &'a HashMap<String, image::Handle>) -> Element<'a, Message> {
+fn post_card<'a>(feed: &'a Feed, place: usize, pictures: &'a Retained<String, image::Handle>) -> Element<'a, Message> {
     let post = &feed.posts[place];
     let text = column![
         Text::new(date_label(&post.date))
@@ -94,7 +93,7 @@ fn post_card<'a>(feed: &'a Feed, place: usize, pictures: &'a HashMap<String, ima
 }
 
 /// The patch notes at the first `limit` places in the feed, in rows of `columns` cards.
-pub fn patches<'a>(feed: &'a Feed, limit: usize, pictures: &'a HashMap<String, image::Handle>, columns: usize) -> Element<'a, Message> {
+pub fn patches<'a>(feed: &'a Feed, limit: usize, pictures: &'a Retained<String, image::Handle>, columns: usize) -> Element<'a, Message> {
     grid(
         feed.patches
             .iter()
@@ -110,7 +109,7 @@ pub fn patches<'a>(feed: &'a Feed, limit: usize, pictures: &'a HashMap<String, i
 fn patch_card<'a>(
     patch: &'a piston_mc::patch_notes::java::JavaPatchEntry,
     place: usize,
-    pictures: &'a HashMap<String, image::Handle>,
+    pictures: &'a Retained<String, image::Handle>,
 ) -> Element<'a, Message> {
     let kind = kind_label(patch.patch_type.as_deref());
     let mut badges = iced::widget::row![Badge::new(patch.version.clone(), color::primary(), color::primary_tint()).compact()].spacing(6);

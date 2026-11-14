@@ -18,10 +18,15 @@ use crate::app::theme::{color, fonts};
 /// The hero's height.
 pub(super) const HEIGHT: f32 = 240.0;
 
+/// Whether the hero shows: the page is browsed rather than searched, and it has a hit to show.
+pub(super) fn shown(page: &Discover) -> bool {
+    page.text.trim().is_empty() && !page.results.hits.is_empty()
+}
+
 /// The hero for the page's first hit. `None` while there is no hit, or while the page is searched rather than browsed.
 /// The hero takes the width its column gives it, so it runs the whole width of the content, as the filter row does.
 pub(super) fn view(page: &Discover) -> Option<Element<'_, Message>> {
-    if !page.text.trim().is_empty() {
+    if !shown(page) {
         return None;
     }
     let hit = page.results.hits.first()?;

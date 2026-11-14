@@ -28,14 +28,15 @@ use super::install::pack::{self, Page};
 use super::lang;
 use super::mod_actions::replace_jar;
 use super::pages::discover::{
-    self, AddRequest, CONTENT_ID, DiscoverView, Effect, InstallState, InstanceChoice, Message, PlaceOutcome, PlaceRequest, Placement, Project,
-    SEARCH_ID, Search, Source, WorldChoice,
+    AddRequest, CONTENT_ID, DiscoverView, Effect, InstallState, InstanceChoice, Message, PlaceOutcome, PlaceRequest, Placement, Project, SEARCH_ID,
+    Search, Source, WorldChoice,
 };
 use super::pages::instance::Tab;
 use super::paths::LauncherPaths;
 use super::preferences::Preferences;
 use super::shared_library::{self, AddedContent, ModSource, SharedRecord};
 
+mod pictures;
 mod place;
 
 /// How long the page waits after the last keystroke before it searches.
@@ -406,7 +407,7 @@ impl LodestoneLauncher {
             tasks.push(self.remember_discover_source());
         }
         tasks.extend(effects.into_iter().map(|effect| self.discover_effect(effect)));
-        tasks.push(self.icon_tasks());
+        tasks.push(self.picture_tasks());
         Task::batch(tasks)
     }
 
@@ -415,7 +416,7 @@ impl LodestoneLauncher {
         self.sync_discover_instances();
         let effects = self.discover.opening();
         let mut tasks: Vec<Task<LodestoneAppMessage>> = effects.into_iter().map(|effect| self.discover_effect(effect)).collect();
-        tasks.push(self.icon_tasks());
+        tasks.push(self.picture_tasks());
         Task::batch(tasks)
     }
 
@@ -675,19 +676,6 @@ impl LodestoneLauncher {
             return Task::none();
         };
         Task::perform(async move { db.shared_content().await }, LodestoneAppMessage::SharedLoaded)
-    }
-
-    /// Loads the icons the page's hits need, each one once.
-    fn icon_tasks(&mut self) -> Task<LodestoneAppMessage> {
-        let urls = self.discover.wanted_icons();
-        Task::batch(urls.into_iter().map(|url| {
-            let answer = url.clone();
-            // A picture that takes too long is given up, so its place in the loads is freed for the rest.
-            let load = async move { tokio::time::timeout(ICON_TIMEOUT, discover::load_icon(url)).await.ok().flatten() };
-            Task::perform(load, move |picture| {
-                LodestoneAppMessage::Discover(Message::IconReady { url: answer, picture })
-            })
-        }))
     }
 
     /// The installs the page shows: a pack whose instance exists is installed, and one still in the

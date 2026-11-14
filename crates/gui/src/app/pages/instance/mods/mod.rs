@@ -11,6 +11,7 @@ mod list;
 mod menu;
 
 use std::collections::{HashMap, HashSet};
+use std::time::Instant;
 
 use iced::widget::scrollable::AbsoluteOffset;
 use iced::widget::{Id, Text, column, container, image, operation, responsive, text_input};
@@ -31,6 +32,7 @@ use crate::app::components::input;
 use crate::app::components::panel::panel;
 use crate::app::components::{TextButton, scrollbar};
 use crate::app::lang;
+use crate::app::retention::Retained;
 use crate::app::shared_library::ModSource;
 use crate::app::theme::{color, fonts};
 use aurora_leaf::Icon;
@@ -90,8 +92,8 @@ pub struct State {
     checking: bool,
     /// The picture of each platform project a linked mod came from, by [`project_key`]. It stands in for a jar that
     /// declares none.
-    project_icons: HashMap<String, image::Handle>,
-    /// The projects whose picture has been asked for, so each is asked once.
+    project_icons: Retained<String, image::Handle>,
+    /// The projects whose picture has been asked for, so each is asked once. A picture that expires is asked for again.
     icons_asked: HashSet<String>,
     /// The file name of the row under the pointer, if any. The row lifts while it is set.
     hovered: Option<String>,
@@ -259,7 +261,7 @@ impl State {
                 continue;
             };
             let key = project_key(record);
-            if row.file.icon.is_some() || self.project_icons.contains_key(&key) || !self.icons_asked.insert(key) {
+            if row.file.icon.is_some() || self.project_icons.contains(&key) || !self.icons_asked.insert(key) {
                 continue;
             }
             wanted.push(record.clone());
@@ -269,7 +271,27 @@ impl State {
 
     /// A project's picture arrived. A project with no picture keeps the package glyph.
     pub fn set_project_icon(&mut self, key: String, handle: image::Handle) {
-        self.project_icons.insert(key, handle);
+        self.project_icons.insert(key, handle, Instant::now());
+    }
+
+    /// Counts the projects' pictures as used while the page is on show, and drops those nobody has used for a while. A dropped
+    /// picture is asked for again when it is needed. Returns how many it dropped.
+    pub fn sweep_icons(&mut self, now: Instant, current: bool) -> usize {
+        if current {
+            self.project_icons.touch_all(now);
+        }
+        let dropped = self.project_icons.sweep(now);
+        let count = dropped.len();
+        for key in dropped {
+            self.icons_asked.remove(&key);
+        }
+        count
+    }
+
+    /// Drops every project's picture, so the tab asks for them again.
+    pub fn clear_icons(&mut self) {
+        self.project_icons.clear();
+        self.icons_asked.clear();
     }
 
     /// The dialog on top of the tab, when one is open.

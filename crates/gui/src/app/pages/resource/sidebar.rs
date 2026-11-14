@@ -128,7 +128,7 @@ fn creators<'a>(page: &'a ResourcePage, creators: &'a [Creator]) -> Element<'a, 
             );
         }
         row![
-            picture(creator.avatar_url.as_deref().and_then(|url| page.picture(url)), 32.0),
+            picture(creator.avatar_url.as_deref().and_then(|url| page.icon(url, super::SMALL_ICON)), 32.0),
             column(words).spacing(2),
         ]
         .spacing(10)

@@ -228,6 +228,10 @@ pub enum LodestoneAppMessage {
     CloseRequested(Id),
     /// The answer to "close the launcher while a game runs?".
     CloseAnswered(bool),
+    /// The timer that drops pictures and caches nobody has used for a while. See `retention`.
+    SweepCaches,
+    /// The window's scale factor, as it reports it when it opens and when it moves to a screen of another scale.
+    ScaleFactor(f32),
 }
 
 /// Which sidebar group a nav selection came from.

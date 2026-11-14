@@ -11,6 +11,7 @@ use super::launch::GameMessage;
 use super::notifications;
 use super::pages::Page;
 use super::pages::skins::{Message as SkinsMessage, PREVIEW_FRAME};
+use super::retention;
 use super::servers;
 use super::updater;
 use super::{LodestoneAppMessage, LodestoneLauncher, perf};
@@ -20,6 +21,9 @@ impl LodestoneLauncher {
         Subscription::batch([
             window::resize_events().map(|(id, size)| LodestoneAppMessage::WindowSizeChanged(id, size)),
             event::listen_with(Self::mouse_navigation),
+            event::listen_with(Self::window_scale),
+            // Pictures and caches that nobody has used for a while are dropped on each tick. See `retention`.
+            iced::time::every(retention::SWEEP_EVERY).map(|_| LodestoneAppMessage::SweepCaches),
             self.import_subscription(),
             self.auth_probe_subscription(),
             self.speed_subscription(),
@@ -141,6 +145,14 @@ impl LodestoneLauncher {
         match event {
             iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Back)) => Some(LodestoneAppMessage::NavBack),
             iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Forward)) => Some(LodestoneAppMessage::NavForward),
+            _ => None,
+        }
+    }
+
+    /// The window moved to a screen of another scale, so the pictures sized to it are sized again from its new factor.
+    fn window_scale(event: iced::Event, _status: event::Status, _window: Id) -> Option<LodestoneAppMessage> {
+        match event {
+            iced::Event::Window(window::Event::Rescaled(factor)) => Some(LodestoneAppMessage::ScaleFactor(factor)),
             _ => None,
         }
     }

@@ -11,6 +11,7 @@ use tracing::{info, warn};
 
 use crate::app::appearance_cache;
 use crate::app::components::alert::Alert;
+use crate::app::components::scene_art;
 use crate::app::lang;
 use crate::app::pages::instance::files::mod_index;
 use crate::app::pages::instance::format::format_bytes;
@@ -54,6 +55,13 @@ impl LodestoneLauncher {
         self.mod_checks.clear();
         mod_index::clear();
         lodestone_platforms::clear_answer_cache();
+        // The pictures held in memory go too, so each page asks for them again from the cache folder, which is now empty.
+        self.discover.clear_pictures();
+        self.resource.clear_pictures();
+        self.news.clear_pictures();
+        self.instance_page.clear_pictures();
+        self.art.clear();
+        scene_art::clear_generated();
         let db = self.db.clone();
         Task::perform(
             async move {

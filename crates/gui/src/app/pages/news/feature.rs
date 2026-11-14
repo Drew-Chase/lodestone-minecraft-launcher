@@ -1,7 +1,5 @@
 //! The featured post: the newest post the filter lets through, drawn wide above the grid.
 
-use std::collections::HashMap;
-
 use iced::widget::{Text, column, container, image, row};
 use iced::{Element, Fill, Padding, alignment};
 
@@ -9,6 +7,7 @@ use super::Message;
 use super::grid::{category_badge, clickable, cover, date_label};
 use crate::app::components::panel::panel_with_padding;
 use crate::app::news::feed::{Feed, absolute};
+use crate::app::retention::Retained;
 use crate::app::theme::{color, fonts};
 
 /// The height of the featured post's wide picture.
@@ -16,7 +15,7 @@ const HEIGHT: f32 = 300.0;
 
 /// The post at `place` in the feed, drawn wide: its picture, its category and date, its title and summary. A press
 /// opens the post on minecraft.net.
-pub fn view<'a>(feed: &'a Feed, place: usize, pictures: &'a HashMap<String, image::Handle>) -> Element<'a, Message> {
+pub fn view<'a>(feed: &'a Feed, place: usize, pictures: &'a Retained<String, image::Handle>) -> Element<'a, Message> {
     let post = &feed.posts[place];
     let meta = row![
         category_badge(&post.category),

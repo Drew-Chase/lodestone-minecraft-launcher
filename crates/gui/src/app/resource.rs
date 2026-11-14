@@ -7,7 +7,7 @@ use iced::Task;
 use super::discover::{bundled_of, details_of, versions_of};
 use super::instances::open_source;
 use super::pages::Page;
-use super::pages::discover::{Effect as DiscoverEffect, InstanceChoice, Project, ProjectStatus, load_image};
+use super::pages::discover::{Effect as DiscoverEffect, InstanceChoice, Project, ProjectStatus, load_icon, load_image};
 use super::pages::instance::Tab;
 use super::pages::resource::{Action, Effect, Listing, Message};
 use super::{LodestoneAppMessage, LodestoneLauncher, lang};
@@ -58,6 +58,13 @@ impl LodestoneLauncher {
         Some(self.discover.status_of(listing.source, listing.content, &listing.project_id))
     }
 
+    /// Asks again for the pictures the resource page shows, when it comes back on screen. Those the sweep dropped while the page
+    /// was away are asked for, and those still held are not.
+    pub(super) fn resource_pictures(&mut self) -> Task<LodestoneAppMessage> {
+        let effects = self.resource.reshown();
+        Task::batch(effects.into_iter().map(|effect| self.resource_effect(effect)))
+    }
+
     /// Carries out one effect of the resource page.
     fn resource_effect(&mut self, effect: Effect) -> Task<LodestoneAppMessage> {
         match effect {
@@ -65,6 +72,16 @@ impl LodestoneLauncher {
                 let answer = url.clone();
                 Task::perform(load_image(url), move |handle| {
                     LodestoneAppMessage::Resource(Message::Picture { url: answer, handle })
+                })
+            })),
+            Effect::Icons(icons) => Task::batch(icons.into_iter().map(|(url, px)| {
+                let answer = url.clone();
+                Task::perform(load_icon(url, px), move |handle| {
+                    LodestoneAppMessage::Resource(Message::IconLoaded {
+                        url: answer.clone(),
+                        px,
+                        handle,
+                    })
                 })
             })),
             Effect::Contents { generation, version } => {
@@ -98,7 +115,7 @@ impl LodestoneLauncher {
         let shown = self.instance_page.instance().is_some_and(|instance| instance.id == id);
         if shown && self.router.back_page() == Some(Page::Instance) {
             self.router.go_back();
-            return self.rescan_on_return();
+            return Task::batch([self.rescan_on_return(), self.reshow_pictures()]);
         }
         if self.library.instance(id).is_none() {
             return self.navigate(Page::Library);
@@ -111,7 +128,7 @@ impl LodestoneLauncher {
     fn back_to_discover(&mut self) -> Task<LodestoneAppMessage> {
         if self.router.back_page() == Some(Page::Discover) {
             self.router.go_back();
-            return self.rescan_on_return();
+            return Task::batch([self.rescan_on_return(), self.reshow_pictures()]);
         }
         self.navigate(Page::Discover)
     }

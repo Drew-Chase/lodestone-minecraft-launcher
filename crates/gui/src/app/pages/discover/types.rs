@@ -2,7 +2,7 @@
 
 use super::Source;
 use super::filters::FilterMessage;
-use super::images::Picture;
+use super::images::Asset;
 use super::query;
 use super::target::{AddRequest, InstanceChoice, WorldChoice};
 use crate::app::install::InstallRequest;
@@ -14,8 +14,8 @@ use lodestone_platforms::{ContentType, Facets, SearchPage};
 /// The art a project shows while the page is open.
 #[derive(Debug, Clone, Copy)]
 pub enum Artwork<'a> {
-    /// The platform's own picture, loaded.
-    Loaded(&'a Picture),
+    /// The platform's own picture, loaded, as drawn.
+    Loaded(&'a iced::widget::image::Handle),
     /// The platform names a picture that is still loading.
     Loading,
     /// The platform gave no picture, or it could not be loaded: the generated scene stands in.
@@ -137,7 +137,10 @@ pub enum Message {
         result: Result<Facets, String>,
     },
     /// A picture finished loading, or could not be had (`None`).
-    IconReady { url: String, picture: Option<Picture> },
+    PictureReady {
+        asset: Asset,
+        handle: Option<iced::widget::image::Handle>,
+    },
     /// A project's page should open in the browser.
     Open(String),
     /// Ctrl/⌘K was pressed: focus the search field.

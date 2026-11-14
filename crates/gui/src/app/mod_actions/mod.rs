@@ -21,7 +21,7 @@ use super::install::mods::{add_to_instance, fits};
 use super::lang;
 use super::mod_sources::{CheckContext, Checks, check_mods, sha1_of_file};
 use super::pages::Page;
-use super::pages::discover::{AddRequest, InstanceChoice, Project, Source, load_image};
+use super::pages::discover::{AddRequest, InstanceChoice, Project, Source, load_icon};
 use super::pages::instance::Tab;
 use super::pages::instance::files;
 use super::pages::instance::files::ModFile;

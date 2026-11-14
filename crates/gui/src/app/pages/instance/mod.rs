@@ -15,6 +15,7 @@ mod hero;
 pub(crate) mod logs;
 pub mod mods;
 pub mod packs;
+mod pictures;
 pub mod screenshots;
 pub mod settings;
 mod tab;
