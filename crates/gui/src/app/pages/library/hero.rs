@@ -3,6 +3,7 @@
 
 use crate::app::components::art_cache::{ArtCache, ArtKey, Kind};
 use crate::app::components::badge::{Badge, loader_palette};
+use crate::app::components::button::Variant;
 use crate::app::components::hint::hint;
 use crate::app::components::instance_art;
 use crate::app::components::instance_card::status_chip;
@@ -201,31 +202,37 @@ fn hero_icon_button(icon_markup: &'static str, on_press: Message) -> Element<'st
         .into()
 }
 
-/// The hero's action row: Resume (or Play), a button that starts another process of the instance while
-/// it plays, a padlock while the instance is locked, the folder and settings buttons, and the instance menu.
+/// The hero's action row: Play, or while the instance plays, Kill with a small console button beside it, then a
+/// button that starts another process of the instance, a padlock while the instance is locked, the folder and
+/// settings buttons, and the instance menu.
 fn hero_actions(instance: &str, playing: bool, locked: bool) -> Element<'static, Message> {
     let id = instance.to_owned();
-    let resume = TextButton::content(
-        row![
-            icon(Icon::lucide().play(), 14.0, color::primary_on(), 1.0),
-            Text::new(if playing {
-                lang::t("library.hero.resume")
-            } else {
-                lang::t("common.play")
-            })
-            .size(13)
-            .font(fonts::Inter::BOLD)
-            .color(color::primary_on()),
-        ]
-        .spacing(8)
-        .align_y(alignment::Vertical::Center),
-    )
-    .variant(crate::app::components::button::Variant::Primary)
-    .padding(Padding::new(0.0).left(22).right(22).top(14).bottom(14))
-    .on_press(Message::Play(id.clone()));
+    let primary: Element<'static, Message> = if playing {
+        TextButton::labeled_icon(Icon::lucide().square(), lang::t("instance.hero.kill"), Variant::Destructive)
+            .padding(Padding::new(0.0).left(22).right(22).top(14).bottom(14))
+            .on_press(Message::Kill(id.clone()))
+            .into()
+    } else {
+        TextButton::content(
+            row![
+                icon(Icon::lucide().play(), 14.0, color::primary_on(), 1.0),
+                Text::new(lang::t("common.play"))
+                    .size(13)
+                    .font(fonts::Inter::BOLD)
+                    .color(color::primary_on()),
+            ]
+            .spacing(8)
+            .align_y(alignment::Vertical::Center),
+        )
+        .variant(Variant::Primary)
+        .padding(Padding::new(0.0).left(22).right(22).top(14).bottom(14))
+        .on_press(Message::Play(id.clone()))
+        .into()
+    };
 
-    let mut actions = row![resume];
+    let mut actions = row![primary];
     if playing {
+        actions = actions.push(hero_console_button(&id));
         actions = actions.push(hint(
             hero_icon_button(Icon::lucide().copy(), Message::LaunchNew(id.clone())),
             lang::t("game.new_process"),
@@ -244,6 +251,18 @@ fn hero_actions(instance: &str, playing: bool, locked: bool) -> Element<'static,
         .spacing(10)
         .align_y(alignment::Vertical::Center)
         .into()
+}
+
+/// The console button beside Kill while the instance plays: a small icon button that opens its log.
+fn hero_console_button(instance: &str) -> Element<'static, Message> {
+    hint(
+        IconButton::new(Icon::lucide().terminal())
+            .width(36)
+            .height(36)
+            .icon_size(14.0)
+            .on_press(Message::Console(instance.to_owned())),
+        lang::t("instance.hero.console"),
+    )
 }
 
 /// The hero's ⋯ menu: the card's rows, without Reveal, which the folder button beside it already does.

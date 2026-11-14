@@ -225,6 +225,8 @@ fn instance_messages(instance: &Instance) -> InstanceMessages<Message> {
     let id = instance.id.clone();
     InstanceMessages {
         play: Message::Play(id.clone()),
+        kill: Message::Kill(id.clone()),
+        console: Message::Console(id.clone()),
         open: Message::OpenInstance(id.clone()),
         unlock: Message::Unlock(id.clone()),
         enter: Message::Hover {

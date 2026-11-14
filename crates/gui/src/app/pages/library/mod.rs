@@ -44,6 +44,10 @@ pub enum Message {
     Play(String),
     /// Another process of the playing instance with this id was asked for from the hero. The root starts it.
     LaunchNew(String),
+    /// Kill was pressed on the playing instance with this id. The root stops its runs.
+    Kill(String),
+    /// The console button of the playing instance with this id was pressed. The root opens its Logs tab.
+    Console(String),
     /// Open an instance's detail page — the root routes to it.
     OpenInstance(String),
     /// Edit an instance: open its detail page on the Settings tab — the root routes to it.
@@ -243,7 +247,7 @@ impl Library {
                 }
             }
             // The root launches the game: it needs the launch state and the account.
-            Message::Play(_) | Message::LaunchNew(_) => {}
+            Message::Play(_) | Message::LaunchNew(_) | Message::Kill(_) | Message::Console(_) => {}
             Message::OpenInstance(id) => info!("Open instance {id} requested"),
             // The root routes these: they need the database, the alerts or the instance page.
             Message::EditInstance(_) | Message::RevealInstance(_) | Message::Unlock(_) | Message::InstanceMenu { .. } => {}

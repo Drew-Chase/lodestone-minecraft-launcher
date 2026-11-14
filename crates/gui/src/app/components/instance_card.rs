@@ -8,11 +8,12 @@
 use std::rc::Rc;
 
 use crate::app::components::anim;
+use crate::app::components::button::Variant;
 use crate::app::components::context_menu::ContextMenu;
 use crate::app::components::hint::hint;
 use crate::app::components::hover_scale::HoverScale;
 use crate::app::components::hover_track::HoverTrack;
-use crate::app::components::icon_button::ghost_button_style;
+use crate::app::components::icon_button::{self, ghost_button_style};
 use crate::app::components::instance_art;
 use crate::app::components::instance_icon;
 use crate::app::lang;
@@ -64,6 +65,10 @@ const LIST_LOCK_SIZE: f32 = 28.0;
 pub struct InstanceMessages<Message> {
     /// The Play button.
     pub play: Message,
+    /// The Kill button, which shows in place of Play while the instance runs.
+    pub kill: Message,
+    /// The console button beside Kill, while the instance runs.
+    pub console: Message,
     /// A press anywhere on the body, except the buttons.
     pub open: Message,
     /// The padlock of a locked instance, which asks to unlock it.
@@ -133,16 +138,47 @@ fn play_button<Message: Clone + 'static>(on_press: Message) -> Element<'static, 
         .into()
 }
 
+/// The Kill button of a running instance: a destructive button that stops every run of it.
+fn kill_button<Message: Clone + 'static>(on_press: Message) -> Element<'static, Message> {
+    TextButton::labeled_icon(Icon::lucide().square(), lang::t("instance.hero.kill"), Variant::Destructive)
+        .padding(Padding::new(0.0).left(16).right(16).top(8).bottom(8))
+        .on_press(on_press)
+        .into()
+}
+
+/// The small console button beside Kill: an icon-only secondary button that opens the instance's log.
+fn console_button<Message: Clone + 'static>(on_press: Message) -> Element<'static, Message> {
+    hint(
+        IconButton::new(Icon::lucide().terminal())
+            .width(28)
+            .height(28)
+            .icon_size(12.0)
+            .style(icon_button::secondary_button_style())
+            .on_press(on_press),
+        lang::t("instance.hero.console"),
+    )
+}
+
 /// The Play button of an installed instance. While its install has not ended, a disabled button says
-/// how far the install has got.
-fn play_slot<Message: Clone + 'static>(on_press: Message, install: Option<&Pending>) -> Element<'static, Message> {
-    match install {
-        None => play_button(on_press),
-        Some(pending) => TextButton::primary(install_status(pending))
+/// how far the install has got. While the instance runs, the button is Kill, with the console button beside it.
+fn play_slot<Message: Clone + 'static>(
+    instance: &Instance,
+    messages: &InstanceMessages<Message>,
+    install: Option<&Pending>,
+) -> Element<'static, Message> {
+    if let Some(pending) = install {
+        return TextButton::primary(install_status(pending))
             .padding(Padding::new(0.0).left(16).right(16).top(8).bottom(8))
             .disabled(true)
-            .into(),
+            .into();
     }
+    if instance.state == InstanceState::Playing {
+        return row![kill_button(messages.kill.clone()), console_button(messages.console.clone())]
+            .spacing(8)
+            .align_y(alignment::Vertical::Center)
+            .into();
+    }
+    play_button(messages.play.clone())
 }
 
 /// What an install that has not ended shows: its stage and percent, or why it has not started.
@@ -371,15 +407,18 @@ pub fn instance_card<Message: Clone + 'static>(
             row![status, Space::new().width(Fill), lock, kebab].align_y(alignment::Vertical::Top),
             Space::new().height(Fill),
             row![
-                row![
-                    instance_icon::icon(&instance.icon, CARD_ICON_SIZE),
-                    column![title_block(instance), version_line(instance)].spacing(2),
-                ]
-                .spacing(12)
-                .align_y(alignment::Vertical::Center),
-                Space::new().width(Fill),
-                play_slot(messages.play, install),
+                container(
+                    row![
+                        instance_icon::icon(&instance.icon, CARD_ICON_SIZE),
+                        column![title_block(instance), version_line(instance)].spacing(2),
+                    ]
+                    .spacing(12)
+                    .align_y(alignment::Vertical::Center),
+                )
+                .width(Fill),
+                play_slot(instance, &messages, install),
             ]
+            .spacing(12)
             .align_y(alignment::Vertical::Center),
         ]
         .padding(Padding::new(12.0))
@@ -427,19 +466,26 @@ pub fn compact_row<Message: Clone + 'static>(
     if instance.locked {
         trailing = trailing.push(padlock(messages.unlock.clone(), install.is_some(), LIST_LOCK_SIZE));
     }
-    let trailing = trailing.push(loader_chip(instance.loader)).push(play_slot(messages.play, install));
+    let trailing = trailing.push(loader_chip(instance.loader)).push(play_slot(instance, &messages, install));
     let body = container(
         row![
-            container(instance_art::thumbnail(instance, thumb)).width(THUMB_SIZE).height(THUMB_SIZE),
-            column![
-                title_block(instance),
-                Text::new(compact_stats(instance))
-                    .size(11)
-                    .font(fonts::JetBrainsMono::REGULAR)
-                    .color(color::text_muted()),
-            ]
-            .spacing(2),
-            Space::new().width(Fill),
+            // The name takes the room the trailing controls leave, so a running instance's Kill never runs off the row.
+            container(
+                row![
+                    container(instance_art::thumbnail(instance, thumb)).width(THUMB_SIZE).height(THUMB_SIZE),
+                    column![
+                        title_block(instance),
+                        Text::new(compact_stats(instance))
+                            .size(11)
+                            .font(fonts::JetBrainsMono::REGULAR)
+                            .color(color::text_muted()),
+                    ]
+                    .spacing(2),
+                ]
+                .spacing(12)
+                .align_y(alignment::Vertical::Center),
+            )
+            .width(Fill),
             trailing,
         ]
         .spacing(12)
@@ -466,7 +512,8 @@ const COL_VERSION: f32 = 110.0;
 const COL_LOADER: f32 = 110.0;
 const COL_MODS: f32 = 80.0;
 const COL_PLAYTIME: f32 = 110.0;
-const COL_ACTIONS: f32 = 90.0;
+/// Wide enough for a running instance's Kill and console buttons, which are the widest actions.
+const COL_ACTIONS: f32 = 120.0;
 /// The gap between a table's cells, and the row's padding either side.
 const TABLE_GAP: f32 = 12.0;
 const TABLE_PAD: f32 = 16.0;
@@ -622,7 +669,11 @@ pub fn table_row<Message: Clone + 'static>(
             .width(Length::Fixed(COL_PLAYTIME))
             .into(),
     );
-    cells.push(container(play_slot(messages.play, install)).width(Length::Fixed(COL_ACTIONS)).into());
+    cells.push(
+        container(play_slot(instance, &messages, install))
+            .width(Length::Fixed(COL_ACTIONS))
+            .into(),
+    );
     let body = container(
         Row::with_children(cells)
             .spacing(TABLE_GAP)

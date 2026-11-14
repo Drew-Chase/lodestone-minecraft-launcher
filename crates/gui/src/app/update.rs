@@ -136,6 +136,9 @@ impl LodestoneLauncher {
             // Play starts the game, or opens the console of one already running.
             LodestoneAppMessage::Library(LibraryMessage::Play(id)) => self.launch_game(&id),
             LodestoneAppMessage::Library(LibraryMessage::LaunchNew(id)) => self.launch_new_game(&id),
+            // Kill stops every run of the instance, as the instance page's Kill does. Console opens its log.
+            LodestoneAppMessage::Library(LibraryMessage::Kill(id)) => self.kill_game(&id),
+            LodestoneAppMessage::Library(LibraryMessage::Console(id)) => self.open_instance_page(&id, Tab::Logs),
             // Opening a card/hero hands the instance to the detail page and
             // pushes the route — the page itself never owns navigation.
             LodestoneAppMessage::Library(LibraryMessage::OpenInstance(id)) => self.open_instance_page(&id, Tab::Content),

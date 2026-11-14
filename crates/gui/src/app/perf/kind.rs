@@ -105,6 +105,8 @@ fn library_kind(message: &LibraryMessage) -> &'static str {
         L::ViewChanged(_) => "update.Library.ViewChanged",
         L::Scrolled(_) => "update.Library.Scrolled",
         L::Play(_) => "update.Library.Play",
+        L::Kill(_) => "update.Library.Kill",
+        L::Console(_) => "update.Library.Console",
         L::LaunchNew(_) => "update.Library.LaunchNew",
         L::OpenInstance(_) => "update.Library.OpenInstance",
         L::EditInstance(_) => "update.Library.EditInstance",
