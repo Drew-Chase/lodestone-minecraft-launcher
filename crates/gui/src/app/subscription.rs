@@ -22,6 +22,7 @@ impl LodestoneLauncher {
             window::resize_events().map(|(id, size)| LodestoneAppMessage::WindowSizeChanged(id, size)),
             event::listen_with(Self::mouse_navigation),
             event::listen_with(Self::window_scale),
+            event::listen_with(Self::window_moved),
             // Pictures and caches that nobody has used for a while are dropped on each tick. See `retention`.
             iced::time::every(retention::SWEEP_EVERY).map(|_| LodestoneAppMessage::SweepCaches),
             self.import_subscription(),
@@ -155,6 +156,15 @@ impl LodestoneLauncher {
     fn window_scale(event: iced::Event, _status: event::Status, _window: Id) -> Option<LodestoneAppMessage> {
         match event {
             iced::Event::Window(window::Event::Rescaled(factor)) => Some(LodestoneAppMessage::ScaleFactor(factor)),
+            _ => None,
+        }
+    }
+
+    /// The window moved, so its place on screen is kept for the next launch. Only moves are listened for: `window::events()`
+    /// would also deliver every redraw.
+    fn window_moved(event: iced::Event, _status: event::Status, _window: Id) -> Option<LodestoneAppMessage> {
+        match event {
+            iced::Event::Window(window::Event::Moved(position)) => Some(LodestoneAppMessage::WindowMoved(position)),
             _ => None,
         }
     }

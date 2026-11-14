@@ -31,8 +31,9 @@ pub fn run() -> Result<()> {
     }
     iced::application(LodestoneLauncher::boot, LodestoneLauncher::update, LodestoneLauncher::view)
         .title(LodestoneLauncher::TITLE)
+        // `window_settings` carries the position: a saved place, or the centre of the screen on the first run. `centered()`
+        // would overwrite it.
         .window(LodestoneLauncher::window_settings())
-        .centered()
         .theme(iced::Theme::Dark)
         .default_font(fonts::Inter::REGULAR)
         .font(FontFamily::inter().regular())

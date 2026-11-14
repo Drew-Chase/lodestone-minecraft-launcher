@@ -266,7 +266,7 @@ impl LodestoneLauncher {
             Message::CheckDue => self.check_due(),
             Message::InstallConfirmed(true) => self.apply(),
             Message::InstallConfirmed(false) => Task::none(),
-            Message::Applied(Ok(())) => iced::exit(),
+            Message::Applied(Ok(())) => self.exit_launcher(),
             Message::Applied(Err(error)) => self.apply_refused(error),
         }
     }

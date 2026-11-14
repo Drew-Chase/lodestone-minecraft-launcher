@@ -52,6 +52,7 @@ mod titlebar;
 mod update;
 mod updater;
 mod view;
+mod window_state;
 mod world_actions;
 mod world_datapacks;
 mod world_pins;
@@ -73,9 +74,9 @@ use crate::app::router::Router;
 use crate::app::storage::{CredentialWriter, StoredCredentials};
 use crate::app::titlebar::Titlebar;
 use crate::app::writes::KeyedWriter;
-use iced::Size;
 use iced::widget::image;
 use iced::window::Id;
+use iced::{Point, Size};
 use lodestone_minecraft_authentication::{AuthProbe, Authentication, Session};
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -121,6 +122,10 @@ pub struct LodestoneLauncher {
     id: Option<Id>,
     titlebar: Titlebar,
     maximized: bool,
+    /// The window's place on screen as the last move reported it. `None` where the platform does not report one.
+    window_position: Option<Point>,
+    /// The window's size and place while it is not maximized. A maximized window is saved with these, see `window_state`.
+    window_normal: window_state::Geometry,
     router: Router,
     library: Library,
     instance_page: InstancePage,
@@ -251,6 +256,8 @@ impl Default for LodestoneLauncher {
             id: None,
             titlebar: Titlebar,
             maximized: false,
+            window_position: None,
+            window_normal: window_state::Geometry::default(),
             router: Router::default(),
             library: Library::default(),
             instance_page: InstancePage::default(),

@@ -15,6 +15,7 @@ pub fn message_kind(message: &LodestoneAppMessage) -> &'static str {
         M::WindowCreation(_) => "update.WindowCreation",
         M::WindowStartResize(_) => "update.WindowStartResize",
         M::WindowSizeChanged(..) => "update.WindowSizeChanged",
+        M::WindowMoved(_) => "update.WindowMoved",
         M::TitlebarMessage(_) => "update.TitlebarMessage",
         M::WindowMaximized(_) => "update.WindowMaximized",
         M::Navigate(_) => "update.Navigate",

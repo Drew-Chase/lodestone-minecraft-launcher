@@ -48,6 +48,9 @@ pub struct Preferences {
     /// Whether the setup wizard was finished or skipped. With no account stored, the launcher shows the wizard until then.
     #[serde(default, skip_serializing_if = "is_false")]
     pub setup_finished: bool,
+    /// The main window's state when the launcher last closed. The window opens with it. `None` opens the default window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<WindowState>,
     /// The values the Settings page saves. They are flattened into the file's top level.
     #[serde(flatten)]
     pub settings: SettingsValues,
@@ -121,6 +124,21 @@ impl Preferences {
             Err(error) => Err(format!("removing {}: {error}", path.display())),
         }
     }
+}
+
+/// The main window's state, saved when the launcher closes. Sizes and positions are whole logical pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WindowState {
+    /// Whether the window was maximized.
+    pub maximized: bool,
+    /// The window's size when it was not maximized.
+    pub width: u32,
+    pub height: u32,
+    /// The window's place on screen. `None` when the platform does not report one, such as Wayland.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub y: Option<i32>,
 }
 
 /// The values the Settings page edits and saves together.

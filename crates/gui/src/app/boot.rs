@@ -7,8 +7,9 @@ use crate::app::pages::library::LibraryView;
 use crate::app::pages::login::Message as LoginMessage;
 use crate::app::paths::{self, LauncherPaths};
 use crate::app::preferences::Preferences;
-use iced::window::{Level, Position};
-use iced::{Size, Task, window};
+use crate::app::window_state;
+use iced::window::Level;
+use iced::{Task, window};
 use std::path::PathBuf;
 use tracing::{info, warn};
 
@@ -32,10 +33,16 @@ impl LodestoneLauncher {
             .with_instances(saved_folder(fixed, &preferences.instances_folder))
             .with_logs(saved_folder(fixed, &preferences.logs_folder))
             .with_cache(saved_folder(fixed, &preferences.cache_folder));
+        // The window opens with the state it had when it last closed, so the root starts from the same geometry.
+        let opening = window_state::Opening::from_saved(preferences.window);
         let mut app = Self {
             settings_values: preferences.settings,
             paths: data,
             setup_finished: preferences.setup_finished,
+            window_size: opening.size,
+            maximized: opening.maximized,
+            window_position: opening.position,
+            window_normal: opening.geometry(),
             ..Self::default()
         };
         app.library.set_hero_rule(app.settings_values.hero);
@@ -122,9 +129,11 @@ impl LodestoneLauncher {
     }
 
     pub fn window_settings() -> window::Settings {
+        // Read here, before the window is created, so the window opens with the state it had when it last closed.
+        let opening = window_state::Opening::from_saved(Preferences::load().window);
         window::Settings {
-            size: Size::new(1280.0, 720.0),
-            min_size: Some(Size::new(800f32, 600f32)),
+            size: opening.size,
+            min_size: Some(window_state::MIN_SIZE),
             decorations: !cfg!(target_os = "windows"),
             resizable: true,
             #[cfg(target_os = "windows")]
@@ -149,9 +158,9 @@ impl LodestoneLauncher {
                 application_id: String::from("lodestone_launcher"),
                 override_redirect: false,
             },
-            maximized: false,
+            maximized: opening.maximized,
             fullscreen: false,
-            position: Position::Default,
+            position: opening.position(),
             max_size: None,
             visible: true,
             minimizable: true,

@@ -410,7 +410,7 @@ impl LodestoneLauncher {
             tasks.push(Task::done(LodestoneAppMessage::Game(GameMessage::LaunchNew(id))));
         }
         let batch = Task::batch(tasks);
-        if quit { batch.chain(iced::exit()) } else { batch }
+        if quit { batch.chain(self.exit_launcher()) } else { batch }
     }
 
     /// Attaches to the runs a previous launcher left running. Each instance with one is recorded as
@@ -586,7 +586,7 @@ impl LodestoneLauncher {
     /// has gone, so the launcher asks first, and the answer comes back as `CloseAnswered`.
     pub(super) fn close_requested(&mut self) -> Task<LodestoneAppMessage> {
         if !self.games.any_running() {
-            return iced::exit();
+            return self.exit_launcher();
         }
         self.alerts
             .show(Alert::warn(lang::t("games.close.message")).title(lang::t("games.close.title")).yes_no())
@@ -599,7 +599,7 @@ impl LodestoneLauncher {
         if !close {
             return Task::none();
         }
-        self.checkpoint().chain(iced::exit())
+        self.checkpoint().chain(self.exit_launcher())
     }
 
     /// Keeps a Microsoft session that a refresh produced, and the refresh token it carries, so the

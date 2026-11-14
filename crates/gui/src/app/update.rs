@@ -24,6 +24,7 @@ use crate::app::pages::settings::accounts::AccountAction;
 use crate::app::pages::worlds::Message as WorldsMessage;
 use crate::app::perf;
 use crate::app::preferences::{Preferences, SettingsValues};
+use crate::app::window_state;
 use crate::app::world_actions::WorldMessage;
 use iced::{Size, Task, window};
 use iced_borderless_window_resize_handle_widget::drag_resize;
@@ -102,11 +103,23 @@ impl LodestoneLauncher {
                 }
                 window::is_maximized(id).map(LodestoneAppMessage::WindowMaximized)
             }
+            LodestoneAppMessage::WindowMoved(position) => {
+                self.window_position = Some(position);
+                Task::none()
+            }
             LodestoneAppMessage::WindowMaximized(maximized) => {
                 if self.maximized != maximized {
                     info!("Window maximized state changed: {maximized}");
                 }
                 self.maximized = maximized;
+                // While the window is not maximized its size and place are the ones to keep. A maximized window reports its
+                // maximized geometry instead, so the last restored geometry is kept until it is restored again.
+                if !maximized {
+                    self.window_normal = window_state::Geometry {
+                        size: self.window_size,
+                        position: self.window_position,
+                    };
+                }
                 Task::none()
             }
             LodestoneAppMessage::Navigate(page) => self.navigate(page),

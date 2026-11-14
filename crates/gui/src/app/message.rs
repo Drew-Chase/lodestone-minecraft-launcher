@@ -37,9 +37,9 @@ use crate::app::shared_library::{ModSource, SharedRecord};
 use crate::app::titlebar::TitlebarMessage;
 use crate::app::updater::Message as UpdaterMessage;
 use crate::app::world_actions::WorldMessage;
-use iced::Size;
 use iced::widget::image::Handle;
 use iced::window::{Direction, Id};
+use iced::{Point, Size};
 use lodestone_minecraft_authentication::{AuthProbe, Profile, Session};
 
 #[derive(Debug, Clone)]
@@ -47,6 +47,8 @@ pub enum LodestoneAppMessage {
     WindowCreation(Option<Id>),
     WindowStartResize(Direction),
     WindowSizeChanged(Id, Size),
+    /// The window was moved to this place on screen.
+    WindowMoved(Point),
     TitlebarMessage(TitlebarMessage),
     WindowMaximized(bool),
     /// Pushes `page` onto the router's history — the `useNavigate` of this

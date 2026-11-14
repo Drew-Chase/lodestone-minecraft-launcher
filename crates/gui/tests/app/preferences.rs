@@ -150,6 +150,35 @@ fn a_setup_choice_and_folders_at_their_defaults_stay_out_of_the_file() {
 }
 
 #[test]
+fn the_window_state_round_trips_and_an_unsaved_window_stays_out_of_the_file() {
+    let json = serde_json::to_string(&Preferences::default()).expect("serializes");
+    assert!(!json.contains("\"window\":"), "{json}");
+
+    let path = temp_path("window");
+    let window = WindowState {
+        maximized: true,
+        width: 1600,
+        height: 900,
+        x: Some(-1920),
+        y: Some(120),
+    };
+    let preferences = Preferences {
+        window: Some(window),
+        ..Preferences::default()
+    };
+    Preferences::store_to(&path, &preferences).expect("store succeeds");
+    assert_eq!(Preferences::load_from(&path).window, Some(window));
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn a_window_state_without_a_place_keeps_the_size() {
+    let preferences: Preferences = serde_json::from_str(r#"{"window":{"maximized":false,"width":1000,"height":700}}"#).expect("parses");
+    let window = preferences.window.expect("the window is read");
+    assert_eq!((window.width, window.height, window.x, window.y), (1000, 700, None, None));
+}
+
+#[test]
 fn a_file_from_before_the_setup_wizard_has_not_finished_it() {
     let preferences: Preferences = serde_json::from_str(r#"{"language":"en_us"}"#).expect("older files parse");
     assert!(!preferences.setup_finished);
