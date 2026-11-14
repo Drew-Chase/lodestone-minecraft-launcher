@@ -1,20 +1,21 @@
-//! The General tab: where the launcher starts and where instances live, how it updates itself, and the window every
+//! The General tab: where the launcher keeps its folders and where it starts, how it updates itself, and the window every
 //! instance opens with.
 
-use iced::widget::{column, row, text};
-use iced::{Element, Fill, alignment};
+use iced::widget::column;
+use iced::{Element, Fill};
 
 use super::edit::Edit;
-use super::{Message, card, display_path, plain_card};
+use super::{Message, card, plain_card};
+use crate::app::components::folder_rows;
 use crate::app::components::launch_rows::{self, ResolutionDraft, Shown};
 use crate::app::components::panel::divided;
 use crate::app::components::setting_row::described_setting;
-use crate::app::components::{Select, TextButton, Toggle};
+use crate::app::components::{Select, Toggle};
+use crate::app::data_folder;
 use crate::app::lang;
 use crate::app::launch_settings::LaunchChange;
-use crate::app::paths::{self, LauncherPaths};
+use crate::app::paths::LauncherPaths;
 use crate::app::preferences::{HERO_RULES, HeroRule, SettingsValues, StartupPage};
-use crate::app::theme::{color, fonts};
 
 /// The pages the launcher can open on, in the order the select offers them.
 const STARTUP_PAGES: [StartupPage; 4] = [StartupPage::Library, StartupPage::News, StartupPage::Discover, StartupPage::Worlds];
@@ -22,10 +23,7 @@ const STARTUP_PAGES: [StartupPage; 4] = [StartupPage::Library, StartupPage::News
 /// The width of the selects on this tab.
 const SELECT_WIDTH: f32 = 240.0;
 
-/// The width the data folder's path wraps within.
-const FOLDER_PATH_WIDTH: f32 = 300.0;
-
-/// The General tab: the startup and folder rows, the update switches and the window.
+/// The General tab: the folders, the startup rows, the update switches and the window.
 pub fn view<'a>(
     shown: Shown<'a>,
     resolution: &'a ResolutionDraft,
@@ -34,13 +32,17 @@ pub fn view<'a>(
     can_update: bool,
 ) -> Element<'a, Message> {
     let startup = vec![
-        folder_row(paths),
         startup_row(settings.startup_page),
         hero_row(settings.hero),
         game_start_row(shown.values.hide_launcher),
         game_exit_row(shown.values.quit_after_exit),
     ];
     column![
+        card(
+            lang::t("settings.general.folders"),
+            lang::t("settings.general.folders_subtitle"),
+            divided(folder_list(paths)),
+        ),
         plain_card(divided(startup)),
         card(
             lang::t("settings.general.updates"),
@@ -58,28 +60,10 @@ pub fn view<'a>(
     .into()
 }
 
-/// The folder the launcher keeps its data in, shown with the home folder as `~`, with buttons that open it and move it. A
-/// portable launcher's folder and a development run's are fixed, so they have no move buttons.
-fn folder_row<'a>(paths: &LauncherPaths) -> Element<'a, Message> {
-    let root = paths.root();
-    // The path wraps within a fixed width, and the buttons sit under it, so a long path never squeezes the row's label.
-    let path = text(display_path(&root))
-        .size(12)
-        .font(fonts::JetBrainsMono::REGULAR)
-        .color(color::text_muted())
-        .width(FOLDER_PATH_WIDTH)
-        .align_x(alignment::Horizontal::Right);
-    let mut buttons = row![TextButton::ghost(lang::t("settings.general.open_folder")).on_press(Message::OpenDataFolder)]
-        .spacing(12)
-        .align_y(alignment::Vertical::Center);
-    if !paths::data_folder_fixed() {
-        buttons = buttons.push(TextButton::ghost(lang::t("settings.general.change_folder")).on_press(Message::ChooseDataFolder));
-        if root != paths::default_data_root() {
-            buttons = buttons.push(TextButton::ghost(lang::t("settings.general.default_folder")).on_press(Message::UseDefaultDataFolder));
-        }
-    }
-    let control = column![path, buttons].spacing(10).align_x(alignment::Horizontal::Right);
-    described_setting(lang::t("settings.general.folder"), lang::t("settings.general.folder_hint"), control)
+/// The launcher's folders, each with its path and the buttons that open it, change it or send it back to its default. A portable
+/// launcher's folders and a development run's are fixed, so they have no change buttons.
+fn folder_list<'a>(paths: &LauncherPaths) -> Vec<Element<'a, Message>> {
+    folder_rows::rows(&data_folder::rows(paths), Message::Folder)
 }
 
 /// The page the launcher opens on.

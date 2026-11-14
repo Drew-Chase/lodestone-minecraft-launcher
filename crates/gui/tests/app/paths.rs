@@ -71,3 +71,51 @@ fn a_development_root_keeps_its_config_data_and_cache_under_it() {
     assert_eq!(roots.data, Path::new("/dev/lodestone-env/data"));
     assert_eq!(roots.cache, Path::new("/dev/lodestone-env/cache"));
 }
+
+#[test]
+fn the_instances_sit_inside_the_root_until_a_folder_is_chosen() {
+    let paths = LauncherPaths::new("/data/lodestone");
+    assert_eq!(paths.instances_chosen(), None);
+    let chosen = paths.clone().with_instances(Some(PathBuf::from("/games/instances")));
+    assert_eq!(chosen.instances(), Path::new("/games/instances"));
+    assert_eq!(chosen.instance("Pack"), Path::new("/games/instances/Pack"));
+    assert_eq!(chosen.instances_chosen(), Some(Path::new("/games/instances")));
+}
+
+#[test]
+fn a_root_change_keeps_a_chosen_instances_folder_and_moves_the_default_one() {
+    let inside = LauncherPaths::new("/data/lodestone");
+    let moved = inside.with_root("/mnt/data");
+    assert_eq!(
+        moved.instances(),
+        Path::new("/mnt/data/instances"),
+        "the default folder moves with the root"
+    );
+
+    let outside = LauncherPaths::new("/data/lodestone").with_instances(Some(PathBuf::from("/games/instances")));
+    let moved = outside.with_root("/mnt/data");
+    assert_eq!(moved.instances(), Path::new("/games/instances"), "a chosen folder stays where it is");
+    assert_eq!(moved.root(), Path::new("/mnt/data"));
+}
+
+#[test]
+fn the_logs_and_cache_show_their_chosen_folder_or_the_default_one() {
+    let paths = LauncherPaths::new("/data/lodestone");
+    assert_eq!(paths.logs_chosen(), None);
+    assert_eq!(paths.cache_chosen(), None);
+
+    let chosen = paths
+        .with_logs(Some(PathBuf::from("/var/log/lodestone")))
+        .with_cache(Some(PathBuf::from("/var/cache/lodestone")));
+    assert_eq!(chosen.logs(), Path::new("/var/log/lodestone"));
+    assert_eq!(chosen.cache(), Path::new("/var/cache/lodestone"));
+    assert_eq!(chosen.logs_chosen(), Some(Path::new("/var/log/lodestone")));
+    assert_eq!(chosen.cache_chosen(), Some(Path::new("/var/cache/lodestone")));
+}
+
+#[test]
+fn a_root_change_keeps_the_logs_and_cache_the_user_chose() {
+    let paths = LauncherPaths::new("/data/lodestone").with_logs(Some(PathBuf::from("/var/log/lodestone")));
+    let moved = paths.with_root("/mnt/data");
+    assert_eq!(moved.logs_chosen(), Some(Path::new("/var/log/lodestone")));
+}

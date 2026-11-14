@@ -2,11 +2,9 @@
 //! checked, the recent imports it lists, and the modal that shows them. The root reads what the dialog asks for and queues
 //! the installs (see `import/mod.rs`).
 
-mod launchers;
 mod recent;
 mod zone;
 
-use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use aurora_leaf::Icon;
@@ -16,7 +14,8 @@ use iced::{Element, Fill, Padding, Task, alignment};
 use tracing::warn;
 
 use super::Message;
-use super::launcher::{self, Launcher, Pick, Scan};
+use super::launcher::Launcher;
+use super::launcher_picker::{self as picker, LauncherPicker};
 use super::prepare::{self, Picked, Work};
 use super::record::{ImportFormat, ImportRecord};
 use crate::app::components::button::{TextButton, Variant};
@@ -67,12 +66,8 @@ pub struct Dialog {
     reading: Option<Handle>,
     /// Why the last import did not start. It stays until the next try.
     error: Option<String>,
-    /// What each launcher's folder held, in the order the launchers are listed. Empty until the tab is first opened.
-    scans: Vec<Scan>,
-    /// Whether the launchers are being looked for.
-    scanning: bool,
-    /// The instances the user has checked on the launcher tab.
-    chosen: BTreeSet<Pick>,
+    /// The launcher tab: what each launcher's folder held, and the instances the user has checked.
+    launchers: LauncherPicker,
 }
 
 impl Dialog {
@@ -87,7 +82,7 @@ impl Dialog {
             && match self.tab {
                 Tab::Url => !self.url.trim().is_empty(),
                 Tab::File | Tab::Backup => self.picked.is_some(),
-                Tab::Launcher => !self.chosen.is_empty(),
+                Tab::Launcher => self.launchers.has_chosen(),
             }
     }
 
@@ -104,7 +99,7 @@ impl Dialog {
             }
             Tab::File => self.picked.as_ref().map(|picked| Work::File(picked.path.clone())),
             Tab::Backup => self.picked.as_ref().map(|picked| Work::Backup(picked.path.clone())),
-            Tab::Launcher => (!self.chosen.is_empty()).then(|| Work::Launchers(self.chosen.iter().cloned().collect())),
+            Tab::Launcher => self.launchers.work(),
         }
     }
 
@@ -136,8 +131,8 @@ impl Dialog {
                 self.picked = None;
                 self.error = None;
                 self.hovered = false;
-                if tab == Tab::Launcher && self.scans.is_empty() && !self.scanning {
-                    return self.scan();
+                if tab == Tab::Launcher && self.launchers.scans.is_empty() && !self.launchers.scanning {
+                    return self.launchers.update(picker::Message::Scan).map(Message::Picker);
                 }
             }
             Message::UrlChanged(url) => self.url = url,
@@ -165,51 +160,7 @@ impl Dialog {
             }
             Message::Recent(Ok(recent)) => self.recent = recent,
             Message::Recent(Err(error)) => warn!("reading the recent imports failed: {error}"),
-            Message::ScanLaunchers => return self.scan(),
-            Message::Scanned(scans) => {
-                self.scanning = false;
-                self.scans = scans;
-            }
-            Message::Locate(launcher) => {
-                return Task::perform(pick_launcher_folder(), move |folder| Message::LocatePicked(launcher, folder));
-            }
-            Message::LocatePicked(launcher, Some(folder)) => {
-                return Task::perform(
-                    async move {
-                        tokio::task::spawn_blocking(move || launcher::locate(launcher, folder))
-                            .await
-                            .unwrap_or_else(|error| Err(error.to_string()))
-                    },
-                    move |result| Message::Located(launcher, result),
-                );
-            }
-            Message::LocatePicked(_, None) => {}
-            Message::Located(launcher, Ok(scan)) => {
-                self.chosen.retain(|pick| pick.launcher != launcher);
-                if let Some(slot) = self.scans.iter_mut().find(|slot| slot.launcher == launcher) {
-                    *slot = scan;
-                }
-            }
-            Message::Located(launcher, Err(error)) => {
-                if let Some(slot) = self.scans.iter_mut().find(|slot| slot.launcher == launcher) {
-                    slot.error = Some(error);
-                }
-            }
-            Message::ToggleInstance(pick) => {
-                if self.is_available(&pick) && !self.chosen.remove(&pick) {
-                    self.chosen.insert(pick);
-                }
-            }
-            Message::ToggleLauncher(launcher) => {
-                let available = self.available(launcher);
-                if available.iter().all(|pick| self.chosen.contains(pick)) {
-                    for pick in &available {
-                        self.chosen.remove(pick);
-                    }
-                } else {
-                    self.chosen.extend(available);
-                }
-            }
+            Message::Picker(message) => return self.launchers.update(message).map(Message::Picker),
             Message::Close | Message::Submit | Message::Reimport(_) | Message::Prepared(_) => {}
         }
         Task::none()
@@ -225,40 +176,6 @@ impl Dialog {
         self.picked = None;
         self.error = None;
         Task::perform(prepare::inspect(path, self.tab == Tab::Backup), Message::Inspected)
-    }
-
-    /// Looks for the launchers on this machine in the background. The answer comes back as `Scanned`.
-    fn scan(&mut self) -> Task<Message> {
-        self.scanning = true;
-        Task::perform(
-            async { tokio::task::spawn_blocking(launcher::scan_all).await.unwrap_or_default() },
-            Message::Scanned,
-        )
-    }
-
-    /// Whether `pick` names an instance the launchers listed, and that can be imported.
-    fn is_available(&self, pick: &Pick) -> bool {
-        self.scans.iter().any(|scan| {
-            scan.launcher == pick.launcher
-                && scan
-                    .instances
-                    .iter()
-                    .any(|instance| instance.source == pick.source && instance.summary.is_ok())
-        })
-    }
-
-    /// Every instance of `launcher` that can be imported.
-    fn available(&self, launcher: Launcher) -> Vec<Pick> {
-        self.scans
-            .iter()
-            .filter(|scan| scan.launcher == launcher)
-            .flat_map(|scan| scan.instances.iter())
-            .filter(|instance| instance.summary.is_ok())
-            .map(|instance| Pick {
-                launcher,
-                source: instance.source.clone(),
-            })
-            .collect()
     }
 
     /// The modal the dialog shows: the tabs, the zone, address or launchers, the status line, the recent imports and the footer.
@@ -290,7 +207,7 @@ impl Dialog {
         match self.tab {
             Tab::File | Tab::Backup => zone::view(self.tab == Tab::Backup, self.picked.as_ref(), self.hovered, self.busy()),
             Tab::Url => self.address(),
-            Tab::Launcher => launchers::view(&self.scans, &self.chosen, self.scanning, self.busy()),
+            Tab::Launcher => self.launchers.view(self.busy()).map(Message::Picker),
         }
     }
 
@@ -335,8 +252,8 @@ impl Dialog {
     /// The footer: Cancel, and Import, which is lit once there is something to import. On the launcher tab it counts the
     /// checked instances.
     fn footer(&self) -> Element<'_, Message> {
-        let label = if self.tab == Tab::Launcher && !self.chosen.is_empty() {
-            lang::t_with("import.submit_count", &[("count", self.chosen.len().to_string().as_str())]).to_string()
+        let label = if self.tab == Tab::Launcher && self.launchers.has_chosen() {
+            lang::t_with("import.submit_count", &[("count", self.launchers.chosen_count().to_string().as_str())]).to_string()
         } else {
             lang::t("import.submit").to_string()
         };
@@ -384,15 +301,6 @@ async fn pick(backup: bool) -> Option<PathBuf> {
         picker.add_filter(lang::t("import.filter.modpack"), &["zip", "mrpack", "mcpack"])
     };
     picker.pick_file().await.map(|file| file.path().to_path_buf())
-}
-
-/// Asks for the folder a launcher is installed in or keeps its instances in. `None` when it is cancelled.
-async fn pick_launcher_folder() -> Option<PathBuf> {
-    rfd::AsyncFileDialog::new()
-        .set_title(lang::t("import.launcher.locate_title"))
-        .pick_folder()
-        .await
-        .map(|folder| folder.path().to_path_buf())
 }
 
 #[cfg(test)]

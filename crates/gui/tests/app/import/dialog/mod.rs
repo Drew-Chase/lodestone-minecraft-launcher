@@ -46,6 +46,14 @@ fn switching_tabs_clears_the_file_and_the_reason_the_last_import_failed() {
 }
 
 #[test]
+fn the_launcher_tab_takes_no_file_and_starts_the_look_once() {
+    let mut dialog = Dialog::default();
+    let _ = dialog.update(Message::TabSelected(Tab::Launcher));
+    assert!(dialog.launchers.scanning, "opening the tab starts the look");
+    assert!(!dialog.takes_files(), "the launcher tab takes no file");
+}
+
+#[test]
 fn a_file_is_lit_over_the_file_tabs_and_never_over_the_address_tab() {
     let mut dialog = Dialog::default();
     let _ = dialog.update(Message::Hovering(true));
@@ -139,113 +147,6 @@ fn the_recent_imports_are_listed_as_they_were_read() {
     let _ = dialog.update(Message::Recent(Ok(vec![recorded("One"), recorded("Two")])));
     assert_eq!(dialog.recent.len(), 2);
     assert!(matches!(dialog.work(Some(1)), Some(Work::Again(record)) if record.name == "Two"));
-}
-
-/// An instance a launcher listed, which imports when `summary` is `Ok`.
-fn listed(launcher: Launcher, source: &str, summary: Result<String, String>) -> crate::app::import::launcher::Instance {
-    crate::app::import::launcher::Instance {
-        launcher,
-        source: source.to_string(),
-        name: source.to_string(),
-        summary,
-    }
-}
-
-/// A scan of `launcher` that lists `instances`.
-fn scan_of(launcher: Launcher, instances: Vec<crate::app::import::launcher::Instance>) -> launcher::Scan {
-    launcher::Scan {
-        launcher,
-        folder: Some(PathBuf::from("/games/launcher")),
-        instances,
-        error: None,
-    }
-}
-
-#[test]
-fn the_launcher_tab_looks_once_and_lists_what_the_scan_found() {
-    let mut dialog = Dialog::default();
-    let _ = dialog.update(Message::TabSelected(Tab::Launcher));
-    assert!(dialog.scanning, "opening the tab starts the look");
-    let _ = dialog.update(Message::Scanned(vec![scan_of(
-        Launcher::Prism,
-        vec![listed(Launcher::Prism, "/prism/Alpha", Ok("1.21.1 · VANILLA".to_string()))],
-    )]));
-    assert!(!dialog.scanning);
-    assert_eq!(dialog.scans.len(), 1);
-    assert!(!dialog.takes_files(), "the launcher tab takes no file");
-}
-
-#[test]
-fn only_instances_that_can_be_imported_can_be_checked_and_import_follows_the_checks() {
-    let mut dialog = Dialog::default();
-    let _ = dialog.update(Message::Scanned(vec![scan_of(
-        Launcher::Prism,
-        vec![
-            listed(Launcher::Prism, "/prism/Alpha", Ok("1.21.1 · VANILLA".to_string())),
-            listed(Launcher::Prism, "/prism/Broken", Err("no version".to_string())),
-        ],
-    )]));
-    let _ = dialog.update(Message::TabSelected(Tab::Launcher));
-    assert!(!dialog.ready(), "nothing is checked yet");
-
-    let broken = Pick {
-        launcher: Launcher::Prism,
-        source: "/prism/Broken".to_string(),
-    };
-    let _ = dialog.update(Message::ToggleInstance(broken));
-    assert!(dialog.chosen.is_empty(), "an instance that cannot be imported stays unchecked");
-
-    let alpha = Pick {
-        launcher: Launcher::Prism,
-        source: "/prism/Alpha".to_string(),
-    };
-    let _ = dialog.update(Message::ToggleInstance(alpha.clone()));
-    assert!(dialog.ready());
-    assert!(matches!(dialog.work(None), Some(Work::Launchers(picks)) if picks == vec![alpha.clone()]));
-    let _ = dialog.update(Message::ToggleInstance(alpha.clone()));
-    assert!(!dialog.ready(), "a second press unchecks it");
-}
-
-#[test]
-fn select_all_checks_every_importable_instance_of_one_launcher_and_clears_them_again() {
-    let mut dialog = Dialog::default();
-    let _ = dialog.update(Message::Scanned(vec![scan_of(
-        Launcher::AtLauncher,
-        vec![
-            listed(Launcher::AtLauncher, "/at/One", Ok("1.20.1 · VANILLA".to_string())),
-            listed(Launcher::AtLauncher, "/at/Two", Ok("1.21.1 · FABRIC 0.16.10".to_string())),
-            listed(Launcher::AtLauncher, "/at/Broken", Err("no version".to_string())),
-        ],
-    )]));
-    let _ = dialog.update(Message::ToggleLauncher(Launcher::AtLauncher));
-    assert_eq!(dialog.chosen.len(), 2);
-    let _ = dialog.update(Message::ToggleLauncher(Launcher::AtLauncher));
-    assert!(dialog.chosen.is_empty());
-}
-
-#[test]
-fn locating_a_launcher_replaces_its_scan_and_a_failed_locate_shows_its_reason() {
-    let mut dialog = Dialog::default();
-    let _ = dialog.update(Message::Scanned(vec![scan_of(Launcher::Modrinth, Vec::new())]));
-    let _ = dialog.update(Message::ToggleInstance(Pick {
-        launcher: Launcher::Modrinth,
-        source: "/nowhere".to_string(),
-    }));
-    let _ = dialog.update(Message::Located(
-        Launcher::Modrinth,
-        Err("No Modrinth app instances were found in that folder.".to_string()),
-    ));
-    assert_eq!(
-        dialog.scans[0].error.as_deref(),
-        Some("No Modrinth app instances were found in that folder.")
-    );
-    let found = scan_of(
-        Launcher::Modrinth,
-        vec![listed(Launcher::Modrinth, "/modrinth/Pack", Ok("26.3 · FABRIC 0.20.1".to_string()))],
-    );
-    let _ = dialog.update(Message::Located(Launcher::Modrinth, Ok(found)));
-    assert_eq!(dialog.scans[0].instances.len(), 1);
-    assert!(dialog.chosen.is_empty(), "a relocated launcher's old checks are dropped");
 }
 
 #[test]

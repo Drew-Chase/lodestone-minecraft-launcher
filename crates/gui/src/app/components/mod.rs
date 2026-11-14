@@ -12,6 +12,7 @@ pub mod chip;
 pub mod context_menu;
 pub mod dropdown;
 pub mod floating_dock;
+pub mod folder_rows;
 pub mod game_controls;
 pub mod grid;
 pub mod hint;

@@ -27,6 +27,7 @@ pub mod resource;
 pub mod server_pack;
 pub mod servers;
 pub mod settings;
+pub mod setup;
 pub mod skins;
 pub mod worlds;
 
@@ -40,6 +41,9 @@ pub enum Page {
     /// The sign-in gate shown before the primary navigation.
     #[default]
     Login,
+    /// The setup wizard. It replaces the sign-in page on first run, while no account is stored and the setup is not yet
+    /// finished or skipped. The sign-in page stays for adding an account.
+    Setup,
     /// The instance Library, the rail's book and the startup choice of the same name.
     Library,
     /// The Minecraft news home, opened by the Lodestone logo. It lists Mojang's posts and patch notes.
@@ -73,6 +77,7 @@ impl Page {
     pub fn title(self) -> &'static str {
         match self {
             Page::Login => "Login",
+            Page::Setup => "Setup",
             Page::Library => "Library",
             Page::News => "News",
             Page::Discover => "Discover",

@@ -11,6 +11,7 @@ use crate::app::components::button::Variant;
 use crate::app::components::panel::divided;
 use crate::app::components::setting_row::described_setting;
 use crate::app::components::{TextButton, Toggle};
+use crate::app::data_folder::{FolderAction, FolderKind};
 use crate::app::lang;
 use crate::app::preferences::{Privacy, SettingsValues};
 use crate::app::theme::{color, fonts};
@@ -104,7 +105,8 @@ fn not_enforced<'a>() -> Element<'a, Message> {
 /// The data actions: open the data folder, export the settings, clear the caches, and clear the local data in red.
 fn data_actions<'a>() -> Element<'a, Message> {
     row![
-        TextButton::labeled_icon(Icon::lucide().folder(), lang::t("settings.privacy.open_data"), Variant::Ghost).on_press(Message::OpenDataFolder),
+        TextButton::labeled_icon(Icon::lucide().folder(), lang::t("settings.privacy.open_data"), Variant::Ghost)
+            .on_press(Message::Folder(FolderKind::Shared, FolderAction::Open)),
         TextButton::labeled_icon(Icon::lucide().upload(), lang::t("settings.privacy.export"), Variant::Ghost).on_press(Message::ExportSettings),
         TextButton::labeled_icon(Icon::lucide().eraser(), lang::t("settings.privacy.clear_cache"), Variant::Ghost).on_press(Message::ClearCache),
         TextButton::labeled_icon(Icon::lucide().trash(), lang::t("settings.privacy.clear"), Variant::Danger).on_press(Message::ClearLocalData),

@@ -30,6 +30,7 @@ use crate::app::components::panel::{hairline, panel_with_padding};
 use crate::app::components::scroll_spy;
 use crate::app::components::setting_row::section_header;
 use crate::app::components::{TextButton, scrollbar};
+use crate::app::data_folder::{FolderAction, FolderKind};
 use crate::app::install::catalog::{self, BundledJava};
 use crate::app::install::java;
 use crate::app::lang;
@@ -107,12 +108,8 @@ pub enum Message {
     MemoryLoaded(u32),
     /// An account was switched, signed out of, or added. The root carries it out.
     Account(accounts::AccountAction),
-    /// Opens the folder the launcher keeps its data in. The root reveals it.
-    OpenDataFolder,
-    /// Asks for another folder to move the data to. The root asks, and moves it when the user confirms.
-    ChooseDataFolder,
-    /// Moves the data back to the default folder. The root asks, as it does for a folder picked.
-    UseDefaultDataFolder,
+    /// A folder row's button: the folder opens, or it is changed, or it goes back to its default. The root carries it out.
+    Folder(FolderKind, FolderAction),
     /// Saves the saved settings to a file the user picks.
     ExportSettings,
     /// Asks before the saved settings and the sign-ins are cleared. The root asks.
@@ -271,14 +268,9 @@ impl Settings {
     /// Applies a message. Navigation, opening the folder and saving are the root's, so they leave here untouched.
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Navigate(_)
-            | Message::ChooseDataFolder
-            | Message::UseDefaultDataFolder
-            | Message::OpenDataFolder
-            | Message::ClearLocalData
-            | Message::ClearCache
-            | Message::Save
-            | Message::Account(_) => Task::none(),
+            Message::Navigate(_) | Message::Folder(..) | Message::ClearLocalData | Message::ClearCache | Message::Save | Message::Account(_) => {
+                Task::none()
+            }
             Message::ExportSettings => self.export_settings(),
             Message::Section(tab) => {
                 self.tab = tab;

@@ -74,7 +74,7 @@ fn runs_actions(place: RunsPlace) -> Actions<LodestoneAppMessage> {
 impl LodestoneLauncher {
     pub fn view(&self) -> Element<'_, LodestoneAppMessage> {
         let _scope = perf::scope("view.root");
-        let content: Element<'_, LodestoneAppMessage> = if self.router.current() == Page::Login || self.portable_signing_in() {
+        let content: Element<'_, LodestoneAppMessage> = if matches!(self.router.current(), Page::Login | Page::Setup) || self.portable_signing_in() {
             // The login gate: the backdrop fills the whole window and the
             // chrome floats over it, transparent. No rail, no history.
             let auth_status = self.auth_status.as_ref().map(|result| match result {
@@ -102,9 +102,7 @@ impl LodestoneLauncher {
                     self.titlebar
                         .view(self.router.can_go_back(), self.router.can_go_forward(), true, &GameBar::default(), false)
                         .map(LodestoneAppMessage::TitlebarMessage),
-                    container(self.login.view(auth_status).map(LodestoneAppMessage::Login))
-                        .width(Fill)
-                        .height(Fill),
+                    container(self.gate_content(auth_status)).width(Fill).height(Fill),
                 ]
                 .width(Fill)
                 .height(Fill),
@@ -252,6 +250,21 @@ impl LodestoneLauncher {
         )
     }
 
+    /// The sign-in gate's page under its chrome: the setup wizard while it is the page, else the sign-in page.
+    fn gate_content(&self, auth_status: Option<AuthStatus>) -> Element<'_, LodestoneAppMessage> {
+        if self.router.current() == Page::Setup {
+            let context = crate::app::pages::setup::Context {
+                login: &self.login,
+                auth: auth_status,
+                account: self.account.as_ref().map(Account::username),
+                paths: &self.paths,
+            };
+            self.setup.view(context).map(LodestoneAppMessage::Setup)
+        } else {
+            self.login.view(auth_status).map(LodestoneAppMessage::Login)
+        }
+    }
+
     /// The install of the instance the page shows, while that install has not ended.
     fn instance_install(&self) -> Option<&Pending> {
         let instance = self.instance_page.instance()?;
@@ -382,6 +395,7 @@ impl LodestoneLauncher {
         let page = self.router.current();
         let _scope = perf::scope(match page {
             Page::Login => "view.login",
+            Page::Setup => "view.setup",
             Page::Library => "view.library",
             Page::News => "view.news",
             Page::Instance => "view.instance",
@@ -396,6 +410,8 @@ impl LodestoneLauncher {
         });
         match page {
             Page::Login => self.login.view(None).map(LodestoneAppMessage::Login),
+            // The wizard has its own gate branch in `view`, so the outlet does not draw it.
+            Page::Setup => Space::new().into(),
             Page::Library => self
                 .library
                 .view(self.window_size, &self.art, self.updater.button(), &self.notifications)

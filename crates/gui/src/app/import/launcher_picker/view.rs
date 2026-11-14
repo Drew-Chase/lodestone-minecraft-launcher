@@ -1,13 +1,13 @@
-//! The From launcher tab: one section per launcher, with the folder it was found in, a Locate button, and a checkbox for each
-//! instance it lists. An instance that cannot be imported shows its reason and cannot be checked.
+//! The launcher picker's rows: one section per launcher, with the folder it was found in, a Locate button, a select-all checkbox,
+//! and a row per instance it lists. An instance that cannot be imported shows its reason and cannot be checked.
 
 use std::collections::BTreeSet;
 
 use iced::widget::{Text, column, row};
-use iced::{Color, Element, Fill, Padding, alignment};
+use iced::{Color, Element, Fill, alignment};
 
-use super::super::Message;
 use super::super::launcher::{Instance, Launcher, Pick, Scan};
+use super::Message;
 use crate::app::components::button::TextButton;
 use crate::app::components::checkbox::{self, checkbox};
 use crate::app::lang;
@@ -17,7 +17,7 @@ use crate::app::theme::{color, fonts};
 const UNVERIFIED: [Launcher; 4] = [Launcher::Prism, Launcher::MultiMc, Launcher::AtLauncher, Launcher::Minecraft];
 
 /// The tab's content: a section per launcher. While the launchers are looked for, a line says so, and an empty scan says so.
-pub fn view(scans: &[Scan], chosen: &BTreeSet<Pick>, scanning: bool, busy: bool) -> Element<'static, Message> {
+pub(super) fn rows(scans: &[Scan], chosen: &BTreeSet<Pick>, scanning: bool, busy: bool) -> Element<'static, Message> {
     if scans.is_empty() {
         let text = if scanning {
             lang::t("import.launcher.looking")
@@ -68,7 +68,7 @@ fn section(scan: &Scan, chosen: &BTreeSet<Pick>, busy: bool) -> Element<'static,
     if !busy {
         header = header.push(
             TextButton::ghost(lang::t("import.launcher.locate"))
-                .padding(Padding::new(0.0).left(12).right(12).top(7).bottom(7))
+                .padding(iced::Padding::new(0.0).left(12).right(12).top(7).bottom(7))
                 .on_press(Message::Locate(launcher)),
         );
     }

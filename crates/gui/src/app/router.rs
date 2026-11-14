@@ -51,26 +51,61 @@ impl Router {
 
     /// Steps back one entry, returning `true` when the page changed.
     pub fn go_back(&mut self) -> bool {
-        match self.back.pop() {
-            Some(page) => {
-                self.forward.push(self.current);
-                self.current = page;
+        self.go_back_where(|_| true)
+    }
+
+    /// Steps back to the nearest entry that `accepts`, passing over the entries it refuses. Those stay in the history, so a
+    /// forward step can reach them. Returns `false`, and leaves the history as it is, when no entry back is accepted.
+    pub fn go_back_where(&mut self, accepts: impl Fn(Page) -> bool) -> bool {
+        let history = self.history();
+        let here = self.back.len();
+        match (0..here).rev().find(|&index| accepts(history[index])) {
+            Some(index) => {
+                self.seat(&history, index);
                 true
             }
             None => false,
         }
     }
 
-    /// Steps forward one entry, returning `true` when the page changed.
-    pub fn go_forward(&mut self) -> bool {
-        match self.forward.pop() {
-            Some(page) => {
-                self.back.push(self.current);
-                self.current = page;
+    /// Steps forward to the nearest entry that `accepts`, passing over the entries it refuses. Returns `false`, and leaves the
+    /// history as it is, when no entry ahead is accepted.
+    pub fn go_forward_where(&mut self, accepts: impl Fn(Page) -> bool) -> bool {
+        let history = self.history();
+        let here = self.back.len();
+        match (here + 1..history.len()).find(|&index| accepts(history[index])) {
+            Some(index) => {
+                self.seat(&history, index);
                 true
             }
             None => false,
         }
+    }
+
+    /// Replaces the current entry with `page`, and drops the entry below it when that is `page` as well, so the page a sign-in
+    /// was started from is not kept twice. A sign-in that returns to the page it came from leaves no sign-in page to step back
+    /// to.
+    pub fn leave(&mut self, page: Page) {
+        if self.back.last() == Some(&page) {
+            self.back.pop();
+        }
+        self.current = page;
+    }
+
+    /// The whole history in order: the back entries, the current page, then the forward entries nearest first.
+    fn history(&self) -> Vec<Page> {
+        let mut history = self.back.clone();
+        history.push(self.current);
+        history.extend(self.forward.iter().rev().copied());
+        history
+    }
+
+    /// Makes `history[index]` the current page. The entries before it become the back stack, and the ones after it the forward
+    /// stack.
+    fn seat(&mut self, history: &[Page], index: usize) {
+        self.back = history[..index].to_vec();
+        self.current = history[index];
+        self.forward = history[index + 1..].iter().rev().copied().collect();
     }
 
     /// The page currently on screen.

@@ -12,12 +12,77 @@ use std::sync::OnceLock;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LauncherPaths {
     root: PathBuf,
+    /// The instances folder the user chose, when it is not the default one inside the root.
+    instances: Option<PathBuf>,
+    /// The logs folder the user chose. A chosen folder takes effect at the next start.
+    logs: Option<PathBuf>,
+    /// The cache folder the user chose. A chosen folder takes effect at the next start.
+    cache: Option<PathBuf>,
 }
 
 impl LauncherPaths {
-    /// The paths under `root`.
+    /// The paths under `root`, with the instances kept inside it and the logs and cache in their default folders.
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            instances: None,
+            logs: None,
+            cache: None,
+        }
+    }
+
+    /// The same paths, with the instances kept in `folder`. `None` keeps them inside the root.
+    pub fn with_instances(mut self, folder: Option<PathBuf>) -> Self {
+        self.instances = folder;
+        self
+    }
+
+    /// The same paths, with the logs kept in `folder`. `None` keeps them in the default folder.
+    pub fn with_logs(mut self, folder: Option<PathBuf>) -> Self {
+        self.logs = folder;
+        self
+    }
+
+    /// The same paths, with the cache kept in `folder`. `None` keeps it in the default folder.
+    pub fn with_cache(mut self, folder: Option<PathBuf>) -> Self {
+        self.cache = folder;
+        self
+    }
+
+    /// The same paths under another root. The folders the user chose stay where they are, while the default instances folder
+    /// moves with the root.
+    pub fn with_root(&self, root: impl Into<PathBuf>) -> Self {
+        Self {
+            root: root.into(),
+            instances: self.instances.clone(),
+            logs: self.logs.clone(),
+            cache: self.cache.clone(),
+        }
+    }
+
+    /// The instances folder the user chose, when it is not the default one inside the root.
+    pub fn instances_chosen(&self) -> Option<&Path> {
+        self.instances.as_deref()
+    }
+
+    /// The logs folder the user chose, when it is not the default one.
+    pub fn logs_chosen(&self) -> Option<&Path> {
+        self.logs.as_deref()
+    }
+
+    /// The cache folder the user chose, when it is not the default one.
+    pub fn cache_chosen(&self) -> Option<&Path> {
+        self.cache.as_deref()
+    }
+
+    /// The logs folder the launcher has chosen: the one the user picked, else the default. It is used from the next start.
+    pub fn logs(&self) -> PathBuf {
+        self.logs.clone().or_else(default_logs_dir).unwrap_or_default()
+    }
+
+    /// The cache folder the launcher has chosen: the one the user picked, else the default. It is used from the next start.
+    pub fn cache(&self) -> PathBuf {
+        self.cache.clone().or_else(default_cache_dir).unwrap_or_default()
     }
 
     /// The launcher's data root, which holds the folders below.
@@ -30,9 +95,12 @@ impl LauncherPaths {
         self.root.join("skins")
     }
 
-    /// Every instance folder: `<root>/instances`.
+    /// Every instance folder: the one the user chose, else `<root>/instances`.
     pub fn instances(&self) -> PathBuf {
-        self.root.join("instances")
+        match &self.instances {
+            Some(folder) => folder.clone(),
+            None => self.root.join("instances"),
+        }
     }
 
     /// One instance's folder, named by its cleaned directory name.
@@ -159,6 +227,35 @@ fn fixed_roots() -> Option<&'static FixedRoots> {
     PORTABLE_ROOTS.get().or_else(|| DEVELOPMENT_ROOTS.get())
 }
 
+/// The logs and cache folders the user chose, read from the preferences once at the start. A chosen folder takes effect at the
+/// next start, since the logs open before the window does.
+static SAVED_FOLDERS: OnceLock<SavedFolders> = OnceLock::new();
+
+/// The folders the user chose for the logs and the cache. `None` is the default folder.
+#[derive(Debug, Default)]
+struct SavedFolders {
+    logs: Option<PathBuf>,
+    cache: Option<PathBuf>,
+}
+
+/// Reads the logs and cache folders the user chose. A portable launcher or a development run keeps its fixed folders, so it
+/// reads none. Call it after the roots are chosen and before logging starts.
+pub fn use_saved_folders() {
+    if fixed_roots().is_some() {
+        return;
+    }
+    let saved = crate::app::preferences::Preferences::load();
+    let _ = SAVED_FOLDERS.set(SavedFolders {
+        logs: saved.logs_folder,
+        cache: saved.cache_folder,
+    });
+}
+
+/// The folder the user chose for one of the saved folders, when there is one.
+fn saved_folder(pick: impl Fn(&SavedFolders) -> Option<PathBuf>) -> Option<PathBuf> {
+    SAVED_FOLDERS.get().and_then(pick)
+}
+
 /// The app bundle that a macOS launcher runs from: `Lodestone.app` for `Lodestone.app/Contents/MacOS/<launcher>`. None for
 /// any other file.
 pub fn app_bundle(executable: &Path) -> Option<PathBuf> {
@@ -213,6 +310,12 @@ pub fn config_dir() -> Option<PathBuf> {
 /// The folder the launcher keeps caches in, such as the news feed, downloaded pictures and staged updates:
 /// `<cache dir>/lodestone`, or the `cache` folder of the portable or development root when one applies.
 pub fn cache_dir() -> Option<PathBuf> {
+    saved_folder(|saved| saved.cache.clone()).or_else(default_cache_dir)
+}
+
+/// The cache folder without the user's choice: the cache folder of the portable or development root when one applies, else
+/// `<cache dir>/lodestone`.
+pub fn default_cache_dir() -> Option<PathBuf> {
     match fixed_roots() {
         Some(roots) => Some(roots.cache.clone()),
         None => dirs::cache_dir().map(|dir| dir.join("lodestone")),
@@ -221,6 +324,11 @@ pub fn cache_dir() -> Option<PathBuf> {
 
 /// The folder the launcher writes its logs to: `logs/` in the config folder, so a portable launcher's logs go to its own.
 pub fn logs_dir() -> Option<PathBuf> {
+    saved_folder(|saved| saved.logs.clone()).or_else(default_logs_dir)
+}
+
+/// The logs folder without the user's choice: `logs/` in the config folder, so a portable launcher's logs go to its own.
+pub fn default_logs_dir() -> Option<PathBuf> {
     config_dir().map(|dir| dir.join("logs"))
 }
 

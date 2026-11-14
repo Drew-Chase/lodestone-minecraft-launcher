@@ -111,14 +111,14 @@ impl LodestoneLauncher {
             }
             LodestoneAppMessage::Navigate(page) => self.navigate(page),
             LodestoneAppMessage::NavBack => {
-                if self.router.go_back() {
+                if self.step_history(false) {
                     info!("Navigated back to {}", self.router.current().title());
                     return Task::batch([self.rescan_on_return(), self.reshow_pictures()]);
                 }
                 Task::none()
             }
             LodestoneAppMessage::NavForward => {
-                if self.router.go_forward() {
+                if self.step_history(true) {
                     info!("Navigated forward to {}", self.router.current().title());
                     return Task::batch([self.rescan_on_return(), self.reshow_pictures()]);
                 }
@@ -414,12 +414,10 @@ impl LodestoneLauncher {
             // variants, add the delegation arm per the `pages` contract.
             LodestoneAppMessage::Settings(SettingsMessage::Navigate(page)) => self.navigate(page),
             LodestoneAppMessage::Settings(SettingsMessage::Save) => self.save_settings(),
-            LodestoneAppMessage::Settings(SettingsMessage::OpenDataFolder) => super::instances::reveal_folder(self.paths.root()),
-            LodestoneAppMessage::Settings(SettingsMessage::ChooseDataFolder) => self.choose_data_folder(),
-            LodestoneAppMessage::Settings(SettingsMessage::UseDefaultDataFolder) => self.use_default_data_folder(),
-            LodestoneAppMessage::DataFolderPicked(folder) => self.data_folder_picked(folder),
-            LodestoneAppMessage::DataFolderAnswered { folder, confirmed } => self.data_folder_answered(folder, confirmed),
-            LodestoneAppMessage::DataFolderMoved { folder, result } => self.data_folder_moved(folder, result),
+            LodestoneAppMessage::Settings(SettingsMessage::Folder(kind, action)) => self.folder_message(kind, action),
+            LodestoneAppMessage::FolderPicked { kind, folder } => self.folder_picked(kind, folder),
+            LodestoneAppMessage::FolderAnswered { kind, folder, confirmed } => self.folder_answered(kind, folder, confirmed),
+            LodestoneAppMessage::FolderMoved { kind, folder, result } => self.folder_moved(kind, folder, result),
             LodestoneAppMessage::Settings(SettingsMessage::ClearLocalData) => self.ask_clear_local_data(),
             LodestoneAppMessage::Settings(SettingsMessage::ClearCache) => self.ask_clear_cache(),
             LodestoneAppMessage::Settings(SettingsMessage::Account(action)) => match action {
@@ -432,6 +430,7 @@ impl LodestoneLauncher {
             LodestoneAppMessage::Login(LoginMessage::SelectLanguage(code)) => select_language(code),
             // Sign-in and account handling lives in `auth.rs`.
             LodestoneAppMessage::Login(message) => self.update_login(message),
+            LodestoneAppMessage::Setup(message) => self.setup_message(message),
             LodestoneAppMessage::CredentialsSaved(result) => self.credentials_saved(result),
             LodestoneAppMessage::SidebarNav {
                 group: NavGroup::Top,
@@ -518,31 +517,28 @@ impl LodestoneLauncher {
         let from = self.router.current();
         if self.router.push(page) {
             info!("Navigated: {} → {}", from.title(), page.title());
-            if page == Page::Discover {
-                // Opened from the sidebar, the page starts out with no instance to return to. The Mods tab's Add sets
-                // that again once this navigation has run.
-                self.discover.set_origin(None);
-                return self.open_discover();
-            }
-            if page == Page::Worlds {
-                return self.open_worlds();
-            }
-            if page == Page::News {
-                return self.open_news();
-            }
-            if page == Page::Servers {
-                return self.open_servers();
-            }
-            if page == Page::Skins {
-                return self.open_skins();
-            }
-            if page == Page::Settings {
-                return self.open_settings();
-            }
-        } else {
-            debug!("Navigation ignored: already on {}", page.title());
+            return self.open_page(page);
         }
+        debug!("Navigation ignored: already on {}", page.title());
         Task::none()
+    }
+
+    /// Starts what `page` needs once it is on screen: its lists load, and its draft starts from the saved values.
+    pub(super) fn open_page(&mut self, page: Page) -> Task<LodestoneAppMessage> {
+        match page {
+            // Opened from the sidebar, the page starts out with no instance to return to. The Mods tab's Add sets that again
+            // once this navigation has run.
+            Page::Discover => {
+                self.discover.set_origin(None);
+                self.open_discover()
+            }
+            Page::Worlds => self.open_worlds(),
+            Page::News => self.open_news(),
+            Page::Servers => self.open_servers(),
+            Page::Skins => self.open_skins(),
+            Page::Settings => self.open_settings(),
+            Page::Library | Page::Login | Page::Setup | Page::Instance | Page::Resource | Page::ServerPack | Page::Friends => Task::none(),
+        }
     }
 
     /// Loads the instance list from the database.

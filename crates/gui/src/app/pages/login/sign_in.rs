@@ -15,7 +15,7 @@ use super::{Flow, Login, Message};
 impl Login {
     /// The Microsoft device-code area and its alternates, per flow state.
     /// The 18px rhythm matches the reference's collapsed margins.
-    pub(super) fn sign_in_area(&self) -> Element<'_, Message> {
+    pub(crate) fn sign_in_area(&self) -> Element<'_, Message> {
         let mut body = column![].spacing(18);
         if let Flow::Failed(error) = &self.flow {
             // Unmapped provider errors can be long — cap the card's copy so

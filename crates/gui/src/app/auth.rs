@@ -106,7 +106,7 @@ impl LodestoneLauncher {
                 self.auth_generation = self.auth_generation.wrapping_add(1);
                 self.login.update(LoginMessage::Reset);
                 if std::mem::take(&mut self.adding_account) {
-                    return self.navigate(Page::Settings);
+                    return self.leave_to(Page::Settings);
                 }
                 Task::none()
             }
@@ -170,11 +170,22 @@ impl LodestoneLauncher {
     }
 
     /// Boot: enters the launcher at once with the account that plays by default, so no network call stands between the
-    /// start and the first page. An offline profile plays as it is. A Microsoft account starts on a stand-in session that
-    /// is already due for a refresh, and that refresh runs in the background through the single refresh a launch uses. A
-    /// launch or a skin change pressed meanwhile waits for it, so the refresh token is never spent twice. The face shows
-    /// from the copy kept on disk until the restored profile is read.
+    /// start and the first page. With no account stored, the launcher opens its sign-in gate instead: the setup wizard on
+    /// first run, else the sign-in page (see `setup::signed_out_page`).
     pub(super) fn restore_at_boot(&mut self) -> Task<LodestoneAppMessage> {
+        if self.credentials.primary_account().is_none() {
+            let page = self.signed_out_page();
+            self.router.replace(page);
+            return Task::none();
+        }
+        Task::batch([self.start_primary(), self.enter_launcher()])
+    }
+
+    /// Makes the account that plays by default the signed-in one, without moving to another page. An offline profile plays as
+    /// it is. A Microsoft account starts on a stand-in session that is already due for a refresh, and that refresh runs in the
+    /// background through the single refresh a launch uses. A launch or a skin change pressed meanwhile waits for it, so the
+    /// refresh token is never spent twice. The face shows from the copy kept on disk until the restored profile is read.
+    pub(super) fn start_primary(&mut self) -> Task<LodestoneAppMessage> {
         let Some(account) = self.credentials.primary_account().cloned() else {
             return Task::none();
         };
@@ -182,7 +193,7 @@ impl LodestoneLauncher {
             StoredAccount::Offline { username } => {
                 info!("Starting as the offline profile {username}");
                 self.account = Some(Account::Offline { username });
-                Task::batch([self.appearance_task(), self.enter_launcher()])
+                self.appearance_task()
             }
             StoredAccount::Microsoft(microsoft) => {
                 info!("Starting as {}; the Microsoft sign-in is restored in the background", microsoft.username);
@@ -192,7 +203,7 @@ impl LodestoneLauncher {
                 self.restoring = Some(microsoft.username.clone());
                 let cached = cached_appearance(microsoft.uuid.clone());
                 let refresh = self.start_session_refresh(microsoft.refresh_token);
-                Task::batch([cached, refresh, self.enter_launcher()])
+                Task::batch([cached, refresh])
             }
         }
     }
@@ -223,17 +234,39 @@ impl LodestoneLauncher {
         };
         self.account = None;
         self.face = None;
+        // Another account is still kept, so the launcher plays with it, and the sign-in page stays closed.
+        if self.credentials.primary_account().is_some() {
+            let notice = self
+                .alerts
+                .show(Alert::warn(lang::t_with("login.restore_refused", &[("name", username.as_str())])))
+                .discard();
+            return Task::batch([save, notice, self.start_primary()]);
+        }
         self.login.update(LoginMessage::SignInFailed(error.message));
-        Task::batch([save, self.navigate(Page::Login)])
+        let page = self.signed_out_page();
+        Task::batch([save, self.navigate(page)])
     }
 
-    /// The page a successful sign-in leads to: the launcher, or the Settings page when the sign-in added an account.
+    /// The page a successful sign-in leads to. In the setup wizard it moves the wizard on to its next step. Otherwise it is the
+    /// launcher, or the Settings page when the sign-in added an account.
     fn signed_in_destination(&mut self) -> Task<LodestoneAppMessage> {
+        if self.router.current() == Page::Setup {
+            self.setup.advance();
+            return Task::none();
+        }
         if std::mem::take(&mut self.adding_account) {
-            self.navigate(Page::Settings)
+            self.leave_to(Page::Settings)
         } else {
             self.enter_launcher()
         }
+    }
+
+    /// Returns from a sign-in page to `page`, the page the sign-in was started from. The sign-in's own entry leaves the history,
+    /// so Back does not return to the sign-in page while an account plays.
+    pub(super) fn leave_to(&mut self, page: Page) -> Task<LodestoneAppMessage> {
+        self.router.leave(page);
+        info!("Returned to {}", page.title());
+        self.open_page(page)
     }
 
     /// The task that fetches the appearance of the account in use: its skin and the cape it wears, or the vanilla Steve when
@@ -341,7 +374,8 @@ impl LodestoneLauncher {
         if self.credentials.accounts.is_empty() {
             self.account = None;
             self.face = None;
-            return Task::batch([save, self.navigate(Page::Login)]);
+            let page = self.signed_out_page();
+            return Task::batch([save, self.navigate(page)]);
         }
         if !was_playing {
             return save;

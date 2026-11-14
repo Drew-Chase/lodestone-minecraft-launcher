@@ -84,8 +84,8 @@ pub(crate) fn curseforge() -> Result<&'static Platform<lodestone_platforms::Curs
     CURSEFORGE.as_ref().ok_or_else(|| lang::t("discover.curseforge.no_key").to_string())
 }
 
-/// Runs one search on `source`, and times it.
-async fn run_search(source: Source, query: SearchQuery) -> (Result<SearchPage, String>, u128) {
+/// Runs one search on `source`, and times it. The setup wizard's Discover step searches through it too.
+pub(crate) async fn run_search(source: Source, query: SearchQuery) -> (Result<SearchPage, String>, u128) {
     let started = Instant::now();
     let result = match source {
         Source::Modrinth => MODRINTH.search(&query).await.map_err(|error| error.to_string()),

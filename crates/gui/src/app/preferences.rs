@@ -35,9 +35,27 @@ pub struct Preferences {
     /// folder. It sits here, outside the data, so the launcher finds it before it opens the data.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_folder: Option<PathBuf>,
+    /// The folder the instances are kept in. `None` is the `instances` folder inside the data folder. It sits here, beside the
+    /// data folder, so the launcher finds it before it opens the data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instances_folder: Option<PathBuf>,
+    /// The folder the logs are written to. `None` is the default folder. A change takes effect at the next start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logs_folder: Option<PathBuf>,
+    /// The folder the cache is kept in. `None` is the default folder. A change takes effect at the next start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_folder: Option<PathBuf>,
+    /// Whether the setup wizard was finished or skipped. With no account stored, the launcher shows the wizard until then.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub setup_finished: bool,
     /// The values the Settings page saves. They are flattened into the file's top level.
     #[serde(flatten)]
     pub settings: SettingsValues,
+}
+
+/// Whether a flag is off, so a flag at its default is left out of the file.
+fn is_false(flag: &bool) -> bool {
+    !*flag
 }
 
 /// Serialises every change to the preferences file. A change reads the file, applies one change and writes it back, under this

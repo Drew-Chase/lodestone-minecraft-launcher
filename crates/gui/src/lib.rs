@@ -13,6 +13,8 @@ use tracing::info;
 pub fn prepare() {
     app::portable::prepare();
     app::paths::use_app_directory(std::env::var_os("APP_DIRECTORY").as_deref());
+    // The logs and cache folders the user chose are read once the roots are known, before logging starts.
+    app::paths::use_saved_folders();
 }
 
 pub fn run() -> Result<()> {

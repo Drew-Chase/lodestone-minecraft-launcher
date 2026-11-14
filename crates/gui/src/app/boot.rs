@@ -9,6 +9,7 @@ use crate::app::paths::{self, LauncherPaths};
 use crate::app::preferences::Preferences;
 use iced::window::{Level, Position};
 use iced::{Size, Task, window};
+use std::path::PathBuf;
 use tracing::{info, warn};
 
 use super::{LodestoneAppMessage, LodestoneLauncher, probe_enabled, updater};
@@ -24,11 +25,17 @@ impl LodestoneLauncher {
         }
         preferences.settings.apply();
         let id = window::latest();
-        // The data folder is read before the database opens, so every path the launcher builds starts in the right place.
-        let data = LauncherPaths::new(paths::resolve_data_root(preferences.data_folder.as_deref()));
+        // The data folder is read before the database opens, so every path the launcher builds starts in the right place. A
+        // portable launcher or a development run keeps its fixed folders, so the folders saved for it do not apply.
+        let fixed = paths::data_folder_fixed();
+        let data = LauncherPaths::new(paths::resolve_data_root(preferences.data_folder.as_deref()))
+            .with_instances(saved_folder(fixed, &preferences.instances_folder))
+            .with_logs(saved_folder(fixed, &preferences.logs_folder))
+            .with_cache(saved_folder(fixed, &preferences.cache_folder));
         let mut app = Self {
             settings_values: preferences.settings,
             paths: data,
+            setup_finished: preferences.setup_finished,
             ..Self::default()
         };
         app.library.set_hero_rule(app.settings_values.hero);
@@ -157,6 +164,11 @@ impl LodestoneLauncher {
             exit_on_close_request: false,
         }
     }
+}
+
+/// The folder the preferences saved, unless the launcher keeps fixed folders, which a saved choice does not change.
+fn saved_folder(fixed: bool, folder: &Option<PathBuf>) -> Option<PathBuf> {
+    if fixed { None } else { folder.clone() }
 }
 
 /// The 512px application mark, embedded in the binary.

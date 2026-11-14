@@ -5,6 +5,7 @@ use crate::app::components::account_menu::Message as AccountMenuMessage;
 use crate::app::components::alert::Message as AlertMessage;
 use crate::app::components::art_cache::ArtKey;
 use crate::app::coop_sync::Message as CoopSyncMessage;
+use crate::app::data_folder::FolderKind;
 use crate::app::database::Database;
 use crate::app::downloads::Message as DownloadsMessage;
 use crate::app::export::Message as ExportMessage;
@@ -23,6 +24,7 @@ use crate::app::pages::resource::Message as ResourceMessage;
 use crate::app::pages::server_pack::Message as ServerPackMessage;
 use crate::app::pages::servers::Message as ServersMessage;
 use crate::app::pages::settings::Message as SettingsMessage;
+use crate::app::pages::setup::Message as SetupMessage;
 use crate::app::pages::skins::capes::CapeArt;
 use crate::app::pages::skins::previews::Drawn;
 use crate::app::pages::skins::{Appearance, Message as SkinsMessage, Scan};
@@ -55,6 +57,8 @@ pub enum LodestoneAppMessage {
     /// Steps forward through the router's history.
     NavForward,
     Login(LoginMessage),
+    /// The setup wizard: its steps, and the folder, import and Discover actions it runs. See `app/setup.rs`.
+    Setup(SetupMessage),
     Library(LibraryMessage),
     /// The Discover page: a search, a filter or a layout change, and the answers the root sends back.
     Discover(DiscoverMessage),
@@ -167,15 +171,20 @@ pub enum LodestoneAppMessage {
     },
     /// The global defaults were written to the preferences, or the write failed.
     SettingsSaved(Result<(), String>),
-    /// The folder picker answered, with the folder picked. A cancel sends `None`.
-    DataFolderPicked(Option<std::path::PathBuf>),
-    /// The question whether to move the launcher's data to `folder` was answered.
-    DataFolderAnswered {
+    /// The folder picker answered for the folder `kind`, with the folder picked. A cancel sends `None`.
+    FolderPicked {
+        kind: FolderKind,
+        folder: Option<std::path::PathBuf>,
+    },
+    /// The question whether to move the folder `kind` to `folder` was answered.
+    FolderAnswered {
+        kind: FolderKind,
         folder: std::path::PathBuf,
         confirmed: bool,
     },
-    /// The launcher's data moved to `folder`, or the move failed, and the data stayed where it was.
-    DataFolderMoved {
+    /// The folder `kind` moved to `folder`, or the move failed, and its files stayed where they were.
+    FolderMoved {
+        kind: FolderKind,
         folder: std::path::PathBuf,
         result: Result<(), String>,
     },

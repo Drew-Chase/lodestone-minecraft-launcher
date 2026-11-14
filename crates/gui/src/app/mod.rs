@@ -41,6 +41,7 @@ mod scale;
 mod screenshot_actions;
 mod server_pack;
 mod servers;
+mod setup;
 mod shared_library;
 pub(crate) mod single_instance;
 mod skin_actions;
@@ -144,6 +145,10 @@ pub struct LodestoneLauncher {
     /// The worlds the player pinned. The database keeps them; the instance and Worlds pages read them.
     world_pins: world_pins::WorldPins,
     login: Login,
+    /// Whether the setup wizard was finished or skipped. With no account stored, the wizard shows until then.
+    setup_finished: bool,
+    /// The setup wizard's step, while the wizard shows.
+    setup: pages::setup::Setup,
     /// The launcher database — `None` until the boot-time connect lands.
     db: Option<Database>,
     /// Where the launcher keeps its folders: instances, and the shared Java
@@ -264,6 +269,8 @@ impl Default for LodestoneLauncher {
             worlds: crate::app::pages::worlds::State::default(),
             world_pins: world_pins::WorldPins::default(),
             login: Login::default(),
+            setup_finished: false,
+            setup: pages::setup::Setup::default(),
             db: None,
             paths: LauncherPaths::default(),
             window_size: Size::new(1280.0, 720.0),

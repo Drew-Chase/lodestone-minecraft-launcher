@@ -23,11 +23,47 @@ const TAG_STRIP_HEIGHT: f32 = 32.0;
 const PICKER_LEFT: f32 = 24.0;
 const PICKER_TOP: f32 = 12.0;
 
+/// The card the gate's pages float on: a glass panel with a green glow washing its top-right corner. `content` sits on the
+/// panel, which is `width` wide and `height` high. The setup wizard's card and the sign-in card share it.
+pub(crate) fn card_frame<'a, M: 'a>(content: Element<'a, M>, width: f32, height: Length) -> Element<'a, M> {
+    container(stack![
+        // Green glow washing the top-right corner of the card.
+        container(svg(logo_glow_handle().clone()).width(220).height(220))
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Right)
+            .align_y(iced::alignment::Vertical::Top),
+        content,
+    ])
+    .width(width)
+    .height(height)
+    .style(|_| container::Style {
+        background: Some(Background::Gradient(
+            gradient::Linear::new(Radians(std::f32::consts::FRAC_PI_2))
+                .add_stop(0.0, rgb!(21, 24, 28, 85%))
+                .add_stop(1.0, rgb!(14, 16, 18, 92%))
+                .into(),
+        )),
+        border: Border {
+            radius: 20.0.into(),
+            width: 1.0,
+            color: rgb_line(),
+        },
+        shadow: Shadow {
+            color: rgb!(0, 0, 0, 60%),
+            offset: Vector::new(0.0, 30.0),
+            blur_radius: crate::app::theme::blur(80.0),
+        },
+        ..container::Style::default()
+    })
+    .into()
+}
+
 impl Login {
     /// The login's top bar: the brand tag centred in a strip, with the language picker below it
     /// at the left. Windows draws the tag in its own titlebar, so only the picker row is left
     /// there.
-    pub(super) fn top_bar(&self) -> Element<'_, Message> {
+    pub(crate) fn top_bar(&self) -> Element<'_, Message> {
         let picker_row = container(LanguagePicker::new(Message::SelectLanguage).style(PickerStyle::Chip))
             .width(Fill)
             .padding(Padding::new(0.0).left(PICKER_LEFT).top(PICKER_TOP));
@@ -55,37 +91,7 @@ impl Login {
 
     /// The floating sign-in card.
     pub(super) fn card(&self) -> Element<'_, Message> {
-        container(stack![
-            // Green glow washing the top-right corner of the card.
-            container(svg(logo_glow_handle().clone()).width(220).height(220))
-                .width(Fill)
-                .height(Fill)
-                .align_x(iced::alignment::Horizontal::Right)
-                .align_y(iced::alignment::Vertical::Top),
-            self.card_content(),
-        ])
-        .width(440)
-        .height(self.card_height())
-        .style(|_| container::Style {
-            background: Some(Background::Gradient(
-                gradient::Linear::new(Radians(std::f32::consts::FRAC_PI_2))
-                    .add_stop(0.0, rgb!(21, 24, 28, 85%))
-                    .add_stop(1.0, rgb!(14, 16, 18, 92%))
-                    .into(),
-            )),
-            border: Border {
-                radius: 20.0.into(),
-                width: 1.0,
-                color: rgb_line(),
-            },
-            shadow: Shadow {
-                color: rgb!(0, 0, 0, 60%),
-                offset: Vector::new(0.0, 30.0),
-                blur_radius: crate::app::theme::blur(80.0),
-            },
-            ..container::Style::default()
-        })
-        .into()
+        card_frame(self.card_content(), 440.0, self.card_height())
     }
 
     /// Everything inside the card. The trailing `Fill` space pins the footer
@@ -113,7 +119,7 @@ impl Login {
     }
 
     /// The Lodestone mark with its glow halo, plus the wordmark.
-    fn logo_row(&self) -> Element<'_, Message> {
+    pub(crate) fn logo_row(&self) -> Element<'_, Message> {
         row![
             stack![
                 container(svg(logo_glow_handle().clone()).width(96).height(96))
@@ -152,7 +158,7 @@ impl Login {
     }
 
     /// The card's legal line.
-    fn footer(&self) -> Element<'_, Message> {
+    pub(crate) fn footer(&self) -> Element<'_, Message> {
         row![
             Text::new(lang::t("login.not_affiliated"))
                 .size(11)
@@ -176,7 +182,7 @@ impl Login {
     /// the real auth-services probe: the dot and label carry reachability,
     /// the middle segment the measured round-trip, and (when Microsoft
     /// reports one for this address) the region scope.
-    pub(super) fn status_bar(&self, auth_status: Option<AuthStatus>) -> Element<'_, Message> {
+    pub(crate) fn status_bar(&self, auth_status: Option<AuthStatus>) -> Element<'_, Message> {
         let (label, dot, delay, region) = match auth_status {
             Some(status) if status.online => (
                 lang::t("login.status_online"),

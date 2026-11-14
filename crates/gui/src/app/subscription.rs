@@ -57,7 +57,9 @@ impl LodestoneLauncher {
     /// nothing reads it, so it does not wake the window.
     fn auth_probe_subscription(&self) -> Subscription<LodestoneAppMessage> {
         match self.router.current() {
-            Page::Login | Page::Settings => iced::time::every(std::time::Duration::from_secs(15)).map(|_| LodestoneAppMessage::AuthProbeTick),
+            Page::Login | Page::Setup | Page::Settings => {
+                iced::time::every(std::time::Duration::from_secs(15)).map(|_| LodestoneAppMessage::AuthProbeTick)
+            }
             _ => Subscription::none(),
         }
     }

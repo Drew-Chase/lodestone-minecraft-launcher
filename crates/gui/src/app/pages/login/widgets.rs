@@ -34,7 +34,7 @@ pub(super) fn mono(content: impl Into<String>, size: f32) -> Text<'static> {
 /// (its alpha is ignored by the svg texture pipeline) and `opacity`
 /// controls visibility — 0.0 hides the icon while keeping its layout
 /// space, so hover states never shift the layout.
-pub(super) fn icon(markup: &'static str, size: f32, tint: Color, opacity: f32) -> Element<'static, Message> {
+pub(crate) fn icon(markup: &'static str, size: f32, tint: Color, opacity: f32) -> Element<'static, Message> {
     svg(Handle::from_memory(markup.as_bytes()))
         .width(size)
         .height(size)

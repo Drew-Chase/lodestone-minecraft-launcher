@@ -22,7 +22,8 @@ use lodestone_minecraft_authentication::{DeviceCodeStart, Session};
 
 use crate::app::pages::Page;
 
-pub(crate) use widgets::logo_handle;
+pub(crate) use chrome::card_frame;
+pub(crate) use widgets::{icon, logo_handle};
 
 /// The signed-in flow's display state.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

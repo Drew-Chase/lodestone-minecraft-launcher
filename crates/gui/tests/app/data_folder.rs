@@ -97,3 +97,74 @@ fn a_copy_keeps_links_as_links() {
     let _ = fs::remove_dir_all(&source);
     let _ = fs::remove_dir_all(&target);
 }
+
+#[test]
+fn instances_may_not_sit_inside_the_data_folder_unless_they_take_the_default_place() {
+    let root = PathBuf::from("/work/data");
+    let from = PathBuf::from("/games/instances");
+    assert_eq!(check_instances_target(&from, &root, &root.join("custom")), Err(Refusal::InsideData));
+    assert_eq!(
+        check_instances_target(&from, &root, &root.join("instances")),
+        Ok(()),
+        "the default folder inside the data folder is fine"
+    );
+    assert_eq!(check_instances_target(&from, &root, &PathBuf::from("/games/other")), Ok(()));
+}
+
+#[test]
+fn instances_may_not_hold_the_data_folder() {
+    let root = PathBuf::from("/work/data");
+    let from = root.join("instances");
+    assert_eq!(check_instances_target(&from, &root, &PathBuf::from("/work")), Err(Refusal::Nested));
+}
+
+#[test]
+fn the_data_folder_may_not_nest_with_the_instances() {
+    let from = PathBuf::from("/work/data");
+    let instances = PathBuf::from("/games/instances");
+    assert_eq!(
+        check_shared_target(&from, &instances, &PathBuf::from("/games")),
+        Err(Refusal::Nested),
+        "a folder holding the instances"
+    );
+    assert_eq!(
+        check_shared_target(&from, &instances, &instances.join("inner")),
+        Err(Refusal::Nested),
+        "a folder inside the instances"
+    );
+    assert_eq!(check_shared_target(&from, &instances, &PathBuf::from("/mnt/data")), Ok(()));
+}
+
+#[test]
+fn a_folder_choice_that_cannot_be_saved_moves_the_files_back() {
+    let from = scratch("choice-from");
+    fs::write(from.join("keep.txt"), b"keep").expect("a file");
+    let to = scratch("choice-to");
+    fs::remove_dir_all(&to).expect("the folder goes");
+
+    let result = move_then_save(&from, &to, Some(to.clone()), |_| Err("the preferences are read only".to_string()));
+    assert!(result.is_err());
+    assert_eq!(fs::read(from.join("keep.txt")).expect("the data is back"), b"keep");
+    assert!(!to.join("keep.txt").exists());
+    let _ = fs::remove_dir_all(&from);
+    let _ = fs::remove_dir_all(&to);
+}
+
+#[test]
+fn a_folder_choice_that_is_saved_leaves_the_files_in_the_new_folder() {
+    let from = scratch("saved-from");
+    fs::write(from.join("keep.txt"), b"keep").expect("a file");
+    let to = scratch("saved-to");
+    fs::remove_dir_all(&to).expect("the folder goes");
+
+    let mut saved_as = None;
+    let result = move_then_save(&from, &to, None, |folder| {
+        saved_as = Some(folder);
+        Ok(())
+    });
+    assert!(result.is_ok());
+    assert_eq!(saved_as, Some(None), "the default folder is what the preferences save");
+    assert_eq!(fs::read(to.join("keep.txt")).expect("the file moved"), b"keep");
+    assert!(!from.exists());
+    let _ = fs::remove_dir_all(&to);
+}

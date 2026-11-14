@@ -124,3 +124,34 @@ fn the_hero_rule_defaults_to_the_last_played_and_reads_its_snake_case_name() {
     let rule: HeroRule = serde_json::from_str("\"most_played\"").expect("deserializes");
     assert_eq!(rule, HeroRule::MostPlayed);
 }
+
+#[test]
+fn the_setup_choice_and_the_folders_round_trip() {
+    let path = temp_path("setup-folders");
+    let preferences = Preferences {
+        setup_finished: true,
+        instances_folder: Some(PathBuf::from("/games/instances")),
+        logs_folder: Some(PathBuf::from("/var/log/lodestone")),
+        cache_folder: Some(PathBuf::from("/var/cache/lodestone")),
+        ..Preferences::default()
+    };
+    Preferences::store_to(&path, &preferences).expect("store succeeds");
+    assert_eq!(Preferences::load_from(&path), preferences);
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn a_setup_choice_and_folders_at_their_defaults_stay_out_of_the_file() {
+    let json = serde_json::to_string(&Preferences::default()).expect("serializes");
+    assert!(!json.contains("setup_finished"), "{json}");
+    assert!(!json.contains("instances_folder"), "{json}");
+    assert!(!json.contains("logs_folder"), "{json}");
+    assert!(!json.contains("cache_folder"), "{json}");
+}
+
+#[test]
+fn a_file_from_before_the_setup_wizard_has_not_finished_it() {
+    let preferences: Preferences = serde_json::from_str(r#"{"language":"en_us"}"#).expect("older files parse");
+    assert!(!preferences.setup_finished);
+    assert_eq!(preferences.instances_folder, None);
+}
