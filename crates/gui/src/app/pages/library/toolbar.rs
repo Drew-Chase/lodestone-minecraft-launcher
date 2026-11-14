@@ -77,24 +77,6 @@ impl Library {
             actions.push(update_button(update));
         }
         actions.push(bell(notifications).map(Message::Notifications));
-        actions.push(
-            TextButton::content(
-                row![
-                    icon(Icon::lucide().plus(), 14.0, color::primary_on(), 1.0),
-                    Text::new(lang::t("library.new_instance"))
-                        .size(13)
-                        .font(fonts::Inter::BOLD)
-                        .color(color::primary_on())
-                        .wrapping(iced::widget::text::Wrapping::None),
-                ]
-                .spacing(8)
-                .align_y(alignment::Vertical::Center),
-            )
-            .variant(crate::app::components::button::Variant::Primary)
-            .padding(Padding::new(0.0).left(18).right(18).top(12).bottom(12))
-            .on_press(Message::OpenNewInstance)
-            .into(),
-        );
         // A wrapping group keeps its widest line's width and right-aligns its lines to it, so the group stays at its natural
         // width inside a container that takes the rest of the row and aligns the group to its right edge.
         let actions = container(
