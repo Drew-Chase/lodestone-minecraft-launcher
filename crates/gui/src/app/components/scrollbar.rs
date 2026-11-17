@@ -47,6 +47,18 @@ pub fn scroll_panel<'a, Message>(content: impl Into<Element<'a, Message>>) -> sc
         .style(style)
 }
 
+/// A scrollable over `content` that scrolls both ways, with the shared scrollbar on each side. An editor uses it, so a
+/// long line scrolls sideways.
+pub fn scroll_both<'a, Message>(content: impl Into<Element<'a, Message>>) -> scrollable::Scrollable<'a, Message> {
+    let bar = || Scrollbar::new().width(TRACK_WIDTH).scroller_width(THUMB_WIDTH);
+    scrollable(content)
+        .direction(Direction::Both {
+            vertical: bar(),
+            horizontal: bar(),
+        })
+        .style(style)
+}
+
 /// The style of a scrollable. The rails stay transparent, and only the bar under
 /// the pointer, or being dragged, lights its thumb.
 pub fn style(theme: &Theme, status: Status) -> Style {
