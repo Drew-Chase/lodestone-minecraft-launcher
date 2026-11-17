@@ -146,6 +146,9 @@ pub enum LodestoneAppMessage {
     Datapacks(crate::app::world_datapacks::Message),
     /// What the platforms and the disk answered for the Mods tab.
     ModActions(mod_actions::Message),
+    /// A mod being added brings a dependency the instance already has at another version. The root asks the user which
+    /// version to keep, and the add waits for the answer.
+    DependencyConflict(crate::app::install::mods::VersionConflict),
     /// The question about unlocking an instance was answered. The root unlocks the instance `id` when the answer is yes.
     UnlockAnswered {
         id: String,

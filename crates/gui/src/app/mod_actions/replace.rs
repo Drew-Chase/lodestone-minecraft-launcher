@@ -41,7 +41,9 @@ impl LodestoneLauncher {
         self.instance_page.mods_mut().set_busy(&file_name, true);
         let keep_disabled = file_name.ends_with(".disabled");
         let answered = file_name.clone();
-        Task::perform(replace_jar(db, request, context.mods_dir(), file_name, keep_disabled), move |result| {
+        let mods = context.mods_dir();
+        let replace = sipper(move |mut ask| async move { replace_jar(db, request, mods, file_name, keep_disabled, &mut ask).await });
+        Task::sip(replace, LodestoneAppMessage::DependencyConflict, move |result| {
             LodestoneAppMessage::ModActions(Message::Replaced {
                 generation,
                 file_name: answered.clone(),
@@ -170,8 +172,9 @@ pub(crate) async fn replace_jar(
     mods: PathBuf,
     old_file: String,
     keep_disabled: bool,
+    ask: &mut ProgressSender<VersionConflict>,
 ) -> Result<Vec<ModSource>, String> {
-    let mut records = add_to_instance(request, mods.clone()).await?;
+    let mut records = add_to_instance(request, mods.clone(), Some(db.clone()), ask).await?;
     let Some(own) = records.first_mut() else {
         return Err(lang::t("discover.mods.no_release").to_string());
     };

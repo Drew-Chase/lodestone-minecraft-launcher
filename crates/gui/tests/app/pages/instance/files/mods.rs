@@ -143,7 +143,7 @@ fn a_switch_renames_the_jar_by_its_disabled_suffix() {
 }
 
 #[test]
-fn ids_lists_the_ids_of_jars_switched_on_or_off_and_skips_the_rest() {
+fn held_lists_jars_switched_on_or_off_with_their_ids_and_versions() {
     let root = scratch("ids");
     fabric_jar(
         &root.join("fabric-api.jar"),
@@ -155,21 +155,29 @@ fn ids_lists_the_ids_of_jars_switched_on_or_off_and_skips_the_rest() {
     );
     write(&root.join("bare.jar"), b"not a zip");
     write(&root.join("notes.txt"), b"");
-    let found = ids(&root);
-    assert_eq!(found, HashSet::from(["fabric-api".to_string(), "sodium".to_string()]), "{found:?}");
+    let found: HashSet<(String, String, Option<String>)> = held(&root)
+        .into_iter()
+        .map(|(file, declared)| (file, declared.id, declared.version))
+        .collect();
+    let expected = HashSet::from([
+        ("fabric-api.jar".to_string(), "fabric-api".to_string(), Some("0.116.1".to_string())),
+        ("sodium.jar.disabled".to_string(), "sodium".to_string(), Some("0.5.8".to_string())),
+    ]);
+    assert_eq!(found, expected);
     fs::remove_dir_all(&root).ok();
 }
 
 #[test]
-fn declared_id_reads_the_id_a_jar_declares_and_is_none_for_a_bare_or_missing_file() {
+fn declared_reads_the_id_and_version_and_is_none_for_a_bare_or_missing_file() {
     let root = scratch("declared-id");
     fabric_jar(
         &root.join("fabric-api.jar"),
         r#"{ "schemaVersion": 1, "id": "fabric-api", "version": "0.116.1", "name": "Fabric API" }"#,
     );
     write(&root.join("bare.jar"), b"not a zip");
-    assert_eq!(declared_id(&root.join("fabric-api.jar")).as_deref(), Some("fabric-api"));
-    assert_eq!(declared_id(&root.join("bare.jar")), None);
-    assert_eq!(declared_id(&root.join("missing.jar")), None);
+    let jar = declared(&root.join("fabric-api.jar")).expect("the jar declares itself");
+    assert_eq!((jar.id.as_str(), jar.version.as_deref()), ("fabric-api", Some("0.116.1")));
+    assert_eq!(declared(&root.join("bare.jar")), None);
+    assert_eq!(declared(&root.join("missing.jar")), None);
     fs::remove_dir_all(&root).ok();
 }

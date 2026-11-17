@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use iced::Task;
 use iced::widget::image;
 use lodestone_platforms::{ContentType, ContentVersion, SearchPage, SearchQuery, SearchResult, VersionDependency};
+use sipper::{Sender as ProgressSender, sipper};
 use tracing::warn;
 
 use super::LodestoneAppMessage;
@@ -17,7 +18,7 @@ use super::LodestoneLauncher;
 use super::components::alert::Alert;
 use super::database::{Database, StoredModCheck};
 use super::discover::{MODRINTH, curseforge, details_of, versions_of};
-use super::install::mods::{add_to_instance, fits};
+use super::install::mods::{VersionConflict, add_to_instance, fits};
 use super::lang;
 use super::mod_sources::{CheckContext, Checks, check_mods, sha1_of_file};
 use super::pages::Page;

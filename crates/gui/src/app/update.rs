@@ -361,6 +361,7 @@ impl LodestoneLauncher {
                 self.mod_dialog_action(message)
             }
             LodestoneAppMessage::ModActions(message) => self.mod_actions_message(message),
+            LodestoneAppMessage::DependencyConflict(conflict) => self.ask_dependency_conflict(conflict),
             LodestoneAppMessage::UnlockAnswered { id, confirmed } => self.unlock_answered(id, confirmed),
             LodestoneAppMessage::Instance(message) => self.instance_page.update(message).map(LodestoneAppMessage::Instance),
             LodestoneAppMessage::DatabaseReady(Ok(db)) => {

@@ -2,29 +2,69 @@
 //! lacks, and the jars written into that folder. Every release is chosen, and every dependency is downloaded and read,
 //! before any jar lands in `mods/`, so a dependency with no release that fits, or a download that fails, leaves the
 //! folder as it was. A dependency is recognised by the mod id its jar declares, so a copy the folder holds from another
-//! platform is not written again. The answer names every jar the mod needs, its own first, as the platform source each
+//! platform is not written again. When that copy is another version, the user is asked which one the instance keeps: a
+//! dependency version conflict. The answer names every jar the mod needs, its own first, as the platform source each
 //! came from.
 
 use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use lodestone_fs::move_file;
 use lodestone_platforms::{ContentFile, ContentVersion, DependencyKind, VersionDependency};
+use sipper::Sender as ProgressSender;
+use tokio::sync::oneshot;
+use tracing::warn;
 
+use crate::app::database::Database;
 use crate::app::discover::{download_version, versions_of};
 use crate::app::install::ensure;
 use crate::app::lang;
 use crate::app::pages::discover::{AddRequest, Source};
-use crate::app::pages::instance::files::mods as jar_files;
+use crate::app::pages::instance::files;
+use crate::app::pages::instance::files::mods::{self as jar_files, Declared};
 use crate::app::paths;
 use crate::app::shared_library::ModSource;
 
+/// A dependency the instance already has at another version than the one the mod being added brings. The add waits until
+/// the user picks one: [`VersionConflict::answer`] with `true` uses the offered version and replaces the installed copy, and
+/// `false`, or a question that goes unanswered, keeps the installed copy.
+#[derive(Debug, Clone)]
+pub struct VersionConflict {
+    /// The dependency's name, as its jar declares it.
+    pub dependency: String,
+    /// The name of the mod being added.
+    pub adding: String,
+    /// The version the instance has.
+    pub installed: String,
+    /// The version the mod being added brings.
+    pub offered: String,
+    reply: Arc<Mutex<Option<oneshot::Sender<bool>>>>,
+}
+
+impl VersionConflict {
+    /// Answers the question. Only the first answer counts.
+    pub fn answer(&self, use_offered: bool) {
+        let reply = self.reply.lock().unwrap_or_else(PoisonError::into_inner).take();
+        if let Some(reply) = reply {
+            let _ = reply.send(use_offered);
+        }
+    }
+}
+
 /// Adds the mod `request` names to the instance it names, writing its jar and the required dependencies the folder `mods`
 /// does not already hold. A dependency is held when the folder has its file name, or a jar with its mod id, switched on or
-/// off and from any platform. The answer names every jar the mod needs, the mod's own first. A dependency held by its file
-/// name is named as it always was; one held only by its mod id is left out, so the copy already there keeps its record.
-pub(crate) async fn add_to_instance(request: AddRequest, mods: PathBuf) -> Result<Vec<ModSource>, String> {
+/// off and from any platform. A held copy at another version is a conflict, which goes out through `ask`; when the user
+/// takes the offered version, the installed copies are moved to the trash and their records in `db` are forgotten. The
+/// answer names every jar the mod needs, the mod's own first. A dependency held by its file name is named as it always
+/// was; one kept by its mod id is left out, so the copy already there keeps its record.
+pub(crate) async fn add_to_instance(
+    request: AddRequest,
+    mods: PathBuf,
+    db: Option<Database>,
+    ask: &mut ProgressSender<VersionConflict>,
+) -> Result<Vec<ModSource>, String> {
     let AddRequest { project, instance } = request;
     let loader = instance.loader.to_db();
     let minecraft = instance.mc_version.as_str();
@@ -41,17 +81,21 @@ pub(crate) async fn add_to_instance(request: AddRequest, mods: PathBuf) -> Resul
     // Adds to one folder take turns, so two of them cannot both find a dependency missing and both write it.
     let _folder = ensure::lock(format!("mods:{}", mods.display())).await;
     let staging = Staging::new()?;
-    let mut taken = blocking({
+    let held = blocking({
         let mods = mods.clone();
-        move || jar_files::ids(&mods)
+        move || jar_files::held(&mods)
     })
     .await?;
+    // The ids this install writes. A second jar with one of them is never written.
+    let mut planned: HashSet<String> = HashSet::new();
+    // The installed copies the user chose to replace with the version a dependency brings.
+    let mut replaced: Vec<String> = Vec::new();
 
-    // The mod's own jar comes first, and it is written whatever the folder holds, as it always was. Its id joins the set,
-    // so no dependency is written beside a second copy of the mod.
+    // The mod's own jar comes first, and it is written whatever the folder holds, as it always was. Its id is planned, so
+    // no dependency is written beside a second copy of the mod.
     let own_staged = stage(project.source, &chosen, &own, staging.dir(0)).await?;
-    if let Some(id) = declared(own_staged.clone()).await? {
-        taken.insert(id);
+    if let Some(found) = declared(own_staged.clone()).await? {
+        planned.insert(found.id);
     }
     let mut jars = vec![Taken {
         project_id: project.project_id.clone(),
@@ -87,12 +131,39 @@ pub(crate) async fn add_to_instance(request: AddRequest, mods: PathBuf) -> Resul
             continue;
         }
         let staged = stage(project.source, &release, &file, staging.dir(jars.len())).await?;
-        let id = declared(staged.clone()).await?;
-        let plan = if spoken_for(id.as_deref(), &taken) {
+        let found = declared(staged.clone()).await?;
+        let keep_installed = match &found {
+            // A jar that declares no id cannot be matched, so it is written as it always was.
+            None => false,
+            Some(found) if planned.contains(&found.id) => true,
+            Some(found) => {
+                let copies: Vec<&(String, Declared)> = held.iter().filter(|(_, jar)| jar.id == found.id).collect();
+                let versions: Vec<Option<&str>> = copies.iter().map(|(_, jar)| jar.version.as_deref()).collect();
+                if copies.is_empty() {
+                    false
+                } else if let Some(installed) = conflicting_version(&versions, found.version.as_deref()) {
+                    let dependency = found
+                        .name
+                        .clone()
+                        .or_else(|| copies.iter().find_map(|(_, jar)| jar.name.clone()))
+                        .unwrap_or_else(|| found.id.clone());
+                    let offered = found.version.clone().unwrap_or_default();
+                    let use_offered = ask_conflict(ask, dependency, project.name.clone(), installed, offered).await;
+                    if use_offered {
+                        replaced.extend(copies.iter().map(|(file_name, _)| file_name.clone()));
+                    }
+                    !use_offered
+                } else {
+                    // The same version, or one whose version cannot be compared: the installed copy stays, unasked.
+                    true
+                }
+            }
+        };
+        let plan = if keep_installed {
             Plan::Held
         } else {
-            if let Some(id) = id {
-                taken.insert(id);
+            if let Some(found) = found {
+                planned.insert(found.id);
             }
             queue.extend(required(&release));
             Plan::Write(staged)
@@ -115,7 +186,32 @@ pub(crate) async fn add_to_instance(request: AddRequest, mods: PathBuf) -> Resul
         })
         .collect();
     moves.rotate_left(1);
+    let written: HashSet<PathBuf> = moves.iter().map(|(_, target)| target.clone()).collect();
     blocking(move || move_into(&moves)).await??;
+
+    // The copies the user replaced go to the trash only once the versions that replace them are in place.
+    replaced.retain(|file_name| !written.contains(&mods.join(file_name)));
+    if !replaced.is_empty() {
+        let folder = mods.clone();
+        let names = replaced.clone();
+        let failures = blocking(move || {
+            names
+                .iter()
+                .filter_map(|name| files::move_to_trash(&folder.join(name)).err().map(|error| format!("{name}: {error}")))
+                .collect::<Vec<_>>()
+        })
+        .await?;
+        for failure in failures {
+            warn!("moving a replaced dependency to the trash failed: {failure}");
+        }
+        if let Some(db) = &db {
+            for file_name in &replaced {
+                if let Err(error) = db.forget_mod_source(&instance.id, file_name).await {
+                    warn!("forgetting the record of a replaced dependency failed: {error}");
+                }
+            }
+        }
+    }
 
     // The mod's own record takes the project's name, which its release does not carry.
     let platform = project.source.key().to_string();
@@ -144,13 +240,38 @@ pub(crate) async fn add_to_instance(request: AddRequest, mods: PathBuf) -> Resul
         .collect())
 }
 
+/// Sends a dependency version conflict out through `ask` and waits for the answer: `true` to use the offered version.
+async fn ask_conflict(ask: &mut ProgressSender<VersionConflict>, dependency: String, adding: String, installed: String, offered: String) -> bool {
+    let (reply, answer) = oneshot::channel();
+    ask.send(VersionConflict {
+        dependency,
+        adding,
+        installed,
+        offered,
+        reply: Arc::new(Mutex::new(Some(reply))),
+    })
+    .await;
+    answer.await.unwrap_or(false)
+}
+
+/// The installed version that conflicts with `offered`, or `None` when there is nothing to ask: a copy already has the
+/// offered version, or a version on either side is not declared, so the two cannot be compared.
+fn conflicting_version(installed: &[Option<&str>], offered: Option<&str>) -> Option<String> {
+    let offered = offered?;
+    let known: Vec<&str> = installed.iter().copied().flatten().collect();
+    if known.contains(&offered) {
+        return None;
+    }
+    known.first().map(|version| (*version).to_string())
+}
+
 /// What one install does with a jar the mod needs.
 enum Plan {
     /// The jar is written into `mods/` from its staged download.
     Write(PathBuf),
     /// The folder already holds the file under its name, so nothing is written. The record is written as it always was.
     Named,
-    /// A jar with the same mod id is in the folder or was planned by this install, so nothing is written or recorded.
+    /// A jar with the same mod id is kept, from the folder or planned by this install, so nothing is written or recorded.
     Held,
 }
 
@@ -173,9 +294,9 @@ async fn stage(source: Source, release: &ContentVersion, file: &ContentFile, dir
         .ok_or_else(|| lang::t("discover.no_version").to_string())
 }
 
-/// The mod id a staged jar declares, read on the blocking pool.
-async fn declared(jar: PathBuf) -> Result<Option<String>, String> {
-    blocking(move || jar_files::declared_id(&jar)).await
+/// What a staged jar declares, read on the blocking pool.
+async fn declared(jar: PathBuf) -> Result<Option<Declared>, String> {
+    blocking(move || jar_files::declared(&jar)).await
 }
 
 /// Runs `work` on the blocking pool, where jars are read and moved.
@@ -186,12 +307,6 @@ async fn blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) 
 /// Whether the folder holds `file_name`, switched on or off.
 fn held_by_name(mods: &Path, file_name: &str) -> bool {
     mods.join(file_name).is_file() || mods.join(format!("{file_name}.disabled")).is_file()
-}
-
-/// Whether a jar declaring the mod id `id` is already spoken for: the folder holds one, or this install planned one. A jar
-/// that declares no id is never spoken for, so it is written as it always was.
-fn spoken_for(id: Option<&str>, taken: &HashSet<String>) -> bool {
-    id.is_some_and(|id| taken.contains(id))
 }
 
 /// Moves each staged jar to its target. A move that fails takes back the targets already moved, so the folder is as it was.

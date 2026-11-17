@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use iced::Task;
 use iced::widget::scrollable::AbsoluteOffset;
 use iced::widget::{Id, operation};
+use sipper::sipper;
 
 use lodestone_platforms::{
     AtLauncher, BundledProject, ContentDetails, ContentType, ContentVersion, Facets, Ftb, Modpack, ModpackFile, Modrinth, Platform, SearchPage,
@@ -23,7 +24,7 @@ use super::LodestoneLauncher;
 use super::components::alert::Alert;
 use super::downloads::{JobState, ModJob};
 use super::install::InstallRequest;
-use super::install::mods::add_to_instance;
+use super::install::mods::{VersionConflict, add_to_instance};
 use super::install::pack::{self, Page};
 use super::lang;
 use super::mod_actions::replace_jar;
@@ -459,7 +460,9 @@ impl LodestoneLauncher {
             ));
         };
         let mods = self.paths.instance(&directory).join("mods");
-        Task::perform(add_to_instance(request, mods), move |result| {
+        let db = self.db.clone();
+        let add = sipper(move |mut ask| async move { add_to_instance(request, mods, db, &mut ask).await });
+        Task::sip(add, LodestoneAppMessage::DependencyConflict, move |result| {
             mod_answer(job, instance, platform, project_id, result)
         })
     }
@@ -486,9 +489,31 @@ impl LodestoneLauncher {
         };
         let mods = self.paths.instance(&directory).join("mods");
         let keep_disabled = old_file.ends_with(".disabled");
-        Task::perform(replace_jar(db, request, mods, old_file, keep_disabled), move |result| {
+        let replace = sipper(move |mut ask| async move { replace_jar(db, request, mods, old_file, keep_disabled, &mut ask).await });
+        Task::sip(replace, LodestoneAppMessage::DependencyConflict, move |result| {
             mod_answer(job, instance, platform, project_id, result)
         })
+    }
+
+    /// Asks which version of a dependency the instance keeps, while the add that found the conflict waits. Closing the
+    /// question keeps the installed version.
+    pub(super) fn ask_dependency_conflict(&mut self, conflict: VersionConflict) -> Task<LodestoneAppMessage> {
+        let message = lang::t_with(
+            "discover.mods.conflict.message",
+            &[
+                ("dependency", conflict.dependency.as_str()),
+                ("installed", conflict.installed.as_str()),
+                ("adding", conflict.adding.as_str()),
+                ("offered", conflict.offered.as_str()),
+            ],
+        );
+        let answer = self
+            .alerts
+            .push(Alert::warn(message).title(lang::t("discover.mods.conflict.title")).labelled(
+                lang::t("discover.mods.conflict.use_offered"),
+                Some(lang::t("discover.mods.conflict.keep")),
+            ));
+        Task::future(async move { conflict.answer(answer.await.unwrap_or(false)) }).discard()
     }
 
     /// Starts the downloads job that lists a mod's add or replacement until the answer ends it.

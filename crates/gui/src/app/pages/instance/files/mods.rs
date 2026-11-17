@@ -138,19 +138,40 @@ pub fn count(dir: &Path) -> usize {
     jars(dir).len()
 }
 
-/// The ids the jars in `dir` declare, enabled or switched off, read through the same cache as [`scan`]. A jar that declares
-/// none adds nothing.
-pub fn ids(dir: &Path) -> HashSet<String> {
-    scan(dir).into_iter().filter_map(|jar| jar.id).collect()
+/// What a jar declares about itself: the mod id other mods name it by, with its name and version when it gives them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Declared {
+    pub id: String,
+    pub name: Option<String>,
+    pub version: Option<String>,
 }
 
-/// The id a jar declares, read the way [`scan`] reads it. `None` when it declares none, or cannot be read.
-pub fn declared_id(jar: &Path) -> Option<String> {
-    Loader::<Fabric>::new()
-        .extract_mod_info(jar)
-        .ok()
-        .map(|info| info.id)
-        .filter(|id| !id.trim().is_empty())
+/// Each jar in `dir` that declares a mod id, enabled or switched off, with its file name, read through the same cache as
+/// [`scan`].
+pub fn held(dir: &Path) -> Vec<(String, Declared)> {
+    scan(dir)
+        .into_iter()
+        .filter_map(|jar| {
+            let id = jar.id?;
+            let declared = Declared {
+                id,
+                name: Some(jar.name),
+                version: jar.version.filter(|version| !version.trim().is_empty()),
+            };
+            Some((jar.file_name, declared))
+        })
+        .collect()
+}
+
+/// What a jar declares, read the way [`scan`] reads it. `None` when it declares no id, or cannot be read.
+pub fn declared(jar: &Path) -> Option<Declared> {
+    let info = Loader::<Fabric>::new().extract_mod_info(jar).ok()?;
+    let id = Some(info.id).filter(|id| !id.trim().is_empty())?;
+    Some(Declared {
+        id,
+        name: info.name.filter(|name| !name.trim().is_empty()),
+        version: info.version.filter(|version| !version.trim().is_empty()),
+    })
 }
 
 /// The file name a mod jar takes when its switch is set to `enabled`. A jar switched off gains `.disabled`, and one

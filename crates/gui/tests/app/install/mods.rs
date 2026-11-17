@@ -110,14 +110,47 @@ fn a_file_name_held_switched_on_or_off_is_held_by_name() {
 }
 
 #[test]
-fn a_dependency_is_spoken_for_by_the_mod_id_it_declares_and_by_no_other() {
-    let taken = HashSet::from(["fabric-api".to_string()]);
-    assert!(
-        spoken_for(Some("fabric-api"), &taken),
-        "a copy of the same mod, from any platform, is spoken for"
+fn another_installed_version_is_a_conflict_and_a_matching_or_unknown_one_is_not() {
+    assert_eq!(
+        conflicting_version(&[Some("0.100.0")], Some("0.116.1")).as_deref(),
+        Some("0.100.0"),
+        "a copy at another version is a dependency version conflict"
     );
-    assert!(!spoken_for(Some("sodium"), &taken));
-    assert!(!spoken_for(None, &taken), "a jar that declares no id is written as it always was");
+    assert_eq!(
+        conflicting_version(&[Some("0.116.1")], Some("0.116.1")),
+        None,
+        "the same version is kept unasked"
+    );
+    assert_eq!(
+        conflicting_version(&[Some("0.100.0"), Some("0.116.1")], Some("0.116.1")),
+        None,
+        "a copy at the offered version is already there"
+    );
+    assert_eq!(
+        conflicting_version(&[None], Some("0.116.1")),
+        None,
+        "an installed copy with no version cannot be compared"
+    );
+    assert_eq!(
+        conflicting_version(&[Some("0.100.0")], None),
+        None,
+        "an offered jar with no version cannot be compared"
+    );
+}
+
+#[test]
+fn a_conflict_takes_only_its_first_answer() {
+    let (reply, mut answer) = tokio::sync::oneshot::channel();
+    let conflict = VersionConflict {
+        dependency: "Fabric API".to_string(),
+        adding: "Sodium".to_string(),
+        installed: "0.100.0".to_string(),
+        offered: "0.116.1".to_string(),
+        reply: Arc::new(Mutex::new(Some(reply))),
+    };
+    conflict.clone().answer(true);
+    conflict.answer(false);
+    assert_eq!(answer.try_recv(), Ok(true), "only the first answer counts");
 }
 
 #[test]
