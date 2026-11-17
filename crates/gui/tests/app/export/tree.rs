@@ -5,6 +5,7 @@ fn row(name: &str, is_folder: bool, size: u64) -> Row {
         name: name.to_string(),
         path: format!("x/{name}"),
         is_folder,
+        is_link: false,
         size,
         modified: None,
     }

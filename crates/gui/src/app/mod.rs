@@ -11,6 +11,7 @@ mod discover;
 mod downloads;
 mod export;
 pub mod face;
+mod folder_listing;
 mod games;
 mod import;
 mod install;

@@ -12,6 +12,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use iced::{Element, Task};
+use lodestone_fs::{copy_tree, remove_tree};
 use tracing::{info, warn};
 
 use super::components::alert::Alert;
@@ -215,43 +216,6 @@ fn copy_then_remove(source: &Path, target: &Path) -> Result<(), String> {
         return Err(format!("copying {} to {}: {error}", source.display(), target.display()));
     }
     remove_tree(source).map_err(|error| format!("removing {} after its copy: {error}", source.display()))
-}
-
-/// Copies a file, a folder and everything in it, keeping links as links. A link is not followed, so a link to a folder
-/// above it cannot copy the same files forever.
-fn copy_tree(source: &Path, target: &Path) -> io::Result<()> {
-    let kind = fs::symlink_metadata(source)?.file_type();
-    if kind.is_symlink() {
-        return copy_link(source, target);
-    }
-    if kind.is_dir() {
-        fs::create_dir(target)?;
-        for entry in fs::read_dir(source)? {
-            let entry = entry?;
-            copy_tree(&entry.path(), &target.join(entry.file_name()))?;
-        }
-        return Ok(());
-    }
-    fs::copy(source, target).map(|_| ())
-}
-
-#[cfg(unix)]
-fn copy_link(source: &Path, target: &Path) -> io::Result<()> {
-    std::os::unix::fs::symlink(fs::read_link(source)?, target)
-}
-
-#[cfg(not(unix))]
-fn copy_link(source: &Path, target: &Path) -> io::Result<()> {
-    fs::copy(source, target).map(|_| ())
-}
-
-/// Removes a file, a link, or a folder with everything in it. A link is removed as a link.
-fn remove_tree(path: &Path) -> io::Result<()> {
-    if fs::symlink_metadata(path)?.file_type().is_dir() {
-        fs::remove_dir_all(path)
-    } else {
-        fs::remove_file(path)
-    }
 }
 
 /// Moves the entries that moved back into `from`, newest first. Returns the names that could not move back.

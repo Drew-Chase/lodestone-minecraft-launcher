@@ -3,48 +3,10 @@
 //! folder opened again shows at once.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use chrono::{DateTime, Local};
-use lodestone_export::plan::is_leftover;
-
-/// One entry of a folder.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Row {
-    /// The entry's name.
-    pub name: String,
-    /// The entry's path inside the instance, with `/` separators.
-    pub path: String,
-    pub is_folder: bool,
-    /// The file's size in bytes. Folders show none.
-    pub size: u64,
-    /// When the entry was last changed, when the file system says.
-    pub modified: Option<DateTime<Local>>,
-}
-
-/// The columns a listing sorts by.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Column {
-    Name,
-    Size,
-    Modified,
-}
-
-/// How a listing is sorted. Folders always come first.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Sort {
-    pub column: Column,
-    pub descending: bool,
-}
-
-impl Default for Sort {
-    fn default() -> Self {
-        Self {
-            column: Column::Name,
-            descending: false,
-        }
-    }
-}
+use crate::app::folder_listing::{self, Entries};
+pub use crate::app::folder_listing::{Column, Row, Sort, sorted};
 
 /// The folder on screen, and the listings read so far.
 #[derive(Debug, Default)]
@@ -107,65 +69,14 @@ impl Tree {
 
     /// Sorts by `column`. Choosing the column that is already the sort flips its direction.
     pub fn sort_by(&mut self, column: Column) {
-        self.sort = if self.sort.column == column {
-            Sort {
-                column,
-                descending: !self.sort.descending,
-            }
-        } else {
-            Sort { column, descending: false }
-        };
+        self.sort = self.sort.by(column);
     }
-}
-
-/// The rows sorted by `sort`, with folders first. Names break ties, so the order is stable.
-pub fn sorted(rows: &[Row], sort: Sort) -> Vec<&Row> {
-    let mut sorted: Vec<&Row> = rows.iter().collect();
-    sorted.sort_by(|a, b| {
-        let column = match sort.column {
-            Column::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-            Column::Size => a.size.cmp(&b.size),
-            Column::Modified => a.modified.cmp(&b.modified),
-        };
-        let column = if sort.descending { column.reverse() } else { column };
-        b.is_folder.cmp(&a.is_folder).then(column).then_with(|| a.name.cmp(&b.name))
-    });
-    sorted
 }
 
 /// Reads the entries of `folder` inside the instance at `root`, on the blocking pool. Leftovers and symbolic
 /// links are left out, the way the export leaves them out.
 pub async fn read_folder(root: PathBuf, folder: String) -> Result<Vec<Row>, String> {
-    tokio::task::spawn_blocking(move || read_rows(&root, &folder))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-fn read_rows(root: &Path, folder: &str) -> Result<Vec<Row>, String> {
-    let directory = if folder.is_empty() { root.to_path_buf() } else { root.join(folder) };
-    let entries = std::fs::read_dir(&directory).map_err(|error| error.to_string())?;
-    let mut rows = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|error| error.to_string())?;
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if is_leftover(&name) {
-            continue;
-        }
-        let file_type = entry.file_type().map_err(|error| error.to_string())?;
-        if file_type.is_symlink() || !(file_type.is_dir() || file_type.is_file()) {
-            continue;
-        }
-        let metadata = entry.metadata().map_err(|error| error.to_string())?;
-        let path = if folder.is_empty() { name.clone() } else { format!("{folder}/{name}") };
-        rows.push(Row {
-            name,
-            path,
-            is_folder: file_type.is_dir(),
-            size: if file_type.is_dir() { 0 } else { metadata.len() },
-            modified: metadata.modified().ok().map(DateTime::<Local>::from),
-        });
-    }
-    Ok(rows)
+    folder_listing::read_folder(root, folder, Entries::Exportable).await
 }
 
 #[cfg(test)]

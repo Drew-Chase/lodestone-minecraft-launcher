@@ -5,12 +5,16 @@
 //! [`write_atomic`] or [`write_private`]. Archive entries that the launcher unpacks go through [`copy_entry`], which holds
 //! each one to the size its header declares.
 
+mod tree;
+
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+pub use tree::{copy_tree, move_tree, remove_tree};
 
 /// The most an entry may grow to, relative to its compressed size, before it is refused as a likely bomb.
 const MAX_RATIO: u64 = 100;

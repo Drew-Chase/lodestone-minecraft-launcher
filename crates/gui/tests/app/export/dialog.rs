@@ -15,6 +15,7 @@ fn row(name: &str, is_folder: bool) -> Row {
         name: name.to_string(),
         path: name.to_string(),
         is_folder,
+        is_link: false,
         size: 0,
         modified: None,
     }
