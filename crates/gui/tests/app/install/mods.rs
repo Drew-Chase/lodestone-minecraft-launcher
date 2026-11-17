@@ -83,3 +83,66 @@ fn only_required_dependencies_that_name_a_project_are_walked() {
     let walked: Vec<String> = required(&chosen).into_iter().filter_map(|dependency| dependency.project_id).collect();
     assert_eq!(walked, ["fabric-api"]);
 }
+
+/// A fresh folder under the system temp folder, named for the test.
+fn scratch(name: &str) -> PathBuf {
+    let path = std::env::temp_dir().join(format!("lodestone-install-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&path);
+    std::fs::create_dir_all(&path).expect("scratch folder");
+    path
+}
+
+/// Writes `contents` to `path`, creating the folders above it.
+fn write(path: &Path, contents: &[u8]) {
+    std::fs::create_dir_all(path.parent().expect("a file has a parent")).expect("parent folder");
+    std::fs::write(path, contents).expect("file writes");
+}
+
+#[test]
+fn a_file_name_held_switched_on_or_off_is_held_by_name() {
+    let root = scratch("held-by-name");
+    write(&root.join("fabric-api.jar"), b"");
+    write(&root.join("sodium.jar.disabled"), b"");
+    assert!(held_by_name(&root, "fabric-api.jar"));
+    assert!(held_by_name(&root, "sodium.jar"), "a switched-off copy is held too");
+    assert!(!held_by_name(&root, "lithium.jar"));
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_dependency_is_spoken_for_by_the_mod_id_it_declares_and_by_no_other() {
+    let taken = HashSet::from(["fabric-api".to_string()]);
+    assert!(
+        spoken_for(Some("fabric-api"), &taken),
+        "a copy of the same mod, from any platform, is spoken for"
+    );
+    assert!(!spoken_for(Some("sodium"), &taken));
+    assert!(!spoken_for(None, &taken), "a jar that declares no id is written as it always was");
+}
+
+#[test]
+fn a_move_that_fails_takes_back_the_jars_already_moved() {
+    let root = scratch("move-back");
+    let staged = root.join("staged").join("alpha.jar");
+    let target = root.join("mods").join("alpha.jar");
+    write(&staged, b"alpha");
+    let moves = [
+        (staged, target.clone()),
+        (root.join("staged").join("beta.jar"), root.join("mods").join("beta.jar")),
+    ];
+    assert!(move_into(&moves).is_err(), "the second jar is not staged");
+    assert!(!target.exists(), "the jar moved before the failure is removed again");
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_staging_folder_is_held_while_it_lives_and_removed_when_it_ends() {
+    let root = scratch("staging");
+    let staging = Staging::within(&root).expect("a staging folder");
+    write(&staging.dir(0).join("mod.jar"), b"jar");
+    assert!(staging_in_use(), "a live staging folder keeps Clear cache from its root");
+    drop(staging);
+    assert!(!staging_in_use());
+    assert_eq!(std::fs::read_dir(&root).expect("the root stays").count(), 0, "the add's folder is gone");
+    std::fs::remove_dir_all(&root).ok();
+}

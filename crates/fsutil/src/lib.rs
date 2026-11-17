@@ -89,6 +89,31 @@ pub fn copy_entry(reader: &mut impl Read, writer: &mut impl Write, declared: u64
     Ok(copied)
 }
 
+/// Moves `from` to `to`, replacing `to` when it is there. A rename does it when both are on one drive. Across drives the file is
+/// copied beside `to`, flushed to disk and renamed over `to`, and only then is `from` removed, so `to` is never a part of a file.
+pub fn move_file(from: &Path, to: &Path) -> io::Result<()> {
+    match fs::rename(from, to) {
+        Err(error) if error.kind() == io::ErrorKind::CrossesDevices => copy_then_remove(from, to),
+        result => result,
+    }
+}
+
+/// Copies `from` to a temporary name beside `to`, flushes the copy, renames it over `to`, and removes `from`. A copy that
+/// fails leaves `to` as it was and no temporary behind.
+fn copy_then_remove(from: &Path, to: &Path) -> io::Result<()> {
+    let temp = temporary_beside(to);
+    let copied = (|| {
+        fs::copy(from, &temp)?;
+        OpenOptions::new().write(true).open(&temp)?.sync_all()?;
+        fs::rename(&temp, to)
+    })();
+    if copied.is_err() {
+        let _ = fs::remove_file(&temp);
+        return copied;
+    }
+    fs::remove_file(from)
+}
+
 /// Moves a file that could not be read aside, to a name beside it that carries the time it was moved. The file is kept for
 /// recovery, and its path is free for a fresh one. Returns the new path.
 pub fn quarantine(path: &Path) -> io::Result<PathBuf> {

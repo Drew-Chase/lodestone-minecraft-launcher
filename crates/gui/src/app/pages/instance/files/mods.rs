@@ -138,6 +138,21 @@ pub fn count(dir: &Path) -> usize {
     jars(dir).len()
 }
 
+/// The ids the jars in `dir` declare, enabled or switched off, read through the same cache as [`scan`]. A jar that declares
+/// none adds nothing.
+pub fn ids(dir: &Path) -> HashSet<String> {
+    scan(dir).into_iter().filter_map(|jar| jar.id).collect()
+}
+
+/// The id a jar declares, read the way [`scan`] reads it. `None` when it declares none, or cannot be read.
+pub fn declared_id(jar: &Path) -> Option<String> {
+    Loader::<Fabric>::new()
+        .extract_mod_info(jar)
+        .ok()
+        .map(|info| info.id)
+        .filter(|id| !id.trim().is_empty())
+}
+
 /// The file name a mod jar takes when its switch is set to `enabled`. A jar switched off gains `.disabled`, and one
 /// switched on loses it. `None` when the name is not a mod jar, or already has the state asked for.
 pub fn switched_name(file_name: &str, enabled: bool) -> Option<String> {

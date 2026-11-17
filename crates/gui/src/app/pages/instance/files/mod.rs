@@ -8,7 +8,7 @@
 mod backups;
 mod log;
 pub mod mod_index;
-mod mods;
+pub(crate) mod mods;
 mod packs;
 mod screenshots;
 mod servers;

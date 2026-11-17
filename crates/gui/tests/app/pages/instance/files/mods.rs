@@ -141,3 +141,35 @@ fn a_switch_renames_the_jar_by_its_disabled_suffix() {
         "a disabled file that is not a jar is left alone"
     );
 }
+
+#[test]
+fn ids_lists_the_ids_of_jars_switched_on_or_off_and_skips_the_rest() {
+    let root = scratch("ids");
+    fabric_jar(
+        &root.join("fabric-api.jar"),
+        r#"{ "schemaVersion": 1, "id": "fabric-api", "version": "0.116.1", "name": "Fabric API" }"#,
+    );
+    fabric_jar(
+        &root.join("sodium.jar.disabled"),
+        r#"{ "schemaVersion": 1, "id": "sodium", "version": "0.5.8", "name": "Sodium" }"#,
+    );
+    write(&root.join("bare.jar"), b"not a zip");
+    write(&root.join("notes.txt"), b"");
+    let found = ids(&root);
+    assert_eq!(found, HashSet::from(["fabric-api".to_string(), "sodium".to_string()]), "{found:?}");
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn declared_id_reads_the_id_a_jar_declares_and_is_none_for_a_bare_or_missing_file() {
+    let root = scratch("declared-id");
+    fabric_jar(
+        &root.join("fabric-api.jar"),
+        r#"{ "schemaVersion": 1, "id": "fabric-api", "version": "0.116.1", "name": "Fabric API" }"#,
+    );
+    write(&root.join("bare.jar"), b"not a zip");
+    assert_eq!(declared_id(&root.join("fabric-api.jar")).as_deref(), Some("fabric-api"));
+    assert_eq!(declared_id(&root.join("bare.jar")), None);
+    assert_eq!(declared_id(&root.join("missing.jar")), None);
+    fs::remove_dir_all(&root).ok();
+}

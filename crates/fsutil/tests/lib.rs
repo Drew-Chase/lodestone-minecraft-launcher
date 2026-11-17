@@ -121,3 +121,42 @@ fn a_counted_reader_counts_what_passes_through_it() {
     io::copy(&mut counted, &mut out).unwrap();
     assert_eq!(count.load(std::sync::atomic::Ordering::Relaxed), 300);
 }
+
+#[test]
+fn a_moved_file_replaces_its_target_and_its_source_is_gone() {
+    let dir = scratch("move");
+    let from = dir.join("staged").join("mod.jar");
+    let to = dir.join("mods").join("mod.jar");
+    write_atomic(&from, b"new").unwrap();
+    write_atomic(&to, b"old").unwrap();
+    move_file(&from, &to).unwrap();
+    assert_eq!(fs::read(&to).unwrap(), b"new");
+    assert!(!from.exists());
+}
+
+#[test]
+fn a_move_from_a_missing_source_fails_and_leaves_its_target_alone() {
+    let dir = scratch("move-missing");
+    let to = dir.join("mods").join("mod.jar");
+    write_atomic(&to, b"kept").unwrap();
+    assert!(move_file(&dir.join("absent.jar"), &to).is_err());
+    assert_eq!(fs::read(&to).unwrap(), b"kept");
+}
+
+#[test]
+fn a_copy_across_drives_replaces_its_target_and_leaves_no_temporary() {
+    let dir = scratch("copy-move");
+    let from = dir.join("staged.jar");
+    let to = dir.join("mods").join("mod.jar");
+    write_atomic(&from, b"new").unwrap();
+    write_atomic(&to, b"old").unwrap();
+    copy_then_remove(&from, &to).unwrap();
+    assert_eq!(fs::read(&to).unwrap(), b"new");
+    assert!(!from.exists());
+    let names: Vec<_> = fs::read_dir(to.parent().unwrap())
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.file_name())
+        .collect();
+    assert_eq!(names.len(), 1, "only the moved file is left: {names:?}");
+}

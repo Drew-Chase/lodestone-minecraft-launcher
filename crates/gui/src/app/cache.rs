@@ -1,8 +1,8 @@
 //! Clearing the launcher's caches: what it can fetch or work out again. That is the cache folder (Discover pictures, the
-//! news feed, staged updates and server pack staging), the faces kept for the accounts, the database's cache section and
-//! mod caches (the mod index, the mods' update checks and jar hashes), and what is held in memory (the mod index and the
-//! answers to recent platform requests). Settings, sign-ins,
-//! instances, worlds, shared downloads and the records of where each mod came from stay.
+//! news feed, staged updates, server pack staging and the jars staged for a mod being added), the faces kept for the
+//! accounts, the database's cache section and mod caches (the mod index, the mods' update checks and jar hashes), and what
+//! is held in memory (the mod index and the answers to recent platform requests). Settings, sign-ins, instances, worlds,
+//! shared downloads and the records of where each mod came from stay.
 
 use std::path::{Path, PathBuf};
 
@@ -12,6 +12,7 @@ use tracing::{info, warn};
 use crate::app::appearance_cache;
 use crate::app::components::alert::Alert;
 use crate::app::components::scene_art;
+use crate::app::install::mods::staging_in_use;
 use crate::app::lang;
 use crate::app::pages::instance::files::mod_index;
 use crate::app::pages::instance::format::format_bytes;
@@ -24,6 +25,9 @@ use super::{LodestoneAppMessage, LodestoneLauncher};
 const UPDATES: &str = "updates";
 /// The cache folder's folder of servers being built. It is kept while a server pack is being written.
 const SERVER_PACK: &str = "server-pack";
+/// The cache folder's folder of jars staged for a mod being added. It is kept while an add holds a staging folder, since
+/// clearing it would take the jars out from under that add.
+const MOD_STAGING: &str = "mod-staging";
 
 impl LodestoneLauncher {
     /// Asks before the caches are cleared. The answer returns as `CacheAnswered`.
@@ -50,6 +54,9 @@ impl LodestoneLauncher {
         }
         if self.server_pack.step == Step::Exporting {
             kept.push(SERVER_PACK);
+        }
+        if staging_in_use() {
+            kept.push(MOD_STAGING);
         }
         // What is held in memory goes now, so nothing reads it again before the files are gone.
         self.mod_checks.clear();
