@@ -342,3 +342,52 @@ fn a_rescan_that_drops_the_last_dependent_ends_the_library() {
     state.set_mods(vec![named("fabric-api.jar", "Fabric API", "fabric-api", true, &[])]);
     assert!(state.row("fabric-api.jar").is_some_and(|row| !row.library));
 }
+
+#[test]
+fn the_disabled_chip_narrows_the_list_to_the_mods_that_are_switched_off() {
+    let mut state = sample();
+    assert_eq!(state.disabled_count(), 1);
+
+    let _ = state.update(Message::Disabled(true));
+    assert_eq!(visible_names(&state), ["Zoomies"]);
+
+    let _ = state.update(Message::Query("sod".to_string()));
+    assert!(state.visible.is_empty(), "the chip and the text both have to pass");
+
+    let _ = state.update(Message::Disabled(false));
+    assert_eq!(visible_names(&state), ["Sodium"]);
+}
+
+#[test]
+fn a_mod_switched_on_leaves_the_disabled_list_and_one_switched_off_joins_it() {
+    let mut state = sample();
+    let _ = state.update(Message::Disabled(true));
+
+    state.renamed("zoomies.jar.disabled", "zoomies.jar", true);
+    assert!(state.visible.is_empty(), "the mod is on now, so the chip no longer lists it");
+
+    state.renamed("sodium.jar", "sodium.jar.disabled", false);
+    assert_eq!(visible_names(&state), ["Sodium"]);
+    assert_eq!(state.disabled_count(), 1);
+}
+
+#[test]
+fn update_all_takes_the_mods_with_a_release_and_a_source_that_are_not_busy() {
+    let mut state = sample();
+    state.apply_sources(vec![source("sodium.jar", "AANobbMI"), source("lithium.jar", "gvQqBUqZ")]);
+    let found = HashMap::from([
+        ("sodium.jar".to_string(), release("sodium-2")),
+        ("lithium.jar".to_string(), release("lithium-2")),
+        ("zoomies.jar.disabled".to_string(), release("zoomies-2")),
+    ]);
+    let checked = ["sodium.jar".to_string(), "lithium.jar".to_string(), "zoomies.jar.disabled".to_string()];
+    state.apply_checks(Vec::new(), found, &checked);
+    assert_eq!(
+        state.updatable(),
+        ["sodium.jar", "lithium.jar"],
+        "Zoomies has no source to take its release from"
+    );
+
+    state.set_busy("sodium.jar", true);
+    assert_eq!(state.updatable(), ["lithium.jar"], "a mod whose action is in flight is left out");
+}

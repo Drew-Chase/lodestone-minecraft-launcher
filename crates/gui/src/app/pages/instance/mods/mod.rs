@@ -9,14 +9,14 @@
 mod dialog;
 mod list;
 mod menu;
+mod toolbar;
 
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use iced::widget::scrollable::AbsoluteOffset;
-use iced::widget::{Id, Text, column, container, image, operation, responsive, text_input};
-use iced::{Background, Border, Element, Fill, Padding, Task, alignment};
-use iced_color_extension::rgb;
+use iced::widget::{Id, Text, column, container, image, operation, responsive};
+use iced::{Element, Fill, Padding, Task};
 use lodestone_platforms::ContentVersion;
 
 pub use dialog::{
@@ -26,23 +26,20 @@ pub use menu::Action;
 
 use super::GUTTER;
 use super::files::ModFile;
-use crate::app::components::button::Variant;
-use crate::app::components::hint::hint;
-use crate::app::components::input;
 use crate::app::components::panel::panel;
-use crate::app::components::{TextButton, scrollbar};
+use crate::app::components::scrollbar;
 use crate::app::lang;
 use crate::app::retention::Retained;
 use crate::app::shared_library::ModSource;
 use crate::app::theme::{color, fonts};
-use aurora_leaf::Icon;
 
-/// The active filter: a case-insensitive match on name or author, and the updates chip, which narrows the list to the
-/// mods the platforms have a newer release for.
+/// The active filter: a case-insensitive match on name or author, the updates chip, which narrows the list to the mods
+/// the platforms have a newer release for, and the disabled chip, which narrows it to the mods that are switched off.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ModFilter {
     pub query: String,
     pub updates_only: bool,
+    pub disabled_only: bool,
 }
 
 impl ModFilter {
@@ -50,6 +47,7 @@ impl ModFilter {
     pub fn matches(&self, row: &Row) -> bool {
         let entry = &row.file;
         (!self.updates_only || row.update.is_some())
+            && (!self.disabled_only || !entry.enabled)
             && (self.query.is_empty()
                 || contains_ignore_case(&entry.name, &self.query)
                 || entry.author.as_deref().is_some_and(|author| contains_ignore_case(author, &self.query)))
@@ -99,6 +97,8 @@ pub struct State {
     hovered: Option<String>,
     /// Whether the instance is locked to its modpack. A locked instance offers no action that changes a mod.
     locked: bool,
+    /// Whether the updates Update all started are still running. The button waits while they are.
+    updating_all: bool,
 }
 
 /// The key of the platform project a record names, by platform and project id.
@@ -122,6 +122,10 @@ pub enum Message {
     Query(String),
     /// The updates chip was pressed. `true` narrows the list to the mods with a newer release.
     Updates(bool),
+    /// The disabled chip was pressed. `true` narrows the list to the mods that are switched off.
+    Disabled(bool),
+    /// Update all was pressed. The root installs every newer release, one mod after another.
+    UpdateAll,
     /// A mod's switch was flipped, by file name. The root renames the jar and answers with the new name.
     Toggle { file_name: String, enabled: bool },
     /// The pointer entered (`hovered`) or left the row of the mod with this file name.
@@ -359,6 +363,8 @@ impl State {
             row.source = self.sources.get(to).cloned();
             row.update = self.updates.get(to).cloned();
         }
+        // The Disabled chip reads the switch, so a mod switched while it is on joins or leaves the list now.
+        self.refilter();
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -369,6 +375,10 @@ impl State {
             }
             Message::Updates(updates_only) => {
                 self.filter.updates_only = updates_only;
+                self.filter_changed()
+            }
+            Message::Disabled(disabled_only) => {
+                self.filter.disabled_only = disabled_only;
                 self.filter_changed()
             }
             // The root renames the jar, and the row follows once the rename lands.
@@ -385,9 +395,9 @@ impl State {
                 self.scroll_y = offset.max(0.0);
                 Task::none()
             }
-            // The root answers these: a press opens a mod's page or its search, a menu row runs an action, and Add
-            // opens Discover.
-            Message::Add | Message::Open(_) | Message::Menu { .. } => Task::none(),
+            // The root answers these: a press opens a mod's page or its search, a menu row runs an action, Update all
+            // installs the newer releases, and Add opens Discover.
+            Message::Add | Message::UpdateAll | Message::Open(_) | Message::Menu { .. } => Task::none(),
             Message::Dialog(message) => {
                 match message {
                     DialogMessage::Close => self.dialog = None,
@@ -435,6 +445,26 @@ impl State {
         self.rows.iter().filter(|row| row.update.is_some()).count()
     }
 
+    /// How many mods are switched off.
+    fn disabled_count(&self) -> usize {
+        self.rows.iter().filter(|row| !row.file.enabled).count()
+    }
+
+    /// The file names of the mods Update all installs, in list order: each one with a newer release, a recorded source to
+    /// take it from, and no action already in flight.
+    pub fn updatable(&self) -> Vec<String> {
+        self.rows
+            .iter()
+            .filter(|row| row.update.is_some() && row.source.is_some() && !self.busy.contains(&row.file.file_name))
+            .map(|row| row.file.file_name.clone())
+            .collect()
+    }
+
+    /// Records whether the updates Update all started are still running.
+    pub fn set_updating_all(&mut self, updating: bool) {
+        self.updating_all = updating;
+    }
+
     /// The tab: the filter bar, which stays at the top while the list scrolls beneath it, then the list. The list's
     /// height is the room the tab leaves for it, which the list needs to know to build the rows on screen.
     pub fn view(&self, takes_mods: bool) -> Element<'_, Message> {
@@ -473,66 +503,6 @@ impl State {
             .height(Fill)
             .into()
     }
-
-    fn toolbar(&self, takes_mods: bool) -> Element<'_, Message> {
-        let add = TextButton::labeled_icon(Icon::lucide().plus(), lang::t("instance.mods.add"), Variant::Primary);
-        // A locked instance takes no new mods until it is unlocked, so Add waits as it does for a vanilla instance.
-        let can_add = takes_mods && !self.locked;
-        let add = if can_add { add.on_press(Message::Add) } else { add.disabled(true) };
-        let add_hint = if !takes_mods {
-            lang::t("instance.mods.add_vanilla")
-        } else if self.locked {
-            lang::t("instance.mods.add_locked")
-        } else {
-            lang::t("instance.mods.add_hint")
-        };
-        let filter = text_input(lang::t("instance.mods.filter_placeholder"), &self.filter.query)
-            .on_input(Message::Query)
-            .style(input::style)
-            .padding(Padding::new(0.0).left(14).right(14).top(10).bottom(10))
-            .size(13)
-            .width(Fill);
-        let mut bar = iced::widget::row![filter].spacing(10).align_y(alignment::Vertical::Center);
-        // A locked instance cannot install the newer releases the chip counts, so the chip is left out while it is locked.
-        if !self.locked {
-            bar = bar.push(updates_chip(self.filter.updates_only, self.update_count()));
-        }
-        bar.push(hint(add, add_hint)).into()
-    }
-}
-
-/// The chip that narrows the list to the mods with a newer release, with how many there are. It lights while it is on, as
-/// the Worlds page's filter chips do.
-fn updates_chip(active: bool, count: usize) -> Element<'static, Message> {
-    let (ink, weight) = if active {
-        (color::text_headline(), fonts::Inter::SEMI_BOLD)
-    } else {
-        (color::text_muted(), fonts::Inter::MEDIUM)
-    };
-    let content = iced::widget::row![
-        Text::new(lang::t("instance.mods.updates_filter")).size(12).font(weight).color(ink),
-        Text::new(count.to_string())
-            .size(11)
-            .font(fonts::JetBrainsMono::REGULAR)
-            .color(color::text_placeholder()),
-    ]
-    .spacing(8)
-    .align_y(alignment::Vertical::Center);
-    container(
-        TextButton::content(content)
-            .padding(Padding::new(0.0).left(12.0).right(12.0).top(7.0).bottom(7.0))
-            .on_press(Message::Updates(!active)),
-    )
-    .style(move |_| container::Style {
-        background: active.then_some(Background::Color(rgb!(255, 255, 255, 10%))),
-        border: Border {
-            radius: 999.0.into(),
-            width: if active { 1.0 } else { 0.0 },
-            color: color::surface_line_strong(),
-        },
-        ..container::Style::default()
-    })
-    .into()
 }
 
 #[cfg(test)]

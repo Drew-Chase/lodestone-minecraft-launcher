@@ -37,8 +37,11 @@ const LOG_FILES: [&str; 4] = ["debug.log", "latest.log", "error.log", "logs.ndjs
 /// lines, about 20 MB, formatted on the main thread for every log file before the window opened, which held the window
 /// back by more than a second. wgpu traces every resource it creates and calloop every event it dispatches, about
 /// 130,000 lines in a short session, and each line is formatted on the thread that logs it, often the UI thread.
-const QUIET_TARGETS: [(&str, LevelFilter); 8] = [
+/// cosmic-text writes a line for every word and every run it shapes: opening a 900 KB log in the Files tab's editor wrote
+/// 1.75 million of them, which held the UI thread for about twenty seconds where the shaping itself takes a fifth of one.
+const QUIET_TARGETS: [(&str, LevelFilter); 9] = [
     ("iced_winit", LevelFilter::WARN),
+    ("cosmic_text", LevelFilter::INFO),
     ("wgpu_core", LevelFilter::INFO),
     ("wgpu_hal", LevelFilter::INFO),
     ("naga", LevelFilter::INFO),

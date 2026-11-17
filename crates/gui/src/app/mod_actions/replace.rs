@@ -52,9 +52,23 @@ impl LodestoneLauncher {
         })
     }
 
-    /// A jar was replaced. Its record moves to the new jar, the folder is read again, and the new jar is checked for a
-    /// newer release.
+    /// A jar was replaced, or could not be. While Update all runs, the next mod it queued starts once this one has been
+    /// applied, and a failure is kept for the summary that ends the queue.
     pub(super) fn mod_replaced(&mut self, file_name: String, result: Result<Vec<ModSource>, String>) -> Task<LodestoneAppMessage> {
+        if let Err(error) = &result
+            && self.keep_update_failure(&file_name, error)
+        {
+            warn!("updating the mod {file_name} failed: {error}");
+            self.instance_page.mods_mut().set_busy(&file_name, false);
+            return self.next_mod_update();
+        }
+        let applied = self.apply_replaced(file_name, result);
+        Task::batch([applied, self.next_mod_update()])
+    }
+
+    /// Applies a replaced jar. Its record moves to the new jar, the folder is read again, and the new jar is checked for a
+    /// newer release.
+    fn apply_replaced(&mut self, file_name: String, result: Result<Vec<ModSource>, String>) -> Task<LodestoneAppMessage> {
         self.instance_page.mods_mut().set_busy(&file_name, false);
         match result {
             Ok(records) => {

@@ -11,6 +11,7 @@ mod discover;
 mod downloads;
 mod export;
 pub mod face;
+mod file_actions;
 mod folder_listing;
 mod games;
 mod import;
@@ -141,6 +142,8 @@ pub struct LodestoneLauncher {
     mod_check_timer: bool,
     /// Keeps the database writes of each instance's mod check in order.
     mod_check_saves: KeyedWriter<String, mod_actions::ModCheck>,
+    /// The updates Update all still has to run on the instance the page shows, while it runs.
+    mod_update_queue: Option<mod_actions::UpdateQueue>,
     settings: Settings,
     /// The Discover page: the platform searches, and the results on screen.
     discover: Discover,
@@ -267,6 +270,7 @@ impl Default for LodestoneLauncher {
             mod_check_started: None,
             mod_check_timer: false,
             mod_check_saves: KeyedWriter::default(),
+            mod_update_queue: None,
             settings: Settings::default(),
             discover: {
                 let mut discover = Discover::new(discover::opening_source());

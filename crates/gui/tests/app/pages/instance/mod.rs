@@ -86,7 +86,7 @@ fn sample_files() -> InstanceFiles {
 #[test]
 fn all_tabs_have_labels() {
     let labels: Vec<_> = Tab::ALL.iter().map(|tab| tab.label()).collect();
-    assert_eq!(labels, ["Content", "Versions", "Worlds", "Screenshots", "Logs", "Settings"]);
+    assert_eq!(labels, ["Content", "Files", "Versions", "Worlds", "Screenshots", "Logs", "Settings"]);
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn the_versions_tab_is_shown_only_for_an_instance_that_came_from_a_platform() {
     let mut installed = aether();
     installed.source_platform = Some("modrinth".to_string());
     assert!(Tab::visible(Some(&installed)).contains(&Tab::Versions));
-    assert_eq!(Tab::visible(Some(&local)).len(), 5, "the other tabs stay");
+    assert_eq!(Tab::visible(Some(&local)).len(), 6, "the other tabs stay");
 }
 
 #[test]
@@ -260,4 +260,42 @@ fn every_tab_builds_before_the_scan_lands() {
 fn the_page_builds_without_an_instance() {
     let page = InstancePage::default();
     let _ = page.view(Size::new(1280.0, 800.0), idle_game(), None, &WorldPins::default(), None);
+}
+
+#[test]
+fn the_files_tab_sits_between_content_and_the_tabs_after_it() {
+    let local = Tab::visible(Some(&aether()));
+    assert_eq!(&local[..3], [Tab::Content, Tab::Files, Tab::Worlds]);
+    let mut installed = aether();
+    installed.source_platform = Some("modrinth".to_string());
+    assert_eq!(&Tab::visible(Some(&installed))[..3], [Tab::Content, Tab::Files, Tab::Versions]);
+}
+
+#[test]
+fn the_files_tab_points_at_the_instance_folder_and_is_read_only_while_the_instance_is_locked() {
+    let mut page = InstancePage::default();
+    let _ = page.show(aether(), PathBuf::from("/instances/aether"), &LaunchDefaults::default());
+    assert_eq!(page.browser().root(), Path::new("/instances/aether"));
+    assert!(!page.browser().read_only());
+
+    let mut locked = aether();
+    locked.locked = true;
+    page.refresh(locked.clone(), &LaunchDefaults::default());
+    assert!(page.browser().read_only(), "locking the instance locks its files");
+    let _ = page.show(locked, PathBuf::from("/instances/aether"), &LaunchDefaults::default());
+    assert!(page.browser().read_only());
+}
+
+#[test]
+fn files_copied_in_one_instance_stay_on_the_clipboard_when_another_is_opened() {
+    let mut page = InstancePage::default();
+    let _ = page.show(aether(), PathBuf::from("/instances/aether"), &LaunchDefaults::default());
+    let clip = browser::Clip {
+        paths: vec![PathBuf::from("/instances/aether/options.txt")],
+        cut: false,
+    };
+    page.browser_mut().set_clip(Some(clip.clone()));
+    let _ = page.show(aether(), PathBuf::from("/instances/other"), &LaunchDefaults::default());
+    assert_eq!(page.browser().clip(), Some(&clip));
+    assert_eq!(page.browser().root(), Path::new("/instances/other"));
 }

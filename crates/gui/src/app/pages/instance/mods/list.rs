@@ -6,7 +6,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use aurora_leaf::Icon;
-use iced::widget::{Space, Text, column, container, image, keyed_column, mouse_area, row};
+use iced::widget::{Space, Text, column, container, image, mouse_area, row};
 use iced::{Background, Border, Color, Element, Fill, Length, Padding, alignment, mouse};
 use iced_color_extension::rgb;
 
@@ -17,6 +17,7 @@ use crate::app::components::button::Variant;
 use crate::app::components::context_menu::ContextMenu;
 use crate::app::components::dropdown::Dropdown;
 use crate::app::components::hover_track::HoverTrack;
+use crate::app::components::keyed_list::KeyedList;
 use crate::app::components::panel::{hairline, panel_with_padding};
 use crate::app::components::platform_logo;
 use crate::app::components::{TextButton, Toggle};
@@ -56,8 +57,9 @@ pub fn window(scroll_y: f32, height: f32, total: usize) -> Window {
 }
 
 /// The bordered list: a spacer for the rows above the window, the rows in it, and a spacer for those below. Each row is
-/// keyed by its mod, so the state its menu and switch keep follows the mod as the window scrolls. Keyed by position, a
-/// menu opened on one mod would reopen on whichever mod had moved into its place.
+/// keyed by its mod in a [`KeyedList`], so the state its menu and switch keep follows the mod as the window scrolls. iced's
+/// own `keyed_column` reads its keys only when the row count changes, and a scroll leaves the count as it was: a switch then
+/// drew the position of the mod that had sat in its slot.
 pub fn view(state: &State, height: f32) -> Element<'_, Message> {
     let _scope = perf::scope("view.mods.list");
     let window = window(state.scroll_y, height, state.visible.len());
@@ -68,7 +70,7 @@ pub fn view(state: &State, height: f32) -> Element<'_, Message> {
         children.push((row_key(&state.rows[index].file.file_name), mod_row(state, index)));
     }
     children.push((BOTTOM_SPACER, Space::new().height((window.total - window.end) as f32 * PITCH).into()));
-    panel_with_padding(keyed_column(children).width(Fill), Padding::new(0.0).left(16).right(16))
+    panel_with_padding(KeyedList::new(children).width(Fill), Padding::new(0.0).left(16).right(16))
 }
 
 /// The keys of the spacers, which no mod's key can equal in practice.

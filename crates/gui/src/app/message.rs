@@ -9,6 +9,7 @@ use crate::app::data_folder::FolderKind;
 use crate::app::database::Database;
 use crate::app::downloads::Message as DownloadsMessage;
 use crate::app::export::Message as ExportMessage;
+use crate::app::file_actions;
 use crate::app::import::Message as ImportMessage;
 use crate::app::launch::GameMessage;
 use crate::app::mod_actions;
@@ -146,6 +147,8 @@ pub enum LodestoneAppMessage {
     Datapacks(crate::app::world_datapacks::Message),
     /// What the platforms and the disk answered for the Mods tab.
     ModActions(mod_actions::Message),
+    /// What the disk and the clipboard answered for the Files tab of the instance page.
+    Files(file_actions::Message),
     /// A mod being added brings a dependency the instance already has at another version. The root asks the user which
     /// version to keep, and the add waits for the answer.
     DependencyConflict(crate::app::install::mods::VersionConflict),

@@ -15,7 +15,7 @@ use crate::app::pages::instance::Tab;
 use crate::app::pages::instance::files;
 use crate::app::pages::instance::settings::Message as InstanceSettingsMessage;
 use crate::app::pages::instance::versions;
-use crate::app::pages::instance::{logs, mods, screenshots, worlds};
+use crate::app::pages::instance::{browser, logs, mods, screenshots, worlds};
 use crate::app::pages::library::Message as LibraryMessage;
 use crate::app::pages::library::instance::Instance;
 use crate::app::pages::login::Message as LoginMessage;
@@ -347,20 +347,22 @@ impl LodestoneLauncher {
                 Task::batch([select, self.mods_checks_due()])
             }
             // An in-place update is writing the mods folder, so the mods cannot be switched or removed until it ends.
-            LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Toggle { .. } | mods::Message::Menu { .. }))
-                if self.shown_instance_updating() =>
-            {
-                self.alerts.show(Alert::warn(lang::t("pack_update.busy.working"))).discard()
-            }
+            LodestoneAppMessage::Instance(InstanceMessage::Mods(
+                mods::Message::Toggle { .. } | mods::Message::Menu { .. } | mods::Message::UpdateAll,
+            )) if self.shown_instance_updating() => self.alerts.show(Alert::warn(lang::t("pack_update.busy.working"))).discard(),
             LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Open(file_name))) => self.mod_row_pressed(file_name),
             LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Toggle { file_name, enabled })) => self.mod_toggle(file_name, enabled),
             LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Menu { file_name, action })) => {
                 self.mod_menu_action(file_name, action)
             }
+            LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::UpdateAll)) => self.update_all_mods(),
             LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Dialog(message))) if !message.is_local() => {
                 self.mod_dialog_action(message)
             }
             LodestoneAppMessage::ModActions(message) => self.mod_actions_message(message),
+            // The Files tab asks the root for whatever writes to the disk or the clipboard, and the answers come back here.
+            LodestoneAppMessage::Instance(InstanceMessage::Browser(browser::Message::Request(request))) => self.file_request(request),
+            LodestoneAppMessage::Files(message) => self.file_message(message),
             LodestoneAppMessage::DependencyConflict(conflict) => self.ask_dependency_conflict(conflict),
             LodestoneAppMessage::UnlockAnswered { id, confirmed } => self.unlock_answered(id, confirmed),
             LodestoneAppMessage::Instance(message) => self.instance_page.update(message).map(LodestoneAppMessage::Instance),

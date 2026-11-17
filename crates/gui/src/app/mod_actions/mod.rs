@@ -35,8 +35,10 @@ mod deps;
 mod link;
 mod replace;
 mod toggle;
+mod update_all;
 
 pub(crate) use replace::replace_jar;
+pub use update_all::UpdateQueue;
 
 /// How many hits a search for a link asks a platform for.
 const SEARCH_LIMIT: u32 = 20;

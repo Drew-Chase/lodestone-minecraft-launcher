@@ -585,6 +585,10 @@ impl LodestoneLauncher {
     /// The window was asked to close. With no game running the launcher exits. A running game is not watched once the launcher
     /// has gone, so the launcher asks first, and the answer comes back as `CloseAnswered`.
     pub(super) fn close_requested(&mut self) -> Task<LodestoneAppMessage> {
+        // Unsaved changes in the Files tab's editor are asked about before anything else.
+        if let Some(ask) = self.unsaved_guard(crate::app::file_actions::Leaving::CloseWindow) {
+            return ask;
+        }
         if !self.games.any_running() {
             return self.exit_launcher();
         }

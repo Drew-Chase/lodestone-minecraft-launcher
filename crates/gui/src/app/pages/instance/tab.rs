@@ -8,6 +8,8 @@ use crate::app::pages::library::instance::Instance;
 pub enum Tab {
     #[default]
     Content,
+    /// The instance folder, as a file manager shows it.
+    Files,
     /// The releases of the modpack the instance came from. Shown only for an instance that came from a platform.
     Versions,
     Worlds,
@@ -17,11 +19,20 @@ pub enum Tab {
 }
 
 impl Tab {
-    pub const ALL: [Tab; 6] = [Tab::Content, Tab::Versions, Tab::Worlds, Tab::Screenshots, Tab::Logs, Tab::Settings];
+    pub const ALL: [Tab; 7] = [
+        Tab::Content,
+        Tab::Files,
+        Tab::Versions,
+        Tab::Worlds,
+        Tab::Screenshots,
+        Tab::Logs,
+        Tab::Settings,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Tab::Content => lang::t("instance.tab.content"),
+            Tab::Files => lang::t("instance.tab.files"),
             Tab::Versions => lang::t("instance.tab.versions"),
             Tab::Worlds => lang::t("instance.tab.worlds"),
             Tab::Screenshots => lang::t("instance.tab.screenshots"),

@@ -231,7 +231,7 @@ impl Batch {
 
 /// Whether an event can mean a file was written or removed. Reads do not count, so the watch never reacts
 /// to its own reads. Closing a file after writing it does count, since that is when a capture is complete.
-fn relevant(kind: &EventKind) -> bool {
+pub(super) fn relevant(kind: &EventKind) -> bool {
     matches!(
         kind,
         EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(_) | EventKind::Access(AccessKind::Close(AccessMode::Write))

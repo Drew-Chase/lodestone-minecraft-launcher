@@ -16,6 +16,7 @@ use super::{LodestoneAppMessage, LodestoneLauncher};
 use crate::app::components::alert::Alert;
 use crate::app::database::Database;
 use crate::app::downloads;
+use crate::app::file_actions::Leaving;
 use crate::app::install::ART_DIR;
 use crate::app::lang;
 use crate::app::pages::Page;
@@ -60,6 +61,11 @@ impl LodestoneLauncher {
 
     /// Opens an instance's detail page on `tab`. An id that is no longer loaded is ignored.
     pub(super) fn open_instance_page(&mut self, id: &str, tab: Tab) -> Task<LodestoneAppMessage> {
+        // Opening a page starts its tabs over, the Files tab's editor included, so unsaved changes there are asked about.
+        let leaving = Leaving::OpenInstance { id: id.to_string(), tab };
+        if let Some(ask) = self.unsaved_guard(leaving) {
+            return ask;
+        }
         let Some(instance) = self.library.instance(id) else {
             warn!("Open instance {id} ignored: the instance is no longer loaded");
             return Task::none();

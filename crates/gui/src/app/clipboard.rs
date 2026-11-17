@@ -1,7 +1,8 @@
-//! The clipboard for copied images. `arboard` on Linux serves the X11 selection from the `Clipboard`
-//! that set it, so an image goes when that object does. One thread keeps a `Clipboard` for the
-//! launcher's lifetime, and copies are sent to it, so the image stays on the clipboard after it is copied.
+//! The clipboard for copied images and files. `arboard` on Linux serves the X11 selection from the `Clipboard` that set
+//! it, so what was copied goes when that object does. One thread keeps a `Clipboard` for the launcher's lifetime, and
+//! every copy and read is sent to it, so an image or a list of files stays on the clipboard after it is copied.
 
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 
@@ -11,10 +12,20 @@ use tokio::sync::oneshot;
 /// The message for a clipboard thread that has stopped.
 const STOPPED: &str = "the clipboard thread has stopped";
 
-/// One image waiting for the clipboard thread, and where its outcome goes.
-pub struct Job {
-    image: ImageData<'static>,
-    reply: oneshot::Sender<Result<(), String>>,
+/// One request waiting for the clipboard thread, and where its outcome goes.
+pub enum Job {
+    /// Sets an image as the clipboard's content.
+    Image {
+        image: ImageData<'static>,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
+    /// Sets a list of files as the clipboard's content, the way a file manager's Copy does.
+    SetFiles {
+        paths: Vec<PathBuf>,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
+    /// Reads the list of files the clipboard holds. A clipboard that holds something else is an error.
+    GetFiles { reply: oneshot::Sender<Result<Vec<PathBuf>, String>> },
 }
 
 /// The way to the clipboard thread. The thread starts on the first copy.
@@ -33,7 +44,21 @@ impl Worker {
 /// Sends `image` to the clipboard thread and resolves with the outcome.
 pub async fn copy(sender: Sender<Job>, image: ImageData<'static>) -> Result<(), String> {
     let (reply, outcome) = oneshot::channel();
-    sender.send(Job { image, reply }).map_err(|_| STOPPED.to_string())?;
+    sender.send(Job::Image { image, reply }).map_err(|_| STOPPED.to_string())?;
+    outcome.await.map_err(|_| STOPPED.to_string())?
+}
+
+/// Puts the files at `paths` on the clipboard, and resolves with the outcome.
+pub async fn copy_files(sender: Sender<Job>, paths: Vec<PathBuf>) -> Result<(), String> {
+    let (reply, outcome) = oneshot::channel();
+    sender.send(Job::SetFiles { paths, reply }).map_err(|_| STOPPED.to_string())?;
+    outcome.await.map_err(|_| STOPPED.to_string())?
+}
+
+/// Reads the files the clipboard holds. Resolves with an error when it holds none, or cannot be read.
+pub async fn read_files(sender: Sender<Job>) -> Result<Vec<PathBuf>, String> {
+    let (reply, outcome) = oneshot::channel();
+    sender.send(Job::GetFiles { reply }).map_err(|_| STOPPED.to_string())?;
     outcome.await.map_err(|_| STOPPED.to_string())?
 }
 
@@ -43,22 +68,31 @@ fn spawn() -> Sender<Job> {
     let (sender, jobs) = mpsc::channel::<Job>();
     thread::spawn(move || {
         let mut clipboard = None;
-        for Job { image, reply } in jobs {
-            let outcome = write(&mut clipboard, image);
-            // The copy's caller may have given up, in which case nobody needs the outcome.
-            let _ = reply.send(outcome);
+        for job in jobs {
+            // A job's caller may have given up, in which case nobody needs the outcome.
+            match job {
+                Job::Image { image, reply } => {
+                    let _ = reply.send(with(&mut clipboard, |clipboard| clipboard.set_image(image)));
+                }
+                Job::SetFiles { paths, reply } => {
+                    let _ = reply.send(with(&mut clipboard, |clipboard| clipboard.set().file_list(&paths)));
+                }
+                Job::GetFiles { reply } => {
+                    let _ = reply.send(with(&mut clipboard, |clipboard| clipboard.get().file_list()));
+                }
+            }
         }
     });
     sender
 }
 
-/// Sets `image` as the clipboard's image, opening the clipboard first when it is not open.
-fn write(clipboard: &mut Option<Clipboard>, image: ImageData<'static>) -> Result<(), String> {
+/// Runs `job` on the clipboard, opening it first when it is not open.
+fn with<T>(clipboard: &mut Option<Clipboard>, job: impl FnOnce(&mut Clipboard) -> Result<T, arboard::Error>) -> Result<T, String> {
     if clipboard.is_none() {
         *clipboard = Some(Clipboard::new().map_err(|error| error.to_string())?);
     }
     match clipboard {
-        Some(clipboard) => clipboard.set_image(image).map_err(|error| error.to_string()),
+        Some(clipboard) => job(clipboard).map_err(|error| error.to_string()),
         None => Err("the clipboard is not open".to_string()),
     }
 }
