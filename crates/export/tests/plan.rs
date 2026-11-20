@@ -84,3 +84,21 @@ fn expand_skips_symbolic_links() {
     let paths: Vec<&str> = planned.iter().map(|file| file.path.as_str()).collect();
     assert_eq!(paths, ["config/options.toml"]);
 }
+
+#[test]
+fn the_mod_snapshots_stay_out_of_every_export() {
+    use crate::support::{put, scratch};
+    let root = scratch("plan-snapshots");
+    put(&root, "config/options.txt", b"keep");
+    put(&root, ".lodestone/banner.png", b"keep");
+    put(&root, ".lodestone/snapshots/2026-11-20_14-05-33_manual.json.xz", b"left out");
+    put(&root, ".lodestone/snapshots/2026-11-20_14-05-33_manual.zip", b"left out");
+    let planned = expand(&root, &Selection::default()).expect("the folder expands");
+    let paths: Vec<&str> = planned.iter().map(|file| file.path.as_str()).collect();
+    assert!(paths.contains(&"config/options.txt"));
+    assert!(paths.contains(&".lodestone/banner.png"), "the instance's own art still exports");
+    assert!(
+        paths.iter().all(|path| !path.starts_with(".lodestone/snapshots")),
+        "snapshots are never exported: {paths:?}"
+    );
+}

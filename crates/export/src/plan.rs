@@ -14,6 +14,12 @@ pub fn is_leftover(name: &str) -> bool {
     matches!(name, ".installing" | ".modpack")
 }
 
+/// Whether a path inside the instance is never exported: the mod snapshots kept in `.lodestone/snapshots`. They name platform
+/// releases that a package cannot carry, so they stay with the instance on this machine.
+pub fn excluded(path: &str) -> bool {
+    path == ".lodestone/snapshots" || path.starts_with(".lodestone/snapshots/")
+}
+
 /// Whether a row is checked, unchecked, or checked with something under it turned off.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CheckState {
@@ -129,7 +135,7 @@ fn walk(folder: &Path, prefix: &str, selection: &Selection, planned: &mut Vec<Pl
             continue;
         }
         let path = if prefix.is_empty() { name } else { format!("{prefix}/{name}") };
-        if !selection.is_included(&path) {
+        if excluded(&path) || !selection.is_included(&path) {
             continue;
         }
         let file_type = entry.file_type()?;
