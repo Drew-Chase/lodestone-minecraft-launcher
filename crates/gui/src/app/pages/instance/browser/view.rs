@@ -7,6 +7,7 @@ use iced::{Background, Border, Color, Element, Fill, Length, Padding, Point, Siz
 use iced_color_extension::rgb;
 
 use super::menu::{self, Menu, Target};
+use super::search::{self, Message as SearchMessage};
 use super::{Action, Message, State, drag};
 use crate::app::components::context_menu::ContextMenu;
 use crate::app::components::dropdown::Dropdown;
@@ -27,6 +28,8 @@ use crate::app::theme::{color, fonts, utility};
 pub const SCROLL_ID: &str = "instance-files-list";
 /// The id of the rename field, so it takes the focus when it appears.
 pub const RENAME_ID: &str = "instance-files-rename";
+/// The id of the find field, so Ctrl+F takes the focus.
+pub const SEARCH_ID: &str = "instance-files-search";
 /// A row's height.
 pub const ROW_HEIGHT: f32 = 36.0;
 /// The width of the list while a file is open in the editor beside it.
@@ -36,9 +39,10 @@ pub const ASSUMED_HEIGHT: f32 = 400.0;
 
 /// The rows built past each edge of the window.
 const OVERSCAN: usize = 8;
-/// The width of the size column, the modified column, and the ⋯ button's column.
+/// The width of the size column and the modified column.
 const SIZE_WIDTH: f32 = 84.0;
 const MODIFIED_WIDTH: f32 = 148.0;
+/// The ⋯ button is a square this wide, so it keeps room above and below in the row's height.
 const MORE_WIDTH: f32 = 28.0;
 /// The gap between a row's cells.
 const GAP: f32 = 12.0;
@@ -116,7 +120,7 @@ fn glyph(row: &Row) -> &'static str {
 impl State {
     /// The tab: the path bar, then the list, which takes the room that is left and scrolls itself.
     pub fn view(&self) -> Element<'_, Message> {
-        let mut list = column![self.path_bar()].spacing(12).width(Fill).height(Fill);
+        let mut list = column![self.path_bar(), self.search_bar()].spacing(12).width(Fill).height(Fill);
         if self.read_only {
             list = list.push(notice(Icon::lucide().lock(), lang::t("instance.files.read_only")));
         }
@@ -181,7 +185,7 @@ impl State {
             }
             bar = bar.push(Space::new().width(Fill));
         }
-        if !self.read_only {
+        if !self.changes_blocked() {
             let new_folder = IconButton::new(Icon::lucide().folder_plus())
                 .size(30)
                 .icon_size(14.0)
@@ -201,6 +205,52 @@ impl State {
             bar = bar
                 .push(hint(new_folder, lang::t("instance.files.menu.new_folder")))
                 .push(hint(new_file, lang::t("instance.files.menu.new_file")));
+        }
+        bar.into()
+    }
+
+    /// The find bar under the path: the field, the two toggles, and a clear button while there is a query. A search that stopped
+    /// at its limit says so under the field.
+    fn search_bar(&self) -> Element<'_, Message> {
+        let field = text_input(lang::t("instance.files.search.placeholder"), &self.search.query)
+            .id(SEARCH_ID)
+            .on_input(|text| Message::Search(SearchMessage::Query(text)))
+            .style(input::style)
+            .padding(Padding::new(0.0).left(12).right(12).top(7).bottom(7))
+            .size(13)
+            .width(Fill);
+        let mut bar = row![field].spacing(8).align_y(alignment::Vertical::Center);
+        if self.search.active() {
+            let clear = IconButton::new(Icon::lucide().x())
+                .size(30)
+                .icon_size(14.0)
+                .style(icon_button::ghost_button_style())
+                .on_press(Message::Search(SearchMessage::Clear));
+            bar = bar.push(hint(clear, lang::t("instance.files.search.clear")));
+        }
+        bar = bar.push(search_toggle(
+            Icon::lucide().folder_tree(),
+            lang::t("instance.files.search.subfolders"),
+            self.search.subfolders,
+            Message::Search(SearchMessage::Subfolders(!self.search.subfolders)),
+        ));
+        bar = bar.push(search_toggle(
+            Icon::lucide().text_search(),
+            lang::t("instance.files.search.contents"),
+            self.search.contents,
+            Message::Search(SearchMessage::Contents(!self.search.contents)),
+        ));
+        let mut bar = column![bar].spacing(6).width(Fill);
+        if self.search.truncated {
+            bar = bar.push(
+                Text::new(lang::t_with(
+                    "instance.files.search.truncated",
+                    &[("count", search::LIMIT.to_string().as_str())],
+                ))
+                .size(12)
+                .font(fonts::Inter::REGULAR)
+                .color(color::text_muted()),
+            );
         }
         bar.into()
     }
@@ -234,7 +284,15 @@ impl State {
     fn list(&self, size: Size) -> Element<'_, Message> {
         // Beside the editor the list is a column of names.
         let shown = if self.editor.is_some() { Shown::NAMES } else { shown(size.width) };
-        let rows: Element<'_, Message> = if let Some(error) = &self.error {
+        let rows: Element<'_, Message> = if self.search.shown {
+            if !self.search.ready {
+                status(lang::t("instance.files.search.searching").to_string())
+            } else if self.rows.is_empty() {
+                status(lang::t_with("instance.files.search.none", &[("query", self.search.query.as_str())]))
+            } else {
+                self.rows(shown, size.height)
+            }
+        } else if let Some(error) = &self.error {
             status(lang::t_with("export.files.failed", &[("error", error.as_str())]))
         } else if !self.listed {
             status(lang::t("export.files.reading").to_string())
@@ -244,7 +302,7 @@ impl State {
             self.rows(shown, size.height)
         };
         // A press on the empty part of the list selects nothing, and a right-press there opens the folder's own menu.
-        let Menu { items, actions } = menu::folder(self.read_only, true);
+        let Menu { items, actions } = menu::folder(self.changes_blocked(), true);
         let scroll = scrollbar::scroll(rows)
             .id(SCROLL_ID)
             .on_scroll(|viewport| Message::Scrolled {
@@ -366,6 +424,22 @@ impl State {
                 .wrapping(iced::widget::text::Wrapping::None)
                 .into(),
         };
+        // A match in a search names the folder it is in, in muted type after its name.
+        let name: Element<'_, Message> = if self.search.shown {
+            row![
+                name,
+                Text::new(location_of(row))
+                    .size(12)
+                    .font(fonts::JetBrainsMono::REGULAR)
+                    .color(color::text_muted())
+                    .wrapping(iced::widget::text::Wrapping::None),
+            ]
+            .spacing(8)
+            .align_y(alignment::Vertical::Center)
+            .into()
+        } else {
+            name
+        };
         let mut body = row![
             utility::icon(glyph(row), 16.0, Some((glyph_ink, glyph_ink))),
             container(name).width(Fill).clip(true)
@@ -391,11 +465,13 @@ impl State {
             is_folder: row.is_folder,
             count,
         };
-        let Menu { items, actions } = menu::entry(target, self.read_only, true);
+        let Menu { items, actions } = menu::entry(target, self.changes_blocked(), true);
         let more_path = row.path.clone();
         let more_actions = actions.clone();
         let more = Dropdown::new(Icon::lucide().ellipsis_vertical())
             .items(items.clone())
+            .width(MORE_WIDTH)
+            .height(MORE_WIDTH)
             .on_select(move |picked| Message::Menu {
                 path: Some(more_path.clone()),
                 action: more_actions.get(picked).copied().flatten(),
@@ -450,6 +526,38 @@ impl State {
             .padding(Padding::new(0.0).left((at.x + LABEL_OFFSET).max(0.0)).top((at.y + LABEL_OFFSET).max(0.0)))
             .into()
     }
+}
+
+/// The folder a row sits in, as a search shows it: the instance root, or the folder's path.
+fn location_of(row: &Row) -> String {
+    let parent = drag::parent(&row.path);
+    if parent.is_empty() {
+        lang::t("instance.files.root").to_string()
+    } else {
+        parent.to_string()
+    }
+}
+
+/// A toggle of the find bar: an icon button whose name shows in a tooltip. While it is on it is tinted and ringed in the accent,
+/// and otherwise it is the ghost look of the other icon buttons in the path bar.
+fn search_toggle<'a>(icon: &'static str, label: &'static str, active: bool, press: Message) -> Element<'a, Message> {
+    let style = if active {
+        icon_button::IconButtonStyle {
+            foreground: color::primary(),
+            foreground_hover: color::primary(),
+            foreground_pressed: color::primary(),
+            background: color::primary_tint(),
+            background_hover: color::primary_tint(),
+            background_pressed: color::primary_tint(),
+            border: color::primary_glow(),
+            border_hover: color::primary_glow(),
+            foreground_disabled: color::text_disabled(),
+            background_disabled: Color::TRANSPARENT,
+        }
+    } else {
+        icon_button::ghost_button_style()
+    };
+    hint(IconButton::new(icon).size(30).icon_size(14.0).style(style).on_press(press), label)
 }
 
 /// A file's size for its row. A file under a kilobyte is given in bytes, since most configs are that small and

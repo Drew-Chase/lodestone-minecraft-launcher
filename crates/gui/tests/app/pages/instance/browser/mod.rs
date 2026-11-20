@@ -347,3 +347,44 @@ fn locking_the_instance_drops_a_rename_and_a_drag_under_way() {
     assert!(state.rename.is_none());
     assert!(state.read_only());
 }
+
+#[test]
+fn opening_a_folder_remembers_the_one_left_and_back_returns_to_it() {
+    let mut state = listed(false);
+    let _ = state.update(Message::Open("mods".to_string()));
+    assert_eq!(state.folder(), "mods");
+    assert!(state.can_step_back());
+    assert!(!state.can_step_forward());
+
+    let _ = state.step_back();
+    assert_eq!(state.folder(), "");
+    assert!(!state.can_step_back());
+    assert!(state.can_step_forward());
+
+    let _ = state.step_forward();
+    assert_eq!(state.folder(), "mods");
+}
+
+#[test]
+fn a_new_step_after_going_back_drops_the_steps_forward() {
+    let mut state = listed(false);
+    let _ = state.update(Message::Open("mods".to_string()));
+    let _ = state.step_back();
+    let _ = state.update(Message::Open("config".to_string()));
+    assert_eq!(state.folder(), "config");
+    assert!(
+        !state.can_step_forward(),
+        "a folder opened after going back leaves nothing to go forward to"
+    );
+}
+
+#[test]
+fn up_is_a_step_too_and_opening_the_folder_already_on_screen_is_not() {
+    let mut state = listed(false);
+    let _ = state.update(Message::Open("mods".to_string()));
+    let _ = state.update(Message::Open("mods".to_string()));
+    let _ = state.update(Message::Up);
+    assert_eq!(state.folder(), "");
+    let _ = state.step_back();
+    assert_eq!(state.folder(), "mods", "Up is remembered, and the repeated open was not");
+}

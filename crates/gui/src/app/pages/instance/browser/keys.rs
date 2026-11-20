@@ -18,6 +18,8 @@ pub enum Key {
     Copy,
     Cut,
     Paste,
+    /// Focuses the find field above the list.
+    Find,
     SelectAll,
     Delete,
     Rename,
@@ -79,6 +81,7 @@ fn key_of(key: &KeyboardKey, modifiers: Modifiers, taken: bool) -> Option<Key> {
             "c" => Key::Copy,
             "x" => Key::Cut,
             "v" => Key::Paste,
+            "f" => Key::Find,
             "a" => Key::SelectAll,
             _ => return None,
         },

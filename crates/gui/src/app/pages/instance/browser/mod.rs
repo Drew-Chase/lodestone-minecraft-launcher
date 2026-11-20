@@ -11,6 +11,7 @@ mod input;
 mod keys;
 pub mod menu;
 pub mod ops;
+mod search;
 mod selection;
 mod view;
 mod watch;
@@ -137,6 +138,8 @@ pub enum Message {
     DropsGathered,
     /// A message of the editor beside the list.
     Editor(editor::Message),
+    /// A message of the find bar above the list: the query, its toggles, and the answers of its walks.
+    Search(search::Message),
     /// Something for the root to carry out. The root takes it before the tab sees it.
     Request(Request),
 }
@@ -185,7 +188,27 @@ pub struct State {
     drops: Vec<PathBuf>,
     /// The file open in the editor beside the list, when one is.
     editor: Option<Editor>,
+    /// The folders the tab left by opening another, most recent last. Back steps to the last one.
+    back: Vec<String>,
+    /// The folders Back stepped away from, most recent last. Forward steps to the last one.
+    forward: Vec<String>,
+    /// The find bar's query, toggles and the walk in flight.
+    search: search::Search,
+    /// The folder's rows, while the list shows a search instead of them.
+    stash: Option<Stash>,
 }
+
+/// The folder's own listing, set aside while the list shows a search.
+#[derive(Debug, Default)]
+struct Stash {
+    rows: Vec<Row>,
+    order: Vec<usize>,
+    error: Option<String>,
+    listed: bool,
+}
+
+/// How many folders the tab remembers each way, so a long session does not grow without bound.
+const HISTORY_LIMIT: usize = 100;
 
 impl State {
     /// The tab for the instance folder at `root`. A `read_only` tab changes nothing in it.
@@ -212,6 +235,12 @@ impl State {
     #[cfg(test)]
     pub fn read_only(&self) -> bool {
         self.read_only
+    }
+
+    /// Whether the list may be changed right now: the instance is not locked, and the list is not showing a search, whose rows
+    /// are matches rather than the folder's own entries. A search is read-only, so its rows can be opened, shown and copied only.
+    fn changes_blocked(&self) -> bool {
+        self.read_only || self.search.shown
     }
 
     /// Records whether the instance is locked, which makes the tab read-only. A drag or a rename under way is dropped.
@@ -304,13 +333,13 @@ impl State {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Open(folder) => self.show(folder),
+            Message::Open(folder) => self.navigate(folder),
             Message::Up => {
                 if self.folder.is_empty() {
                     Task::none()
                 } else {
                     let parent = drag::parent(&self.folder).to_string();
-                    self.show(parent)
+                    self.navigate(parent)
                 }
             }
             Message::Listed {
@@ -325,6 +354,7 @@ impl State {
                     Task::none()
                 }
             }
+            Message::Search(message) => self.search_message(message),
             Message::Changed(path) => {
                 // The folder on screen is read again, and the file open in the editor is looked at when its folder is
                 // the one that changed.
@@ -445,11 +475,60 @@ impl State {
         Subscription::batch([watch, editing, event::listen_with(keys::event), event::listen_with(keys::drop_event)])
     }
 
-    /// Makes `folder` the folder on screen and reads it.
-    fn show(&mut self, folder: String) -> Task<Message> {
+    /// Whether Back has a folder to step to. The mouse's back button and the titlebar's back arrow step the tab back before they
+    /// leave the page.
+    pub fn can_step_back(&self) -> bool {
+        !self.back.is_empty()
+    }
+
+    /// Whether Forward has a folder to step to.
+    pub fn can_step_forward(&self) -> bool {
+        !self.forward.is_empty()
+    }
+
+    /// Steps back to the folder the tab was in before the one on screen. The folder on screen is kept for Forward.
+    pub fn step_back(&mut self) -> Task<Message> {
+        let Some(folder) = self.back.pop() else {
+            return Task::none();
+        };
+        let current = std::mem::replace(&mut self.folder, folder.clone());
+        self.forward.push(current);
+        self.show_folder(folder)
+    }
+
+    /// Steps forward to the folder Back last stepped away from.
+    pub fn step_forward(&mut self) -> Task<Message> {
+        let Some(folder) = self.forward.pop() else {
+            return Task::none();
+        };
+        let current = std::mem::replace(&mut self.folder, folder.clone());
+        self.back.push(current);
+        self.show_folder(folder)
+    }
+
+    /// Opens `folder` as a step taken by the user. The folder on screen is remembered for Back, and a step forward is dropped, as
+    /// a file manager does.
+    fn navigate(&mut self, folder: String) -> Task<Message> {
+        if ops::inside(&self.root, &folder).is_none() || folder == self.folder {
+            return Task::none();
+        }
+        let left = std::mem::take(&mut self.folder);
+        self.folder.clone_from(&folder);
+        self.back.push(left);
+        if self.back.len() > HISTORY_LIMIT {
+            self.back.remove(0);
+        }
+        self.forward.clear();
+        self.show_folder(folder)
+    }
+
+    /// Makes `folder` the folder on screen and reads it. The caller has checked that `folder` is inside the instance. A search ends
+    /// with the folder it was asked in, since its query was asked of that folder.
+    fn show_folder(&mut self, folder: String) -> Task<Message> {
         if ops::inside(&self.root, &folder).is_none() {
             return Task::none();
         }
+        self.drop_search();
         self.folder = folder;
         self.rows.clear();
         self.order.clear();
@@ -476,8 +555,24 @@ impl State {
         })
     }
 
-    /// Takes a read of the folder on screen. The selection keeps the rows that are still there.
+    /// Takes a read of the folder on screen. The selection keeps the rows that are still there. While the list shows a search, the
+    /// read is kept for when the search ends, and the list is left as it is.
     fn listed(&mut self, result: Result<Vec<Row>, String>) -> Task<Message> {
+        if let Some(stash) = self.stash.as_mut() {
+            stash.listed = true;
+            match result {
+                Ok(rows) => {
+                    stash.rows = rows;
+                    stash.error = None;
+                }
+                Err(error) => {
+                    stash.rows.clear();
+                    stash.error = Some(error);
+                }
+            }
+            stash.order = folder_listing::order(&stash.rows, self.sort);
+            return Task::none();
+        }
         self.listed = true;
         match result {
             Ok(rows) => {

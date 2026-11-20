@@ -37,7 +37,7 @@ impl State {
             // release narrows it to the row when nothing was dragged.
             self.selection.only(&path);
         }
-        if !modified && !self.read_only && self.rename.is_none() {
+        if !modified && !self.changes_blocked() && self.rename.is_none() {
             self.drag = Drag::press(path);
         }
         Task::none()
@@ -76,7 +76,7 @@ impl State {
     /// Opens the entry at `path`: a folder in the tab, and a file through the root.
     fn activate(&mut self, path: &str) -> Task<Message> {
         match self.row(path) {
-            Some(row) if row.is_folder => self.show(row.path.clone()),
+            Some(row) if row.is_folder => self.navigate(row.path.clone()),
             Some(row) => request(Request::OpenFile(row.path.clone())),
             None => Task::none(),
         }
@@ -93,7 +93,7 @@ impl State {
 
     /// Carries out a menu row, or asks the root to. `path` is the row the menu was for, or `None` for the folder on screen.
     pub(super) fn menu_action(&mut self, path: Option<String>, action: Action) -> Task<Message> {
-        if self.read_only && action.changes() {
+        if self.changes_blocked() && action.changes() {
             return Task::none();
         }
         let on_folder = path.is_none();
@@ -132,7 +132,7 @@ impl State {
     /// Answers a key the list takes.
     pub(super) fn key(&mut self, key: Key) -> Task<Message> {
         let changes = matches!(key, Key::Cut | Key::Paste | Key::Delete | Key::Rename);
-        if self.read_only && changes {
+        if self.changes_blocked() && changes {
             return Task::none();
         }
         match key {
@@ -141,6 +141,7 @@ impl State {
                 cut: key == Key::Cut,
             }),
             Key::Paste => request(Request::Paste { into: self.folder.clone() }),
+            Key::Find => operation::focus(Id::new(view::SEARCH_ID)),
             Key::SelectAll => {
                 let order = paths_of(&self.rows, &self.order);
                 self.selection.all(&order);
@@ -175,6 +176,11 @@ impl State {
         if self.rename.take().is_some() || taken {
             return;
         }
+        // A search comes down before anything else is let go, so Escape brings the folder back.
+        if self.search.active() {
+            self.drop_search();
+            return;
+        }
         if self.drag.is_armed() {
             self.drag = Drag::Idle;
         } else if self.clip.as_ref().is_some_and(|clip| clip.cut) {
@@ -189,7 +195,7 @@ impl State {
         let Some(row) = self.row(&path) else {
             return Task::none();
         };
-        if self.read_only {
+        if self.changes_blocked() {
             return Task::none();
         }
         // The name is selected up to its extension, so typing replaces the name and keeps the type.
@@ -224,7 +230,7 @@ impl State {
     /// copied as one job.
     pub(super) fn dropped(&mut self, path: PathBuf) -> Task<Message> {
         self.file_hover = false;
-        if self.read_only {
+        if self.changes_blocked() {
             return Task::none();
         }
         let first = self.drops.is_empty();
