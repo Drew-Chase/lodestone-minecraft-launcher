@@ -12,6 +12,7 @@ pub(crate) mod mods;
 mod packs;
 mod screenshots;
 mod servers;
+pub mod snapshots;
 pub mod world_archive;
 mod worlds;
 
@@ -30,6 +31,7 @@ pub use mods::{ModFile, switched_name};
 pub use packs::{PackFile, name_of as pack_name};
 pub use screenshots::ScreenshotFile;
 pub use servers::ServerFile;
+pub use snapshots::SnapshotFile;
 pub use worlds::{Difficulty, GameMode, WorldFile};
 
 /// Everything the instance tabs show, read from one instance folder.
@@ -49,6 +51,8 @@ pub struct InstanceFiles {
     pub servers: Vec<ServerFile>,
     /// The captures, most recent first.
     pub screenshots: Vec<ScreenshotFile>,
+    /// The mod snapshots in `.lodestone/snapshots/`, newest first.
+    pub snapshots: Vec<SnapshotFile>,
     /// The end of `logs/latest.log`, oldest line first.
     pub log: Vec<LogLine>,
 }
@@ -105,6 +109,7 @@ pub fn scan(folder: &Path) -> InstanceFiles {
         let worlds = scope.spawn(|| worlds::scan(&folder.join("saves")));
         let servers = scope.spawn(|| scan_servers(folder));
         let screenshots = scope.spawn(|| screenshots::scan(&folder.join("screenshots")));
+        let snapshots = scope.spawn(|| snapshots::scan(folder));
         let log = read_log(folder);
         InstanceFiles {
             folder_bytes: folder_bytes.join().unwrap_or_default(),
@@ -114,6 +119,7 @@ pub fn scan(folder: &Path) -> InstanceFiles {
             worlds: worlds.join().unwrap_or_default(),
             servers: servers.join().unwrap_or_default(),
             screenshots: screenshots.join().unwrap_or_default(),
+            snapshots: snapshots.join().unwrap_or_default(),
             log,
         }
     })

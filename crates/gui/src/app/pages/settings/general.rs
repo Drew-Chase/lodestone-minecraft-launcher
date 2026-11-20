@@ -16,6 +16,7 @@ use crate::app::lang;
 use crate::app::launch_settings::LaunchChange;
 use crate::app::paths::LauncherPaths;
 use crate::app::preferences::{HERO_RULES, HeroRule, SettingsValues, StartupPage};
+use lodestone_snapshots::model::{LIMIT_MAX, LIMIT_MIN};
 
 /// The pages the launcher can open on, in the order the select offers them.
 const STARTUP_PAGES: [StartupPage; 4] = [StartupPage::Library, StartupPage::News, StartupPage::Discover, StartupPage::Worlds];
@@ -48,6 +49,11 @@ pub fn view<'a>(
             lang::t("settings.general.updates"),
             lang::t("settings.general.updates_subtitle"),
             divided(update_rows(settings, can_update)),
+        ),
+        card(
+            lang::t("settings.general.snapshots"),
+            lang::t("settings.general.snapshots_subtitle"),
+            divided(vec![snapshot_row(settings.instance_defaults.snapshot_limit)]),
         ),
         card(
             lang::t("instance.settings.section.window"),
@@ -119,6 +125,18 @@ fn game_exit_row<'a>(quit: bool) -> Element<'a, Message> {
     .on_select(|index| Message::Change(LaunchChange::QuitAfterExit(index == 1)))
     .width(SELECT_WIDTH);
     described_setting(lang::t("settings.general.on_exit"), lang::t("settings.general.on_exit_hint"), select)
+}
+
+/// How many mod snapshots each instance keeps by default. Zero turns snapshots off.
+fn snapshot_row<'a>(count: u32) -> Element<'a, Message> {
+    let select = Select::new((LIMIT_MIN..=LIMIT_MAX).map(launch_rows::snapshot_limit_label), Some(count as usize))
+        .on_select(|index| Message::Edit(Edit::SnapshotLimit(index as u32)))
+        .width(SELECT_WIDTH);
+    described_setting(
+        lang::t("settings.general.snapshots_limit"),
+        lang::t("settings.general.snapshots_limit_hint"),
+        select,
+    )
 }
 
 /// The update switches. Auto-update Lodestone appears only where this copy can install an update itself. Anywhere else the

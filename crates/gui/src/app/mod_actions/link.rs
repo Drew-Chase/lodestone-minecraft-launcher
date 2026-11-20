@@ -183,6 +183,7 @@ impl LodestoneLauncher {
             platform: associate.source.key().to_string(),
             project_id: picked.project.id.clone(),
             version_id: release.id.clone(),
+            version_number: Some(release.version_number.clone()),
             name: picked.project.name.clone(),
             file_name: associate.file_name.clone(),
             sha1: picked.jar_sha1.clone(),

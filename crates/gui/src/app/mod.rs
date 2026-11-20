@@ -47,6 +47,7 @@ mod setup;
 mod shared_library;
 pub(crate) mod single_instance;
 mod skin_actions;
+mod snapshot_actions;
 pub mod storage;
 mod subscription;
 pub mod theme;

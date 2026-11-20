@@ -29,6 +29,7 @@ fn source(instance: &str, project_id: &str, file_name: &str) -> ModSource {
         platform: "modrinth".to_string(),
         project_id: project_id.to_string(),
         version_id: format!("{project_id}-release"),
+        version_number: None,
         name: format!("Project {project_id}"),
         file_name: file_name.to_string(),
         sha1: Some("ab".repeat(20)),
@@ -387,6 +388,11 @@ async fn migration_0008_moves_each_discover_row_into_mod_sources() {
         .execute(&pool)
         .await
         .expect("migration 0008 runs");
+    // The records read the version number column, which the later migration adds.
+    sqlx::query(include_str!("../../migrations/0021_mod_version_numbers.sql"))
+        .execute(&pool)
+        .await
+        .expect("migration 0021 runs");
 
     let db = Database { pool };
     assert_eq!(
@@ -396,6 +402,7 @@ async fn migration_0008_moves_each_discover_row_into_mod_sources() {
             platform: "modrinth".to_string(),
             project_id: "sodium".to_string(),
             version_id: "sodium-release".to_string(),
+            version_number: None,
             name: "Sodium".to_string(),
             file_name: "sodium.jar".to_string(),
             sha1: None,

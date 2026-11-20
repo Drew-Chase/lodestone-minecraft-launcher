@@ -29,6 +29,7 @@ fn source(instance: &str, project_id: &str, file_name: &str) -> ModSource {
         platform: "modrinth".to_string(),
         project_id: project_id.to_string(),
         version_id: format!("{project_id}-v2"),
+        version_number: None,
         name: format!("Project {project_id}"),
         file_name: file_name.to_string(),
         sha1: Some("ab".repeat(20)),

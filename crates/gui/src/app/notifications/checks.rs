@@ -30,6 +30,8 @@ pub struct Target {
     pub folder: PathBuf,
     /// Where the instance's modpack came from, when it came from a platform.
     pub pack: Option<Pack>,
+    /// Whether the instance's mods are left unchecked, because its update checks are off.
+    pub mod_updates_disabled: bool,
 }
 
 /// A modpack on a platform, and the release the instance was installed with.
@@ -159,8 +161,11 @@ async fn check_pack(db: &Database, target: &Target, pack: &Pack) {
 }
 
 /// Checks an instance's mods against their platforms, and records how many have a newer release. Returns what the check
-/// found, or `None` when the instance has no mods or the check failed.
+/// found, or `None` when the instance has no mods, its update checks are off, or the check failed.
 async fn check_mods_of(db: &Database, target: &Target) -> Option<Checks> {
+    if target.mod_updates_disabled {
+        return None;
+    }
     let mods = target.folder.join("mods");
     let names = tokio::task::spawn_blocking(move || jar_names(&mods)).await.unwrap_or_default();
     if names.is_empty() {

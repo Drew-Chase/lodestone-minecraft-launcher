@@ -15,6 +15,8 @@ use iced_color_extension::rgb;
 
 /// The default panel padding, per the reference.
 pub const PADDING: f32 = 18.0;
+/// The corner radius of every panel.
+pub const RADIUS: f32 = 18.0;
 
 /// A panel with the default padding and the hairline border.
 pub fn panel<'a, M: 'a>(content: impl Into<Element<'a, M>>) -> Element<'a, M> {
@@ -38,7 +40,7 @@ pub fn bordered_panel<'a, M: 'a>(content: impl Into<Element<'a, M>>, padding: im
                     .add_stop(1.0, rgb!(255, 255, 255, 2%)),
             ))),
             border: Border {
-                radius: 18.0.into(),
+                radius: RADIUS.into(),
                 width: 1.0,
                 color: border,
             },

@@ -35,6 +35,7 @@ use crate::app::portable::Message as PortableMessage;
 use crate::app::servers::dialog::Message as ServersDialogMessage;
 use crate::app::servers::join::Message as JoinDialogMessage;
 use crate::app::shared_library::{ModSource, SharedRecord};
+use crate::app::snapshot_actions;
 use crate::app::titlebar::TitlebarMessage;
 use crate::app::updater::Message as UpdaterMessage;
 use crate::app::world_actions::WorldMessage;
@@ -147,6 +148,8 @@ pub enum LodestoneAppMessage {
     Datapacks(crate::app::world_datapacks::Message),
     /// What the platforms and the disk answered for the Mods tab.
     ModActions(mod_actions::Message),
+    /// A mod snapshot was written, read or rolled back. The answer is for the instance page it was started on.
+    Snapshots(snapshot_actions::Message),
     /// What the disk and the clipboard answered for the Files tab of the instance page.
     Files(file_actions::Message),
     /// A mod being added brings a dependency the instance already has at another version. The root asks the user which

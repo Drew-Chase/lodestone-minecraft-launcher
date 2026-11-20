@@ -114,3 +114,40 @@ fn environment_names_must_be_present_and_plain() {
     assert!(!valid_env_name(""));
     assert!(!valid_env_name("A=B"));
 }
+
+#[test]
+fn the_snapshot_limit_is_the_instances_own_or_the_global_one_held_within_range() {
+    let defaults = LaunchDefaults::default();
+    assert_eq!(defaults.snapshot_limit, 5);
+    assert_eq!(InstanceSettings::default().resolved_snapshot_limit(&defaults), 5);
+
+    let own = InstanceSettings {
+        snapshot_limit: Some(0),
+        ..InstanceSettings::default()
+    };
+    assert_eq!(own.resolved_snapshot_limit(&defaults), 0);
+
+    let global = LaunchDefaults {
+        snapshot_limit: 9,
+        ..LaunchDefaults::default()
+    };
+    assert_eq!(InstanceSettings::default().resolved_snapshot_limit(&global), 9);
+
+    let past_the_top = InstanceSettings {
+        snapshot_limit: Some(40),
+        ..InstanceSettings::default()
+    };
+    assert_eq!(past_the_top.resolved_snapshot_limit(&defaults), 20);
+}
+
+#[test]
+fn a_reset_keeps_the_snapshot_limit_and_drops_the_launch_overrides() {
+    let mut settings = InstanceSettings {
+        snapshot_limit: Some(3),
+        memory_mb: Some(8192),
+        ..InstanceSettings::default()
+    };
+    settings.reset();
+    assert_eq!(settings.snapshot_limit, Some(3));
+    assert_eq!(settings.memory_mb, None);
+}

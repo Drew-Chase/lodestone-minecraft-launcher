@@ -108,7 +108,7 @@ impl LodestoneLauncher {
     }
 
     /// Reads the mods folder again after a change to it.
-    pub(super) fn rescan_mods(&self) -> Task<LodestoneAppMessage> {
+    pub(in crate::app) fn rescan_mods(&self) -> Task<LodestoneAppMessage> {
         let (Some(context), generation) = (self.mods_context(), self.instance_page.generation()) else {
             return Task::none();
         };

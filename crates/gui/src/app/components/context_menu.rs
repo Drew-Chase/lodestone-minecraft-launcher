@@ -11,7 +11,7 @@
 //!
 //! ```text
 //! ContextMenu::new(card, instance.id.clone())
-//!     .items(instance_menu::menu(false, true, false).items)
+//!     .items(instance_menu::menu(false, true, false, false).items)
 //!     .on_select(move |index| Message::InstanceMenu { instance: id.clone(), index })
 //! ```
 

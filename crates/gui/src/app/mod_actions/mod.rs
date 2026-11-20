@@ -38,7 +38,7 @@ mod toggle;
 mod update_all;
 
 pub(crate) use replace::replace_jar;
-pub use update_all::UpdateQueue;
+pub use update_all::{Failure, Job, UpdateQueue};
 
 /// How many hits a search for a link asks a platform for.
 const SEARCH_LIMIT: u32 = 20;
@@ -111,6 +111,12 @@ pub enum Message {
     Replaced {
         generation: u64,
         file_name: String,
+        result: Result<Vec<ModSource>, String>,
+    },
+    /// A release was installed as a new mod, by a rollback, or could not be. The records name the new jar first.
+    Installed {
+        generation: u64,
+        name: String,
         result: Result<Vec<ModSource>, String>,
     },
     /// The releases a switch can install, or the error reading them.
@@ -244,13 +250,14 @@ impl LodestoneLauncher {
         Task::batch([read, self.mods_checks_due()])
     }
 
-    /// Checks the shown instance's mods against their platforms, when the Mods tab is open and the folder has been read.
+    /// Checks the shown instance's mods against their platforms, when the Mods tab is open, the folder has been read, and the
+    /// instance's update checks are on.
     /// The updates the last check found show at once, whatever its age. Entering the tab asks for a check each time. The
     /// launcher never starts two checks less than [`MOD_CHECK_INTERVAL`] apart, so a check that comes too soon waits in a
     /// timer for the interval to pass, and then runs. Several requests in that wait share one timer.
     pub(super) fn mods_checks_due(&mut self) -> Task<LodestoneAppMessage> {
         let shown = self.instance_page.mods();
-        if self.instance_page.tab() != Tab::Content || !shown.has_mods() {
+        if self.instance_page.tab() != Tab::Content || !shown.has_mods() || shown.updates_disabled() {
             return Task::none();
         }
         self.show_kept_check();
@@ -270,6 +277,20 @@ impl LodestoneLauncher {
             }
         }
         self.start_mod_checks()
+    }
+
+    /// Brings the Mods tab up to date when its mods' update checks turn back on. A cached check that is still fresh shows at
+    /// once and asks no platform, so turning the checks on and off in quick succession costs no requests. An expired one is
+    /// checked again, as entering the tab would.
+    pub(super) fn mods_checks_resume(&mut self) -> Task<LodestoneAppMessage> {
+        let Some(instance) = self.instance_page.instance().map(|instance| instance.id.clone()) else {
+            return Task::none();
+        };
+        if self.mod_checks.get(&instance).is_some_and(ModCheck::is_fresh) {
+            self.show_kept_check();
+            return Task::none();
+        }
+        self.mods_checks_due()
     }
 
     /// Shows the updates remembered for the shown instance on the Mods tab's rows, before any platform is asked.
@@ -472,6 +493,7 @@ impl LodestoneLauncher {
                 file_name,
                 result,
             } if self.mods_fresh(generation) => self.mod_replaced(file_name, result),
+            Message::Installed { generation, name, result } if self.mods_fresh(generation) => self.mod_installed(name, result),
             Message::Releases {
                 generation,
                 file_name,
@@ -563,7 +585,7 @@ impl LodestoneLauncher {
     pub(super) fn mod_menu_action(&mut self, file_name: String, action: Option<Action>) -> Task<LodestoneAppMessage> {
         match action {
             Some(Action::Update) => match self.instance_page.mods().row(&file_name).and_then(|row| row.update.clone()) {
-                Some(release) => self.replace_mod(file_name, release),
+                Some(release) => self.replace_mod(file_name, release.id),
                 None => Task::none(),
             },
             Some(Action::Switch) => self.open_switch(file_name),

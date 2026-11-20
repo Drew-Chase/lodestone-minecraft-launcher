@@ -34,6 +34,7 @@ fn mod_record(platform: &str, file_name: &str, sha1: &str) -> ModSource {
         platform: platform.to_string(),
         project_id: "238222".to_string(),
         version_id: "4123456".to_string(),
+        version_number: None,
         name: "Sodium".to_string(),
         file_name: file_name.to_string(),
         sha1: Some(sha1.to_string()),

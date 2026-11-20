@@ -1,7 +1,7 @@
 use super::*;
 
-fn queued(file_name: &str, name: &str) -> Queued {
-    Queued {
+fn update(file_name: &str, name: &str) -> Job {
+    Job::Update {
         file_name: file_name.to_string(),
         name: name.to_string(),
     }
@@ -11,17 +11,38 @@ fn queue() -> UpdateQueue {
     UpdateQueue::new(
         3,
         vec![
-            queued("sodium.jar", "Sodium"),
-            queued("lithium.jar", "Lithium"),
-            queued("iris.jar.disabled", "Iris"),
+            update("sodium.jar", "Sodium"),
+            update("lithium.jar", "Lithium"),
+            update("iris.jar.disabled", "Iris"),
         ],
     )
+}
+
+fn restore(file_name: &str, name: &str) -> Job {
+    Job::Restore {
+        file_name: file_name.to_string(),
+        name: name.to_string(),
+        source: Source::Modrinth,
+        project_id: "AANobbMI".to_string(),
+        version_id: "Yrmqwfh6".to_string(),
+    }
+}
+
+fn install(name: &str) -> Job {
+    Job::Install {
+        name: name.to_string(),
+        source: Source::CurseForge,
+        project_id: "306612".to_string(),
+        version_id: "49860".to_string(),
+    }
 }
 
 #[test]
 fn the_mods_are_updated_in_the_order_they_were_queued() {
     let mut queue = queue();
-    let order: Vec<String> = std::iter::from_fn(|| queue.next()).map(|next| next.file_name).collect();
+    let order: Vec<String> = std::iter::from_fn(|| queue.next())
+        .filter_map(|job| job.file_name().map(str::to_string))
+        .collect();
     assert_eq!(order, ["sodium.jar", "lithium.jar", "iris.jar.disabled"]);
     assert_eq!(queue.next(), None, "an empty queue has no next mod");
 }
@@ -66,4 +87,30 @@ fn failing_the_rest_empties_the_queue_and_names_every_waiting_mod() {
             },
         ]
     );
+}
+
+#[test]
+fn a_rollback_queue_names_its_summary_as_a_rollback() {
+    let mut queue = UpdateQueue::rollback(3, vec![restore("sodium.jar", "Sodium")]);
+    assert_eq!(queue.purpose, Purpose::Rollback);
+    queue.fail("Sodium".to_string(), "no release".to_string());
+    let summary = queue.summary().expect("the rollback failed");
+    assert!(summary.lines().next().is_some_and(|heading| heading.contains('1')));
+}
+
+#[test]
+fn an_install_step_has_no_jar_to_release_when_it_stops() {
+    let mut queue = UpdateQueue::rollback(3, vec![install("Fabric API"), restore("lithium.jar", "Lithium")]);
+    assert_eq!(queue.waiting_names(), ["lithium.jar"]);
+    let released = queue.fail_rest("the game is running");
+    assert_eq!(released, ["lithium.jar"]);
+    assert_eq!(queue.failed.len(), 2);
+    assert_eq!(queue.failed[0].name, "Fabric API");
+}
+
+#[test]
+fn a_step_names_the_mod_it_is_for_and_the_jar_it_replaces() {
+    assert_eq!(update("sodium.jar", "Sodium").name(), "Sodium");
+    assert_eq!(restore("sodium.jar", "Sodium").file_name(), Some("sodium.jar"));
+    assert_eq!(install("Fabric API").file_name(), None);
 }

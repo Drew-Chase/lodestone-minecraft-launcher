@@ -19,6 +19,7 @@ pub mod packs;
 mod pictures;
 pub mod screenshots;
 pub mod settings;
+pub mod snapshots;
 mod tab;
 pub mod versions;
 mod view;
@@ -83,6 +84,8 @@ pub enum Message {
     Content(content::Message),
     /// The resource packs and shader packs of the Content tab. The root carries out the copies and removals.
     Packs(packs::Message),
+    /// A message of the Snapshots tab. The root carries out the rollbacks, the deletes and the reveal before the page sees them.
+    Snapshots(snapshots::Message),
     Worlds(worlds::Message),
     Screenshots(screenshots::Message),
     Logs(logs::Message),
@@ -138,6 +141,8 @@ pub struct InstancePage {
     /// The section the Content tab shows.
     content_section: content::Section,
     packs: packs::State,
+    /// The mod snapshots the Snapshots tab lists, newest first.
+    snapshots: snapshots::State,
     worlds: worlds::State,
     screenshots: screenshots::State,
     logs: logs::State,
@@ -176,12 +181,20 @@ impl InstancePage {
         self.mods = mods::State::default();
         let locked = self.instance.as_ref().is_some_and(|shown| shown.locked);
         self.mods.set_locked(locked);
+        let snapshots_on = self
+            .instance
+            .as_ref()
+            .is_some_and(|shown| shown.settings.resolved_snapshot_limit(defaults) > 0);
+        self.mods.set_snapshots_enabled(snapshots_on);
+        let updates_disabled = self.instance.as_ref().is_some_and(|shown| shown.settings.mod_updates_disabled);
+        self.mods.set_updates_disabled(updates_disabled);
         // The files copied or cut stay on the launcher's clipboard, so they can be pasted into another instance.
         let clip = self.browser.clip().cloned();
         self.browser = browser::State::new(self.folder.clone(), locked);
         self.browser.set_clip(clip);
         self.content_section = content::Section::default();
         self.packs = packs::State::default();
+        self.snapshots = snapshots::State::default();
         self.worlds = worlds::State::default();
         self.screenshots = screenshots::State::default();
         self.logs = logs::State::default();
@@ -204,6 +217,8 @@ impl InstancePage {
             self.settings.sync(&instance, defaults);
             self.versions.refresh(&instance);
             self.mods.set_locked(instance.locked);
+            self.mods.set_snapshots_enabled(instance.settings.resolved_snapshot_limit(defaults) > 0);
+            self.mods.set_updates_disabled(instance.settings.mod_updates_disabled);
             self.browser.set_read_only(instance.locked);
             self.instance = Some(instance);
         }
@@ -252,6 +267,8 @@ impl InstancePage {
             }
             // The root keeps the packs' state and carries out their actions before the page sees them.
             Message::Packs(_) => Task::none(),
+            // The root carries out the snapshot actions, and the list is filled in as the folder is read.
+            Message::Snapshots(_) => Task::none(),
             Message::Worlds(worlds::Message::Rescanned { generation, worlds }) if generation == self.generation => self.rescanned_worlds(worlds),
             Message::Worlds(message) => {
                 self.worlds.update(message);
@@ -347,6 +364,9 @@ impl InstancePage {
         if let Some(dialog) = self.packs.dialog_view() {
             return Some(dialog.map(Message::Packs));
         }
+        if let Some(dialog) = snapshots::dialog::view(&self.snapshots) {
+            return Some(dialog.map(Message::Snapshots));
+        }
         if let Some(dialog) = self.worlds.dialog_view() {
             return Some(dialog.map(Message::Worlds));
         }
@@ -370,7 +390,10 @@ impl InstancePage {
 
     /// Whether one of the page's own dialogs is open over it.
     fn viewer_open(&self) -> bool {
-        self.mods.dialog().is_some() || self.packs.dialog_view().is_some() || self.worlds.dialog_view().is_some()
+        self.mods.dialog().is_some()
+            || self.packs.dialog_view().is_some()
+            || self.worlds.dialog_view().is_some()
+            || self.snapshots.compare().is_some()
     }
 
     /// The Files tab's state, which the root reads to carry out what the tab asks for.
@@ -391,6 +414,16 @@ impl InstancePage {
     /// The Mods tab's state, for the root to fill in as the platforms answer.
     pub fn mods_mut(&mut self) -> &mut mods::State {
         &mut self.mods
+    }
+
+    /// The mod snapshots the Snapshots tab lists, as the page shows them.
+    pub fn snapshots(&self) -> &snapshots::State {
+        &self.snapshots
+    }
+
+    /// The mod snapshots the Snapshots tab lists, for the root to fill in as the folder changes.
+    pub fn snapshots_mut(&mut self) -> &mut snapshots::State {
+        &mut self.snapshots
     }
 
     /// The packs of the Content tab, for the root to keep up to date.
@@ -505,6 +538,8 @@ impl InstancePage {
     /// Hands a scan's results to the tabs and starts the thumbnails.
     fn apply(&mut self, files: InstanceFiles) -> Task<Message> {
         self.packs.set_packs(files.resource_packs.clone(), files.shader_packs.clone());
+        self.snapshots
+            .set_list(files.snapshots.iter().cloned().map(snapshots::Loaded::from).collect());
         self.mods.set_mods(files.mods.clone());
         self.worlds.set_worlds(files.worlds.clone());
         self.worlds.set_servers(files.servers.clone());

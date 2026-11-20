@@ -33,6 +33,7 @@ fn record(instance: &str, project_id: &str) -> ModSource {
         platform: "modrinth".to_string(),
         project_id: project_id.to_string(),
         version_id: "v1".to_string(),
+        version_number: None,
         name: "Sodium".to_string(),
         file_name: "sodium.jar".to_string(),
         sha1: None,

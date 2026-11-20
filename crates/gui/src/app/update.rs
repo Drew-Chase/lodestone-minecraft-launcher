@@ -123,7 +123,12 @@ impl LodestoneLauncher {
                 Task::none()
             }
             LodestoneAppMessage::Navigate(page) => self.navigate(page),
+            // The mouse's side buttons and the titlebar's arrows step the Files tab through its folders first, and the page
+            // history only once the tab has none left.
             LodestoneAppMessage::NavBack => {
+                if let Some(task) = self.files_step(false) {
+                    return task;
+                }
                 if self.step_history(false) {
                     info!("Navigated back to {}", self.router.current().title());
                     return Task::batch([self.rescan_on_return(), self.reshow_pictures()]);
@@ -131,6 +136,9 @@ impl LodestoneLauncher {
                 Task::none()
             }
             LodestoneAppMessage::NavForward => {
+                if let Some(task) = self.files_step(true) {
+                    return task;
+                }
                 if self.step_history(true) {
                     info!("Navigated forward to {}", self.router.current().title());
                     return Task::batch([self.rescan_on_return(), self.reshow_pictures()]);
@@ -356,6 +364,9 @@ impl LodestoneLauncher {
                 self.mod_menu_action(file_name, action)
             }
             LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::UpdateAll)) => self.update_all_mods(),
+            LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Snapshot)) => self.take_manual_snapshot(),
+            LodestoneAppMessage::Instance(InstanceMessage::Snapshots(message)) => self.snapshots_page_message(message),
+            LodestoneAppMessage::Snapshots(message) => self.snapshot_message(message),
             LodestoneAppMessage::Instance(InstanceMessage::Mods(mods::Message::Dialog(message))) if !message.is_local() => {
                 self.mod_dialog_action(message)
             }
@@ -555,6 +566,23 @@ impl LodestoneLauncher {
             Page::Settings => self.open_settings(),
             Page::Library | Page::Login | Page::Setup | Page::Instance | Page::Resource | Page::ServerPack | Page::Friends => Task::none(),
         }
+    }
+
+    /// Steps the Files tab of the shown instance through its folders, back or forward, when that tab is on screen and has a folder to
+    /// step to. `None` means the page history should move instead.
+    fn files_step(&mut self, forward: bool) -> Option<Task<LodestoneAppMessage>> {
+        if self.router.current() != Page::Instance || self.instance_page.tab() != Tab::Files {
+            return None;
+        }
+        let browser = self.instance_page.browser_mut();
+        let stepped = if forward && browser.can_step_forward() {
+            browser.step_forward()
+        } else if !forward && browser.can_step_back() {
+            browser.step_back()
+        } else {
+            return None;
+        };
+        Some(stepped.map(|message| LodestoneAppMessage::Instance(InstanceMessage::Browser(message))))
     }
 
     /// Loads the instance list from the database.

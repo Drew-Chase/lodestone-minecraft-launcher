@@ -372,7 +372,12 @@ fn lock_button(id: &str, installing: bool, locked: bool) -> Element<'static, Mes
 /// The ⋯ menu in the glass frame: the instance's rows. Reveal is listed only for an instance from an
 /// external source, since the folder button reveals the rest.
 fn glass_menu(instance: &Instance, installing: bool) -> Element<'static, Message> {
-    let menu = instance_menu::menu(installing, instance.source_url.is_some(), instance.locked);
+    let menu = instance_menu::menu(
+        installing,
+        instance.source_url.is_some(),
+        instance.locked,
+        instance.settings.mod_updates_disabled,
+    );
     let actions = menu.actions;
     glass(
         Dropdown::new(Icon::lucide().ellipsis_vertical())

@@ -388,7 +388,7 @@ pub fn instance_card<Message: Clone + 'static>(
     install: Option<&Pending>,
     banner: Option<Handle>,
 ) -> Element<'static, Message> {
-    let menu = instance_menu::menu(install.is_some(), true, instance.locked);
+    let menu = instance_menu::menu(install.is_some(), true, instance.locked, instance.settings.mod_updates_disabled);
     let kebab = menu_button(&menu, Rc::clone(&messages.menu));
     let lock: Element<'static, Message> = if instance.locked {
         padlock(messages.unlock.clone(), install.is_some(), KEBAB_SIZE)
@@ -501,7 +501,7 @@ pub fn compact_row<Message: Clone + 'static>(
     with_menu(
         mouse_area(body).on_press(messages.open).interaction(mouse::Interaction::Pointer),
         instance,
-        instance_menu::menu(install.is_some(), true, instance.locked),
+        instance_menu::menu(install.is_some(), true, instance.locked, instance.settings.mod_updates_disabled),
         messages.menu,
     )
 }
@@ -691,7 +691,7 @@ pub fn table_row<Message: Clone + 'static>(
     with_menu(
         mouse_area(body).on_press(messages.open).interaction(mouse::Interaction::Pointer),
         instance,
-        instance_menu::menu(install.is_some(), true, instance.locked),
+        instance_menu::menu(install.is_some(), true, instance.locked, instance.settings.mod_updates_disabled),
         messages.menu,
     )
 }

@@ -56,6 +56,7 @@ struct Placed<'a> {
 struct Release {
     project_id: String,
     version_id: String,
+    version_number: String,
 }
 
 /// The folders whose files a modpack records: the mods' folder, and the folder of each kind of pack.
@@ -113,6 +114,7 @@ pub(crate) async fn modrinth_records(hashed: &[(String, String)]) -> ModrinthRec
                 Release {
                     project_id,
                     version_id: release.id,
+                    version_number: release.version_number,
                 },
             ))
         })
@@ -148,6 +150,7 @@ fn records_of(placed: &[Placed], releases: &HashMap<String, Release>, names: &Ha
                 platform: Source::Modrinth.key().to_string(),
                 project_id: release.project_id.clone(),
                 version_id: release.version_id.clone(),
+                version_number: Some(release.version_number.clone()),
                 name,
                 file_name: file.file_name.to_string(),
                 sha1: Some(file.sha1.clone()),
@@ -193,6 +196,7 @@ pub(crate) fn curseforge_sources(files: &[ModpackFile]) -> Vec<ModSource> {
                 platform: Source::CurseForge.key().to_string(),
                 project_id: file.project_id.clone()?,
                 version_id: file.file_id.clone()?,
+                version_number: None,
                 name: stem(file_name),
                 file_name: file_name.to_string(),
                 sha1: file.sha1.clone(),
@@ -371,6 +375,7 @@ async fn identify(instance: &str, hashed: &[(String, String)]) -> Result<Vec<Mod
                 platform: Source::Modrinth.key().to_string(),
                 project_id: release.project_id.clone()?,
                 version_id: release.id.clone(),
+                version_number: Some(release.version_number.clone()),
                 name: stem(file_name),
                 file_name: file_name.clone(),
                 sha1: Some(sha1.clone()),

@@ -21,7 +21,7 @@ use tracing::warn;
 
 use super::LodestoneAppMessage;
 use super::LodestoneLauncher;
-use super::components::alert::Alert;
+use super::components::alert::{Alert, Choice};
 use super::downloads::{JobState, ModJob};
 use super::install::InstallRequest;
 use super::install::mods::{VersionConflict, add_to_instance};
@@ -513,7 +513,7 @@ impl LodestoneLauncher {
                 lang::t("discover.mods.conflict.use_offered"),
                 Some(lang::t("discover.mods.conflict.keep")),
             ));
-        Task::future(async move { conflict.answer(answer.await.unwrap_or(false)) }).discard()
+        Task::future(async move { conflict.answer(answer.await.is_ok_and(|choice| choice == Choice::Affirmative)) }).discard()
     }
 
     /// Starts the downloads job that lists a mod's add or replacement until the answer ends it.

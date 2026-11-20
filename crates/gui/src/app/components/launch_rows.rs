@@ -34,6 +34,15 @@ pub fn panel_padding() -> Padding {
     Padding::new(0.0).left(18.0).right(18.0)
 }
 
+/// A snapshot limit as the selects show it: `Off` for zero, and the number otherwise.
+pub fn snapshot_limit_label(value: u32) -> String {
+    if value == lodestone_snapshots::model::LIMIT_MIN {
+        lang::t("snapshots.limit.off").to_string()
+    } else {
+        value.to_string()
+    }
+}
+
 /// Which side of the resolution a field edits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {

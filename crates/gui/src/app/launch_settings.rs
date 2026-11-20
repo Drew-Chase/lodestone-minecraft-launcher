@@ -6,6 +6,7 @@
 //! which is the two merged. The overrides are stored as JSON on the instance's row, so a new setting
 //! needs no migration.
 
+use lodestone_snapshots::model::{LIMIT_DEFAULT, clamp_limit};
 use serde::{Deserialize, Serialize};
 
 /// The heap a game gets when nothing says otherwise, in megabytes.
@@ -114,6 +115,9 @@ pub struct LaunchDefaults {
     pub verbose_logging: bool,
     pub skip_integrity: bool,
     pub pre_launch_hook: String,
+    /// How many mod snapshots an instance keeps, when its own setting does not say. Zero turns snapshots off. Kept here with
+    /// the other values an instance inherits.
+    pub snapshot_limit: u32,
 }
 
 impl Default for LaunchDefaults {
@@ -132,6 +136,7 @@ impl Default for LaunchDefaults {
             verbose_logging: false,
             skip_integrity: false,
             pre_launch_hook: String::new(),
+            snapshot_limit: LIMIT_DEFAULT,
         }
     }
 }
@@ -176,9 +181,19 @@ pub struct InstanceSettings {
     pub pre_launch_hook: Option<String>,
     /// Whether the Game Version section lists snapshots. Not inherited, and kept by a reset.
     pub snapshots: bool,
+    /// How many mod snapshots the instance keeps. `None` inherits the global default.
+    pub snapshot_limit: Option<u32>,
+    /// Whether the instance's mods are left unchecked for newer releases, so no Update button or update count shows and
+    /// nothing asks the platforms. Not inherited, and kept by a reset.
+    pub mod_updates_disabled: bool,
 }
 
 impl InstanceSettings {
+    /// How many mod snapshots the instance keeps: its own limit, or the global one, held within the range snapshots allow.
+    pub fn resolved_snapshot_limit(&self, defaults: &LaunchDefaults) -> u32 {
+        clamp_limit(self.snapshot_limit.unwrap_or(defaults.snapshot_limit))
+    }
+
     /// Overrides the default for the setting `change` names.
     pub fn override_with(&mut self, change: LaunchChange) {
         match change {
@@ -224,6 +239,8 @@ impl InstanceSettings {
     pub fn reset(&mut self) {
         *self = Self {
             snapshots: self.snapshots,
+            snapshot_limit: self.snapshot_limit,
+            mod_updates_disabled: self.mod_updates_disabled,
             ..Self::default()
         };
     }

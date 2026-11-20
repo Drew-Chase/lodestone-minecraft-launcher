@@ -21,6 +21,7 @@ fn row(update: bool, source: bool) -> Row {
             platform: "modrinth".to_string(),
             project_id: "sodium".to_string(),
             version_id: "sodium-1".to_string(),
+            version_number: None,
             name: "Sodium".to_string(),
             file_name: "sodium.jar".to_string(),
             sha1: None,

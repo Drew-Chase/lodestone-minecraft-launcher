@@ -457,20 +457,24 @@ impl Database {
 
     /// The mods the launcher knows came from a platform, across every instance, most recent first.
     pub async fn mod_sources(&self) -> Result<Vec<ModSource>, String> {
-        let rows = sqlx::query("SELECT instance_id, platform, project_id, version_id, name, file_name, sha1 FROM mod_sources ORDER BY added_at DESC")
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|error| error.to_string())?;
+        let rows = sqlx::query(
+            "SELECT instance_id, platform, project_id, version_id, version_number, name, file_name, sha1 FROM mod_sources ORDER BY added_at DESC",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| error.to_string())?;
         Ok(rows.into_iter().map(mod_source_of).collect())
     }
 
     /// The mods of one instance that came from a platform.
     pub async fn mod_sources_of(&self, instance: &str) -> Result<Vec<ModSource>, String> {
-        let rows = sqlx::query("SELECT instance_id, platform, project_id, version_id, name, file_name, sha1 FROM mod_sources WHERE instance_id = ?")
-            .bind(instance)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|error| error.to_string())?;
+        let rows = sqlx::query(
+            "SELECT instance_id, platform, project_id, version_id, version_number, name, file_name, sha1 FROM mod_sources WHERE instance_id = ?",
+        )
+        .bind(instance)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| error.to_string())?;
         Ok(rows.into_iter().map(mod_source_of).collect())
     }
 
@@ -616,6 +620,7 @@ fn mod_source_of(row: SqliteRow) -> ModSource {
         platform: row.get("platform"),
         project_id: row.get("project_id"),
         version_id: row.get("version_id"),
+        version_number: row.get("version_number"),
         name: row.get("name"),
         file_name: row.get("file_name"),
         sha1: row.get("sha1"),
@@ -627,14 +632,15 @@ async fn write_mod_sources(transaction: &mut Transaction<'_, Sqlite>, records: &
     let added_at = Utc::now().timestamp();
     for record in records {
         sqlx::query(
-            "INSERT OR REPLACE INTO mod_sources (instance_id, file_name, platform, project_id, version_id, name, sha1, added_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO mod_sources (instance_id, file_name, platform, project_id, version_id, version_number, name, sha1, added_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&record.instance)
         .bind(&record.file_name)
         .bind(&record.platform)
         .bind(&record.project_id)
         .bind(&record.version_id)
+        .bind(&record.version_number)
         .bind(&record.name)
         .bind(&record.sha1)
         .bind(added_at)

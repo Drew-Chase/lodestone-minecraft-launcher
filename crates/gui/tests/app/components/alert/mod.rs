@@ -63,3 +63,12 @@ fn every_kind_and_button_set_builds_a_view() {
         }
     }
 }
+
+#[test]
+fn an_extra_button_is_optional_and_builds_a_view() {
+    assert_eq!(Alert::error("m").extra_label(), None);
+    let alert = Alert::error("m").labelled("Show report", Some("Close")).extra("Roll back mods");
+    assert_eq!(alert.extra_label(), Some("Roll back mods"));
+    assert_eq!(alert.button_set().affirmative(), "Show report");
+    let _ = alert.view();
+}

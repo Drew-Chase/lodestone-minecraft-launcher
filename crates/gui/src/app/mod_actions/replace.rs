@@ -3,9 +3,27 @@
 use super::*;
 
 impl LodestoneLauncher {
-    /// Installs `release` in place of the mod `file_name`. Waits while a game runs on the instance, since it may have the
-    /// jar open.
-    pub(super) fn replace_mod(&mut self, file_name: String, release: ContentVersion) -> Task<LodestoneAppMessage> {
+    /// Installs the release `version_id` in place of the mod `file_name`, of the project its record names.
+    pub(super) fn replace_mod(&mut self, file_name: String, version_id: String) -> Task<LodestoneAppMessage> {
+        let Some(record) = self.instance_page.mods().row(&file_name).and_then(|row| row.source.clone()) else {
+            return Task::none();
+        };
+        let Some(source) = Source::from_key(&record.platform) else {
+            return Task::none();
+        };
+        self.replace_with(file_name, source, record.project_id, record.name, version_id)
+    }
+
+    /// Installs the release `version_id` of the project `project_id` in place of the mod `file_name`. Waits while a game runs on
+    /// the instance, since it may have the jar open. The answer comes back as [`Message::Replaced`].
+    pub(super) fn replace_with(
+        &mut self,
+        file_name: String,
+        source: Source,
+        project_id: String,
+        name: String,
+        version_id: String,
+    ) -> Task<LodestoneAppMessage> {
         if self.shown_locked() {
             return Task::none();
         }
@@ -15,25 +33,19 @@ impl LodestoneLauncher {
         if self.games.is_active(&context.instance.id) {
             return self.alerts.show(Alert::warn(lang::t("instance.mods.running"))).discard();
         }
-        let (Some(db), Some(record)) = (
-            self.db.clone(),
-            self.instance_page.mods().row(&file_name).and_then(|row| row.source.clone()),
-        ) else {
-            return Task::none();
-        };
-        let Some(source) = Source::from_key(&record.platform) else {
+        let Some(db) = self.db.clone() else {
             return Task::none();
         };
         let request = AddRequest {
             project: Project {
                 source,
                 content: ContentType::Mod,
-                project_id: record.project_id.clone(),
-                name: record.name.clone(),
+                project_id,
+                name,
                 web_url: None,
                 icon_url: None,
                 game_versions: Vec::new(),
-                version_id: Some(release.id.clone()),
+                version_id: Some(version_id),
             },
             instance: context.instance.clone(),
         };
@@ -50,6 +62,65 @@ impl LodestoneLauncher {
                 result,
             })
         })
+    }
+
+    /// Installs the release `version_id` of the project `project_id` as a new mod of the shown instance, for a mod the instance no
+    /// longer has. The answer comes back as [`Message::Installed`].
+    pub(super) fn install_version(&mut self, source: Source, project_id: String, name: String, version_id: String) -> Task<LodestoneAppMessage> {
+        let Some(context) = self.mods_context() else {
+            return Task::none();
+        };
+        let Some(db) = self.db.clone() else {
+            return Task::none();
+        };
+        let request = AddRequest {
+            project: Project {
+                source,
+                content: ContentType::Mod,
+                project_id,
+                name: name.clone(),
+                web_url: None,
+                icon_url: None,
+                game_versions: Vec::new(),
+                version_id: Some(version_id),
+            },
+            instance: context.instance.clone(),
+        };
+        let generation = self.instance_page.generation();
+        let mods = context.mods_dir();
+        let install = sipper(move |mut ask| async move { install_jar(db, request, mods, &mut ask).await });
+        Task::sip(install, LodestoneAppMessage::DependencyConflict, move |result| {
+            LodestoneAppMessage::ModActions(Message::Installed {
+                generation,
+                name: name.clone(),
+                result,
+            })
+        })
+    }
+
+    /// A release was installed for a mod the instance no longer had. Its records are applied, the folder is read again, and the
+    /// next step of a queue starts. A failure is kept for the queue's summary, or shown when no queue is running.
+    pub(super) fn mod_installed(&mut self, name: String, result: Result<Vec<ModSource>, String>) -> Task<LodestoneAppMessage> {
+        match result {
+            Ok(records) => {
+                let mods = self.instance_page.mods_mut();
+                for record in &records {
+                    mods.apply_source(record.clone());
+                }
+                self.discover.note_sources(&records);
+                let rescan = self.rescan_mods();
+                Task::batch([rescan, self.load_instances(), self.next_mod_update()])
+            }
+            Err(error) => {
+                warn!("installing {name} failed: {error}");
+                if self.keep_install_failure(&name, &error) {
+                    return self.next_mod_update();
+                }
+                self.alerts
+                    .show(Alert::error(lang::t_with("instance.mods.replace.failed", &[("error", error.as_str())])))
+                    .discard()
+            }
+        }
     }
 
     /// A jar was replaced, or could not be. While Update all runs, the next mod it queued starts once this one has been
@@ -174,7 +245,7 @@ impl LodestoneLauncher {
         };
         let file_name = switch.file_name.clone();
         self.instance_page.mods_mut().close_dialog();
-        self.replace_mod(file_name, release)
+        self.replace_mod(file_name, release.id)
     }
 }
 
@@ -212,6 +283,19 @@ pub(crate) async fn replace_jar(
                 .map_err(|error| error.to_string())??;
         }
     }
+    Ok(records)
+}
+
+/// Writes the release `request` names as a new jar in `mods`, and records every mod it writes against the instance. Unlike
+/// [`replace_jar`] nothing is replaced, so no record moves and no jar is trashed.
+pub(crate) async fn install_jar(
+    db: Database,
+    request: AddRequest,
+    mods: PathBuf,
+    ask: &mut ProgressSender<VersionConflict>,
+) -> Result<Vec<ModSource>, String> {
+    let records = add_to_instance(request, mods, Some(db.clone()), ask).await?;
+    db.record_mod_sources(&records).await?;
     Ok(records)
 }
 

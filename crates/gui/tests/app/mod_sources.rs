@@ -43,6 +43,7 @@ fn release(project_id: &str, version_id: &str) -> Release {
     Release {
         project_id: project_id.to_string(),
         version_id: version_id.to_string(),
+        version_number: format!("{version_id}-number"),
     }
 }
 

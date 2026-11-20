@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use iced::widget::{Text, column, container, stack};
 use iced::{Element, Fill, Padding, Size, alignment};
 
-use super::{GUTTER, InstancePage, Message, Tab, content, hero, logs, mods, screenshots};
+use super::{GUTTER, InstancePage, Message, Tab, content, hero, logs, mods, screenshots, snapshots};
 use crate::app::components::Tabs;
 use crate::app::components::instance_card::install_status;
 use crate::app::components::scrollbar;
@@ -94,15 +94,27 @@ impl InstancePage {
 
     /// The Content tab: the switch over its sections, and the section it picked, which is the mod list or a pack list.
     fn content_body<'a>(&'a self, instance: &'a Instance) -> Element<'a, Message> {
-        let body: Element<'a, Message> = match self.content_section.pack_kind() {
-            None => self.mods.view(instance.loader != Loader::Vanilla).map(|message| match message {
-                mods::Message::Add => Message::AddMods,
-                other => Message::Mods(other),
-            }),
-            Some(kind) => self.packs.view(kind).map(Message::Packs),
+        // The snapshots section is offered only while the instance keeps one. If the last one has gone, the mods show instead.
+        let offer = !self.snapshots.is_empty();
+        let section = match self.content_section {
+            content::Section::Snapshots if !offer => content::Section::Mods,
+            picked => picked,
+        };
+        let body: Element<'a, Message> = match section {
+            content::Section::Snapshots => {
+                let installed = snapshots::view::installed_index(self.mods.rows());
+                snapshots::view::tab(&self.snapshots, &installed, instance.locked).map(Message::Snapshots)
+            }
+            picked => match picked.pack_kind() {
+                None => self.mods.view(instance.loader != Loader::Vanilla).map(|message| match message {
+                    mods::Message::Add => Message::AddMods,
+                    other => Message::Mods(other),
+                }),
+                Some(kind) => self.packs.view(kind).map(Message::Packs),
+            },
         };
         // The switch keeps the page's gutters. The mod list and the pack lists pad their own.
-        let switch = container(content::switch(self.content_section).map(Message::Content))
+        let switch = container(content::switch(section, offer).map(Message::Content))
             .width(Fill)
             .padding(Padding::new(0.0).left(GUTTER).right(GUTTER));
         column![switch, body].spacing(18).width(Fill).height(Fill).into()

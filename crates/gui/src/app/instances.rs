@@ -158,12 +158,30 @@ impl LodestoneLauncher {
             Some(Action::Delete) => self.ask_instance_delete(id),
             Some(Action::Lock) => self.lock_instance(id.to_owned()),
             Some(Action::Unlock) => self.ask_unlock(id.to_owned()),
+            Some(Action::DisableModUpdates) => self.set_mod_updates(id, false),
+            Some(Action::EnableModUpdates) => self.set_mod_updates(id, true),
             Some(Action::CancelInstall) => match self.downloads.job_for_instance(id) {
                 Some(job) => self.downloads_message(downloads::Message::Cancel(job)),
                 None => Task::none(),
             },
             None => Task::none(),
         }
+    }
+
+    /// Turns the mod update checks of the instance `id` on or off, and saves it the way any edit of an instance is saved.
+    /// Turning them on checks the shown instance's mods at once, when its Mods tab is open.
+    pub(super) fn set_mod_updates(&mut self, id: &str, enabled: bool) -> Task<LodestoneAppMessage> {
+        let Some(mut instance) = self.library.instance(id) else {
+            return Task::none();
+        };
+        let disabled = !enabled;
+        if instance.settings.mod_updates_disabled == disabled {
+            return Task::none();
+        }
+        instance.settings.mod_updates_disabled = disabled;
+        let save = self.save_instance(instance, None);
+        let check = if enabled { self.mods_checks_resume() } else { Task::none() };
+        Task::batch([save, check])
     }
 
     /// Opens the folder of the instance `id` in the file manager.
@@ -358,6 +376,8 @@ impl LodestoneLauncher {
         let folder = self.paths.instance(&instance.directory_name);
         let mut replaced = None;
         let mut tasks = Vec::new();
+        // Turning the update checks on checks the mods at once when the Mods tab is open, as the menu's row does.
+        let enables_updates = matches!(edit, Edit::ModUpdates(true));
         match edit {
             Edit::Name(name) => {
                 // A name is kept as typed, so the field shows what is saved. Only an empty name is refused.
@@ -368,6 +388,8 @@ impl LodestoneLauncher {
             }
             Edit::Launch(change) => instance.settings.override_with(change),
             Edit::Snapshots(on) => instance.settings.snapshots = on,
+            Edit::ModUpdates(enabled) => instance.settings.mod_updates_disabled = !enabled,
+            Edit::SnapshotLimit(limit) => instance.settings.snapshot_limit = limit.map(lodestone_snapshots::model::clamp_limit),
             Edit::Reset => instance.settings.reset(),
             Edit::MinecraftVersion(version) => {
                 // Vanilla starts the version itself. A modded instance installs its loader again at its next launch.
@@ -415,6 +437,9 @@ impl LodestoneLauncher {
             Edit::IconWritten(Err(error)) | Edit::Failed(error) => return self.art_failed(&error),
         }
         tasks.push(self.save_instance(instance, replaced));
+        if enables_updates {
+            tasks.push(self.mods_checks_resume());
+        }
         Task::batch(tasks)
     }
 

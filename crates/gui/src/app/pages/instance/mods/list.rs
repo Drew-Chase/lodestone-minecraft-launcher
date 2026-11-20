@@ -6,6 +6,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use aurora_leaf::Icon;
+use iced::border::Radius;
 use iced::widget::{Space, Text, column, container, image, mouse_area, row};
 use iced::{Background, Border, Color, Element, Fill, Length, Padding, alignment, mouse};
 use iced_color_extension::rgb;
@@ -18,7 +19,7 @@ use crate::app::components::context_menu::ContextMenu;
 use crate::app::components::dropdown::Dropdown;
 use crate::app::components::hover_track::HoverTrack;
 use crate::app::components::keyed_list::KeyedList;
-use crate::app::components::panel::{hairline, panel_with_padding};
+use crate::app::components::panel::{self, hairline, panel_with_padding};
 use crate::app::components::platform_logo;
 use crate::app::components::{TextButton, Toggle};
 use crate::app::lang;
@@ -37,6 +38,8 @@ const OVERSCAN: usize = 8;
 
 /// The side of a row's icon tile, in pixels.
 const TILE_SIZE: f32 = 44.0;
+/// The room a row keeps either side of its content. The row's highlight runs past it, to the panel's edges.
+const ROW_INSET: f32 = 16.0;
 
 /// The rows the list builds: the first one, and the one after the last. `total` is how many rows the list has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,11 +69,16 @@ pub fn view(state: &State, height: f32) -> Element<'_, Message> {
     perf::count("view.mods.rows", (window.end - window.first) as u64);
     let mut children: Vec<(u64, Element<'_, Message>)> = Vec::with_capacity(window.end - window.first + 2);
     children.push((TOP_SPACER, Space::new().height(window.first as f32 * PITCH).into()));
-    for &index in &state.visible[window.first..window.end] {
-        children.push((row_key(&state.rows[index].file.file_name), mod_row(state, index)));
+    for (offset, &index) in state.visible[window.first..window.end].iter().enumerate() {
+        // The first and last rows reach the panel's top and bottom edges, so they take its corners.
+        let position = window.first + offset;
+        let top = position == 0;
+        let bottom = position + 1 == window.total;
+        children.push((row_key(&state.rows[index].file.file_name), mod_row(state, index, top, bottom)));
     }
     children.push((BOTTOM_SPACER, Space::new().height((window.total - window.end) as f32 * PITCH).into()));
-    panel_with_padding(KeyedList::new(children).width(Fill), Padding::new(0.0).left(16).right(16))
+    // Each row pads its own sides, so its highlight runs to the panel's edges.
+    panel_with_padding(KeyedList::new(children).width(Fill), Padding::new(0.0))
 }
 
 /// The keys of the spacers, which no mod's key can equal in practice.
@@ -86,8 +94,8 @@ fn row_key(file_name: &str) -> u64 {
 
 /// One mod's row: its tile, name and subtitle, the switch, and the menu. A press on the row opens the mod, and a
 /// right-press opens the same menu as the ⋯ button. The row's hairline stays with it, so a windowed row keeps its
-/// divider.
-fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
+/// divider. `top` and `bottom` say the row is the panel's first or last, which decides its corners.
+fn mod_row(state: &State, index: usize, top: bool, bottom: bool) -> Element<'_, Message> {
     let entry = &state.rows[index];
     let file = &entry.file;
     let Menu { items, actions } = menu::menu(entry, state.busy.contains(&file.file_name), state.locked);
@@ -176,6 +184,7 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
         .push(switch)
         .push(more)
         .spacing(14)
+        .padding(Padding::new(0.0).left(ROW_INSET).right(ROW_INSET))
         .align_y(alignment::Vertical::Center)
         .height(Length::Fixed(ROW_HEIGHT));
     let hovered = state.hovered.as_deref() == Some(file.file_name.as_str());
@@ -194,7 +203,7 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
         },
     );
     // The row lifts a little under the pointer, so it reads as the one a press opens.
-    let lifted = container(press).width(Fill).style(move |_| row_highlight(hovered));
+    let lifted = container(press).width(Fill).style(move |_| row_highlight(hovered, top, bottom));
 
     let key = file.file_name.clone();
     let menu_name = file.file_name.clone();
@@ -202,17 +211,29 @@ fn mod_row(state: &State, index: usize) -> Element<'_, Message> {
         file_name: menu_name.clone(),
         action: actions.get(selected).copied().flatten(),
     });
-    column![context, hairline()].width(Fill).into()
+    // The rule keeps the inset the rows had, so it stays shorter than the highlight.
+    let rule = container(hairline())
+        .width(Fill)
+        .padding(Padding::new(0.0).left(ROW_INSET).right(ROW_INSET));
+    column![context, rule].width(Fill).into()
 }
 
-/// The fill of a row under the pointer: a faint white wash over the panel, with the row's corners rounded.
-fn row_highlight(hovered: bool) -> container::Style {
+/// The fill of a row under the pointer: a faint white wash that runs the panel's full width, as the panel's own fill does.
+/// The first and last rows reach the panel's top and bottom edges, so they take its corners there and the wash does not
+/// show past them.
+fn row_highlight(hovered: bool, top: bool, bottom: bool) -> container::Style {
+    let mut radius = Radius::from(0.0);
+    if top {
+        radius.top_left = panel::RADIUS;
+        radius.top_right = panel::RADIUS;
+    }
+    if bottom {
+        radius.bottom_left = panel::RADIUS;
+        radius.bottom_right = panel::RADIUS;
+    }
     container::Style {
         background: hovered.then_some(Background::Color(rgb!(255, 255, 255, 4%))),
-        border: Border {
-            radius: 10.0.into(),
-            ..Border::default()
-        },
+        border: Border { radius, ..Border::default() },
         ..container::Style::default()
     }
 }

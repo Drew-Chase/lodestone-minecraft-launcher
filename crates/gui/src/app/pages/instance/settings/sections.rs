@@ -6,6 +6,7 @@ use std::path::Path;
 use iced::widget::{Space, Text, column, container, row};
 use iced::{Element, Fill, Padding, alignment};
 use lodestone_loaders::LoaderVersion;
+use lodestone_snapshots::model::{LIMIT_MAX, LIMIT_MIN};
 
 use super::{Edit, Message};
 use crate::app::components::badge::{Badge, loader_palette};
@@ -19,7 +20,8 @@ use crate::app::lang;
 use crate::app::pages::library::instance::{Instance, Loader};
 use crate::app::theme::{color, fonts};
 
-/// The Game Version rows: the Minecraft version and the loader build, the loader's type, and the snapshots toggle.
+/// The Game Version rows: the Minecraft version and the loader build, the loader's type, the snapshots toggle, and the
+/// mod updates switch.
 /// The lists show their own errors, and the loader rows are left out for vanilla.
 pub fn game_version<'a>(
     instance: &'a Instance,
@@ -56,6 +58,14 @@ pub fn game_version<'a>(
 
     let snapshot_toggle = Toggle::new(snapshots).on_toggle(Message::Edit(Edit::Snapshots(!snapshots)));
     rows.push(setting(lang::t("instance.settings.snapshots"), snapshot_toggle));
+
+    let updates_on = !instance.settings.mod_updates_disabled;
+    let updates_toggle = Toggle::new(updates_on).on_toggle(Message::Edit(Edit::ModUpdates(!updates_on)));
+    rows.push(described_setting(
+        lang::t("instance.settings.mod_updates"),
+        lang::t("instance.settings.mod_updates_hint"),
+        updates_toggle,
+    ));
 
     if let Some(error) = versions_error {
         rows.push(error_row(error));
@@ -103,8 +113,8 @@ fn error_row<'a>(error: &'a str) -> Element<'a, Message> {
         .into()
 }
 
-/// The instance folder, and a button that opens it.
-pub fn paths_files(folder: &Path) -> Element<'_, Message> {
+/// The instance folder, a button that opens it, and how many mod snapshots the instance keeps.
+pub fn paths_files(folder: &Path, snapshot_limit: Option<u32>, default_limit: u32) -> Element<'_, Message> {
     // The path takes the width the button leaves, so a long one wraps instead of pushing the button off the panel.
     let path = Text::new(folder.display().to_string())
         .size(11)
@@ -120,7 +130,27 @@ pub fn paths_files(folder: &Path) -> Element<'_, Message> {
     .spacing(16)
     .align_y(alignment::Vertical::Center)
     .padding(Padding::new(0.0).top(14).bottom(14));
-    divided_panel(vec![row.into()], launch_rows::panel_padding())
+    let snapshots = container(snapshot_limit_row(snapshot_limit, default_limit)).padding(Padding::new(0.0).top(14).bottom(14));
+    divided_panel(vec![row.into(), snapshots.into()], launch_rows::panel_padding())
+}
+
+/// How many mod snapshots the instance keeps. The first option takes the global default, which the label names, and the
+/// others set the instance's own limit.
+fn snapshot_limit_row<'a>(limit: Option<u32>, default_limit: u32) -> Element<'a, Message> {
+    let default = lang::t_with("snapshots.limit.default", &[("count", default_limit.to_string().as_str())]);
+    let labels = std::iter::once(default).chain((LIMIT_MIN..=LIMIT_MAX).map(launch_rows::snapshot_limit_label));
+    let selected = limit.map_or(0, |value| value as usize + 1);
+    let select = Select::new(labels, Some(selected))
+        .on_select(|index| {
+            let limit = index.checked_sub(1).map(|value| value as u32);
+            Message::Edit(Edit::SnapshotLimit(limit))
+        })
+        .width(180);
+    described_setting(
+        lang::t("instance.settings.snapshots_limit"),
+        lang::t("instance.settings.snapshots_limit_hint"),
+        select,
+    )
 }
 
 /// The destructive actions in a red-bordered panel: reinstall the game's files, reset the launch settings, and delete

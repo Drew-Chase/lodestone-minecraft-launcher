@@ -72,6 +72,7 @@ fn source(file_name: &str, project_id: &str) -> ModSource {
         platform: "modrinth".to_string(),
         project_id: project_id.to_string(),
         version_id: format!("{project_id}-1"),
+        version_number: None,
         name: project_id.to_string(),
         file_name: file_name.to_string(),
         sha1: None,
@@ -219,6 +220,29 @@ fn a_check_gives_each_checked_mod_its_update_and_clears_the_rest() {
     assert!(
         state.row("sodium.jar").is_some_and(|row| row.update.is_none()),
         "a check that finds nothing clears the update"
+    );
+}
+
+#[test]
+fn turning_the_update_checks_off_forgets_the_shown_updates_and_no_check_adds_one() {
+    let mut state = sample();
+    state.apply_checks(
+        Vec::new(),
+        HashMap::from([("sodium.jar".to_string(), release("sodium-2"))]),
+        &["sodium.jar".to_string()],
+    );
+    state.set_updates_disabled(true);
+    assert!(state.row("sodium.jar").is_some_and(|row| row.update.is_none()));
+    assert_eq!(state.update_count(), 0);
+
+    state.apply_checks(
+        Vec::new(),
+        HashMap::from([("sodium.jar".to_string(), release("sodium-3"))]),
+        &["sodium.jar".to_string()],
+    );
+    assert!(
+        state.row("sodium.jar").is_some_and(|row| row.update.is_none()),
+        "a check in flight adds nothing"
     );
 }
 

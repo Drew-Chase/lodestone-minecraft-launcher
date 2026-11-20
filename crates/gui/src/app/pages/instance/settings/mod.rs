@@ -127,6 +127,10 @@ pub enum Edit {
     Launch(LaunchChange),
     /// Whether the Game Version section lists snapshots.
     Snapshots(bool),
+    /// Whether the instance's mods are checked for newer releases. The switch in the Game Version section sets it.
+    ModUpdates(bool),
+    /// How many mod snapshots the instance keeps. `None` inherits the global default.
+    SnapshotLimit(Option<u32>),
     /// A Minecraft version was picked, by id.
     MinecraftVersion(String),
     /// A loader build was picked, by version.
@@ -218,6 +222,8 @@ pub struct State {
     resolved: Option<LaunchSettings>,
     /// The instance's own overrides, which tell the rows which settings are inherited.
     overrides: Option<InstanceSettings>,
+    /// The global snapshot limit the instance inherits when it does not set its own.
+    snapshot_default: u32,
     java: JavaOptions,
     /// The largest heap the slider offers, in gigabytes. Set from the machine's memory once the tab opens.
     ceiling_gb: u32,
@@ -238,6 +244,7 @@ impl State {
     pub fn sync(&mut self, instance: &Instance, defaults: &LaunchDefaults) {
         self.resolved = Some(instance.settings.resolve(defaults));
         self.overrides = Some(instance.settings.clone());
+        self.snapshot_default = defaults.snapshot_limit;
     }
 
     /// Loads what the tab's lists need: the runtimes, the system Java, the machine's memory, Mojang's versions and the
@@ -542,7 +549,14 @@ impl State {
                     self.builds_error.as_deref(),
                 ),
             ),
-            block(Section::PathsFiles, sections::paths_files(folder)),
+            block(
+                Section::PathsFiles,
+                sections::paths_files(
+                    folder,
+                    self.overrides.as_ref().and_then(|settings| settings.snapshot_limit),
+                    self.snapshot_default,
+                ),
+            ),
             block(Section::Advanced, launch_rows::advanced(shown, launch_edit, Message::OpenEnvironment)),
             block(Section::DangerZone, sections::danger_zone()),
         ]

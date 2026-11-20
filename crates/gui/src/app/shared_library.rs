@@ -76,6 +76,8 @@ pub struct ModSource {
     pub project_id: String,
     /// The release that was installed.
     pub version_id: String,
+    /// The release's version number as the platform names it, such as `0.6.0`, when the record has one.
+    pub version_number: Option<String>,
     /// The project's name, or the jar's name when the platform's is not known.
     pub name: String,
     /// The jar's file name in the instance's `mods/` folder, `.disabled` included.

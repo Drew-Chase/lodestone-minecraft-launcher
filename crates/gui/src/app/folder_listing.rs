@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Local};
-use lodestone_export::plan::is_leftover;
+use lodestone_export::plan::{excluded, is_leftover};
 
 /// One entry of a folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,6 +123,9 @@ pub fn read_rows(root: &Path, folder: &str, entries: Entries) -> Result<Vec<Row>
         };
         let is_folder = metadata.as_ref().is_some_and(std::fs::Metadata::is_dir);
         let path = if folder.is_empty() { name.clone() } else { format!("{folder}/{name}") };
+        if entries == Entries::Exportable && excluded(&path) {
+            continue;
+        }
         rows.push(Row {
             name,
             path,

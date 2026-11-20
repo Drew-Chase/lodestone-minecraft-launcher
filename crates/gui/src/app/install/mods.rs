@@ -232,6 +232,7 @@ pub(crate) async fn add_to_instance(
                 platform: platform.clone(),
                 project_id: jar.project_id,
                 version_id: jar.release.id,
+                version_number: Some(jar.release.version_number),
                 name,
                 file_name: jar.file.name,
                 sha1: jar.file.sha1,

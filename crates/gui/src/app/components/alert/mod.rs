@@ -31,7 +31,21 @@ pub use host::Alerts;
 /// The answer an alert sends back to the root.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Message {
-    Respond(bool),
+    Respond(Choice),
+}
+
+/// Which button an alert was answered with. An alert with an extra button can be answered three ways. [`Alerts::show`] reads
+/// only whether the answer is the affirmative button.
+///
+/// [`Alerts::show`]: host::Alerts::show
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Choice {
+    /// The affirmative button, or the one button of a notice: Yes, Okay, Close or the labelled answer.
+    Affirmative,
+    /// The negative button, the ✕, or Escape.
+    Negative,
+    /// The extra button between the other two.
+    Extra,
 }
 
 /// What an alert is about; sets its default title, glyph and colours.
@@ -129,6 +143,8 @@ pub struct Alert {
     title: Cow<'static, str>,
     message: Cow<'static, str>,
     buttons: Buttons,
+    /// A third button between the negative and the affirmative one, when the alert has one.
+    extra: Option<&'static str>,
 }
 
 impl Alert {
@@ -138,6 +154,7 @@ impl Alert {
             title: Cow::Borrowed(kind.title()),
             message: message.into(),
             buttons: kind.default_buttons(),
+            extra: None,
         }
     }
 
@@ -189,6 +206,17 @@ impl Alert {
         self.buttons(Buttons::Labelled { affirmative, negative })
     }
 
+    /// Adds a third button, between the negative and the affirmative one. It answers [`Choice::Extra`].
+    pub fn extra(mut self, label: &'static str) -> Self {
+        self.extra = Some(label);
+        self
+    }
+
+    /// The label of the extra button, when the alert has one.
+    pub fn extra_label(&self) -> Option<&'static str> {
+        self.extra
+    }
+
     pub fn kind(&self) -> Kind {
         self.kind
     }
@@ -217,18 +245,22 @@ impl Alert {
 
         let mut footer = row![Space::new().width(Fill)].spacing(12).align_y(alignment::Vertical::Center);
         if let Some(negative) = self.buttons.negative() {
-            footer = footer.push(TextButton::ghost(negative).on_press(Message::Respond(false)));
+            footer = footer.push(TextButton::ghost(negative).on_press(Message::Respond(Choice::Negative)));
+        }
+        // The extra answer sits between the negative and the affirmative one, as the secondary button.
+        if let Some(extra) = self.extra {
+            footer = footer.push(TextButton::ghost(extra).on_press(Message::Respond(Choice::Extra)));
         }
         let affirmative = match self.affirmative_variant() {
             Variant::Primary => TextButton::primary(self.buttons.affirmative()),
             variant => TextButton::ghost(self.buttons.affirmative()).variant(variant),
         };
-        footer = footer.push(affirmative.on_press(Message::Respond(true)));
+        footer = footer.push(affirmative.on_press(Message::Respond(Choice::Affirmative)));
 
         Modal::new(self.heading(), self.message())
             .icon(self.kind.icon(), ink, tint)
             .footer(footer)
-            .on_close(Message::Respond(false))
+            .on_close(Message::Respond(Choice::Negative))
             .close_on_scrim(false)
             .into()
     }

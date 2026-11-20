@@ -99,6 +99,10 @@ pub struct State {
     locked: bool,
     /// Whether the updates Update all started are still running. The button waits while they are.
     updating_all: bool,
+    /// Whether the instance keeps snapshots at all. The snapshot button is off while it does not.
+    snapshots_enabled: bool,
+    /// Whether the instance's update checks are off. While they are, no mod shows an update.
+    updates_disabled: bool,
 }
 
 /// The key of the platform project a record names, by platform and project id.
@@ -126,6 +130,8 @@ pub enum Message {
     Disabled(bool),
     /// Update all was pressed. The root installs every newer release, one mod after another.
     UpdateAll,
+    /// Snapshot was pressed. The root saves every mod the instance holds, so a rollback can put them back.
+    Snapshot,
     /// A mod's switch was flipped, by file name. The root renames the jar and answers with the new name.
     Toggle { file_name: String, enabled: bool },
     /// The pointer entered (`hovered`) or left the row of the mod with this file name.
@@ -189,6 +195,10 @@ impl State {
     /// Applies the outcome of a check: the sources recorded for jars the platforms named, and the update each checked
     /// mod has. A checked mod with no entry in `updates` has no update.
     pub fn apply_checks(&mut self, identified: Vec<ModSource>, mut updates: HashMap<String, ContentVersion>, checked: &[String]) {
+        // A check still in flight when the updates were turned off brings nothing to show.
+        if self.updates_disabled {
+            updates.clear();
+        }
         for record in identified {
             self.sources.insert(record.file_name.clone(), record);
         }
@@ -323,6 +333,38 @@ impl State {
         self.locked = locked;
     }
 
+    /// Records whether the instance keeps snapshots, which the snapshot button needs.
+    pub fn set_snapshots_enabled(&mut self, enabled: bool) {
+        self.snapshots_enabled = enabled;
+    }
+
+    /// Records whether the instance's update checks are off. While they are, no check adds an update, so no Update button, update
+    /// row or update count shows, and turning them off forgets the updates already shown.
+    pub fn set_updates_disabled(&mut self, disabled: bool) {
+        self.updates_disabled = disabled;
+        if disabled {
+            self.updates.clear();
+            for row in &mut self.rows {
+                row.update = None;
+            }
+        }
+    }
+
+    /// Whether the instance's update checks are off.
+    pub fn updates_disabled(&self) -> bool {
+        self.updates_disabled
+    }
+
+    /// Whether an Update all is running, which holds the snapshot and the other queued changes back.
+    pub fn updating_all(&self) -> bool {
+        self.updating_all
+    }
+
+    /// Every mod the folder holds, in the order the list shows them.
+    pub fn rows(&self) -> &[Row] {
+        &self.rows
+    }
+
     /// Whether the folder holds any mod.
     pub fn has_mods(&self) -> bool {
         !self.rows.is_empty()
@@ -397,7 +439,7 @@ impl State {
             }
             // The root answers these: a press opens a mod's page or its search, a menu row runs an action, Update all
             // installs the newer releases, and Add opens Discover.
-            Message::Add | Message::UpdateAll | Message::Open(_) | Message::Menu { .. } => Task::none(),
+            Message::Add | Message::UpdateAll | Message::Snapshot | Message::Open(_) | Message::Menu { .. } => Task::none(),
             Message::Dialog(message) => {
                 match message {
                     DialogMessage::Close => self.dialog = None,

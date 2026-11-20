@@ -10,6 +10,7 @@ use super::{Message, State};
 use crate::app::components::TextButton;
 use crate::app::components::button::Variant;
 use crate::app::components::hint::hint;
+use crate::app::components::icon_button::{self, IconButton};
 use crate::app::components::input;
 use crate::app::lang;
 use crate::app::theme::{color, fonts};
@@ -35,28 +36,51 @@ impl State {
             .size(13)
             .width(Fill);
         let mut bar = row![filter].spacing(10).align_y(alignment::Vertical::Center);
-        // The Disabled chip changes no mod, so a locked instance keeps it.
-        bar = bar.push(filter_chip(
-            lang::t("instance.mods.disabled_filter"),
-            self.filter.disabled_only,
-            self.disabled_count(),
-            Message::Disabled(!self.filter.disabled_only),
-        ));
+        // The Disabled chip changes no mod, so a locked instance keeps it. It shows while a mod is disabled, and stays
+        // while it is on, so the filter can always be turned off.
+        let disabled = self.disabled_count();
+        if disabled > 0 || self.filter.disabled_only {
+            bar = bar.push(filter_chip(
+                lang::t("instance.mods.disabled_filter"),
+                self.filter.disabled_only,
+                disabled,
+                Message::Disabled(!self.filter.disabled_only),
+            ));
+        }
         // A locked instance cannot install the newer releases the chip counts, so the chip and Update all are left out
         // while it is locked.
         if !self.locked {
             let updates = self.update_count();
-            bar = bar.push(filter_chip(
-                lang::t("instance.mods.updates_filter"),
-                self.filter.updates_only,
-                updates,
-                Message::Updates(!self.filter.updates_only),
-            ));
+            // The Updates chip shows while a newer release exists, and stays while it is on, as the Disabled chip does.
+            if updates > 0 || self.filter.updates_only {
+                bar = bar.push(filter_chip(
+                    lang::t("instance.mods.updates_filter"),
+                    self.filter.updates_only,
+                    updates,
+                    Message::Updates(!self.filter.updates_only),
+                ));
+            }
             if updates > 0 {
                 bar = bar.push(self.update_all());
             }
         }
+        bar = bar.push(self.snapshot_button());
         bar.push(hint(add, add_hint)).into()
+    }
+
+    /// The button that saves every mod the instance holds. It waits while an Update all runs, and is off when the instance keeps
+    /// no snapshots. Taking one only reads the mods, so a locked instance keeps it.
+    fn snapshot_button(&self) -> Element<'_, Message> {
+        let button = IconButton::new(Icon::lucide().camera())
+            .size(36.0)
+            .icon_size(18.0)
+            .style(icon_button::ghost_button_style());
+        let button = if self.snapshots_enabled && !self.updating_all {
+            button.on_press(Message::Snapshot)
+        } else {
+            button.disabled(true)
+        };
+        hint(button, lang::t("instance.mods.snapshot_hint"))
     }
 
     /// The button that installs every newer release the Updates chip counts. It waits while the updates it started run.

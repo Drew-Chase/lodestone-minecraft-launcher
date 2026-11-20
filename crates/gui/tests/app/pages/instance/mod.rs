@@ -32,6 +32,7 @@ fn sample_files() -> InstanceFiles {
         folder_bytes: 1_200_000_000,
         resource_packs: Vec::new(),
         shader_packs: Vec::new(),
+        snapshots: Vec::new(),
         mods: vec![files::ModFile {
             file_name: "sodium.jar".to_string(),
             enabled: true,
