@@ -112,6 +112,36 @@ When drafting a pull request (PR), make it standalone:
 - Do not link it to another PR in its description.
 - Do not make it depend on another PR being merged first, or require a particular merge order.
 
+## Video Generation
+
+Product demo videos (one per release, for YouTube and the website) are built with the kit in `tools/demo-video/`. It is Node and Bash, kept in its own tree, and never a dependency of the crates or the website. Everything it generates goes under `target/demo-video/` (`$DEMO_WORK` overrides): `profile/` (scratch launcher profile), `capture/` (raw recordings and stills), `stage/` (the stage page and extracted frames), plus renders. The v0.7.0 video is the reference: 1:37, 4K60, voice take A with the "Launchpad" track.
+
+**Pipeline**
+1. Build the launcher with the CurseForge key, or the CurseForge source stays greyed out: `LODESTONE_CURSEFORGE_KEY=$(fish -c 'echo -n $LODESTONE_CURSEFORGE_KEY') cargo build -p lodestone_launcher`. Never print the key.
+2. `tools/demo-video/record.sh setup` launches the debug build on the scratch profile (X11 via XWayland, 1600x900 window), signs in offline as AlexPlays, skips the wizard, and runs `seed.mjs`. The seed adds 8 instances (one per biome and loader), 9 worlds, real Modrinth mods with `mod_sources` rows, and 5 public servers. It needs the `sqlite3` CLI (`$SQLITE` if not on PATH) and network access.
+3. `record.sh all` records every clip with `ffmpeg x11grab`, then `record.sh extract` cuts them into `stage/frames/` and writes `frames/manifest.js` (frame counts). Single clips: `record.sh library worlds`. Coordinates are pixels in the 1600x900 window against the v0.7.0 UI, so check a screenshot after any UI change and update them. `record.sh stop` stops only the scratch launcher by its pid file.
+4. Preview stills: `node tools/demo-video/render.mjs x 0.5 0 "" <dir>` writes one frame every 2 s and logs the scene starts and total length.
+5. Final render: `node tools/demo-video/prender.mjs <out.mp4> --gpu --workers 8 --scale 2` (4K60; `--scale 1` for 1080p). It runs 8 headless Chrome instances on slices of the timeline, draws through Vulkan on the GPU, encodes each slice with `h264_nvenc`, and joins them without re-encoding. That is about 5 minutes for 4K on the RTX 5080, against 30+ minutes single-process on the CPU.
+6. Mix: `node tools/demo-video/mix.mjs --silences <vo.mp3>` lists the take's pauses. Pick the 11 that fall between paragraphs (takes also pause inside paragraphs, so match against the script, not the longest 11). Then `node tools/demo-video/mix.mjs <video> <vo.mp3> <music.mp3> <out.mp4> "<start|end,...>"` places each paragraph at its cue (`CUES`, which must match the scene starts) and ducks the music. Mixes land near -13 LUFS with peaks under -1 dBTP.
+7. Thumbnail: `node tools/demo-video/thumbnail.mjs <out.png>` renders `thumbnail.html` at 1920x1080. It uses the `library` and `m_discover` stills and the five platform logos (on light tiles, since the Modrinth and CurseForge marks are dark), with the headline "Every mod. One launcher." Keep the headline clear of the screenshots and the whole file under YouTube's 2 MB limit.
+8. YouTube copy: a title, a description (download and source links, a feature list, chapters, and "not affiliated with Mojang or Microsoft"), and tags. YouTube chapters need the first at 0:00 and each at least 10 s, so merge the short scenes. Tags must stay under 500 characters as YouTube counts them: a tag that contains a space counts 2 extra for its quotes. `tools/demo-video/youtube-v0.7.0.md` is the model.
+
+**Audio**
+- Voice-over: ElevenLabs, model **Eleven v4**, voice **"Hale - Smooth, Confident and Persuasive"**. The script is `tools/demo-video/voiceover-elevenlabs-v4.txt`: one paragraph per scene, `[pause]` and `[long pause]` between scenes, and a few delivery tags (`[warm, confident]`, `[excited]`, `[playful]`). v4 ignores SSML `<break time>` tags and has no exact-length pause, so timing comes from `mix.mjs`, not from the take. Spell the site out as "lodestone launcher dot com". `voiceover.srt` holds the same lines with their timestamps.
+- Music: **Suno v6-mini**, from the prompt in `tools/demo-video/music-prompt.md`: instrumental, 97 s, 118 BPM, D minor, cinematic electronic with a felt-piano motif, a mix that leaves room for the voice, and structure hits on the scene cuts. Generate a track the same length as the video. The music is loud as delivered, so `mix.mjs` lowers it 11 dB and side-chain ducks it about 9 dB more under the voice.
+
+**Style** (`stage.html`, a 1920x1080 stage driven frame by frame through `window.seek(t)`)
+- The launcher's own look: background `#08090a`, accent `#22ff84` (`--mc-green`), and the login page's violet as a second glow. There's a faint drifting 64 px green grid, green motes, Inter Tight 900 headlines with one green accent word, JetBrains Mono uppercase eyebrows, and Inter body text.
+- Each feature scene is a real app recording in a floating rounded window that swings in from a 3D tilt, with copy on the alternate side: eyebrow, headline, one-line subtitle, and chips that light up in step with the clip (platforms, loaders, instance tabs). Scenes meet with a green light sweep and flash. The intro and outro draw the compass logo (the needle spins) and the wordmark. The outro shows `lodestonelauncher.com`.
+- Scenes, in order: intro, Library, Discover (five platforms), Search, Project pages, New instance, Instance management, Worlds, Servers (live ping), Skins (3D), a feature wall ("Everything a launcher should do."), and the outro.
+- User preferences from the v0.7.0 review: no camera zoom or crop on the footage (the whole window stays in view), and scrolling must glide. Record scrolling as a slow scrollbar drag (`sdrag`), never the mouse wheel, which jumps ~60 px a click. Play clips at exactly 1x or 2x (`SEG` in `stage.html`): on the 60 fps timeline any other rate repeats 30 fps source frames unevenly and judders.
+- Every claim on screen must be true of the release being shown. Check new features against the code before adding them to the feature wall or the script.
+
+**Gotchas**
+- Unset `WAYLAND_DISPLAY` and set `WINIT_UNIX_BACKEND=x11` for the launcher, or xdotool and x11grab cannot see the window. Type into iced fields one `xdotool key` at a time (`xdotool type` drops characters). Never press Create Instance or a Discover install while recording: both start real downloads.
+- `pkill -f` with a pattern that appears in your own command line kills your own shell. Stop render workers by pid.
+- The footage is recorded at 1600x900, so in a 4K render the app window is upscaled while the type and graphics are native. Native 4K footage would need the launcher at 2x scale and new clip timings, which moves the voice-over cues.
+
 ## Agent Memory
 
 Update your persistent agent memory as you discover codepaths, dependency relationships, architectural patterns, platform-specific implementations, and performance-critical sections. This builds institutional knowledge across conversations. Write concise notes about what you found and where.
