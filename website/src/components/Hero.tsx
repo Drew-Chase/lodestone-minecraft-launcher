@@ -1,46 +1,26 @@
-import {useEffect, useState} from "react";
 import Downloads from "./Downloads.tsx";
 
-import libraryImg from "../img/screens/library.webp";
-import discoverImg from "../img/screens/discover.webp";
-import instanceImg from "../img/screens/instance-page.webp";
-import syncImg from "../img/screens/sync-modal.webp";
-import newInstanceImg from "../img/screens/new-instance-modal.webp";
+// The launcher's v0.7.0 demo on YouTube. The nocookie host keeps YouTube from setting cookies until someone presses play.
+const DEMO_VIDEO_ID = "NZ8RtBGYpKU";
 
-function HeroShowcaseReal() {
-    const screens = [
-        {src: libraryImg, label: "lodestone://library"},
-        {src: discoverImg, label: "lodestone://discover"},
-        {src: instanceImg, label: "lodestone://instance/Survival"},
-        {src: syncImg, label: "lodestone://co-op-sync"},
-        {src: newInstanceImg, label: "lodestone://new-instance"},
-    ];
-    const [idx, setIdx] = useState(0);
-    const [paused, setPaused] = useState(false);
-    useEffect(() => {
-        if (paused) return;
-        const id = setInterval(() => setIdx(i => (i + 1) % screens.length), 4500);
-        return () => clearInterval(id);
-    }, [paused, screens.length]);
+function HeroVideo() {
     return (
-        <div className="hero-showcase" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+        <div className="hero-showcase">
             <div className="showcase-window">
                 <div className="showcase-chrome">
                     <div className="dots"><span/><span/><span/></div>
-                    <div className="url">{screens[idx].label}</div>
+                    <div className="url">lodestone://demo</div>
                     <div style={{width: 40}}/>
                 </div>
-                <div className="showcase-screen shot-screen">
-                    {screens.map((s, i) => (
-                        <img key={s.src} src={s.src} alt={s.label} loading={i === 0 ? "eager" : "lazy"}
-                             className={`shot-frame ${i === idx ? "active" : ""}`}/>
-                    ))}
-                    <div className="shot-dots">
-                        {screens.map((s, i) => (
-                            <button key={s.src} onClick={() => setIdx(i)}
-                                    className={i === idx ? "on" : ""} aria-label={s.label}/>
-                        ))}
-                    </div>
+                <div className="hero-video">
+                    <iframe
+                        src={`https://www.youtube-nocookie.com/embed/${DEMO_VIDEO_ID}?rel=0&modestbranding=1`}
+                        title="Lodestone v0.7.0 demo"
+                        loading="lazy"
+                        referrerPolicy="strict-origin-when-cross-origin"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowFullScreen
+                    />
                 </div>
             </div>
         </div>
@@ -63,7 +43,7 @@ export default function Hero() {
                     import any modpack, and sync instances with friends — all in one place.
                 </p>
                 <Downloads/>
-                <HeroShowcaseReal/>
+                <HeroVideo/>
             </div>
         </section>
     );
