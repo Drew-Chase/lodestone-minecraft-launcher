@@ -1,0 +1,23 @@
+[warm, confident] Meet Lodestone. A native Minecraft launcher, built in Rust.
+
+[pause] Every instance lives in one library: Fabric, Forge, NeoForge, Quilt, or vanilla. Each one gets its own artwork, its playtime, and a one-click Play button.
+
+[pause] Discover searches Modrinth, CurseForge, ATLauncher, Technic, and FTB. [excited] Five platforms, without ever leaving the launcher.
+
+[pause] Looking for something specific? Results land as you type, filtered to your game version and loader.
+
+[pause] Every project gets a full page: its description, screenshots, changelogs, and every version, so you know what you're installing.
+
+[pause] Starting fresh takes seconds. Name it, pick a Minecraft version, choose a loader, and Lodestone matches the right Java for you.
+
+[pause] Inside an instance, everything is within reach. Switch mods on and off, browse its files, check its worlds, and tune its settings.
+
+[pause] The Worlds page gathers every save from every instance. Filter by game mode, search by name or seed, or switch to a table.
+
+[pause] Servers show live pings, player counts, and their message of the day, refreshed on their own, with LAN games right alongside.
+
+[pause] [playful] And your skin gets a 3D preview you can spin and try on.
+
+[pause] Plus imports from other launchers, modpack exports, portable builds, and mod snapshots you can roll back.
+
+[long pause] [warm, confident] Lodestone. Free and open source, at lodestone launcher dot com.

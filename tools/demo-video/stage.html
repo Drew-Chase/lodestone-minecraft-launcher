@@ -1,0 +1,343 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Lodestone Demo Stage</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@600;800;900&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: a 1920x1080 stage. Each scene is the real app in a floating window, with kinetic type beside or above it. */
+:root {
+  color-scheme: dark;
+  --ink: #08090a;          /* the launcher's own background */
+  --panel: #0e1012;        /* the launcher's rail */
+  --green: #22ff84;        /* --mc-green */
+  --green-dim: #13a85a;
+  --violet: #8b5cf6;       /* the login page's second glow */
+  --text: #f2f5f3;
+  --muted: #8d978f;
+  --line: rgba(255,255,255,.08);
+  --display: "Inter Tight", "Inter", system-ui, sans-serif;
+  --body: "Inter", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0 }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ink); color: var(--text); font-family: var(--body) }
+#stage { position: absolute; inset: 0; overflow: hidden; perspective: 2200px }
+#bg { position: absolute; inset: 0 }
+#grid { position: absolute; inset: -64px; background-image:
+  linear-gradient(rgba(34,255,132,.045) 1px, transparent 1px),
+  linear-gradient(90deg, rgba(34,255,132,.045) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 65% at 50% 50%, #000 30%, transparent 100%);
+          mask-image: radial-gradient(ellipse 70% 65% at 50% 50%, #000 30%, transparent 100%) }
+.glow { position: absolute; border-radius: 50%; filter: blur(120px); pointer-events: none }
+#g1 { width: 900px; height: 900px; background: rgba(34,255,132,.20) }
+#g2 { width: 800px; height: 800px; background: rgba(139,92,246,.16) }
+#motes { position: absolute; inset: 0 }
+
+.scene { position: absolute; inset: 0; display: none }
+.win { position: absolute; border-radius: 16px; overflow: hidden; background: var(--ink);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.09), 0 40px 120px rgba(0,0,0,.7), 0 0 90px rgba(34,255,132,.10);
+  transform-origin: 50% 50%; will-change: transform }
+.win .cam { position: absolute; left: 0; top: 0; width: 1600px; height: 900px; transform-origin: 0 0 }
+.win img { display: block; width: 1600px; height: 900px }
+.win .sheen { position: absolute; inset: 0; background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.10) 50%, transparent 65%); background-size: 300% 100%; pointer-events: none }
+
+.copy { position: absolute; width: 580px }
+.eyebrow { font: 700 18px/1 var(--mono); letter-spacing: .22em; text-transform: uppercase; color: var(--green); display: flex; align-items: center; gap: 14px }
+.eyebrow::before { content: ""; width: 34px; height: 2px; background: var(--green); box-shadow: 0 0 12px var(--green) }
+.title { font: 900 84px/0.93 var(--display); letter-spacing: -.035em; margin-top: 26px; text-wrap: balance }
+.title .w { display: inline-block; overflow: hidden; vertical-align: top; padding-bottom: .08em; margin-bottom: -.08em }
+.title .w > span { display: inline-block; will-change: transform }
+.title em { font-style: normal; color: var(--green); text-shadow: 0 0 40px rgba(34,255,132,.45) }
+.sub { font: 500 25px/1.4 var(--body); color: var(--muted); margin-top: 28px; max-width: 520px }
+.chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 34px }
+.chip { font: 600 17px/1 var(--mono); padding: 11px 16px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--muted); display: inline-flex; align-items: center; gap: 10px; letter-spacing: .02em }
+.chip img { width: 22px; height: 22px }
+.chip.on { color: var(--ink); background: var(--green); border-color: var(--green); box-shadow: 0 0 30px rgba(34,255,132,.45) }
+
+/* intro / outro */
+.logo { position: absolute; left: 50%; top: 50%; width: 220px; height: 220px; margin: -210px 0 0 -110px; filter: drop-shadow(0 0 40px rgba(34,255,132,.6)) }
+.word { position: absolute; left: 0; right: 0; top: 590px; text-align: center; font: 900 150px/1 var(--display); letter-spacing: -.05em }
+.word span { display: inline-block }
+.tag { position: absolute; left: 0; right: 0; top: 770px; text-align: center; font: 500 32px/1.3 var(--body); color: var(--muted) }
+.meta { position: absolute; left: 0; right: 0; top: 850px; text-align: center; font: 700 18px/1 var(--mono); letter-spacing: .25em; color: var(--green); text-transform: uppercase }
+
+.flash { position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, rgba(34,255,132,.35), transparent 60%); opacity: 0; pointer-events: none; mix-blend-mode: screen }
+.wipe { position: absolute; top: -10%; bottom: -10%; width: 520px; background: linear-gradient(90deg, transparent, rgba(34,255,132,.85) 45%, #eafff3 50%, rgba(34,255,132,.85) 55%, transparent); transform: skewX(-18deg); filter: blur(6px); opacity: .0; pointer-events: none; mix-blend-mode: screen }
+
+.ping { font: 700 64px/1 var(--mono); color: var(--green); margin-top: 32px; letter-spacing: -.02em; text-shadow: 0 0 30px rgba(34,255,132,.5) }
+.ping small { font-size: 20px; color: var(--muted); letter-spacing: .2em; margin-left: 12px }
+.live { display: inline-flex; align-items: center; gap: 10px; font: 700 16px/1 var(--mono); letter-spacing: .2em; color: var(--green); border: 1px solid rgba(34,255,132,.35); background: rgba(34,255,132,.08); padding: 9px 14px; border-radius: 999px; margin-top: 30px }
+.live i { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px var(--green) }
+
+.wall { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-style: preserve-3d }
+.tile { position: absolute; width: 640px; height: 360px; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px rgba(255,255,255,.1), 0 30px 80px rgba(0,0,0,.6) }
+.tile img { width: 100%; height: 100%; object-fit: cover; display: block }
+.feat { position: absolute; left: 120px; font: 800 44px/1.1 var(--display); letter-spacing: -.02em; display: flex; align-items: center; gap: 22px }
+.feat b { width: 14px; height: 14px; background: var(--green); box-shadow: 0 0 16px var(--green); transform: rotate(45deg) }
+.scrim { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(8,9,10,.96) 0%, rgba(8,9,10,.85) 40%, rgba(8,9,10,.1) 75%) }
+.bar { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--green); box-shadow: 0 0 18px var(--green) }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="bg"><div id="grid"></div><div class="glow" id="g1"></div><div class="glow" id="g2"></div><canvas id="motes" width="1920" height="1080"></canvas></div>
+  <div id="scenes"></div>
+  <div class="flash" id="flash"></div>
+  <div class="wipe" id="wipe"></div>
+  <div class="bar" id="bar"></div>
+</div>
+<script src="frames/manifest.js"></script>
+<script>
+const FR = 'frames/';
+const PLAT = 'plat/';
+const LOGO = `<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+ <path id="lgFrame" d="M6 2 H26 L30 6 V26 L26 30 H6 L2 26 V6 Z" stroke="#22ff84" stroke-width="1.6" stroke-linejoin="round" pathLength="100"/>
+ <circle id="lgRing" cx="16" cy="16" r="8.5" stroke="#22ff84" stroke-width="1.2" stroke-opacity=".45" pathLength="100"/>
+ <g id="lgTicks"><rect x="15.25" y="5.5" width="1.5" height="2" fill="#22ff84"/><rect x="24.5" y="15.25" width="2" height="1.5" fill="#22ff84" fill-opacity=".55"/><rect x="15.25" y="24.5" width="1.5" height="2" fill="#22ff84" fill-opacity=".55"/><rect x="5.5" y="15.25" width="2" height="1.5" fill="#22ff84" fill-opacity=".55"/></g>
+ <g id="lgNeedle" style="transform-origin:16px 16px"><path d="M16 16 L22.5 9.5 L20 16 Z" fill="#22ff84"/><path d="M16 16 L9.5 22.5 L12 16 Z" fill="#22ff84" fill-opacity=".35"/></g>
+ <circle cx="16" cy="16" r="1.6" fill="#08090a" stroke="#22ff84" stroke-width="1"/></svg>`;
+
+// ---------- math ----------
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const eo = (x) => 1 - Math.pow(1 - x, 4);                 // ease-out quart
+const eio = (x) => x < .5 ? 8 * x ** 4 : 1 - Math.pow(-2 * x + 2, 4) / 2;
+const back = (x) => { const c = 1.6; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, x) => a + (b - a) * x;
+function keys(t, ks) { // [[t, ...vals]] piecewise eased
+  if (t <= ks[0][0]) return ks[0].slice(1);
+  for (let i = 0; i < ks.length - 1; i++) {
+    const [a, b] = [ks[i], ks[i + 1]];
+    if (t <= b[0]) { const x = eio(prog(t, a[0], b[0])); return a.slice(1).map((v, j) => lerp(v, b[j + 1], x)); }
+  }
+  return ks[ks.length - 1].slice(1);
+}
+
+// ---------- clip segments (30 fps frame folders) ----------
+// [frames, rate, skip s, end s]. Rates are exactly 1x or 2x so every 60 fps output frame advances the 30 fps source evenly.
+const SEG = { library: [486, 1, 3.2, 13.0], platforms: [492, 2], search: [231, 1], resource: [492, 2], newinst: [522, 2],
+  instance: [612, 2], worlds: [384, 1, 0, 9.5], servers: [288, 1, 0, 8.4], skins: [330, 2] };
+for (const k in SEG) SEG[k][0] = (window.FRAMES || {})[k] ?? SEG[k][0]; // frame counts come from record.sh extract
+const segDur = (s) => { const [n, r, a = 0, b = n / 30] = SEG[s]; return (b - a) / r; };
+function frameOf(seg, lt) { const [n, r, a = 0] = SEG[seg]; const i = clamp(Math.floor((a + lt * r) * 30 + 1e-6), 0, n - 1) + 1; return `${FR}${seg}/${String(i).padStart(5, '0')}.jpg`; }
+
+// ---------- scene builders ----------
+const scenesEl = document.getElementById('scenes');
+const scenes = [];
+function el(html) { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; }
+function titleHTML(s) { // words wrapped for staggered reveal; *x* = accent
+  return s.split(' ').map(w => { const acc = w.startsWith('*'); w = w.replace(/\*/g, ''); return `<span class="w"><span>${acc ? `<em>${w}</em>` : w}</span></span>`; }).join(' ');
+}
+
+function windowScene(o) {
+  const root = el(`<div class="scene"></div>`); scenesEl.appendChild(root);
+  const win = el(`<div class="win"><div class="cam"><img></div><div class="sheen"></div></div>`); root.appendChild(win);
+  const copy = el(`<div class="copy"><div class="eyebrow">${o.eyebrow}</div><div class="title">${titleHTML(o.title)}</div>${o.sub ? `<div class="sub">${o.sub}</div>` : ''}</div>`);
+  root.appendChild(copy);
+  if (o.extra) copy.appendChild(el(o.extra));
+  const img = win.querySelector('img'), cam = win.querySelector('.cam'), sheen = win.querySelector('.sheen');
+  const words = [...copy.querySelectorAll('.title .w > span')];
+  const eb = copy.querySelector('.eyebrow'), sub = copy.querySelector('.sub');
+  const L = o.layout; // 'right' (window on the right), 'left', 'full'
+  const W = L === 'full' ? 1400 : 1100, s = W / 1600, H = 900 * s;
+  const wx = L === 'right' ? 1920 - W - 90 : L === 'left' ? 90 : (1920 - W) / 2, wy = L === 'full' ? 1080 - H - 60 : (1080 - H) / 2;
+  Object.assign(win.style, { left: wx + 'px', top: wy + 'px', width: W + 'px', height: H + 'px' });
+  if (L === 'full') { copy.style.left = '120px'; copy.style.top = '58px'; copy.style.width = '1700px'; copy.querySelector('.title').style.fontSize = '64px'; copy.querySelector('.title').style.marginTop = '16px'; if (sub) sub.style.display = 'none'; }
+  else { copy.style.left = (L === 'right' ? 100 : 1920 - 580 - 80) + 'px'; copy.style.top = '0px'; }
+  const dir = L === 'left' ? -1 : 1;
+  const sc = { root, start: o.start, dur: o.dur, async seek(t) {
+    // clip timeline: o.clips = [[seg, atLocal]] with hard cuts
+    let seg = o.clips[0][0], at = o.clips[0][1];
+    for (const [sg, a] of o.clips) if (t >= a) { seg = sg; at = a; }
+    const src = frameOf(seg, t - at);
+    if (img.getAttribute('src') !== src) { img.src = src; await img.decode().catch(() => {}); }
+    // window entrance / exit
+    const ein = eo(prog(t, 0, .9)), eout = eio(prog(t, o.dur - .5, o.dur));
+    const rx = lerp(16, 0, ein), ry = lerp(-14 * dir, 0, ein), tz = lerp(-500, 0, ein);
+    const drift = Math.sin(t * .6) * 1.2;
+    win.style.transform = `translate3d(${lerp(160 * dir, 0, ein)}px, ${lerp(80, 0, ein) - eout * 30}px, ${tz + eout * 260}px) rotateX(${rx + drift * .3}deg) rotateY(${ry - dir * drift * .5}deg) scale(${1 + eout * .06})`;
+    win.style.opacity = Math.min(prog(t, 0, .35), 1 - eout);
+    win.style.filter = `blur(${eout * 14}px)`;
+    sheen.style.backgroundPosition = `${lerp(120, -20, eo(prog(t, .35, 1.6)))}% 0`;
+    // camera: [[t, zoom, fx, fy]] fx,fy = focus point in app pixels
+    const [z, fx, fy] = [1, 800, 450]; // the whole window stays in view: no camera zoom or crop
+    const cx = clamp(800 - fx * z + 800 * (z - 1) * 0 , 1600 - 1600 * z, 0); // keep edges covered
+    const tx = clamp(800 - fx * z, 1600 - 1600 * z, 0), ty = clamp(450 - fy * z, 900 - 900 * z, 0);
+    cam.style.transform = `scale(${s}) translate(${tx}px, ${ty}px) scale(${z})`;
+    // copy
+    const cin = (d) => eo(prog(t, .25 + d, .95 + d));
+    eb.style.opacity = cin(0); eb.style.transform = `translateX(${lerp(-40, 0, cin(0))}px)`;
+    words.forEach((w, i) => { const p = eo(prog(t, .35 + i * .07, 1.0 + i * .07)); w.style.transform = `translateY(${lerp(110, 0, p)}%)`; });
+    if (sub) { sub.style.opacity = cin(.45); sub.style.transform = `translateY(${lerp(24, 0, cin(.45))}px)`; }
+    const fade = 1 - eout;
+    copy.style.opacity = fade; copy.style.filter = `blur(${eout * 10}px)`;
+    if (L !== 'full') copy.style.top = (540 - copy.offsetHeight / 2) + 'px';
+    if (o.update) o.update(t, copy, root);
+  } };
+  scenes.push(sc); return sc;
+}
+
+// ---------- timeline ----------
+let T = 0; const at = (d) => { const s = T; T += d; return s; };
+
+// Intro
+(() => {
+  const root = el(`<div class="scene"><div class="logo">${LOGO}</div><div class="word">${[...'Lodestone'].map(c => `<span>${c}</span>`).join('')}</div><div class="tag">A native Minecraft launcher, built in Rust.</div><div class="meta">Windows · macOS · Linux</div></div>`);
+  scenesEl.appendChild(root);
+  const logo = root.querySelector('.logo'), letters = [...root.querySelectorAll('.word span')], tag = root.querySelector('.tag'), meta = root.querySelector('.meta');
+  const frame = root.querySelector('#lgFrame'), ring = root.querySelector('#lgRing'), needle = root.querySelector('#lgNeedle'), ticks = root.querySelector('#lgTicks');
+  const dur = 5.2, start = at(dur);
+  scenes.push({ root, start, dur, async seek(t) {
+    frame.style.strokeDasharray = '100'; frame.style.strokeDashoffset = 100 - 100 * eo(prog(t, .1, 1.3));
+    ring.style.strokeDasharray = '100'; ring.style.strokeDashoffset = 100 - 100 * eo(prog(t, .5, 1.5));
+    ticks.style.opacity = prog(t, 1.0, 1.4);
+    const spin = eo(prog(t, .6, 2.4)); needle.style.transform = `rotate(${lerp(-540, 0, spin) + Math.sin(t * 3) * 4 * (1 - spin)}deg)`;
+    const up = eio(prog(t, 2.0, 2.8));
+    logo.style.transform = `translateY(${-up * 60}px) scale(${lerp(.6, 1, eo(prog(t, 0, 1.2))) - up * .25})`;
+    letters.forEach((l, i) => { const p = eo(prog(t, 2.1 + i * .05, 2.8 + i * .05)); l.style.transform = `translateY(${lerp(80, 0, p)}px)`; l.style.opacity = p; l.style.filter = `blur(${(1 - p) * 12}px)`; });
+    tag.style.opacity = eo(prog(t, 2.9, 3.6)); tag.style.transform = `translateY(${lerp(20, 0, eo(prog(t, 2.9, 3.6)))}px)`;
+    meta.style.opacity = eo(prog(t, 3.3, 3.9)); meta.style.letterSpacing = lerp(.6, .25, eo(prog(t, 3.3, 4.2))) + 'em';
+    const out = eio(prog(t, dur - .6, dur)); root.style.opacity = 1 - out; root.style.transform = `scale(${1 + out * .15})`; root.style.filter = `blur(${out * 16}px)`;
+  } });
+})();
+
+// Library
+windowScene({ start: at(segDur('library') + .3), dur: segDur('library') + .3, layout: 'right', eyebrow: 'Library', title: 'Every world you play, in *one* place.',
+  sub: 'Fabric, Forge, NeoForge, Quilt or vanilla. Each instance gets its own art, playtime and one-click Play.',
+  clips: [['library', .3]], cam: [[0, 1, 800, 450], [2.0, 1, 800, 450], [3.2, 1.25, 800, 700], [5.4, 1.25, 800, 600], [6.6, 1, 800, 450]] });
+
+// Platforms
+(() => {
+  const P = [['Modrinth', 'modrinth.svg'], ['CurseForge', 'curseforge.svg'], ['ATLauncher', 'atlauncher.svg'], ['Technic', 'technic.png'], ['FTB', 'ftb.svg']];
+  const chips = `<div class="chips">${P.map(([n, f]) => `<span class="chip"><img src="${PLAT}${f}">${n}</span>`).join('')}</div>`;
+  const r = SEG.platforms[1], in0 = .6;
+  const sw = [[0, 0], [2.0, 1], [5.3, 2], [8.4, 3], [11.4, 4], [14.6, 0]].map(([s, i]) => [(s - in0) / r + .2, i]);
+  const d = segDur('platforms') + .2;
+  windowScene({ start: at(d), dur: d, layout: 'left', eyebrow: 'Discover', title: 'Five platforms. *One* search.',
+    sub: 'Browse modpacks, mods, resource packs and shaders from every major source without leaving the launcher.', extra: chips,
+    clips: [['platforms', .2]], cam: [[0, 1, 800, 450], [1.0, 1.45, 430, 140], [5.2, 1.45, 430, 140], [6.4, 1, 800, 450]],
+    update(t, copy) { let a = 0; for (const [s, i] of sw) if (t >= s) a = i; copy.querySelectorAll('.chip').forEach((c, i) => c.classList.toggle('on', i === a)); } });
+})();
+
+// Search
+windowScene({ start: at(segDur('search') + .3), dur: segDur('search') + .3, layout: 'right', eyebrow: 'Search', title: 'Find the mod. *Add* it.',
+  sub: 'Results land as you type, filtered to your game version and loader.',
+  clips: [['search', .3]], cam: [[0, 1, 800, 450], [.8, 1.6, 1300, 200], [2.6, 1.6, 1300, 200], [3.6, 1.15, 950, 650], [6.2, 1, 800, 450]] });
+
+// Resource page
+windowScene({ start: at(segDur('resource') + .3), dur: segDur('resource') + .3, layout: 'left', eyebrow: 'Project pages', title: 'Read before you *install*.',
+  sub: 'Full descriptions, galleries, changelogs and every version, right in the app.',
+  clips: [['resource', .3]], cam: [[0, 1, 800, 450], [2, 1.2, 600, 300], [4.5, 1.2, 600, 500], [5.8, 1, 800, 450]] });
+
+// New instance
+windowScene({ start: at(segDur('newinst') + .3), dur: segDur('newinst') + .3, layout: 'right', eyebrow: 'New instance', title: 'A fresh profile in *seconds*.',
+  sub: 'Pick a version and a loader. Lodestone matches the Java runtime and does the rest.',
+  extra: `<div class="chips"><span class="chip">Vanilla</span><span class="chip">Fabric</span><span class="chip">Forge</span><span class="chip">NeoForge</span><span class="chip">Quilt</span></div>`,
+  clips: [['newinst', .3]], cam: [[0, 1, 800, 450], [1.2, 1, 800, 450], [2.0, 1.35, 800, 380], [3.2, 1.35, 800, 620], [5.0, 1.35, 700, 520], [7.2, 1, 800, 450]],
+  update(t, copy) { const r = SEG.newinst[1], in0 = .6, ev = [[2.0, 1], [7.3, 2], [8.3, 3]].map(([s, i]) => [(s - in0) / r + .3, i]); let a = 1; for (const [s, i] of ev) if (t >= s) a = i; copy.querySelectorAll('.chip').forEach((c, i) => c.classList.toggle('on', i === (a === 2 ? 2 : a === 3 ? 3 : 1))); } });
+
+// Instance management
+(() => {
+  const d = .3 + segDur('instance'), r = SEG.instance[1];
+  const ts = [9.5, 12.6, 16.2].map((s) => (s - .6) / r + .3); // Files, Worlds, Settings clicks in the source
+  const tabs = ['Mods', 'Files', 'Worlds', 'Settings'];
+  windowScene({ start: at(d), dur: d, layout: 'left', eyebrow: 'Instances', title: 'Every file, *under control*.',
+    sub: 'Toggle mods, browse files, back up worlds and tune Java per instance.',
+    extra: `<div class="chips">${tabs.map(n => `<span class="chip">${n}</span>`).join('')}</div>`,
+    clips: [['instance', .3]],
+    update(t, copy) { const i = t < ts[0] ? 0 : t < ts[1] ? 1 : t < ts[2] ? 2 : 3; copy.querySelectorAll('.chip').forEach((x, j) => x.classList.toggle('on', j === i)); } });
+})();
+
+// Worlds
+windowScene({ start: at(segDur('worlds') + .3), dur: segDur('worlds') + .3, layout: 'right', eyebrow: 'Worlds', title: 'All your saves, *across* every instance.',
+  sub: 'Search by name or seed, filter by mode, pin favourites and restore backups.',
+  clips: [['worlds', .3]], cam: [[0, 1, 800, 450], [1.0, 1.3, 600, 260], [2.6, 1.3, 900, 260], [3.6, 1, 800, 450]] });
+
+// Servers
+windowScene({ start: at(segDur('servers') + .3), dur: segDur('servers') + .3, layout: 'left', eyebrow: 'Servers', title: 'Live status for *every* server.',
+  sub: 'Pings, player counts and MOTDs refresh on their own. LAN games show up too.',
+  extra: `<div><div class="live"><i></i>LIVE · PING EVERY 10S</div><div class="ping"><span class="pv">34</span><small>MS</small></div></div>`,
+  clips: [['servers', .3]], cam: [[0, 1, 800, 450], [1.0, 1.4, 1250, 300], [3.6, 1.4, 1250, 450], [4.8, 1, 800, 450]],
+  update(t, copy) { const v = [34, 31, 36, 29, 33, 11, 18, 20]; copy.querySelector('.pv').textContent = v[Math.floor(t * 1.6) % v.length]; copy.querySelector('.live i').style.opacity = .4 + .6 * Math.abs(Math.sin(t * 4)); } });
+
+// Skins
+windowScene({ start: at(segDur('skins') + .3), dur: segDur('skins') + .3, layout: 'right', eyebrow: 'Skins', title: 'Try on a skin in *3D*.',
+  sub: 'Spin the preview, switch poses and swap skins and capes.',
+  clips: [['skins', .3]], cam: [[0, 1.25, 400, 450], [2.6, 1.25, 400, 450], [3.4, 1, 800, 450]] });
+
+// Montage
+(() => {
+  const imgs = ['m_table', 'm_import', 'm_join', 'p_worlds', 'm_java', 'm_appearance', 'library', 'm_import'];
+  const feats = ['Import from other launchers', 'Export .mrpack & CurseForge packs', 'Portable, take-anywhere builds', 'Mod snapshots & one-click rollback', 'Java runtimes managed for you'];
+  const root = el(`<div class="scene"><div class="wall">${imgs.map(i => `<div class="tile"><img src="${FR}${i}.jpg"></div>`).join('')}</div><div class="scrim"></div>
+    <div class="copy" style="left:120px;top:120px;width:900px"><div class="eyebrow">And more</div><div class="title" style="font-size:80px">Everything a launcher <em>should</em> do.</div></div>
+    ${feats.map((f, i) => `<div class="feat" style="top:${470 + i * 92}px"><b></b>${f}</div>`).join('')}</div>`);
+  scenesEl.appendChild(root);
+  const wall = root.querySelector('.wall'), tiles = [...root.querySelectorAll('.tile')], fs = [...root.querySelectorAll('.feat')], copy = root.querySelector('.copy');
+  const dur = 6.6, start = at(dur);
+  scenes.push({ root, start, dur, async seek(t) {
+    wall.style.transform = `translate(${260 - t * 40}px, ${-30}px) rotateX(18deg) rotateY(-28deg) rotateZ(6deg)`;
+    tiles.forEach((x, i) => { const col = i % 4, row = Math.floor(i / 4); const p = eo(prog(t, .1 + i * .08, .9 + i * .08));
+      x.style.transform = `translate3d(${(col - 2) * 680 + row * 200}px, ${(row - 1) * 400}px, ${lerp(-900, 0, p)}px)`; x.style.opacity = p; });
+    copy.style.opacity = eo(prog(t, .3, .9)); copy.style.transform = `translateY(${lerp(30, 0, eo(prog(t, .3, 1)))}px)`;
+    fs.forEach((f, i) => { const p = eo(prog(t, 1.0 + i * .35, 1.6 + i * .35)); f.style.opacity = p; f.style.transform = `translateX(${lerp(-60, 0, p)}px)`; });
+    const out = eio(prog(t, dur - .5, dur)); root.style.opacity = 1 - out; root.style.filter = `blur(${out * 14}px)`;
+  } });
+})();
+
+// Outro
+(() => {
+  const root = el(`<div class="scene"><div class="logo">${LOGO}</div><div class="word">${[...'Lodestone'].map(c => `<span>${c}</span>`).join('')}</div><div class="tag">Free and open source. Download it today.</div><div class="meta">lodestonelauncher.com</div></div>`);
+  scenesEl.appendChild(root);
+  const logo = root.querySelector('.logo'), letters = [...root.querySelectorAll('.word span')], tag = root.querySelector('.tag'), meta = root.querySelector('.meta'), needle = root.querySelector('#lgNeedle');
+  meta.style.letterSpacing = '.18em'; meta.style.fontSize = '30px'; meta.style.textTransform = 'none';
+  const dur = 6.0, start = at(dur);
+  scenes.push({ root, start, dur, async seek(t) {
+    const p = back(clamp(prog(t, 0, .9))); logo.style.transform = `translateY(-60px) scale(${lerp(.3, .75, p)})`; logo.style.opacity = prog(t, 0, .3);
+    needle.style.transform = `rotate(${lerp(360, 0, eo(prog(t, 0, 1.6)))}deg)`;
+    letters.forEach((l, i) => { const q = eo(prog(t, .3 + i * .04, 1.0 + i * .04)); l.style.transform = `translateY(${lerp(60, 0, q)}px)`; l.style.opacity = q; });
+    tag.style.opacity = eo(prog(t, 1.0, 1.6)); meta.style.opacity = eo(prog(t, 1.4, 2.0));
+    const out = prog(t, dur - .8, dur); root.style.opacity = 1 - out;
+  } });
+})();
+
+const TOTAL = T;
+// transition accents: flash + wipe at each scene boundary
+const cuts = scenes.slice(1).map(s => s.start);
+
+// ---------- background ----------
+const mctx = document.getElementById('motes').getContext('2d');
+const motes = Array.from({ length: 70 }, (_, i) => { const r = (n) => { const x = Math.sin(i * 127.1 + n * 311.7) * 43758.5453; return x - Math.floor(x); }; return { x: r(1) * 1920, y: r(2) * 1080, s: 1 + r(3) * 2.5, v: 6 + r(4) * 20, p: r(5) * 6.28 }; });
+function drawBg(t) {
+  const g1 = document.getElementById('g1'), g2 = document.getElementById('g2');
+  g1.style.transform = `translate(${-200 + Math.sin(t * .23) * 260}px, ${-250 + Math.cos(t * .19) * 160}px)`;
+  g2.style.transform = `translate(${1300 + Math.cos(t * .17) * 220}px, ${500 + Math.sin(t * .21) * 160}px)`;
+  document.getElementById('grid').style.transform = `translate(${(t * 12) % 64}px, ${(t * 8) % 64}px)`;
+  mctx.clearRect(0, 0, 1920, 1080);
+  for (const m of motes) { const y = ((m.y - t * m.v) % 1080 + 1080) % 1080; const a = .25 + .35 * Math.abs(Math.sin(t * 1.3 + m.p));
+    mctx.fillStyle = `rgba(34,255,132,${a})`; mctx.fillRect(m.x + Math.sin(t * .5 + m.p) * 12, y, m.s, m.s); }
+}
+
+// ---------- seek ----------
+window.TOTAL = TOTAL;
+window.SCENES = scenes.map((s) => [+s.start.toFixed(2), +s.dur.toFixed(2)]);
+window.seek = async function (t) {
+  drawBg(t);
+  for (const s of scenes) {
+    const on = t >= s.start && t < s.start + s.dur;
+    s.root.style.display = on ? 'block' : 'none';
+    if (on) await s.seek(t - s.start);
+  }
+  let f = 0, wx = -9999;
+  for (const c of cuts) { const d = t - c; if (d > -.25 && d < .45) { f = Math.max(f, d < 0 ? prog(d, -.25, 0) : 1 - prog(d, 0, .45)); } if (d > -.35 && d < .35) wx = lerp(-700, 2300, prog(d, -.35, .35)); }
+  document.getElementById('flash').style.opacity = f * .9;
+  const wipe = document.getElementById('wipe'); wipe.style.left = wx + 'px'; wipe.style.opacity = wx > -9000 ? .55 : 0;
+  document.getElementById('bar').style.width = (t / TOTAL * 1920) + 'px';
+  return true;
+};
+window.ready = (async () => { await document.fonts.ready; await Promise.all([...document.images].map(i => i.decode().catch(() => {}))); return TOTAL; })();
+</script>
+</body>
+</html>
